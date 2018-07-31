@@ -14,9 +14,9 @@ struct ers_recorder
 
   void (*debug) (struct ers_recorder *self, struct ers_thread *th, const char *text);
 
-  void (*lock) (struct ers_recorder *self, struct ers_thread *th, void *mem, int size, int mo);
-  void (*unlock) (struct ers_recorder *self, void *mem);
-  void (*barrier) (struct ers_recorder *self, struct ers_thread *th, int mo);
+  void (*atomic_lock) (struct ers_recorder *self, struct ers_thread *th, void *mem, int size, int mo);
+  void (*atomic_unlock) (struct ers_recorder *self, void *mem);
+  void (*atomic_barrier) (struct ers_recorder *self, struct ers_thread *th, int mo);
 
   struct ers_internal* internal;
 };
@@ -52,13 +52,13 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers1_fail_mo = fail_mo;						\
     typeof (*__ers1_m) __ers1_result;						\
     struct ers_recorder *__ers1_recorder = ers_get_recorder ();			\
-    __ers1_recorder->lock (__ers1_recorder, __ers1_th,				\
-			   (void *) __ers1_m, sizeof *__ers1_m,			\
-			   *__ers1_m == __ers1_ov				\
-			   ? __ers1_succ_mo : __ers1_fail_mo);			\
+    __ers1_recorder->atomic_lock (__ers1_recorder, __ers1_th,			\
+				  (void *) __ers1_m, sizeof *__ers1_m,		\
+				  *__ers1_m == __ers1_ov			\
+				  ? __ers1_succ_mo : __ers1_fail_mo);		\
     __ers1_result = *__ers1_m;							\
     if (*__ers1_m == __ers1_ov) *__ers1_m = __ers1_nv;				\
-    __ers1_recorder->unlock (__ers1_recorder, (void *) __ers1_m);		\
+    __ers1_recorder->atomic_unlock (__ers1_recorder, (void *) __ers1_m);	\
     __ers1_result;								\
   })
 
@@ -72,13 +72,13 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers2_fail_mo = fail_mo;						\
     char __ers2_result;								\
     struct ers_recorder *__ers2_recorder = ers_get_recorder ();			\
-    __ers2_recorder->lock (__ers2_recorder, __ers2_th,				\
-			   (void *) __ers2_m, sizeof *__ers2_m,			\
-			   *__ers2_m == __ers2_ov				\
-			   ? __ers2_succ_mo : __ers2_fail_mo);			\
+    __ers2_recorder->atomic_lock (__ers2_recorder, __ers2_th,			\
+				  (void *) __ers2_m, sizeof *__ers2_m,		\
+				  *__ers2_m == __ers2_ov			\
+				  ? __ers2_succ_mo : __ers2_fail_mo);		\
     __ers2_result = *__ers2_m == __ers2_ov;					\
     if (__ers2_result) *__ers2_m = __ers2_nv;					\
-    __ers2_recorder->unlock (__ers2_recorder, (void *) __ers2_m);		\
+    __ers2_recorder->atomic_unlock (__ers2_recorder, (void *) __ers2_m);	\
     __ers2_result;								\
   })
 
@@ -90,11 +90,12 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers3_mo = mo;								\
     typeof (*__ers3_m) __ers3_result;						\
     struct ers_recorder *__ers3_recorder = ers_get_recorder ();			\
-    __ers3_recorder->lock (__ers3_recorder, __ers3_th,				\
-			   (void *) __ers3_m, sizeof *__ers3_m, __ers3_mo);	\
+    __ers3_recorder->atomic_lock (__ers3_recorder, __ers3_th,			\
+				  (void *) __ers3_m, sizeof *__ers3_m,		\
+				  __ers3_mo);					\
     __ers3_result = *__ers3_m;							\
     *__ers3_m = op (*__ers3_m, __ers3_v);					\
-    __ers3_recorder->unlock (__ers3_recorder, (void *) __ers3_m);		\
+    __ers3_recorder->atomic_unlock (__ers3_recorder, (void *) __ers3_m);	\
     __ers3_result;								\
   })
 
@@ -133,10 +134,11 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers5_mo = mo;								\
     typeof (*__ers5_m) __ers5_result;						\
     struct ers_recorder *__ers5_recorder = ers_get_recorder ();			\
-    __ers5_recorder->lock (__ers5_recorder, __ers5_th,				\
-			   (void *) __ers5_m, sizeof *__ers5_m, __ers5_mo);	\
+    __ers5_recorder->atomic_lock (__ers5_recorder, __ers5_th,			\
+				  (void *) __ers5_m, sizeof *__ers5_m,		\
+				  __ers5_mo);					\
     __ers5_result = *__ers5_m;							\
-    __ers5_recorder->unlock (__ers5_recorder, (void *) __ers5_m);		\
+    __ers5_recorder->atomic_unlock (__ers5_recorder, (void *) __ers5_m);	\
     __ers5_result;								\
   })
 
@@ -147,10 +149,11 @@ extern struct ers_recorder *ers_get_recorder (void);
     typeof (*__ers6_m) __ers6_v = (typeof (*__ers6_m)) (value);			\
     int __ers6_mo = mo;								\
     struct ers_recorder *__ers6_recorder = ers_get_recorder ();			\
-    __ers6_recorder->lock (__ers6_recorder, __ers6_th,				\
-			   (void *) __ers6_m, sizeof *__ers6_m, __ers6_mo);	\
+    __ers6_recorder->atomic_lock (__ers6_recorder, __ers6_th,			\
+				  (void *) __ers6_m, sizeof *__ers6_m,		\
+				  __ers6_mo);					\
     *__ers6_m = __ers6_v;							\
-    __ers6_recorder->unlock (__ers6_recorder, (void *) __ers6_m);		\
+    __ers6_recorder->atomic_unlock (__ers6_recorder, (void *) __ers6_m);	\
   } while (0)
 
 #define _ERS_ATOMIC_OP_MAX(oldval, newval) \
@@ -172,7 +175,7 @@ extern struct ers_recorder *ers_get_recorder (void);
   (void) _ERS_ATOMIC_OP (th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MIN)
 
 #define ERS_ATOMIC_BARRIER(th, mo) \
-  ers_get_recorder ()->barrier (ers_get_recorder (), th, mo)
+  ers_get_recorder ()->atomic_barrier (ers_get_recorder (), th, mo)
 
 #define ERS_ATOMIC_COMPARE_EXCHANGE(th, mem, expected, desired, succ_mo, fail_mo) \
   ({ typeof (expected) __ers80_e = expected;					\

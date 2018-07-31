@@ -11,7 +11,7 @@ struct iovec
 static const char digits[] = "0123456789abcdef";
 
 int
-eri_vfprintf (int fd, const char *fmt, va_list arg)
+ers_vfprintf (int fd, const char *fmt, va_list arg)
 {
   const char *p;
   int s = 1;
@@ -22,7 +22,7 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
   int niov = 0;
   while (*fmt)
     {
-      eri_assert (niov < s);
+      ers_assert (niov < s);
       if (*fmt == '%')
 	{
 	  ++fmt;
@@ -34,7 +34,7 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
 	      if (*fmt == 'l')
 		{
 		  ++fmt;
-		  eri_assert (*fmt == 'u' || *fmt == 'x');
+		  ers_assert (*fmt == 'u' || *fmt == 'x');
 		  num = (unsigned long) va_arg (arg, unsigned long);
 		}
 	      else num = (unsigned long) va_arg (arg, unsigned);
@@ -65,7 +65,7 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
 	      iov[niov].base = (void *) va_arg (arg, char *);
 	      iov[niov].len = __builtin_strlen (iov[niov].base);
 	    }
-	  else eri_assert (0);
+	  else ers_assert (0);
 	  ++fmt;
 	}
       else
@@ -78,31 +78,31 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
       ++niov;
     }
 
-  return ERI_SYSCALL_ERROR_P (ERI_SYSCALL (writev, 1, iov, niov));
+  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (writev, 1, iov, niov));
 }
 
 int
-eri_fprintf (int fd, const char *fmt, ...)
+ers_fprintf (int fd, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int ret = eri_vfprintf (fd, fmt, arg);
+  int ret = ers_vfprintf (fd, fmt, arg);
   va_end (arg);
   return ret;
 }
 
 int
-eri_vprintf (const char *fmt, va_list arg)
+ers_vprintf (const char *fmt, va_list arg)
 {
-  return eri_vfprintf (1, fmt, arg);
+  return ers_vfprintf (1, fmt, arg);
 }
 
 int
-eri_printf (const char *fmt, ...)
+ers_printf (const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int ret = eri_vprintf (fmt, arg);
+  int ret = ers_vprintf (fmt, arg);
   va_end (arg);
   return ret;
 }

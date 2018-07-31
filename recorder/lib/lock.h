@@ -1,7 +1,7 @@
-#ifndef ERI_LOCK_H
-#define ERI_LOCK_H
+#ifndef ERS_LOCK_H
+#define ERS_LOCK_H
 
-void eri_lock (int *lock);
-void eri_unlock (int *lock);
+void ers_lock (int *lock);
+void ers_unlock (int *lock);
 
 #endif

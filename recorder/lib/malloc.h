@@ -1,20 +1,23 @@
-#ifndef ERI_MALLOC_H
-#define ERI_MALLOC_H
+#ifndef ERS_MALLOC_H
+#define ERS_MALLOC_H
 
 #include <stddef.h>
 
-struct pool
+#include "rbtree.h"
+
+struct ers_pool
 {
   char *buf;
   size_t size;
+  size_t used;
 
-  struct block *root;
+  ERS_RBT_TREE_FIELDS (struct block)
   int lock;
 };
 
-int eri_init_pool (struct pool *pool, char *buf, size_t size);
+int ers_init_pool (struct ers_pool *pool, char *buf, size_t size);
 
-int eri_malloc (struct pool *pool, size_t size, void **p);
-int eri_free (struct pool *pool, void *p);
+int ers_malloc (struct ers_pool *pool, size_t size, void **p);
+int ers_free (struct ers_pool *pool, void *p);
 
 #endif
