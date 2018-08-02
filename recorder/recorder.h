@@ -1,6 +1,8 @@
 #ifndef ERS_RECORDER_H
 #define ERS_RECORDER_H
 
+#ifndef __ASSEMBLER__
+
 struct ers_thread;
 
 struct ers_recorder
@@ -10,30 +12,28 @@ struct ers_recorder
   void (*init_process) (struct ers_recorder *self);
 
   struct ers_thread *(*init_thread) (struct ers_recorder *self);
-  void (*fini_thread) (struct ers_recorder *self, struct ers_thread *th);
+  void (*fini_thread) (struct ers_thread *th);
 
-  void (*debug) (struct ers_recorder *self, struct ers_thread *th, const char *text);
+  long (*syscall) (struct ers_thread *th, int nr, long a1,
+		   long a2, long a3, long a4, long a5, long a6);
 
-  void (*atomic_lock) (struct ers_recorder *self, struct ers_thread *th, void *mem, int size, int mo);
-  void (*atomic_unlock) (struct ers_recorder *self, void *mem);
-  void (*atomic_barrier) (struct ers_recorder *self, struct ers_thread *th, int mo);
+  void (*atomic_lock) (struct ers_thread *th, void *mem, int size, int mo);
+  void (*atomic_unlock) (struct ers_thread *th, void *mem);
+  void (*atomic_barrier) (struct ers_thread *th, int mo);
+
+  void (*debug) (struct ers_thread *th, const char *text);
 
   struct ers_internal* internal;
 };
 
 extern struct ers_recorder *ers_get_recorder (void);
 
-#define ERS_INIT_PROCESS() \
-  do { if (ers_get_recorder ()) ers_get_recorder ()->init_process (ers_get_recorder ()); } while (0)
-#define ERS_INITIALIZED() \
-  (ers_get_recorder () && ers_get_recorder ()->initialized)
-
-#define ERS_INIT_THREAD() \
-  (ers_get_recorder () ? ers_get_recorder ()->init_thread (ers_get_recorder ()) : 0)
-
-#define ERS_DEBUG(th, text) \
-  do { if (ers_get_recorder ()) ers_get_recorder ()->debug(ers_get_recorder (), th, text); } while (0)
-
+#define ERS_INIT_PROCESS_X() \
+  do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
+       if (__ers_recorder) __ers_recorder->init_process (__ers_recorder); } while (0)
+#define ERS_INIT_THREAD_X() \
+  ({ struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
+     __ers_recorder ? __ers_recorder->init_thread (__ers_recorder) : 0; })
 
 #define ERS_ATOMIC_RELAXED 0
 // #define ERS_ATOMIC_CONSUME 1
@@ -42,8 +42,9 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define ERS_ATOMIC_ACQ_REL 4
 #define ERS_ATOMIC_SEQ_CST 5
 
-#define ERS_ATOMIC_COMPARE_EXCHANGE_VAL(th, mem, oldval, newval, succ_mo, fail_mo) \
+#define ERS_ATOMIC_COMPARE_EXCHANGE_VAL(rec, th, mem, oldval, newval, succ_mo, fail_mo) \
   ({										\
+    struct ers_recorder *__ers1_recorder = (rec);				\
     struct ers_thread *__ers1_th = th;						\
     typeof (mem) __ers1_m = mem;						\
     typeof (*__ers1_m) __ers1_ov = (typeof (*__ers1_m)) (oldval);		\
@@ -51,19 +52,19 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers1_succ_mo = succ_mo;						\
     int __ers1_fail_mo = fail_mo;						\
     typeof (*__ers1_m) __ers1_result;						\
-    struct ers_recorder *__ers1_recorder = ers_get_recorder ();			\
-    __ers1_recorder->atomic_lock (__ers1_recorder, __ers1_th,			\
+    __ers1_recorder->atomic_lock (__ers1_th,					\
 				  (void *) __ers1_m, sizeof *__ers1_m,		\
 				  *__ers1_m == __ers1_ov			\
 				  ? __ers1_succ_mo : __ers1_fail_mo);		\
     __ers1_result = *__ers1_m;							\
     if (*__ers1_m == __ers1_ov) *__ers1_m = __ers1_nv;				\
-    __ers1_recorder->atomic_unlock (__ers1_recorder, (void *) __ers1_m);	\
+    __ers1_recorder->atomic_unlock (__ers1_th, (void *) __ers1_m);		\
     __ers1_result;								\
   })
 
-#define ERS_ATOMIC_COMPARE_EXCHANGE_BOOL(th, mem, oldval, newval, succ_mo, fail_mo) \
+#define ERS_ATOMIC_COMPARE_EXCHANGE_BOOL(rec, th, mem, oldval, newval, succ_mo, fail_mo) \
   ({										\
+    struct ers_recorder *__ers2_recorder = (rec);				\
     struct ers_thread *__ers2_th = th;						\
     typeof (mem) __ers2_m = mem;						\
     typeof (*__ers2_m) __ers2_ov = (typeof (*__ers2_m)) (oldval);		\
@@ -71,31 +72,30 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers2_succ_mo = succ_mo;						\
     int __ers2_fail_mo = fail_mo;						\
     char __ers2_result;								\
-    struct ers_recorder *__ers2_recorder = ers_get_recorder ();			\
-    __ers2_recorder->atomic_lock (__ers2_recorder, __ers2_th,			\
+    __ers2_recorder->atomic_lock (__ers2_th,					\
 				  (void *) __ers2_m, sizeof *__ers2_m,		\
 				  *__ers2_m == __ers2_ov			\
 				  ? __ers2_succ_mo : __ers2_fail_mo);		\
     __ers2_result = *__ers2_m == __ers2_ov;					\
     if (__ers2_result) *__ers2_m = __ers2_nv;					\
-    __ers2_recorder->atomic_unlock (__ers2_recorder, (void *) __ers2_m);	\
+    __ers2_recorder->atomic_unlock (__ers2_th, (void *) __ers2_m);		\
     __ers2_result;								\
   })
 
-#define _ERS_ATOMIC_OP(th, mem, value, mo, op) \
+#define _ERS_ATOMIC_OP(rec, th, mem, value, mo, op) \
   ({										\
+    struct ers_recorder *__ers3_recorder = (rec);				\
     struct ers_thread *__ers3_th = th;						\
     typeof (mem) __ers3_m = mem;						\
     typeof (*__ers3_m) __ers3_v = (typeof (*__ers3_m)) (value);			\
     int __ers3_mo = mo;								\
     typeof (*__ers3_m) __ers3_result;						\
-    struct ers_recorder *__ers3_recorder = ers_get_recorder ();			\
-    __ers3_recorder->atomic_lock (__ers3_recorder, __ers3_th,			\
+    __ers3_recorder->atomic_lock (__ers3_th,					\
 				  (void *) __ers3_m, sizeof *__ers3_m,		\
 				  __ers3_mo);					\
     __ers3_result = *__ers3_m;							\
     *__ers3_m = op (*__ers3_m, __ers3_v);					\
-    __ers3_recorder->atomic_unlock (__ers3_recorder, (void *) __ers3_m);	\
+    __ers3_recorder->atomic_unlock (__ers3_th, (void *) __ers3_m);		\
     __ers3_result;								\
   })
 
@@ -105,16 +105,16 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define _ERS_ATOMIC_OP_OR(oldval, newval) ((oldval) | (newval))
 #define _ERS_ATOMIC_OP_XOR(oldval, newval) ((oldval) ^ (newval))
 
-#define ERS_ATOMIC_EXCHANGE(th, mem, value, mo) \
-  _ERS_ATOMIC_OP (th, mem, value, mo, _ERS_ATOMIC_OP_CHANGE)
-#define ERS_ATOMIC_FETCH_ADD(th, mem, value, mo) \
-  _ERS_ATOMIC_OP (th, mem, value, mo, _ERS_ATOMIC_OP_ADD)
-#define ERS_ATOMIC_FETCH_AND(th, mem, value, mo) \
-  _ERS_ATOMIC_OP (th, mem, value, mo, _ERS_ATOMIC_OP_AND)
-#define ERS_ATOMIC_FETCH_OR(th, mem, value, mo) \
-  _ERS_ATOMIC_OP (th, mem, value, mo, _ERS_ATOMIC_OP_OR)
-#define ERS_ATOMIC_FETCH_XOR(th, mem, value, mo) \
-  _ERS_ATOMIC_OP (th, mem, value, mo, _ERS_ATOMIC_OP_XOR)
+#define ERS_ATOMIC_EXCHANGE(rec, th, mem, value, mo) \
+  _ERS_ATOMIC_OP (rec, th, mem, value, mo, _ERS_ATOMIC_OP_CHANGE)
+#define ERS_ATOMIC_FETCH_ADD(rec, th, mem, value, mo) \
+  _ERS_ATOMIC_OP (rec, th, mem, value, mo, _ERS_ATOMIC_OP_ADD)
+#define ERS_ATOMIC_FETCH_AND(rec, th, mem, value, mo) \
+  _ERS_ATOMIC_OP (rec, th, mem, value, mo, _ERS_ATOMIC_OP_AND)
+#define ERS_ATOMIC_FETCH_OR(rec, th, mem, value, mo) \
+  _ERS_ATOMIC_OP (rec, th, mem, value, mo, _ERS_ATOMIC_OP_OR)
+#define ERS_ATOMIC_FETCH_XOR(rec, th, mem, value, mo) \
+  _ERS_ATOMIC_OP (rec, th, mem, value, mo, _ERS_ATOMIC_OP_XOR)
 
 #define _ERS_ATOMIC_OP_SUB_IF_POS(oldval, newval) \
   ({										\
@@ -124,36 +124,36 @@ extern struct ers_recorder *ers_get_recorder (void);
       ? __ers4_ov - __ers4_nv : __ers4_ov;					\
   })
 
-#define ERS_ATOMIC_DECREMENT_IF_POSITIVE(th, mem) \
-  _ERS_ATOMIC_OP (th, mem, 1, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_SUB_IF_POS)
+#define ERS_ATOMIC_DECREMENT_IF_POSITIVE(rec, th, mem) \
+  _ERS_ATOMIC_OP (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_SUB_IF_POS)
 
-#define ERS_ATOMIC_LOAD(th, mem, mo) \
+#define ERS_ATOMIC_LOAD(rec, th, mem, mo) \
   ({										\
+    struct ers_recorder *__ers5_recorder = (rec);				\
     struct ers_thread *__ers5_th = th;						\
     typeof (mem) __ers5_m = mem;						\
     int __ers5_mo = mo;								\
     typeof (*__ers5_m) __ers5_result;						\
-    struct ers_recorder *__ers5_recorder = ers_get_recorder ();			\
-    __ers5_recorder->atomic_lock (__ers5_recorder, __ers5_th,			\
+    __ers5_recorder->atomic_lock (__ers5_th,					\
 				  (void *) __ers5_m, sizeof *__ers5_m,		\
 				  __ers5_mo);					\
     __ers5_result = *__ers5_m;							\
-    __ers5_recorder->atomic_unlock (__ers5_recorder, (void *) __ers5_m);	\
+    __ers5_recorder->atomic_unlock (__ers5_th, (void *) __ers5_m);		\
     __ers5_result;								\
   })
 
-#define ERS_ATOMIC_STORE(th, mem, value, mo) \
+#define ERS_ATOMIC_STORE(rec, th, mem, value, mo) \
   do {										\
+    struct ers_recorder *__ers6_recorder = (rec);				\
     struct ers_thread *__ers6_th = th;						\
     typeof (mem) __ers6_m = mem;						\
     typeof (*__ers6_m) __ers6_v = (typeof (*__ers6_m)) (value);			\
     int __ers6_mo = mo;								\
-    struct ers_recorder *__ers6_recorder = ers_get_recorder ();			\
-    __ers6_recorder->atomic_lock (__ers6_recorder, __ers6_th,			\
+    __ers6_recorder->atomic_lock (__ers6_th,					\
 				  (void *) __ers6_m, sizeof *__ers6_m,		\
 				  __ers6_mo);					\
     *__ers6_m = __ers6_v;							\
-    __ers6_recorder->atomic_unlock (__ers6_recorder, (void *) __ers6_m);	\
+    __ers6_recorder->atomic_unlock (__ers6_th, (void *) __ers6_m);		\
   } while (0)
 
 #define _ERS_ATOMIC_OP_MAX(oldval, newval) \
@@ -169,154 +169,218 @@ extern struct ers_recorder *ers_get_recorder (void);
     __ers8_ov < __ers8_nv ? __ers8_ov : __ers8_nv;				\
   })
 
-#define ERS_ATOMIC_MAX(th, mem, value) \
-  (void) _ERS_ATOMIC_OP (th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MAX)
-#define ERS_ATOMIC_MIN(th, mem, value) \
-  (void) _ERS_ATOMIC_OP (th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MIN)
+#define ERS_ATOMIC_MAX(rec, th, mem, value) \
+  (void) _ERS_ATOMIC_OP (rec, th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MAX)
+#define ERS_ATOMIC_MIN(rec, th, mem, value) \
+  (void) _ERS_ATOMIC_OP (rec, th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MIN)
 
-#define ERS_ATOMIC_BARRIER(th, mo) \
-  ers_get_recorder ()->atomic_barrier (ers_get_recorder (), th, mo)
+#define ERS_ATOMIC_BARRIER(rec, th, mo) rec->atomic_barrier (th, mo)
 
-#define ERS_ATOMIC_COMPARE_EXCHANGE(th, mem, expected, desired, succ_mo, fail_mo) \
+#define ERS_ATOMIC_COMPARE_EXCHANGE(rec, th, mem, expected, desired, succ_mo, fail_mo) \
   ({ typeof (expected) __ers80_e = expected;					\
      typeof (*__ers80_e) __ers80_ev = *__ers80_e;				\
      *__ers80_e =								\
-       ERS_ATOMIC_COMPARE_EXCHANGE_VAL (th, mem, __ers80_ev, desired,		\
+       ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, mem, __ers80_ev, desired,	\
 					succ_mo, fail_mo);			\
      *__ers80_e == __ers80_ev;							\
    })
 
 
-#define ers_atomic_compare_and_exchange_val_acq(th, mem, newval, oldval) \
-  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_compare_and_exchange_val_acq(th, mem, newval, oldval) \
-  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_compare_and_exchange_val_rel(th, mem, newval, oldval) \
-  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_compare_and_exchange_val_rel(th, mem, newval, oldval) \
-  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_compare_and_exchange_bool_acq(th, mem, newval, oldval) \
+#define ers_atomic_compare_and_exchange_val_acq(rec, th, mem, newval, oldval) \
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, mem, oldval, newval,		\
+				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_compare_and_exchange_val_acq(rec, th, mem, newval, oldval) \
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, mem, oldval, newval,		\
+				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_compare_and_exchange_val_rel(rec, th, mem, newval, oldval) \
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, mem, oldval, newval,		\
+				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_compare_and_exchange_val_rel(rec, th, mem, newval, oldval) \
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, mem, oldval, newval,		\
+				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_compare_and_exchange_bool_acq(rec, th, mem, newval, oldval) \
   /* As __sync_bool_compare_and_swap */						\
-  (! ERS_ATOMIC_COMPARE_EXCHANGE_BOOL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST))
-#define ers_catomic_compare_and_exchange_bool_acq(th, mem, newval, oldval) \
+  (! ERS_ATOMIC_COMPARE_EXCHANGE_BOOL (rec, th, mem, oldval, newval,		\
+				       ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST))
+#define ers_catomic_compare_and_exchange_bool_acq(rec, th, mem, newval, oldval) \
   /* As __sync_bool_compare_and_swap */						\
-  (! ERS_ATOMIC_COMPARE_EXCHANGE_BOOL (th, mem, oldval, newval, ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST))
-#define ers_atomic_exchange_acq(th, mem, value) \
-  ERS_ATOMIC_EXCHANGE (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_exchange_rel(th, mem, value) \
-  ERS_ATOMIC_EXCHANGE (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_exchange_and_add_acq(th, mem, value) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_exchange_and_add_rel(th, mem, value) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_exchange_and_add(th, mem, value) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_exchange_and_add(th, mem, value) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_max(th, mem, value) \
-  ERS_ATOMIC_MAX (th, mem, value)
-#define ers_catomic_max(th, mem, value) \
-  ERS_ATOMIC_MAX (th, mem, value)
-#define ers_atomic_min(th, mem, value) \
-  ERS_ATOMIC_MIN (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_add(th, mem, value) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_add(th, mem, value) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, value, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_increment(th, mem) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, 1, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_increment(th, mem) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, 1, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_increment_val(th, mem) \
-  (ERS_ATOMIC_FETCH_ADD (th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1)
-#define ers_catomic_increment_val(th, mem) \
-  (ERS_ATOMIC_FETCH_ADD (th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1)
-#define ers_atomic_increment_and_test(th, mem) \
-  ((ERS_ATOMIC_FETCH_ADD (th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1) == 0)
-#define ers_atomic_decrement(th, mem) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, -1, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_decrement(th, mem) \
-  (void) ERS_ATOMIC_FETCH_ADD (th, mem, -1, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_decrement_val(th, mem) \
-  (ERS_ATOMIC_FETCH_ADD (th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1)
-#define ers_catomic_decrement_val(th, mem) \
-  (ERS_ATOMIC_FETCH_ADD (th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1)
-#define ers_atomic_decrement_and_test(th, mem) \
-  ((ERS_ATOMIC_FETCH_ADD (th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1) == 0)
-#define ers_atomic_decrement_if_positive(th, mem) \
-  (ERS_ATOMIC_DECREMENT_IF_POSITIVE (th, mem))
-#define ers_atomic_add_negative(th, mem, value) \
+  (! ERS_ATOMIC_COMPARE_EXCHANGE_BOOL (rec, th, mem, oldval, newval,		\
+				       ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST))
+#define ers_atomic_exchange_acq(rec, th, mem, value) \
+  ERS_ATOMIC_EXCHANGE (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_exchange_rel(rec, th, mem, value) \
+  ERS_ATOMIC_EXCHANGE (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_exchange_and_add_acq(rec, th, mem, value) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_exchange_and_add_rel(rec, th, mem, value) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_exchange_and_add(rec, th, mem, value) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_exchange_and_add(rec, th, mem, value) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_max(rec, th, mem, value) \
+  ERS_ATOMIC_MAX (rec, th, mem, value)
+#define ers_catomic_max(rec, th, mem, value) \
+  ERS_ATOMIC_MAX (rec, th, mem, value)
+#define ers_atomic_min(rec, th, mem, value) \
+  ERS_ATOMIC_MIN (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_add(rec, th, mem, value) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_add(rec, th, mem, value) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, value, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_increment(rec, th, mem) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_increment(rec, th, mem) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_increment_val(rec, th, mem) \
+  (ERS_ATOMIC_FETCH_ADD (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1)
+#define ers_catomic_increment_val(rec, th, mem) \
+  (ERS_ATOMIC_FETCH_ADD (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1)
+#define ers_atomic_increment_and_test(rec, th, mem) \
+  ((ERS_ATOMIC_FETCH_ADD (rec, th, mem, 1, ERS_ATOMIC_SEQ_CST) + 1) == 0)
+#define ers_atomic_decrement(rec, th, mem) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, -1, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_decrement(rec, th, mem) \
+  (void) ERS_ATOMIC_FETCH_ADD (rec, th, mem, -1, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_decrement_val(rec, th, mem) \
+  (ERS_ATOMIC_FETCH_ADD (rec, th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1)
+#define ers_catomic_decrement_val(rec, th, mem) \
+  (ERS_ATOMIC_FETCH_ADD (rec, th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1)
+#define ers_atomic_decrement_and_test(rec, th, mem) \
+  ((ERS_ATOMIC_FETCH_ADD (rec, th, mem, -1, ERS_ATOMIC_SEQ_CST) - 1) == 0)
+#define ers_atomic_decrement_if_positive(rec, th, mem) \
+  (ERS_ATOMIC_DECREMENT_IF_POSITIVE (rec, th, mem))
+#define ers_atomic_add_negative(rec, th, mem, value) \
   ({ typeof (value) __ers50_v = value;						\
-     ERS_ATOMIC_FETCH_ADD (th, mem, __ers50_v, ERS_ATOMIC_SEQ_CST) < -__ers50_v; })
-#define ers_atomic_add_zero(th, mem, value) \
+     ERS_ATOMIC_FETCH_ADD (rec, th, mem, __ers50_v, ERS_ATOMIC_SEQ_CST) < -__ers50_v; })
+#define ers_atomic_add_zero(rec, th, mem, value) \
   ({ typeof (value) __ers60_v = value;						\
-     ERS_ATOMIC_FETCH_ADD (th, mem, __ers60_v, ERS_ATOMIC_SEQ_CST) == -__ers60_v; })
-#define ers_atomic_bit_set(th, mem, bit) \
-  (void) ERS_ATOMIC_FETCH_OR (th, mem, ((typeof (*(mem))) 1 << (bit)), ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_bit_test_set(th, mem, bit) \
+     ERS_ATOMIC_FETCH_ADD (rec, th, mem, __ers60_v, ERS_ATOMIC_SEQ_CST) == -__ers60_v; })
+#define ers_atomic_bit_set(rec, th, mem, bit) \
+  (void) ERS_ATOMIC_FETCH_OR (rec, th, mem, ((typeof (*(mem))) 1 << (bit)), ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_bit_test_set(rec, th, mem, bit) \
   ({ typeof (*mem) __ers70_mask = ((typeof (*(mem))) 1 << (bit));		\
-     ERS_ATOMIC_FETCH_OR (th, mem, __ers70_mask, ERS_ATOMIC_SEQ_CST) & __ers70_mask; })
-#define ers_atomic_and(th, mem, mask) \
-  (void) ERS_ATOMIC_FETCH_AND (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_and(th, mem, mask) \
-  (void) ERS_ATOMIC_FETCH_AND (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_and_val(th, mem, mask) \
-  ERS_ATOMIC_FETCH_AND (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_or(th, mem, mask) \
-  (void) ERS_ATOMIC_FETCH_OR (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_catomic_or(th, mem, mask) \
-  (void) ERS_ATOMIC_FETCH_OR (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_or_val(th, mem, mask) \
-  ERS_ATOMIC_FETCH_OR (th, mem, mask, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_full_barrier(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_read_barrier(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_write_barrier(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_RELEASE)
-#define ers_atomic_forced_read(th, x) \
-  ERS_ATOMIC_LOAD (th, &(x), ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_thread_fence_acquire(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_thread_fence_release(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_RELEASE)
-#define ers_atomic_thread_fence_seq_cst(th) ERS_ATOMIC_BARRIER (th, ERS_ATOMIC_SEQ_CST)
-#define ers_atomic_load_relaxed(th, mem) \
-  ERS_ATOMIC_LOAD (th, mem, ERS_ATOMIC_RELAXED)
-#define ers_atomic_load_acquire(th, mem) \
-  ERS_ATOMIC_LOAD (th, mem, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_store_relaxed(th, mem, val) \
-  ERS_ATOMIC_STORE (th, mem, val, ERS_ATOMIC_RELAXED)
-#define ers_atomic_store_release(th, mem, val) \
-  ERS_ATOMIC_STORE (th, mem, val, ERS_ATOMIC_RELEASE)
-#define ers_atomic_compare_exchange_weak_relaxed(th, mem, expected, desired) \
-  ERS_ATOMIC_COMPARE_EXCHANGE (th, mem, expected, desired, ERS_ATOMIC_ACQUIRE, ERS_ATOMIC_RELAXED)
-#define ers_atomic_compare_exchange_weak_acquire(th, mem, expected, desired) \
-  ERS_ATOMIC_COMPARE_EXCHANGE (th, mem, expected, desired, ERS_ATOMIC_ACQUIRE, ERS_ATOMIC_RELAXED)
-#define ers_atomic_compare_exchange_weak_release(th, mem, expected, desired) \
-  ERS_ATOMIC_COMPARE_EXCHANGE (th, mem, expected, desired, ERS_ATOMIC_RELEASE, ERS_ATOMIC_RELAXED)
-#define ers_atomic_exchange_relaxed(th, mem, desired) \
-  ERS_ATOMIC_EXCHANGE (th, mem, desired, ERS_ATOMIC_RELAXED)
-#define ers_atomic_exchange_acquire(th, mem, desired) \
-  ERS_ATOMIC_EXCHANGE (th, mem, desired, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_exchange_release(th, mem, desired) \
-  ERS_ATOMIC_EXCHANGE (th, mem, desired, ERS_ATOMIC_RELEASE)
-#define ers_atomic_fetch_add_relaxed(th, mem, operand) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, operand, ERS_ATOMIC_RELAXED)
-#define ers_atomic_fetch_add_acquire(th, mem, operand) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, operand, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_fetch_add_release(th, mem, operand) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, operand, ERS_ATOMIC_RELEASE)
-#define ers_atomic_fetch_add_acq_rel(th, mem, operand) \
-  ERS_ATOMIC_FETCH_ADD (th, mem, operand, ERS_ATOMIC_ACQ_REL)
-#define ers_atomic_fetch_and_relaxed(th, mem, operand) \
-  ERS_ATOMIC_FETCH_AND (th, mem, operand, ERS_ATOMIC_RELAXED)
-#define ers_atomic_fetch_and_acquire(th, mem, operand) \
-  ERS_ATOMIC_FETCH_AND (th, mem, operand, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_fetch_and_release(th, mem, operand) \
-  ERS_ATOMIC_FETCH_AND (th, mem, operand, ERS_ATOMIC_RELEASE)
-#define ers_atomic_fetch_or_relaxed(th, mem, operand) \
-  ERS_ATOMIC_FETCH_OR (th, mem, operand, ERS_ATOMIC_RELAXED)
-#define ers_atomic_fetch_or_acquire(th, mem, operand) \
-  ERS_ATOMIC_FETCH_OR (th, mem, operand, ERS_ATOMIC_ACQUIRE)
-#define ers_atomic_fetch_or_release(th, mem, operand) \
-  ERS_ATOMIC_FETCH_OR (th, mem, operand, ERS_ATOMIC_RELEASE)
-#define ers_atomic_fetch_xor_release(th, mem, operand) \
-  ERS_ATOMIC_FETCH_XOR (th, mem, operand, ERS_ATOMIC_RELEASE)
+     ERS_ATOMIC_FETCH_OR (rec, th, mem, __ers70_mask, ERS_ATOMIC_SEQ_CST) & __ers70_mask; })
+#define ers_atomic_and(rec, th, mem, mask) \
+  (void) ERS_ATOMIC_FETCH_AND (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_and(rec, th, mem, mask) \
+  (void) ERS_ATOMIC_FETCH_AND (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_and_val(rec, th, mem, mask) \
+  ERS_ATOMIC_FETCH_AND (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_or(rec, th, mem, mask) \
+  (void) ERS_ATOMIC_FETCH_OR (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_catomic_or(rec, th, mem, mask) \
+  (void) ERS_ATOMIC_FETCH_OR (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_or_val(rec, th, mem, mask) \
+  ERS_ATOMIC_FETCH_OR (rec, th, mem, mask, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_full_barrier(rec, th) ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_read_barrier(rec, th) ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_write_barrier(rec, th) ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_RELEASE)
+#define ers_atomic_forced_read(rec, th, x) \
+  ERS_ATOMIC_LOAD (rec, th, &(x), ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_thread_fence_acquire(rec, th) \
+  ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_thread_fence_release(rec, th) \
+  ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_RELEASE)
+#define ers_atomic_thread_fence_seq_cst(rec, th) \
+  ERS_ATOMIC_BARRIER (rec, th, ERS_ATOMIC_SEQ_CST)
+#define ers_atomic_load_relaxed(rec, th, mem) \
+  ERS_ATOMIC_LOAD (rec, th, mem, ERS_ATOMIC_RELAXED)
+#define ers_atomic_load_acquire(rec, th, mem) \
+  ERS_ATOMIC_LOAD (rec, th, mem, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_store_relaxed(rec, th, mem, val) \
+  ERS_ATOMIC_STORE (rec, th, mem, val, ERS_ATOMIC_RELAXED)
+#define ers_atomic_store_release(rec, th, mem, val) \
+  ERS_ATOMIC_STORE (rec, th, mem, val, ERS_ATOMIC_RELEASE)
+#define ers_atomic_compare_exchange_weak_relaxed(rec, th, mem, expected, desired) \
+  ERS_ATOMIC_COMPARE_EXCHANGE (rec, th, mem, expected, desired,			\
+			       ERS_ATOMIC_ACQUIRE, ERS_ATOMIC_RELAXED)
+#define ers_atomic_compare_exchange_weak_acquire(rec, th, mem, expected, desired) \
+  ERS_ATOMIC_COMPARE_EXCHANGE (rec, th, mem, expected, desired,			\
+			       ERS_ATOMIC_ACQUIRE, ERS_ATOMIC_RELAXED)
+#define ers_atomic_compare_exchange_weak_release(rec, th, mem, expected, desired) \
+  ERS_ATOMIC_COMPARE_EXCHANGE (rec, th, mem, expected, desired,			\
+			       ERS_ATOMIC_RELEASE, ERS_ATOMIC_RELAXED)
+#define ers_atomic_exchange_relaxed(rec, th, mem, desired) \
+  ERS_ATOMIC_EXCHANGE (rec, th, mem, desired, ERS_ATOMIC_RELAXED)
+#define ers_atomic_exchange_acquire(rec, th, mem, desired) \
+  ERS_ATOMIC_EXCHANGE (rec, th, mem, desired, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_exchange_release(rec, th, mem, desired) \
+  ERS_ATOMIC_EXCHANGE (rec, th, mem, desired, ERS_ATOMIC_RELEASE)
+#define ers_atomic_fetch_add_relaxed(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, operand, ERS_ATOMIC_RELAXED)
+#define ers_atomic_fetch_add_acquire(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, operand, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_fetch_add_release(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, operand, ERS_ATOMIC_RELEASE)
+#define ers_atomic_fetch_add_acq_rel(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_ADD (rec, th, mem, operand, ERS_ATOMIC_ACQ_REL)
+#define ers_atomic_fetch_and_relaxed(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_AND (rec, th, mem, operand, ERS_ATOMIC_RELAXED)
+#define ers_atomic_fetch_and_acquire(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_AND (rec, th, mem, operand, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_fetch_and_release(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_AND (rec, th, mem, operand, ERS_ATOMIC_RELEASE)
+#define ers_atomic_fetch_or_relaxed(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_OR (rec, th, mem, operand, ERS_ATOMIC_RELAXED)
+#define ers_atomic_fetch_or_acquire(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_OR (rec, th, mem, operand, ERS_ATOMIC_ACQUIRE)
+#define ers_atomic_fetch_or_release(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_OR (rec, th, mem, operand, ERS_ATOMIC_RELEASE)
+#define ers_atomic_fetch_xor_release(rec, th, mem, operand) \
+  ERS_ATOMIC_FETCH_XOR (rec, th, mem, operand, ERS_ATOMIC_RELEASE)
+
+#else
+
+#define ERS_SYSCALL \
+	pushq	%rbx;			\
+	pushq	%r12;			\
+	pushq	%rax;		/* system call number */	\
+	callq	ers_get_recorder@PLT;	\
+	movq	%rax, %rbx;		\
+	testq	%rbx, %rbx;		\
+	jz	.ers_null;		\
+	cmpb	$0x0, (%rbx);	/* ers_recorder->initialized */	\
+	je	.ers_null;		\
+	movq	%fs:0x10, %rax;		\
+	movq	0x8f0(%rax), %r11;	/* ers_thread */	\
+	testq	%r11, %r11;		\
+	jz	.ers_null;		\
+	popq	%r12;			\
+	pushq	%rdi;			\
+	pushq	%rsi;			\
+	pushq	%rdx;			\
+	pushq	%r10;			\
+	pushq	%r9;			\
+	pushq	%r8;			\
+	movq	%r10, %r9;		\
+	movq	%rdx, %r8;		\
+	movq	%rsi, %rcx;		\
+	movq	%rdi, %rdx;		\
+	movl	%r12d, %esi;	/* system call number */	\
+	movq	%r11, %rdi;	/* ers_thread */		\
+	callq	*0x20(%rbx);	/* call ers_syscall */		\
+	cmpl	$SYS_ify(clone), %r12d;	\
+	jne	.ers_return;		\
+	testq	%rax, %rax;		\
+	jz	.ers_done_syscall;	\
+.ers_return:				\
+	popq	%r8;			\
+	popq	%r9;			\
+	popq	%r10;			\
+	popq	%rdx;			\
+	popq	%rsi;			\
+	popq	%rdi;			\
+	popq	%r12;			\
+	popq	%rbx;			\
+	jmp	.ers_done_syscall;	\
+.ers_null:				\
+	popq	%rax;			\
+	popq	%r12;			\
+	popq	%rbx;			\
+	syscall;			\
+.ers_done_syscall:
+
+#endif
 
 #endif

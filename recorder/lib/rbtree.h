@@ -23,9 +23,9 @@
 #define ERS_RBT_GT	4
 
 #define ERS_DECALRE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
-attr void pfx##_insert (tree_type *tree, node_type *node);			\
-attr void pfx##_remove (tree_type *tree, node_type *node);			\
-attr node_type *pfx##_get (tree_type *tree, key_type *key, int flags = ERS_RBT_EQ)
+attr __attribute__ ((used)) void pfx##_insert (tree_type *tree, node_type *node);	\
+attr __attribute__ ((used)) void pfx##_remove (tree_type *tree, node_type *node);	\
+attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key, int flags = ERS_RBT_EQ)
 
 #define ERS_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERS_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
@@ -59,7 +59,7 @@ pfx##_check (tree_type *tree)							\
 {										\
   if (tree->root) ers_assert (tree->root->color == _RBT_BLACK);			\
 										\
-  struct block *v = NULL;							\
+  node_type *v = NULL;								\
   pfx##_check_recurse (tree, tree->root, &v);					\
 }										\
 										\
@@ -156,7 +156,7 @@ pfx##_insert_repair (tree_type *tree, node_type *n)				\
   if (! pfx##_parent (n)) n->color = _RBT_BLACK;				\
   else if (pfx##_parent (n)->color == _RBT_RED)					\
     {										\
-      if (pfx##_uncle (n)->color == _RBT_RED)					\
+      if (pfx##_uncle (n) && pfx##_uncle (n)->color == _RBT_RED)		\
 	{									\
 	  pfx##_parent (n)->color = _RBT_BLACK;					\
 	  pfx##_uncle (n)->color = _RBT_BLACK;					\
@@ -192,7 +192,7 @@ pfx##_insert_repair (tree_type *tree, node_type *n)				\
     }										\
 }										\
 										\
-attr void									\
+attr __attribute__ ((used)) void						\
 pfx##_insert (tree_type *tree, node_type *n)					\
 {										\
   n->color = _RBT_RED;								\
@@ -288,7 +288,7 @@ pfx##_remove_one_child (tree_type *tree, node_type *n)				\
     }										\
 }										\
 										\
-attr void									\
+attr __attribute__ ((used)) void						\
 pfx##_remove (tree_type *tree, node_type *n)					\
 {										\
   if (n->left && n->right)							\
@@ -314,7 +314,7 @@ pfx##_remove (tree_type *tree, node_type *n)					\
   pfx##_check (tree);								\
 }										\
 										\
-attr node_type *								\
+attr __attribute__ ((used)) node_type *						\
 pfx##_get (tree_type *tree, key_type *n, int flags)				\
 {										\
   ers_assert (! (flags & ERS_RBT_LT) || ! (flags & ERS_RBT_GT));		\

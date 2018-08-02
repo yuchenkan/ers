@@ -93,6 +93,14 @@ ers_malloc (struct ers_pool *pool, size_t size, void **p)
   return 0;
 }
 
+int
+ers_calloc (struct ers_pool *pool, size_t size, void **p)
+{
+  int res = ers_malloc (pool, size, p);
+  if (res == 0) ers_memset (*p, 0, size);
+  return res;
+}
+
 static void
 merge (struct block *b)
 {

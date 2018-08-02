@@ -18,6 +18,7 @@ struct ers_pool
 int ers_init_pool (struct ers_pool *pool, char *buf, size_t size);
 
 int ers_malloc (struct ers_pool *pool, size_t size, void **p);
+int ers_calloc (struct ers_pool *pool, size_t size, void **p);
 int ers_free (struct ers_pool *pool, void *p);
 
 #endif

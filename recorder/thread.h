@@ -3,6 +3,7 @@
 
 struct ers_thread
 {
+  struct ers_recorder *recorder;
   long external; // TODO
 };
 

@@ -86,9 +86,9 @@ ers_fprintf (int fd, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int ret = ers_vfprintf (fd, fmt, arg);
+  int res = ers_vfprintf (fd, fmt, arg);
   va_end (arg);
-  return ret;
+  return res;
 }
 
 int
@@ -102,7 +102,7 @@ ers_printf (const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int ret = ers_vprintf (fmt, arg);
+  int res = ers_vprintf (fmt, arg);
   va_end (arg);
-  return ret;
+  return res;
 }
