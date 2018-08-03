@@ -14,8 +14,8 @@ struct ers_recorder
   struct ers_thread *(*init_thread) (struct ers_recorder *self);
   void (*fini_thread) (struct ers_thread *th);
 
-  long (*syscall) (struct ers_thread *th, int nr, long a1,
-		   long a2, long a3, long a4, long a5, long a6);
+  long (*syscall) (struct ers_thread *th, struct ers_thread *new_th, int nr,
+		   long a1, long a2, long a3, long a4, long a5, long a6);
 
   void (*atomic_lock) (struct ers_thread *th, void *mem, int size, int mo);
   void (*atomic_unlock) (struct ers_thread *th, void *mem);
@@ -34,9 +34,48 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define ERS_INIT_THREAD_X() \
   ({ struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
      __ers_recorder ? __ers_recorder->init_thread (__ers_recorder) : 0; })
+#define ERS_FINI_THREAD_X(th) \
+  do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
+       if (__ers_recorder) __ers_recorder->fini_thread (th); } while (0)
+
+#define ERS_REPLACE_X(macro, get_thread, ...) \
+  do {										\
+    struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
+    struct ers_thread *__ers_thread;						\
+    if (__ers_recorder && __ers_recorder->initialized				\
+	&& (__ers_thread = get_thread ()))	      				\
+      ers_##macro (__ers_recorder, __ers_thread, ##__VA_ARGS__);		\
+    else									\
+      _##macro (__VA_ARGS__);							\
+  } while (0)
+
+#define ERS_REPLACE_EXP_X(macro, get_thread, ...) \
+  ({										\
+    struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
+    struct ers_thread *__ers_thread;						\
+    (__ers_recorder && __ers_recorder->initialized				\
+     && (__ers_thread = get_thread ()))						\
+      ? ers_##macro (__ers_recorder, __ers_thread, ##__VA_ARGS__)		\
+      : _##macro (__VA_ARGS__);							\
+  })
+
+#define ers_internal_syscall0(rec, th, number, err) \
+  ((rec)->syscall (th, 0, number, 0, 0, 0, 0, 0, 0))
+#define ers_internal_syscall1(rec, th, number, err, a1) \
+  ((rec)->syscall (th, 0, number, (long) (a1), 0, 0, 0, 0, 0))
+#define ers_internal_syscall2(rec, th, number, err, a1, a2) \
+  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), 0, 0, 0, 0))
+#define ers_internal_syscall3(rec, th, number, err, a1, a2, a3) \
+  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), 0, 0, 0))
+#define ers_internal_syscall4(rec, th, number, err, a1, a2, a3, a4) \
+  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), 0, 0))
+#define ers_internal_syscall5(rec, th, number, err, a1, a2, a3, a4, a5) \
+  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), 0))
+#define ers_internal_syscall6(rec, th, number, err, a1, a2, a3, a4, a5, a6) \
+  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), (long) (a6)))
 
 #define ERS_ATOMIC_RELAXED 0
-// #define ERS_ATOMIC_CONSUME 1
+/* #define ERS_ATOMIC_CONSUME 1 */
 #define ERS_ATOMIC_ACQUIRE 2
 #define ERS_ATOMIC_RELEASE 3
 #define ERS_ATOMIC_ACQ_REL 4
@@ -330,56 +369,80 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define ers_atomic_fetch_xor_release(rec, th, mem, operand) \
   ERS_ATOMIC_FETCH_XOR (rec, th, mem, operand, ERS_ATOMIC_RELEASE)
 
+#define ers_THREAD_ATOMIC_CMPXCHG_VAL(rec, th, descr, member, new, old) \
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, th, &(descr)->member, new, old,		\
+				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
+#define ers_THREAD_ATOMIC_AND(rec, th, descr, member, val) \
+  (void) ERS_ATOMIC_FETCH_AND (rec, th, &(descr)->member, val, ERS_ATOMIC_SEQ_CST)
+#define ers_THREAD_ATOMIC_BIT_SET(rec, th, descr, member, bit) \
+  (void) ERS_ATOMIC_FETCH_OR (rec, th, &(descr)->member,			\
+			      ((typeof ((descr)->member)) 1 << (bit)), ERS_ATOMIC_SEQ_CST)
+
 #else
 
-#define ERS_SYSCALL \
-	pushq	%rbx;			\
-	pushq	%r12;			\
-	pushq	%rax;		/* system call number */	\
-	callq	ers_get_recorder@PLT;	\
-	movq	%rax, %rbx;		\
-	testq	%rbx, %rbx;		\
-	jz	.ers_null;		\
-	cmpb	$0x0, (%rbx);	/* ers_recorder->initialized */	\
-	je	.ers_null;		\
-	movq	%fs:0x10, %rax;		\
-	movq	0x8f0(%rax), %r11;	/* ers_thread */	\
-	testq	%r11, %r11;		\
-	jz	.ers_null;		\
-	popq	%r12;			\
-	pushq	%rdi;			\
-	pushq	%rsi;			\
-	pushq	%rdx;			\
-	pushq	%r10;			\
-	pushq	%r9;			\
-	pushq	%r8;			\
-	movq	%r10, %r9;		\
-	movq	%rdx, %r8;		\
-	movq	%rsi, %rcx;		\
-	movq	%rdi, %rdx;		\
-	movl	%r12d, %esi;	/* system call number */	\
-	movq	%r11, %rdi;	/* ers_thread */		\
-	callq	*0x20(%rbx);	/* call ers_syscall */		\
-	cmpl	$SYS_ify(clone), %r12d;	\
-	jne	.ers_return;		\
-	testq	%rax, %rax;		\
-	jz	.ers_done_syscall;	\
-.ers_return:				\
-	popq	%r8;			\
-	popq	%r9;			\
-	popq	%r10;			\
-	popq	%rdx;			\
-	popq	%rsi;			\
-	popq	%rdi;			\
-	popq	%r12;			\
-	popq	%rbx;			\
-	jmp	.ers_done_syscall;	\
-.ers_null:				\
-	popq	%rax;			\
-	popq	%r12;			\
-	popq	%rbx;			\
-	syscall;			\
-.ers_done_syscall:
+#define _ERS_CAT(x, y) x ## y
+#define _ERS_CAT1(x, y) _ERS_CAT (x, y)
+
+#define _ERS_NONE
+#define _ERS_OMIT(...)
+
+#define _ERS_CLONE_MAY_SKIP_CLEANUP(suffix) \
+  testq	%rax, %rax;		\
+  jz	._ERS_CAT (ers_done_syscall_, suffix);
+
+#define _ERS_SYSCALL(suffix, get_thread, get_new_thread, may_skip_cleanup) \
+  pushq	%rbx;									\
+  pushq	%r12;									\
+  pushq	%rax;			/* system call number */			\
+  call	ers_get_recorder@PLT;							\
+  testq	%rax, %rax;								\
+  jz	._ERS_CAT (ers_null_, suffix);						\
+  cmpb	$0x0, (%rax);		/* ers_recorder->initialized */			\
+  je	._ERS_CAT (ers_null_, suffix);						\
+  movq	%rax, %rbx;								\
+  xorq	%rax, %rax;								\
+  get_thread ()									\
+  testq	%rax, %rax;								\
+  jz	._ERS_CAT (ers_null_, suffix);						\
+  movq	%rax, %r12;								\
+  xorq	%rax, %rax;								\
+  get_new_thread (%r8)								\
+  movq	%r12, %r11;								\
+  popq	%r12;									\
+  pushq	%rdi;									\
+  pushq	%rsi;									\
+  pushq	%rdx;									\
+  pushq	%r9;									\
+  pushq	%r8;									\
+  pushq	%r10;									\
+  movq	%rdx, %r9;								\
+  movq	%rsi, %r8;								\
+  movq	%rdi, %rcx;								\
+  movl	%r12d, %edx;		/* system call number */			\
+  movq	%rax, %rsi;		/* system call number */			\
+  movq	%r11, %rdi;		/* ers_thread */				\
+  call	*0x20(%rbx);		/* call ers_syscall */				\
+  may_skip_cleanup(suffix)							\
+  popq	%r10;									\
+  popq	%r8;									\
+  popq	%r9;									\
+  popq	%rdx;									\
+  popq	%rsi;									\
+  popq	%rdi;									\
+  popq	%r12;									\
+  popq  %rbx;									\
+  jmp	._ERS_CAT (ers_done_syscall_, suffix);					\
+._ERS_CAT (ers_null_, suffix):							\
+  popq	%rax;									\
+  popq	%r12;									\
+  popq	%rbx;									\
+  syscall;									\
+._ERS_CAT (ers_done_syscall_, suffix):
+
+#define ERS_SYSCALL(get_thread) \
+  _ERS_SYSCALL (__COUNTER__, get_thread, _ERS_OMIT, _ERS_OMIT)
+#define ERS_CLONE(get_thread, get_new_thread) \
+  _ERS_SYSCALL (__COUNTER__, get_thread, get_new_thread, _ERS_CLONE_MAY_SKIP_CLEANUP)
 
 #endif
 

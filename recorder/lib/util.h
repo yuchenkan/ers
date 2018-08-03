@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 
+#define ERS_EXPAND(x) #x
+#define ERS_STRINGIFY(x) ERS_EXPAND (x)
+
 #define ers_assert(exp) do { if (! (exp)) *((char *) 0) = 0; } while (0)
 
 #define ers_min(a, b) \
