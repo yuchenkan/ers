@@ -10,42 +10,42 @@
 #define _LOAD_ARGS_0()
 #define _LOAD_ARGS_1(a1) \
   _LOAD_ARGS_0 () \
-  long int __arg1 = (long int) (a1);
+  long __arg1 = (long) (a1);
 #define _LOAD_ARGS_2(a1, a2) \
   _LOAD_ARGS_1 (a1) \
-  long int __arg2 = (long int) (a2);
+  long __arg2 = (long) (a2);
 #define _LOAD_ARGS_3(a1, a2, a3) \
   _LOAD_ARGS_2 (a1, a2) \
-  long int __arg3 = (long int) (a3);
+  long __arg3 = (long) (a3);
 #define _LOAD_ARGS_4(a1, a2, a3, a4) \
   _LOAD_ARGS_3 (a1, a2, a3) \
-  long int __arg4 = (long int) (a4);
+  long __arg4 = (long) (a4);
 #define _LOAD_ARGS_5(a1, a2, a3, a4, a5) \
   _LOAD_ARGS_4 (a1, a2, a3, a4) \
-  long int __arg5 = (long int) (a5);
+  long __arg5 = (long) (a5);
 #define _LOAD_ARGS_6(a1, a2, a3, a4, a5, a6) \
   _LOAD_ARGS_5 (a1, a2, a3, a4, a5) \
-  long int __arg6 = (long int) (a6);
+  long __arg6 = (long) (a6);
 
 #define _LOAD_REGS_0
 #define _LOAD_REGS_1 \
   _LOAD_REGS_0 \
-  register long int _a1 asm ("rdi") = __arg1;
+  register long _a1 asm ("rdi") = __arg1;
 #define _LOAD_REGS_2 \
   _LOAD_REGS_1 \
-  register long int _a2 asm ("rsi") = __arg2;
+  register long _a2 asm ("rsi") = __arg2;
 #define _LOAD_REGS_3 \
   _LOAD_REGS_2 \
-  register long int _a3 asm ("rdx") = __arg3;
+  register long _a3 asm ("rdx") = __arg3;
 #define _LOAD_REGS_4 \
   _LOAD_REGS_3 \
-  register long int _a4 asm ("r10") = __arg4;
+  register long _a4 asm ("r10") = __arg4;
 #define _LOAD_REGS_5 \
   _LOAD_REGS_4 \
-  register long int _a5 asm ("r8") = __arg5;
+  register long _a5 asm ("r8") = __arg5;
 #define _LOAD_REGS_6 \
   _LOAD_REGS_5 \
-  register long int _a6 asm ("r9") = __arg6;
+  register long _a6 asm ("r9") = __arg6;
 
 #define _SYSCALL_ARGS_0
 #define _SYSCALL_ARGS_1 \
@@ -66,7 +66,7 @@
 
 #define _SYSCALL_NR(name, nargs, ...) \
   ({ \
-    unsigned long int __result; \
+    unsigned long __result; \
     _CONCAT (_LOAD_ARGS_, nargs) (__VA_ARGS__) \
     _CONCAT (_LOAD_REGS_, nargs) \
     asm volatile ( \
@@ -81,6 +81,6 @@
   _SYSCALL_NR (__NR_##name, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
 #define ERS_SYSCALL_ERROR_P(val) \
-  ((unsigned long int) (long int) (val) >= -4095L)
+  ((unsigned long) (long) (val) >= -4095L)
 
 #endif

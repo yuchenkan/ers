@@ -9,9 +9,9 @@ struct ers_recorder
 {
   char initialized;
 
-  void (*init_process) (struct ers_recorder *self);
+  void (*init_process) (struct ers_recorder *self, const char *path);
 
-  struct ers_thread *(*init_thread) (struct ers_recorder *self);
+  struct ers_thread *(*init_thread) (struct ers_recorder *self, char main);
   void (*fini_thread) (struct ers_thread *th);
 
   long (*syscall) (struct ers_thread *th, struct ers_thread *new_th, int nr,
@@ -30,10 +30,11 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 #define ERS_INIT_PROCESS_X() \
   do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
-       if (__ers_recorder) __ers_recorder->init_process (__ers_recorder); } while (0)
-#define ERS_INIT_THREAD_X() \
+       if (__ers_recorder)							\
+	 __ers_recorder->init_process (__ers_recorder, "ers_data"); } while (0)
+#define ERS_INIT_THREAD_X(main) \
   ({ struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
-     __ers_recorder ? __ers_recorder->init_thread (__ers_recorder) : 0; })
+     __ers_recorder ? __ers_recorder->init_thread (__ers_recorder, main) : 0; })
 #define ERS_FINI_THREAD_X(th) \
   do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
        if (__ers_recorder) __ers_recorder->fini_thread (th); } while (0)
@@ -419,10 +420,10 @@ extern struct ers_recorder *ers_get_recorder (void);
   movq	%rsi, %r8;								\
   movq	%rdi, %rcx;								\
   movl	%r12d, %edx;		/* system call number */			\
-  movq	%rax, %rsi;		/* system call number */			\
+  movq	%rax, %rsi;		/* new ers_thread */			        \
   movq	%r11, %rdi;		/* ers_thread */				\
   call	*0x20(%rbx);		/* call ers_syscall */				\
-  may_skip_cleanup(suffix)							\
+  may_skip_cleanup (suffix)							\
   popq	%r10;									\
   popq	%r8;									\
   popq	%r9;									\

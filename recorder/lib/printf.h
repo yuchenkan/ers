@@ -3,7 +3,7 @@
 
 #include <stdarg.h>
 
-int ers_fopen (const char *path, char ro, int *fd);
+int ers_fopen (const char *path, char r, int *fd);
 int ers_fclose (int fd);
 
 int ers_fwrite (int fd, const char *buf, int size);

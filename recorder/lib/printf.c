@@ -1,6 +1,54 @@
+#include <fcntl.h>
+
 #include "util.h"
 #include "printf.h"
 #include "syscall.h"
+
+int
+ers_fopen (const char *path, char r, int *fd)
+{
+  unsigned long res = ERS_SYSCALL (open, path,
+				   r ? O_RDONLY : O_WRONLY | O_TRUNC | O_CREAT,
+				   S_IRUSR | S_IWUSR);
+  if (ERS_SYSCALL_ERROR_P (res)) return 1;
+
+  *fd = (long) res;
+  return 0;
+}
+
+int
+ers_fclose (int fd)
+{
+  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (close, fd));
+}
+
+int
+ers_fwrite (int fd, const char *buf, int size)
+{
+  int c = 0;
+  while (c != size)
+    {
+      unsigned long res = ERS_SYSCALL (write, fd, buf, size - c);
+      if (ERS_SYSCALL_ERROR_P (res)) return 1;
+      c += (int) res;
+    }
+  return 0;
+}
+
+int
+ers_fread (int fd, char *buf, int size, int *len)
+{
+  int c = 0;
+  while (c != size)
+    {
+      unsigned long res = ERS_SYSCALL (read, fd, buf, size);
+      if (ERS_SYSCALL_ERROR_P (res)) return 1;
+      if (res == 0) break;
+      c += (int) res;
+    }
+  *len = c;
+  return 0;
+}
 
 struct iovec
 {
@@ -78,7 +126,7 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
       ++niov;
     }
 
-  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (writev, 1, iov, niov));
+  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (writev, fd, iov, niov));
 }
 
 int

@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <pthread.h>
+#include <unistd.h>
 
 static void* f(void *p)
 {
   int a = 123456789;
   int* i = (int*)malloc(sizeof (int));
   *i = 987654321;
-  fprintf(stderr, "xxx %p %p\n", &a, i);
+  fprintf(stderr, "xxx %p %p %d\n", &a, i, getpid ());
   free(i);
   return NULL;
 }

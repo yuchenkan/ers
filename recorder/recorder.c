@@ -4,7 +4,7 @@
 #include "thread.h"
 
 #include "lib/util.h"
-#include "lib/env.h"
+#include "lib/syscall.h"
 #include "lib/lock.h"
 #include "lib/malloc.h"
 #include "lib/printf.h"
@@ -36,28 +36,106 @@ struct ers_internal
   struct atomic_locks atomic_locks;
 };
 
+static char
+ctoi (char c)
+{
+  ers_assert ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+  return c >= '0' && c <= '9' ? c - '0' : c - 'a' + 10;
+}
+
 static void
-ers_init_process (struct ers_recorder *self)
+init_process (struct ers_recorder *self, const char *path)
 {
   ers_assert (ers_init_pool (&self->internal->pool, self->internal->buf, sizeof self->internal->buf) == 0);
-  ers_assert (ers_get_env ("ERS_RECORD_PATH", &self->internal->path) == 0);
+  self->internal->path = path;
+
+  int maps;
+  char buf[256];
+#if 1
+  ers_assert (ers_fopen ("/proc/self/maps", 1, &maps) == 0);
+  while (1)
+    {
+      int l;
+      ers_assert (ers_fread (maps, buf, sizeof buf - 1, &l) == 0);
+      buf[l] = '\0';
+      ers_printf ("%s", buf);
+      if (l != sizeof buf - 1) break;
+    }
+  ers_assert (ers_fclose (maps) == 0);
+#endif
+
+  ers_assert (ers_fopen ("/proc/self/maps", 1, &maps) == 0);
+
+  unsigned long s = 0, e = 0;
+  char x = 0, n = 0;
+  int p = 0;
+  while (1)
+    {
+      int l;
+      ers_assert (ers_fread (maps, buf, sizeof buf, &l) == 0);
+
+      int i;
+      for (i = 0; i < l; ++i)
+	if (p == 0)
+	  {
+	    if (buf[i] == '-') p = 1;
+	    else s = (s << 4) + ctoi (buf[i]);
+	  }
+	else if (p == 1)
+	  {
+	    if (buf[i] == ' ') p = 2;
+	    else e = (e << 4) + ctoi (buf[i]);
+	  }
+	else if (p == 2)
+	  {
+	    if (n < 3)
+	      {
+		x |= (buf[i] != '-') << n;
+		++n;
+	      }
+	    else
+	      {
+		ers_assert (buf[i] == 'p');
+		p = 3;
+	      }
+	  }
+	else if (p == 3 && buf[i] == '\n')
+	  {
+	    char v = i >= 6
+		     && (ers_strncmp (buf + i - 6, "[vdso]", 6) == 0
+			 || ers_strncmp (buf + i - 6, "[vvar]", 6) == 0);
+
+	    ers_printf ("%lx-%lx %x\n", s, e, x);
+
+	    /* TODO */
+	    p = 0;
+	    s = e = 0;
+	    x = n = 0;
+	  }
+
+      if (l != sizeof buf) break;
+    }
+  ers_assert (ers_fclose (maps) == 0);
 
   self->initialized = 1;
 }
 
 static struct ers_thread *
-ers_init_thread (struct ers_recorder *self)
+init_thread (struct ers_recorder *self, char main)
 {
   struct ers_thread *th;
   ers_assert (ers_calloc (&self->internal->pool, sizeof *th, (void **) &th) == 0);
-  th->recorder = self;
-  /* th->external = (long) th + 1234; */
   ers_printf ("init thread %lx\n", th);
+  th->recorder = self;
+  if (main)
+    {
+      /* TODO */
+    }
   return th;
 }
 
 static void
-ers_fini_thread (struct ers_thread *th)
+fini_thread (struct ers_thread *th)
 {
   ers_printf ("fini thread %lx\n", th);
   ers_assert (ers_free (&th->recorder->internal->pool, th) == 0);
@@ -79,14 +157,14 @@ ers_post_syscall (struct ers_thread *th, struct ers_thread *new_th, long nr,
   /* TODO */
 }
 
-/* static */ long ers_syscall (struct ers_thread *th, struct ers_thread *new_th,
-			       int nr, long a1, long a2, long a3, long a4,
-			       long a5, long a6);
+/* static */ long syscall (struct ers_thread *th, struct ers_thread *new_th,
+			   int nr, long a1, long a2, long a3, long a4,
+			   long a5, long a6);
 
 #if 1
 asm ("  .text\n\
-  .type  ers_syscall, @function\n\
-ers_syscall:\n\
+  .type  syscall, @function\n\
+syscall:\n\
   .cfi_startproc\n\
   pushq  %rbp\n\
   .cfi_def_cfa_offset 16\n\
@@ -158,14 +236,14 @@ ers_syscall:\n\
   .cfi_def_cfa 7, 8\n\
   ret\n\
   .cfi_endproc\n\
-  .size ers_syscall, .-ers_syscall\n"
+  .size syscall, .-syscall\n"
 );
 
 #else
 
 static long
-ers_syscall (struct ers_thread *th, struct ers_thread *new_th, int nr,
-	     long a1, long a2, long a3, long a4, long a5, long a6)
+syscall (struct ers_thread *th, struct ers_thread *new_th, int nr,
+	 long a1, long a2, long a3, long a4, long a5, long a6)
 {
   long res = -1;
   ers_pre_syscall (th, new_th, nr, a1, a2, a3, a4, a5, a6);
@@ -176,7 +254,7 @@ ers_syscall (struct ers_thread *th, struct ers_thread *new_th, int nr,
 #endif
 
 static void
-ers_atomic_lock (struct ers_thread* th, void *mem, int size, int mo)
+atomic_lock (struct ers_thread* th, void *mem, int size, int mo)
 {
   struct atomic_locks *locks = &th->recorder->internal->atomic_locks;
   ers_lock (&locks->lock);
@@ -194,20 +272,20 @@ ers_atomic_lock (struct ers_thread* th, void *mem, int size, int mo)
 }
 
 static void
-ers_atomic_unlock (struct ers_thread *th, void *mem)
+atomic_unlock (struct ers_thread *th, void *mem)
 {
   ers_printf ("atomic unlock %lx\n", mem);
   ers_unlock (&th->recorder->internal->atomic_locks.lock);
 }
 
 static void
-ers_atomic_barrier (struct ers_thread *th, int mo)
+atomic_barrier (struct ers_thread *th, int mo)
 {
   ers_printf ("atomic barrier %lx %u\n", th, mo);
 }
 
 static void
-ers_debug (struct ers_thread* th, const char *text)
+debug (struct ers_thread* th, const char *text)
 {
   ers_printf ("debug %lx %s\n", th, text);
 }
@@ -217,14 +295,14 @@ static struct ers_internal internal;
 static struct ers_recorder recorder = {
 
   0,
-  ers_init_process,
-  ers_init_thread,
-  ers_fini_thread,
-  ers_syscall,
-  ers_atomic_lock,
-  ers_atomic_unlock,
-  ers_atomic_barrier,
-  ers_debug,
+  init_process,
+  init_thread,
+  fini_thread,
+  syscall,
+  atomic_lock,
+  atomic_unlock,
+  atomic_barrier,
+  debug,
 
   &internal
 };
