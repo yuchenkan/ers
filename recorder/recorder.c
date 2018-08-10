@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <limits.h>
 #include <asm/unistd.h>
 
 #include "recorder.h"
@@ -8,6 +9,7 @@
 #include "lib/lock.h"
 #include "lib/malloc.h"
 #include "lib/printf.h"
+#include "lib/list.h"
 #include "lib/rbtree.h"
 
 struct ers_thread
@@ -18,6 +20,8 @@ struct ers_thread
   int nid;
 
   int fd;
+
+  ERS_LST_NODE_FIELDS (thread)
 };
 
 struct atomic_lock
@@ -34,7 +38,9 @@ struct atomic_locks
   int lock;
 };
 
-ERS_DEFINE_RBTREE (static, atomic, struct atomic_locks, struct atomic_lock, void, ers_less_than)
+#define atomic_less_than(x, a, b) (*(a) < *(b))
+
+ERS_DEFINE_RBTREE (static, atomic, struct atomic_locks, struct atomic_lock, void *, atomic_less_than)
 
 struct ers_internal
 {
@@ -45,7 +51,13 @@ struct ers_internal
   size_t npath;
 
   struct atomic_locks atomic_locks;
+
+  long active_lock;
+  int threads_lock;
+  ERS_LST_LIST_FIELDS (thread)
 };
+
+ERS_DEFINE_LIST (static, thread, struct ers_internal, struct ers_thread)
 
 static char
 itoc (char i)
@@ -113,12 +125,19 @@ init_thread (struct ers_internal *internal, struct ers_thread *parent)
   ers_assert (ers_printf ("%s\n", p) == 0);
   ers_assert (ers_fopen (p, 0, &th->fd) == 0);
 
+  ers_lock (&internal->threads_lock);
+  thread_append (internal, th);
+  ers_unlock (&internal->threads_lock);
   return th;
 }
 
 static void
 fini_thread (struct ers_internal *internal, struct ers_thread *th)
 {
+  ers_lock (&internal->threads_lock);
+  thread_remove (th);
+  ers_unlock (&internal->threads_lock);
+
   ers_assert (ers_printf ("fini_thread %lx\n", th) == 0);
   ers_assert (ers_fclose (th->fd) == 0);
   ers_assert (ers_free (&internal->pool, th->id) == 0);
@@ -207,11 +226,25 @@ init_process (struct ers_recorder *recorder, const char *path)
     }
   ers_assert (ers_fclose (maps) == 0);
 
+  ERS_LST_INIT_LIST (thread, internal);
   recorder->initialized = 1;
+
   struct ers_thread *th = init_thread (internal, NULL);
 
   /* TODO */
   return th;
+}
+
+static char
+acquire_active_lock (struct ers_internal *internal)
+{
+  return __atomic_add_fetch (&internal->active_lock, 1, __ATOMIC_ACQUIRE) > 0;
+}
+
+static void
+release_active_lock (struct ers_internal *internal)
+{
+  __atomic_sub_fetch (&internal->active_lock, 1, __ATOMIC_RELEASE);
 }
 
 static void __attribute__ ((used))
@@ -219,12 +252,33 @@ pre_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
 	     long nr, long a1, long a2, long a3, long a4, long a5, long a6)
 {
   ers_assert (ers_printf ("pre_syscall %lx %lx %lu\n", th, args, nr) == 0);
+  if (! acquire_active_lock (internal)) return;
+
   if (nr == __NR_clone)
     {
       struct ers_thread **nthp = args;
       *nthp = init_thread (internal, th);
     }
+  else if (nr == __NR_exit || nr == __NR_exit_group)
+    {
+      char grp = th->nid == 0 /* main thread */
+		 || nr == __NR_exit_group;
+      if (grp)
+	{
+	  unsigned long exp = 1;
+	  while (! __atomic_compare_exchange_n (&internal->active_lock, &exp,
+						LONG_MIN + 1, 1,
+						__ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+	    continue;
+
+	  struct ers_thread *it;
+	  ERS_LST_FOREACH (thread, internal, it) fini_thread (internal, it);
+	}
+      else fini_thread (internal, th);
+    }
   /* TODO */
+
+  release_active_lock (internal);
 }
 
 static void __attribute__ ((used))
@@ -232,6 +286,8 @@ post_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
 	      long nr, long a1, long a2, long a3, long a4, long a5, long a6, long res)
 {
   ers_assert (ers_printf ("post_syscall %lx %lx\n", th, args) == 0);
+  if (! acquire_active_lock (internal)) return;
+
   if (nr == __NR_clone && ERS_SYSCALL_ERROR_P (res))
     {
       struct ers_thread **nthp = args;
@@ -239,6 +295,8 @@ post_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
       *nthp = 0;
     }
   /* TODO */
+
+  release_active_lock (internal);
 }
 
 #if 1
@@ -345,11 +403,19 @@ syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
 static void
 atomic_lock (struct ers_internal *internal, struct ers_thread* th, void *mem, int size, int mo)
 {
+  ers_assert (ers_printf ("atomic_lock %lx %lx %u %u\n", th, mem, size, mo) == 0);
+  if (! acquire_active_lock (internal)) return;
+
   struct atomic_locks *locks = &internal->atomic_locks;
   ers_lock (&locks->lock);
 
-  ers_assert (ers_printf ("atomic_lock %lx %lx %u %u\n", th, mem, size, mo) == 0);
-  struct atomic_lock *lock = atomic_get (locks, mem, ERS_RBT_EQ | ERS_RBT_LT);
+  struct atomic_lock *lock = atomic_get (locks, &mem, ERS_RBT_EQ | ERS_RBT_LT);
+#if 0
+  ers_printf ("%lx %lx %lx %lx %lx %lu %lu %u\n",
+	      locks->atomic_root, lock, lock ? lock->mem : 0, lock ? lock->size : 0, mem,
+	      lock ? (char *) lock->mem + lock->size : 0, mem,
+	      ! lock || (char *) lock->mem + lock->size <= (char *) mem);
+#endif
   if (! lock || (char *) lock->mem + lock->size <= (char *) mem)
     {
       ers_assert (ers_calloc (&internal->pool, sizeof *lock, (void **) &lock) == 0);
@@ -358,19 +424,25 @@ atomic_lock (struct ers_internal *internal, struct ers_thread* th, void *mem, in
       atomic_insert (locks, lock);
     }
   else ers_assert (lock->mem == mem && lock->size == size);
+
+  release_active_lock (internal);
 }
 
 static void
 atomic_unlock (struct ers_internal *internal, struct ers_thread *th, void *mem)
 {
   ers_assert (ers_printf ("atomic_unlock %lx\n", mem) == 0);
+  if (! acquire_active_lock (internal)) return;
   ers_unlock (&internal->atomic_locks.lock);
+  release_active_lock (internal);
 }
 
 static void
 atomic_barrier (struct ers_internal *internal, struct ers_thread *th, int mo)
 {
   ers_assert (ers_printf ("atomic_barrier %lx %u\n", th, mo) == 0);
+  if (! acquire_active_lock (internal)) return;
+  release_active_lock (internal);
 }
 
 static struct ers_internal internal;

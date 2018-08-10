@@ -28,6 +28,4 @@ void ers_memcpy (void *d, const void *s, size_t n);
 void ers_strcpy (char *d, const char *s);
 #define ers_strncmp __builtin_strncmp
 
-#define ers_less_than(x, a, b) ((a) < (b))
-
 #endif
