@@ -4,23 +4,23 @@
 #ifndef __ASSEMBLER__
 
 struct ers_thread;
+struct ers_internal;
 
-struct ers_recorder
+struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 {
   char initialized;
 
-  struct ers_thread *(*init_process) (struct ers_recorder *self, const char *path);
-
-  long (*syscall) (struct ers_thread *th, void *args, int nr,
-		   long a1, long a2, long a3, long a4, long a5, long a6);
-
-  void (*atomic_lock) (struct ers_thread *th, void *mem, int size, int mo);
-  void (*atomic_unlock) (struct ers_thread *th, void *mem);
-  void (*atomic_barrier) (struct ers_thread *th, int mo);
-
-  void (*debug) (struct ers_thread *th, const char *text);
-
   struct ers_internal* internal;
+
+  struct ers_thread *(*init_process) (struct ers_recorder *recorder, const char *path);
+
+  long (*syscall) (struct ers_internal *internal, struct ers_thread *th, void *args,
+		   int nr, long a1, long a2, long a3, long a4, long a5, long a6);
+
+  void (*atomic_lock) (struct ers_internal *internal, struct ers_thread *th,
+		       void *mem, int size, int mo);
+  void (*atomic_unlock) (struct ers_internal *internal, struct ers_thread *th, void *mem);
+  void (*atomic_barrier) (struct ers_internal *internal, struct ers_thread *th, int mo);
 };
 
 extern struct ers_recorder *ers_get_recorder (void);
@@ -51,19 +51,19 @@ extern struct ers_recorder *ers_get_recorder (void);
   })
 
 #define ers_internal_syscall0(rec, th, number, err) \
-  ((rec)->syscall (th, 0, number, 0, 0, 0, 0, 0, 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, 0, 0, 0, 0, 0, 0))
 #define ers_internal_syscall1(rec, th, number, err, a1) \
-  ((rec)->syscall (th, 0, number, (long) (a1), 0, 0, 0, 0, 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), 0, 0, 0, 0, 0))
 #define ers_internal_syscall2(rec, th, number, err, a1, a2) \
-  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), 0, 0, 0, 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), (long) (a2), 0, 0, 0, 0))
 #define ers_internal_syscall3(rec, th, number, err, a1, a2, a3) \
-  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), 0, 0, 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), (long) (a2), (long) (a3), 0, 0, 0))
 #define ers_internal_syscall4(rec, th, number, err, a1, a2, a3, a4) \
-  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), 0, 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), 0, 0))
 #define ers_internal_syscall5(rec, th, number, err, a1, a2, a3, a4, a5) \
-  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), 0))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), 0))
 #define ers_internal_syscall6(rec, th, number, err, a1, a2, a3, a4, a5, a6) \
-  ((rec)->syscall (th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), (long) (a6)))
+  ((rec)->syscall ((rec)->internal, th, 0, number, (long) (a1), (long) (a2), (long) (a3), (long) (a4), (long) (a5), (long) (a6)))
 
 #define ERS_ATOMIC_RELAXED 0
 /* #define ERS_ATOMIC_CONSUME 1 */
@@ -82,13 +82,14 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers1_succ_mo = succ_mo;						\
     int __ers1_fail_mo = fail_mo;						\
     typeof (*__ers1_m) __ers1_result;						\
-    __ers1_recorder->atomic_lock (__ers1_th,					\
+    __ers1_recorder->atomic_lock (__ers1_recorder->internal, __ers1_th,		\
 				  (void *) __ers1_m, sizeof *__ers1_m,		\
 				  *__ers1_m == __ers1_ov			\
 				  ? __ers1_succ_mo : __ers1_fail_mo);		\
     __ers1_result = *__ers1_m;							\
     if (*__ers1_m == __ers1_ov) *__ers1_m = __ers1_nv;				\
-    __ers1_recorder->atomic_unlock (__ers1_th, (void *) __ers1_m);		\
+    __ers1_recorder->atomic_unlock (__ers1_recorder->internal,			\
+				    __ers1_th, (void *) __ers1_m);		\
     __ers1_result;								\
   })
 
@@ -102,13 +103,14 @@ extern struct ers_recorder *ers_get_recorder (void);
     int __ers2_succ_mo = succ_mo;						\
     int __ers2_fail_mo = fail_mo;						\
     char __ers2_result;								\
-    __ers2_recorder->atomic_lock (__ers2_th,					\
+    __ers2_recorder->atomic_lock (__ers2_recorder->internal, __ers2_th,		\
 				  (void *) __ers2_m, sizeof *__ers2_m,		\
 				  *__ers2_m == __ers2_ov			\
 				  ? __ers2_succ_mo : __ers2_fail_mo);		\
     __ers2_result = *__ers2_m == __ers2_ov;					\
     if (__ers2_result) *__ers2_m = __ers2_nv;					\
-    __ers2_recorder->atomic_unlock (__ers2_th, (void *) __ers2_m);		\
+    __ers2_recorder->atomic_unlock (__ers2_recorder->internal,			\
+				    __ers2_th, (void *) __ers2_m);		\
     __ers2_result;								\
   })
 
@@ -120,12 +122,13 @@ extern struct ers_recorder *ers_get_recorder (void);
     typeof (*__ers3_m) __ers3_v = (typeof (*__ers3_m)) (value);			\
     int __ers3_mo = mo;								\
     typeof (*__ers3_m) __ers3_result;						\
-    __ers3_recorder->atomic_lock (__ers3_th,					\
+    __ers3_recorder->atomic_lock (__ers3_recorder->internal, __ers3_th,		\
 				  (void *) __ers3_m, sizeof *__ers3_m,		\
 				  __ers3_mo);					\
     __ers3_result = *__ers3_m;							\
     *__ers3_m = op (*__ers3_m, __ers3_v);					\
-    __ers3_recorder->atomic_unlock (__ers3_th, (void *) __ers3_m);		\
+    __ers3_recorder->atomic_unlock (__ers3_recorder->internal,			\
+				    __ers3_th, (void *) __ers3_m);		\
     __ers3_result;								\
   })
 
@@ -164,11 +167,12 @@ extern struct ers_recorder *ers_get_recorder (void);
     typeof (mem) __ers5_m = mem;						\
     int __ers5_mo = mo;								\
     typeof (*__ers5_m) __ers5_result;						\
-    __ers5_recorder->atomic_lock (__ers5_th,					\
+    __ers5_recorder->atomic_lock (__ers_recorder->internal, __ers5_th,		\
 				  (void *) __ers5_m, sizeof *__ers5_m,		\
 				  __ers5_mo);					\
     __ers5_result = *__ers5_m;							\
-    __ers5_recorder->atomic_unlock (__ers5_th, (void *) __ers5_m);		\
+    __ers5_recorder->atomic_unlock (__ers5_recorder->internal,			\
+				    __ers5_th, (void *) __ers5_m);		\
     __ers5_result;								\
   })
 
@@ -179,11 +183,12 @@ extern struct ers_recorder *ers_get_recorder (void);
     typeof (mem) __ers6_m = mem;						\
     typeof (*__ers6_m) __ers6_v = (typeof (*__ers6_m)) (value);			\
     int __ers6_mo = mo;								\
-    __ers6_recorder->atomic_lock (__ers6_th,					\
+    __ers6_recorder->atomic_lock (__ers_recorder->internal, __ers6_th,		\
 				  (void *) __ers6_m, sizeof *__ers6_m,		\
 				  __ers6_mo);					\
     *__ers6_m = __ers6_v;							\
-    __ers6_recorder->atomic_unlock (__ers6_th, (void *) __ers6_m);		\
+    __ers6_recorder->atomic_unlock (__ers6_recorder->internal,			\
+				    __ers6_th, (void *) __ers6_m);		\
   } while (0)
 
 #define _ERS_ATOMIC_OP_MAX(oldval, newval) \
@@ -204,7 +209,8 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define ERS_ATOMIC_MIN(rec, th, mem, value) \
   (void) _ERS_ATOMIC_OP (rec, th, mem, value, ERS_ATOMIC_SEQ_CST, _ERS_ATOMIC_OP_MIN)
 
-#define ERS_ATOMIC_BARRIER(rec, th, mo) rec->atomic_barrier (th, mo)
+#define ERS_ATOMIC_BARRIER(rec, th, mo) \
+  rec->atomic_barrier ((rec)->internal, th, mo)
 
 #define ERS_ATOMIC_COMPARE_EXCHANGE(rec, th, mem, expected, desired, succ_mo, fail_mo) \
   ({ typeof (expected) __ers80_e = expected;					\
@@ -400,22 +406,22 @@ extern struct ers_recorder *ers_get_recorder (void);
   popq	%rax;									\
   pushq	%rdi;									\
   pushq	%rsi;									\
-  pushq	%rdx;									\
   pushq	%r9;									\
   pushq	%r8;									\
   pushq	%r10;									\
-  movq	%rdx, %r9;								\
-  movq	%rsi, %r8;								\
-  movq	%rdi, %rcx;								\
-  movl	%eax, %edx;		/* system call number */			\
-  movq	%r12, %rsi;		/* args */			        	\
-  movq	%r11, %rdi;		/* ers_thread */				\
-  call	*0x10(%rbx);		/* call ers_syscall */				\
+  pushq	%rdx;									\
+  movq	%rsi, %r9;								\
+  movq	%rdi, %r8;								\
+  movl	%eax, %ecx;		/* system call number */			\
+  movq	%r12, %rdx;		/* args */					\
+  movq	%r11, %rsi;		/* ers_thread */			        \
+  movq	0x8(%rbx), %rdi;	/* ers_recorder->internal */			\
+  call	*0x18(%rbx);		/* call ers_recorder->syscall */		\
   may_skip_cleanup (suffix)							\
+  popq	%rdx;									\
   popq	%r10;									\
   popq	%r8;									\
   popq	%r9;									\
-  popq	%rdx;									\
   popq	%rsi;									\
   popq	%rdi;									\
   popq	%r12;									\
