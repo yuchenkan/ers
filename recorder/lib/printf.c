@@ -89,8 +89,8 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
 
 	      unsigned char base = *fmt == 'x' ? 16 : 10;
 
-	      char *buf = (char *) __builtin_alloca (3 * sizeof (unsigned long));
-	      char *endp = buf + 3 * sizeof (unsigned long);
+	      char *buf = (char *) __builtin_alloca (3 * sizeof num);
+	      char *endp = buf + 3 * sizeof num;
 
 	      char *cp = endp;
 	      do
@@ -111,7 +111,7 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
 	  else if (*fmt == 's')
 	    {
 	      iov[niov].base = (void *) va_arg (arg, char *);
-	      iov[niov].len = __builtin_strlen (iov[niov].base);
+	      iov[niov].len = ers_strlen (iov[niov].base);
 	    }
 	  else ers_assert (0);
 	  ++fmt;
@@ -121,7 +121,6 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
 	  iov[niov].base = (void *) fmt;
 	  while (*fmt && *fmt != '%') ++fmt;
 	  iov[niov].len = fmt - (const char *) iov[niov].base;
-
 	}
       ++niov;
     }

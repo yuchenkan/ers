@@ -11,7 +11,7 @@ struct ers_pool
   size_t size;
   size_t used;
 
-  ERS_RBT_TREE_FIELDS (struct block)
+  ERS_RBT_TREE_FIELDS (block, struct block)
   int lock;
 };
 

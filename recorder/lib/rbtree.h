@@ -14,9 +14,10 @@
 
    Bit fileds of ERS_RBT_NODE_FIELDS are in the beginning. */
 
-#define ERS_RBT_INIT_TREE(tree) do { (tree)->root = NULL; } while (0)
-#define ERS_RBT_TREE_FIELDS(node_type) node_type *root;
-#define ERS_RBT_NODE_FIELDS(node_type) unsigned char color : 1; node_type *parent, *left, *right;
+#define ERS_RBT_INIT_TREE(pfx, tree) do { (tree)->pfx##_root = 0; } while (0)
+#define ERS_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root;
+#define ERS_RBT_NODE_FIELDS(pfx, node_type) \
+  unsigned char pfx##_color : 1; node_type *pfx##_parent, *pfx##_left, *pfx##_right;
 
 #define ERS_RBT_EQ	1
 #define ERS_RBT_LT	2
@@ -30,7 +31,7 @@ attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key
 #define ERS_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERS_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 
-#define _RBT_RED		0
+#define _RBT_RED	0
 #define _RBT_BLACK	1
 
 #define ERS_DEFINE_RBTREE(attr, pfx, tree_type, node_type, key_type, less_than) \
@@ -39,91 +40,94 @@ pfx##_check_recurse (tree_type *tree, node_type *n, node_type **v)		\
 {										\
   if (! n) return 0;								\
 										\
-  if (n->color == _RBT_RED)							\
+  if (n->pfx##_color == _RBT_RED)						\
     {										\
-      ers_assert (! n->left || n->left->color == _RBT_BLACK);			\
-      ers_assert (! n->right || n->right->color == _RBT_BLACK);			\
+      ers_assert (! n->pfx##_left						\
+		  || n->pfx##_left->pfx##_color == _RBT_BLACK);			\
+      ers_assert (! n->pfx##_right						\
+		  || n->pfx##_right->pfx##_color == _RBT_BLACK);		\
     }										\
 										\
-  int h = pfx##_check_recurse (tree, n->left, v);				\
+  int h = pfx##_check_recurse (tree, n->pfx##_left, v);				\
   ers_assert (! *v || less_than (tree, (key_type *) *v, (key_type *) n));	\
   v = &n;									\
-  ers_assert (h == pfx##_check_recurse (tree, n->right, v));			\
+  ers_assert (h == pfx##_check_recurse (tree, n->pfx##_right, v));		\
   ers_assert (*v == n || less_than (tree, (key_type *) n, (key_type *)*v));	\
 										\
-  return h + (n->color == _RBT_BLACK);						\
+  return h + (n->pfx##_color == _RBT_BLACK);					\
 }										\
 										\
 static void									\
 pfx##_check (tree_type *tree)							\
 {										\
-  if (tree->root) ers_assert (tree->root->color == _RBT_BLACK);			\
+  if (tree->pfx##_root)								\
+    ers_assert (tree->pfx##_root->pfx##_color == _RBT_BLACK);			\
 										\
-  node_type *v = NULL;								\
-  pfx##_check_recurse (tree, tree->root, &v);					\
+  node_type *v = 0;								\
+  pfx##_check_recurse (tree, tree->pfx##_root, &v);				\
 }										\
 										\
 										\
 static inline node_type *							\
 pfx##_parent (node_type *n)							\
 {										\
-  return n->parent;								\
+  return n->pfx##_parent;							\
 }										\
 										\
 static inline node_type *							\
 pfx##_grandparent (node_type *n)						\
 {										\
-  return pfx##_parent (n) ? pfx##_parent (pfx##_parent (n)) : NULL;		\
+  return pfx##_parent (n) ? pfx##_parent (pfx##_parent (n)) : 0;		\
 }										\
 										\
 static inline node_type *							\
 pfx##_sibling (node_type *n)							\
 {										\
   node_type *p = pfx##_parent (n);						\
-  if (! p) return NULL;								\
-  return n == p->left ? p->right : p->left;					\
+  if (! p) return 0;								\
+  return n == p->pfx##_left ? p->pfx##_right : p->pfx##_left;			\
 }										\
 										\
 static inline node_type *							\
 pfx##_uncle (node_type *n)							\
 {										\
- return pfx##_grandparent (n) ? pfx##_sibling (pfx##_parent (n)) : NULL;	\
+  return pfx##_grandparent (n) ? pfx##_sibling (pfx##_parent (n)) : 0;		\
 }										\
 										\
 static void									\
 pfx##_rotate_left (tree_type *tree, node_type *n)				\
 {										\
   node_type *p = pfx##_parent (n);						\
-  node_type *nn = n->right;							\
-  n->right = nn->left;								\
+  node_type *nn = n->pfx##_right;						\
+  n->pfx##_right = nn->pfx##_left;						\
 										\
-  if (nn->left) nn->left->parent = n;						\
-  nn->parent = p;								\
+  if (nn->pfx##_left) nn->pfx##_left->pfx##_parent = n;				\
+  nn->pfx##_parent = p;								\
 										\
-  if (! p) tree->root = nn;							\
-  else if (n == p->left) p->left = nn;						\
-  else p->right = nn;								\
+  if (! p) tree->pfx##_root = nn;						\
+  else if (n == p->pfx##_left) p->pfx##_left = nn;				\
+  else p->pfx##_right = nn;							\
 										\
-  nn->left = n;									\
-  n->parent = nn;								\
+  nn->pfx##_left = n;								\
+  n->pfx##_parent = nn;								\
 }										\
 										\
 static void									\
 pfx##_rotate_right (tree_type *tree, node_type *n)				\
 {										\
   node_type *p = pfx##_parent (n);						\
-  node_type *nn = n->left;							\
-  n->left = nn->right;								\
+  node_type *nn = n->pfx##_left;						\
+  n->pfx##_left = nn->pfx##_right;						\
 										\
-  if (nn->right) nn->right->parent = n;						\
-  nn->parent = p;								\
+  if (nn->pfx##_right) nn->pfx##_right->pfx##_parent = n;			\
+  nn->pfx##_parent = p;								\
 										\
-  if (! p) tree->root = nn;							\
-  else if (n == p->right) p->right = nn;					\
-  else p->left = nn;								\
+  if (! p) tree->pfx##_root = nn;						\
+  else if (n == p->pfx##_right) p->pfx##_right = nn;				\
+  else p->pfx##_left = nn;							\
 										\
-  nn->right = n;								\
-  n->parent = nn;								\
+  nn->pfx##_right = n;								\
+  n->pfx##_parent = nn;								\
 }										\
 										\
 static void									\
@@ -131,20 +135,20 @@ pfx##_insert_recurse (tree_type *tree, node_type *r, node_type *n)		\
 {										\
   if (less_than (tree, (key_type *) n, (key_type *) r))				\
     {										\
-      if (r->left) pfx##_insert_recurse (tree, r->left, n);			\
+      if (r->pfx##_left) pfx##_insert_recurse (tree, r->pfx##_left, n);		\
       else									\
 	{									\
-	  r->left = n;								\
-	  n->parent = r;							\
+	  r->pfx##_left = n;							\
+	  n->pfx##_parent = r;							\
 	}									\
     }										\
   else if (less_than (tree, (key_type *) r, (key_type *) n))			\
     {										\
-      if (r->right) pfx##_insert_recurse (tree, r->right, n);			\
+      if (r->pfx##_right) pfx##_insert_recurse (tree, r->pfx##_right, n);	\
       else									\
 	{									\
-	  r->right = n;								\
-	  n->parent = r;							\
+	  r->pfx##_right = n;							\
+	  n->pfx##_parent = r;							\
 	}									\
     }										\
   else ers_assert (0);								\
@@ -153,14 +157,14 @@ pfx##_insert_recurse (tree_type *tree, node_type *r, node_type *n)		\
 static void									\
 pfx##_insert_repair (tree_type *tree, node_type *n)				\
 {										\
-  if (! pfx##_parent (n)) n->color = _RBT_BLACK;				\
-  else if (pfx##_parent (n)->color == _RBT_RED)					\
+  if (! pfx##_parent (n)) n->pfx##_color = _RBT_BLACK;				\
+  else if (pfx##_parent (n)->pfx##_color == _RBT_RED)				\
     {										\
-      if (pfx##_uncle (n) && pfx##_uncle (n)->color == _RBT_RED)		\
+      if (pfx##_uncle (n) && pfx##_uncle (n)->pfx##_color == _RBT_RED)		\
 	{									\
-	  pfx##_parent (n)->color = _RBT_BLACK;					\
-	  pfx##_uncle (n)->color = _RBT_BLACK;					\
-	  pfx##_grandparent (n)->color = _RBT_RED;				\
+	  pfx##_parent (n)->pfx##_color = _RBT_BLACK;				\
+	  pfx##_uncle (n)->pfx##_color = _RBT_BLACK;				\
+	  pfx##_grandparent (n)->pfx##_color = _RBT_RED;			\
 	  pfx##_insert_repair (tree, pfx##_grandparent (n));			\
 	}									\
       else									\
@@ -168,26 +172,26 @@ pfx##_insert_repair (tree_type *tree, node_type *n)				\
 	  node_type *p = pfx##_parent (n);					\
 	  node_type *g = pfx##_grandparent (n);					\
 										\
-	  if (p == g->left)							\
+	  if (p == g->pfx##_left)						\
 	    {									\
-	      if (n == p->right)						\
+	      if (n == p->pfx##_right)						\
 		{								\
-		  pfx##_rotate_left (NULL, p);					\
-		  n = n->left;							\
+		  pfx##_rotate_left (0, p);					\
+		  n = n->pfx##_left;						\
 		}								\
 	      pfx##_rotate_right (tree, g);					\
 	    }									\
 	  else									\
 	    {									\
-	      if (n == p->left)							\
+	      if (n == p->pfx##_left)						\
 		{								\
-		  pfx##_rotate_right (NULL, p);					\
-		  n = n->right;							\
+		  pfx##_rotate_right (0, p);					\
+		  n = n->pfx##_right;						\
 		}								\
 	      pfx##_rotate_left (tree, g);					\
 	    }									\
-	  pfx##_parent (n)->color = _RBT_BLACK;					\
-	  g->color = _RBT_RED;							\
+	  pfx##_parent (n)->pfx##_color = _RBT_BLACK;				\
+	  g->pfx##_color = _RBT_RED;						\
 	}									\
     }										\
 }										\
@@ -195,11 +199,11 @@ pfx##_insert_repair (tree_type *tree, node_type *n)				\
 attr __attribute__ ((used)) void						\
 pfx##_insert (tree_type *tree, node_type *n)					\
 {										\
-  n->color = _RBT_RED;								\
-  n->parent = n->left = n->right = NULL;					\
+  n->pfx##_color = _RBT_RED;							\
+  n->pfx##_parent = n->pfx##_left = n->pfx##_right = 0;				\
 										\
-  if (! tree->root) tree->root = n;						\
-  else pfx##_insert_recurse (tree, tree->root, n);				\
+  if (! tree->pfx##_root) tree->pfx##_root = n;					\
+  else pfx##_insert_recurse (tree, tree->pfx##_root, n);			\
 										\
   pfx##_insert_repair (tree, n);						\
 										\
@@ -211,59 +215,59 @@ pfx##_remove_repair (tree_type *tree, node_type *p, node_type *n)		\
 {										\
   if (! p) return;								\
 										\
-  node_type *s = n == p->left ? p->right : p->left;				\
-  if (s->color == _RBT_RED)							\
+  node_type *s = n == p->pfx##_left ? p->pfx##_right : p->pfx##_left;		\
+  if (s->pfx##_color == _RBT_RED)						\
     {										\
-      p->color = _RBT_RED;							\
-      s->color = _RBT_BLACK;							\
-      if (n == p->left)								\
+      p->pfx##_color = _RBT_RED;						\
+      s->pfx##_color = _RBT_BLACK;						\
+      if (n == p->pfx##_left)							\
 	pfx##_rotate_left (tree, p);						\
       else									\
 	pfx##_rotate_right (tree, p);						\
-      s = n == p->left ? p->right : p->left;					\
+      s = n == p->pfx##_left ? p->pfx##_right : p->pfx##_left;			\
     }										\
 										\
-  if ((! s->left || s->left->color == _RBT_BLACK)				\
-      && (! s->right || s->right->color == _RBT_BLACK))				\
+  if ((! s->pfx##_left || s->pfx##_left->pfx##_color == _RBT_BLACK)		\
+      && (! s->pfx##_right || s->pfx##_right->pfx##_color == _RBT_BLACK))	\
     {										\
-      s->color = _RBT_RED;							\
-      if (p->color == _RBT_BLACK)						\
+      s->pfx##_color = _RBT_RED;						\
+      if (p->pfx##_color == _RBT_BLACK)						\
 	pfx##_remove_repair (tree, pfx##_parent (p), p);			\
       else									\
-	p->color = _RBT_BLACK;							\
+	p->pfx##_color = _RBT_BLACK;						\
     }										\
   else										\
     {										\
-      if (n == p->left								\
-	  && (s->left && s->left->color == _RBT_RED)				\
-	  && (! s->right || s->right->color == _RBT_BLACK))			\
+      if (n == p->pfx##_left							\
+	  && (s->pfx##_left && s->pfx##_left->pfx##_color == _RBT_RED)		\
+	  && (! s->pfx##_right || s->pfx##_right->pfx##_color == _RBT_BLACK))	\
 	{									\
-	  s->color = _RBT_RED;							\
-	  s->left->color = _RBT_BLACK;						\
-	  pfx##_rotate_right (NULL, s);						\
-	  s = p->right;								\
+	  s->pfx##_color = _RBT_RED;						\
+	  s->pfx##_left->pfx##_color = _RBT_BLACK;				\
+	  pfx##_rotate_right (0, s);						\
+	  s = p->pfx##_right;							\
 	}									\
-      else if (n == p->right							\
-	       && (! s->left || s->left->color == _RBT_BLACK)			\
-	       && (s->right && s->right->color == _RBT_RED))			\
+      else if (n == p->pfx##_right						\
+	       && (! s->pfx##_left || s->pfx##_left->pfx##_color == _RBT_BLACK)	\
+	       && (s->pfx##_right && s->pfx##_right->pfx##_color == _RBT_RED))	\
 	{									\
-	  s->color = _RBT_RED;							\
-	  s->right->color = _RBT_BLACK;						\
-	  pfx##_rotate_left (NULL, s);						\
-	  s = p->left;								\
+	  s->pfx##_color = _RBT_RED;						\
+	  s->pfx##_right->pfx##_color = _RBT_BLACK;				\
+	  pfx##_rotate_left (0, s);						\
+	  s = p->pfx##_left;							\
 	}									\
 										\
-      s->color = p->color;							\
-      p->color = _RBT_BLACK;							\
+      s->pfx##_color = p->pfx##_color;						\
+      p->pfx##_color = _RBT_BLACK;						\
 										\
-      if (n == p->left)								\
+      if (n == p->pfx##_left)							\
 	{									\
-	  s->right->color = _RBT_BLACK;						\
+	  s->pfx##_right->pfx##_color = _RBT_BLACK;				\
 	  pfx##_rotate_left (tree, p);						\
 	}									\
       else									\
 	{									\
-	  s->left->color = _RBT_BLACK;						\
+	  s->pfx##_left->pfx##_color = _RBT_BLACK;				\
 	  pfx##_rotate_right (tree, p);						\
 	}									\
     }										\
@@ -272,17 +276,17 @@ pfx##_remove_repair (tree_type *tree, node_type *p, node_type *n)		\
 static void									\
 pfx##_remove_one_child (tree_type *tree, node_type *n)				\
 {										\
-  node_type *c = ! n->right ? n->left : n->right;				\
+  node_type *c = ! n->pfx##_right ? n->pfx##_left : n->pfx##_right;		\
 										\
-  if (c) c->parent = pfx##_parent (n);						\
-  if (! pfx##_parent (n)) tree->root = c;					\
-  else if (n == pfx##_parent (n)->left) pfx##_parent (n)->left = c;		\
-  else pfx##_parent (n)->right = c;						\
+  if (c) c->pfx##_parent = pfx##_parent (n);					\
+  if (! pfx##_parent (n)) tree->pfx##_root = c;					\
+  else if (n == pfx##_parent (n)->pfx##_left) pfx##_parent (n)->pfx##_left = c;	\
+  else pfx##_parent (n)->pfx##_right = c;					\
 										\
-  if (n->color == _RBT_BLACK)							\
+  if (n->pfx##_color == _RBT_BLACK)						\
     {										\
-      if (c && c->color == _RBT_RED)						\
-	c->color = _RBT_BLACK;							\
+      if (c && c->pfx##_color == _RBT_RED)					\
+	c->pfx##_color = _RBT_BLACK;						\
       else									\
 	pfx##_remove_repair (tree, pfx##_parent (n), c);			\
     }										\
@@ -291,23 +295,24 @@ pfx##_remove_one_child (tree_type *tree, node_type *n)				\
 attr __attribute__ ((used)) void						\
 pfx##_remove (tree_type *tree, node_type *n)					\
 {										\
-  if (n->left && n->right)							\
+  if (n->pfx##_left && n->pfx##_right)						\
     {										\
-      node_type *m = n->left;							\
-      while (m->right) m = m->right;						\
+      node_type *m = n->pfx##_left;						\
+      while (m->pfx##_right) m = m->pfx##_right;				\
       pfx##_remove_one_child (tree, m);						\
 										\
-      m->parent = pfx##_parent (n);						\
-      m->left = n->left;							\
-      m->right = n->right;							\
-      m->color = n->color;							\
+      m->pfx##_parent = pfx##_parent (n);					\
+      m->pfx##_left = n->pfx##_left;						\
+      m->pfx##_right = n->pfx##_right;						\
+      m->pfx##_color = n->pfx##_color;						\
 										\
-      if (! pfx##_parent (m)) tree->root = m;					\
-      else if (m == pfx##_parent (m)->left) pfx##_parent (m)->left = m;		\
-      else pfx##_parent (m)->right = m;						\
+      if (! pfx##_parent (m)) tree->pfx##_root = m;				\
+      else if (m == pfx##_parent (m)->pfx##_left)				\
+	pfx##_parent (m)->pfx##_left = m;					\
+      else pfx##_parent (m)->pfx##_right = m;					\
 										\
-      if (m->left) m->left->parent = m;						\
-      if (m->right) m->right->parent = m;					\
+      if (m->pfx##_left) m->pfx##_left->pfx##_parent = m;			\
+      if (m->pfx##_right) m->pfx##_right->pfx##_parent = m;			\
     }										\
   else pfx##_remove_one_child (tree, n);					\
 										\
@@ -318,25 +323,25 @@ attr __attribute__ ((used)) node_type *						\
 pfx##_get (tree_type *tree, key_type *n, int flags)				\
 {										\
   ers_assert (! (flags & ERS_RBT_LT) || ! (flags & ERS_RBT_GT));		\
-  node_type *r = tree->root;							\
-  node_type *v = NULL;								\
+  node_type *r = tree->pfx##_root;						\
+  node_type *v = 0;								\
   while (r)									\
     {										\
       if (less_than (tree, (key_type *) r, n))					\
 	{									\
 	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_LT) v = r;			\
-	  r = r->right;								\
+	  r = r->pfx##_right;							\
 	}									\
       else if (less_than (tree, n, (key_type *) (r)))				\
 	{									\
 	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_GT) v = r;			\
-	  r = r->left;								\
+	  r = r->pfx##_left;							\
 	}									\
       else									\
 	{									\
 	  if (flags & ERS_RBT_EQ) return r;					\
-	  else if (flags == ERS_RBT_LT) r = r->left;				\
-	  else if (flags == ERS_RBT_GT) r = r->right;				\
+	  else if (flags == ERS_RBT_LT) r = r->pfx##_left;			\
+	  else if (flags == ERS_RBT_GT) r = r->pfx##_right;			\
 	  else ers_assert (0);							\
 	}									\
     }										\

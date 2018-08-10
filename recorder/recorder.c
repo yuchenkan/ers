@@ -1,7 +1,7 @@
+#include <fcntl.h>
 #include <asm/unistd.h>
 
 #include "recorder.h"
-#include "thread.h"
 
 #include "lib/util.h"
 #include "lib/syscall.h"
@@ -10,17 +10,29 @@
 #include "lib/printf.h"
 #include "lib/rbtree.h"
 
+struct ers_thread
+{
+  struct ers_recorder *recorder;
+
+  unsigned long cid;
+
+  unsigned long *id;
+  int nid;
+
+  int fd;
+};
+
 struct atomic_lock
 {
   void *mem;
   size_t size;
 
-  ERS_RBT_NODE_FIELDS (struct atomic_lock)
+  ERS_RBT_NODE_FIELDS (atomic, struct atomic_lock)
 };
 
 struct atomic_locks
 {
-  ERS_RBT_TREE_FIELDS (struct atomic_lock)
+  ERS_RBT_TREE_FIELDS (atomic, struct atomic_lock)
   int lock;
 };
 
@@ -32,9 +44,17 @@ struct ers_internal
   struct ers_pool pool;
 
   const char *path;
+  size_t npath;
 
   struct atomic_locks atomic_locks;
 };
+
+static char
+itoc (char i)
+{
+  ers_assert (i >= 0 && i <= 15);
+  return i < 10 ? '0' + i : 'a' + i - 10;
+}
 
 static char
 ctoi (char c)
@@ -43,11 +63,80 @@ ctoi (char c)
   return c >= '0' && c <= '9' ? c - '0' : c - 'a' + 10;
 }
 
+static struct ers_thread *
+init_thread (struct ers_recorder *self, struct ers_thread *parent)
+{
+  struct ers_thread *th;
+  ers_assert (ers_calloc (&self->internal->pool, sizeof *th, (void **) &th) == 0);
+
+  ers_assert (ers_printf ("init_thread %lx %lx\n", th, parent) == 0);
+  th->recorder = self;
+
+  if (parent)
+    {
+      th->nid = parent->nid + 1;
+      ers_assert (ers_malloc (&self->internal->pool,
+			      sizeof *th->id * th->nid, (void **) &th->id) == 0);
+      ers_memcpy (th->id, parent->id, sizeof *th->id * (th->nid - 1));
+      th->id[th->nid - 1] = parent->cid++;
+    }
+
+  size_t npath = self->internal->npath;
+  const char *name = "thread";
+  int nname = ers_strlen ("thread");
+
+  size_t s = npath + 1 + nname + th->nid * (2 * sizeof *th->id + 1) + 1;
+  char *p = (char *) __builtin_alloca (s);
+
+  ers_strcpy (p, self->internal->path);
+
+  size_t c = npath;
+  if (npath == 0 || p[npath - 1] != '/') p[c++] = '/';
+
+  ers_strcpy (p + c, name);
+  c += nname;
+
+  int i, j;
+  for (i = 0; i < th->nid; ++i)
+    {
+      p[c++] = '-';
+      unsigned long iid = th->id[i];
+      char s = 1;
+      while (s < 8 && iid & ~((1 << (s * 8)) - 1)) ++s;
+      for (j = s * 2 - 1; j >= 0; --j)
+	{
+	  p[c + j] = itoc (iid % 16);
+	  iid /= 16;
+	}
+      ers_assert (iid == 0);
+      c += s * 2;
+    }
+  p[c] = '\0';
+
+  ers_assert (ers_printf ("%s\n", p) == 0);
+  ers_assert (ers_fopen (p, 0, &th->fd) == 0);
+
+  return th;
+}
+
 static void
+fini_thread (struct ers_thread *th)
+{
+  ers_assert (ers_printf ("fini_thread %lx\n", th) == 0);
+  ers_assert (ers_fclose (th->fd) == 0);
+  ers_assert (ers_free (&th->recorder->internal->pool, th->id) == 0);
+  ers_assert (ers_free (&th->recorder->internal->pool, th) == 0);
+}
+
+static struct ers_thread *
 init_process (struct ers_recorder *self, const char *path)
 {
-  ers_assert (ers_init_pool (&self->internal->pool, self->internal->buf, sizeof self->internal->buf) == 0);
+  ers_assert (ers_init_pool (&self->internal->pool,
+			     self->internal->buf, sizeof self->internal->buf) == 0);
   self->internal->path = path;
+  self->internal->npath = ers_strlen (self->internal->path);
+
+  ers_assert (! ERS_SYSCALL_ERROR_P (ERS_SYSCALL (mkdir, self->internal->path, S_IRWXU)));
 
   int maps;
   char buf[256];
@@ -58,7 +147,7 @@ init_process (struct ers_recorder *self, const char *path)
       int l;
       ers_assert (ers_fread (maps, buf, sizeof buf - 1, &l) == 0);
       buf[l] = '\0';
-      ers_printf ("%s", buf);
+      ers_assert (ers_printf ("%s", buf) == 0);
       if (l != sizeof buf - 1) break;
     }
   ers_assert (ers_fclose (maps) == 0);
@@ -105,7 +194,7 @@ init_process (struct ers_recorder *self, const char *path)
 		     && (ers_strncmp (buf + i - 6, "[vdso]", 6) == 0
 			 || ers_strncmp (buf + i - 6, "[vvar]", 6) == 0);
 
-	    ers_printf ("%lx-%lx %x\n", s, e, x);
+	    ers_assert (ers_printf ("%lx-%lx %x %u\n", s, e, x, v) == 0);
 
 	    /* TODO */
 	    p = 0;
@@ -118,46 +207,40 @@ init_process (struct ers_recorder *self, const char *path)
   ers_assert (ers_fclose (maps) == 0);
 
   self->initialized = 1;
-}
+  struct ers_thread *th = init_thread (self, NULL);
 
-static struct ers_thread *
-init_thread (struct ers_recorder *self, char main)
-{
-  struct ers_thread *th;
-  ers_assert (ers_calloc (&self->internal->pool, sizeof *th, (void **) &th) == 0);
-  ers_printf ("init thread %lx\n", th);
-  th->recorder = self;
-  if (main)
-    {
-      /* TODO */
-    }
+  /* TODO */
   return th;
 }
 
-static void
-fini_thread (struct ers_thread *th)
-{
-  ers_printf ("fini thread %lx\n", th);
-  ers_assert (ers_free (&th->recorder->internal->pool, th) == 0);
-}
-
 static void __attribute__ ((used))
-ers_pre_syscall (struct ers_thread *th, struct ers_thread *new_th, long nr,
-		 long a1, long a2, long a3, long a4, long a5, long a6)
+pre_syscall (struct ers_thread *th, void *args, long nr,
+	     long a1, long a2, long a3, long a4, long a5, long a6)
 {
-  ers_printf ("ers_pre_syscall %lx %lx\n", th, new_th);
+  ers_assert (ers_printf ("pre_syscall %lx %lx %lu\n", th, args, nr) == 0);
+  if (nr == __NR_clone)
+    {
+      struct ers_thread **nthp = args;
+      *nthp = init_thread (th->recorder, th);
+    }
   /* TODO */
 }
 
 static void __attribute__ ((used))
-ers_post_syscall (struct ers_thread *th, struct ers_thread *new_th, long nr,
-		  long a1, long a2, long a3, long a4, long a5, long a6, long res)
+post_syscall (struct ers_thread *th, void *args, long nr,
+	      long a1, long a2, long a3, long a4, long a5, long a6, long res)
 {
-  ers_printf ("ers_post_syscall %lx %lx\n", th, new_th);
+  ers_assert (ers_printf ("post_syscall %lx %lx\n", th, args) == 0);
+  if (nr == __NR_clone && ERS_SYSCALL_ERROR_P (res))
+    {
+      struct ers_thread **nthp = args;
+      fini_thread (*nthp);
+      *nthp = 0;
+    }
   /* TODO */
 }
 
-/* static */ long syscall (struct ers_thread *th, struct ers_thread *new_th,
+/* static */ long syscall (struct ers_thread *th, void *args,
 			   int nr, long a1, long a2, long a3, long a4,
 			   long a5, long a6);
 
@@ -173,7 +256,7 @@ syscall:\n\
   .cfi_def_cfa_register 6\n\
   subq  $64, %rsp\n\
   movq  %rdi, -24(%rbp)		/* th */\n\
-  movq  %rsi, -32(%rbp)		/* new_th */\n\
+  movq  %rsi, -32(%rbp)		/* args */\n\
   movl  %edx, -36(%rbp)		/* nr */\n\
   movq  %rcx, -48(%rbp)		/* a1 */\n\
   movq  %r8, -56(%rbp)		/* a2 */\n\
@@ -186,9 +269,9 @@ syscall:\n\
   movq  -56(%rbp), %rdi		/* a2 */\n\
   movq  -48(%rbp), %rcx		/* a1 */\n\
   movl  -36(%rbp), %edx		/* nr */\n\
-  movq  -32(%rbp), %rsi		/* new_th */\n\
+  movq  -32(%rbp), %rsi		/* args */\n\
   movq  -24(%rbp), %rdi		/* th */\n\
-  call  ers_pre_syscall\n\
+  call  pre_syscall\n\
   addq  $32, %rsp\n\
   movq  32(%rbp), %r9		/* a6 */\n\
   movq  24(%rbp), %r8		/* a5 */\n\
@@ -227,9 +310,9 @@ syscall:\n\
   movq  -56(%rbp), %rdi		/* a2 */\n\
   movq  -48(%rbp), %rcx		/* a1 */\n\
   movl  -36(%rbp), %edx		/* nr */\n\
-  movq  -32(%rbp), %rsi		/* new_th */\n\
+  movq  -32(%rbp), %rsi		/* args */\n\
   movq  -24(%rbp), %rdi		/* th */\n\
-  call  ers_post_syscall\n\
+  call  post_syscall\n\
   addq  $32, %rsp\n\
   movq  -8(%rbp), %rax\n\
   leave\n\
@@ -242,12 +325,12 @@ syscall:\n\
 #else
 
 static long
-syscall (struct ers_thread *th, struct ers_thread *new_th, int nr,
+syscall (struct ers_thread *th, struct void *args, int nr,
 	 long a1, long a2, long a3, long a4, long a5, long a6)
 {
   long res = -1;
-  ers_pre_syscall (th, new_th, nr, a1, a2, a3, a4, a5, a6);
-  ers_post_syscall (th, new_th, nr, a1, a2, a3, a4, a5, a6, res);
+  pre_syscall (th, args, nr, a1, a2, a3, a4, a5, a6);
+  post_syscall (th, args, nr, a1, a2, a3, a4, a5, a6, res);
   return res;
 }
 
@@ -259,7 +342,7 @@ atomic_lock (struct ers_thread* th, void *mem, int size, int mo)
   struct atomic_locks *locks = &th->recorder->internal->atomic_locks;
   ers_lock (&locks->lock);
 
-  ers_printf ("atomic lock %lx %lx %u %u\n", th, mem, size, mo);
+  ers_assert (ers_printf ("atomic_lock %lx %lx %u %u\n", th, mem, size, mo) == 0);
   struct atomic_lock *lock = atomic_get (locks, mem, ERS_RBT_EQ | ERS_RBT_LT);
   if (! lock || (char *) lock->mem + lock->size <= (char *) mem)
     {
@@ -274,20 +357,20 @@ atomic_lock (struct ers_thread* th, void *mem, int size, int mo)
 static void
 atomic_unlock (struct ers_thread *th, void *mem)
 {
-  ers_printf ("atomic unlock %lx\n", mem);
+  ers_assert (ers_printf ("atomic_unlock %lx\n", mem) == 0);
   ers_unlock (&th->recorder->internal->atomic_locks.lock);
 }
 
 static void
 atomic_barrier (struct ers_thread *th, int mo)
 {
-  ers_printf ("atomic barrier %lx %u\n", th, mo);
+  ers_assert (ers_printf ("atomic_barrier %lx %u\n", th, mo) == 0);
 }
 
 static void
 debug (struct ers_thread* th, const char *text)
 {
-  ers_printf ("debug %lx %s\n", th, text);
+  ers_assert (ers_printf ("debug %lx %s\n", th, text) == 0);
 }
 
 static struct ers_internal internal;
@@ -296,8 +379,6 @@ static struct ers_recorder recorder = {
 
   0,
   init_process,
-  init_thread,
-  fini_thread,
   syscall,
   atomic_lock,
   atomic_unlock,

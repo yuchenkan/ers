@@ -9,12 +9,9 @@ struct ers_recorder
 {
   char initialized;
 
-  void (*init_process) (struct ers_recorder *self, const char *path);
+  struct ers_thread *(*init_process) (struct ers_recorder *self, const char *path);
 
-  struct ers_thread *(*init_thread) (struct ers_recorder *self, char main);
-  void (*fini_thread) (struct ers_thread *th);
-
-  long (*syscall) (struct ers_thread *th, struct ers_thread *new_th, int nr,
+  long (*syscall) (struct ers_thread *th, void *args, int nr,
 		   long a1, long a2, long a3, long a4, long a5, long a6);
 
   void (*atomic_lock) (struct ers_thread *th, void *mem, int size, int mo);
@@ -29,15 +26,8 @@ struct ers_recorder
 extern struct ers_recorder *ers_get_recorder (void);
 
 #define ERS_INIT_PROCESS_X() \
-  do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
-       if (__ers_recorder)							\
-	 __ers_recorder->init_process (__ers_recorder, "ers_data"); } while (0)
-#define ERS_INIT_THREAD_X(main) \
   ({ struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
-     __ers_recorder ? __ers_recorder->init_thread (__ers_recorder, main) : 0; })
-#define ERS_FINI_THREAD_X(th) \
-  do { struct ers_recorder *__ers_recorder = ers_get_recorder ();		\
-       if (__ers_recorder) __ers_recorder->fini_thread (th); } while (0)
+     __ers_recorder ?  __ers_recorder->init_process (__ers_recorder, "ers_data") : 0; })
 
 #define ERS_REPLACE_X(macro, get_thread, ...) \
   do {										\
@@ -54,8 +44,8 @@ extern struct ers_recorder *ers_get_recorder (void);
   ({										\
     struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
     struct ers_thread *__ers_thread;						\
-    (__ers_recorder && __ers_recorder->initialized				\
-     && (__ers_thread = get_thread ()))						\
+    __ers_recorder && __ers_recorder->initialized				\
+     && (__ers_thread = get_thread ())						\
       ? ers_##macro (__ers_recorder, __ers_thread, ##__VA_ARGS__)		\
       : _##macro (__VA_ARGS__);							\
   })
@@ -391,7 +381,7 @@ extern struct ers_recorder *ers_get_recorder (void);
   testq	%rax, %rax;		\
   jz	._ERS_CAT (ers_done_syscall_, suffix);
 
-#define _ERS_SYSCALL(suffix, get_thread, get_new_thread, may_skip_cleanup) \
+#define _ERS_SYSCALL(suffix, get_thread, may_skip_cleanup) \
   pushq	%rbx;									\
   pushq	%r12;									\
   pushq	%rax;			/* system call number */			\
@@ -401,15 +391,13 @@ extern struct ers_recorder *ers_get_recorder (void);
   cmpb	$0x0, (%rax);		/* ers_recorder->initialized */			\
   je	._ERS_CAT (ers_null_, suffix);						\
   movq	%rax, %rbx;								\
+  movq  %r11, %r12;		/* args */					\
   xorq	%rax, %rax;								\
-  get_thread ()									\
-  testq	%rax, %rax;								\
+  get_thread ()			/* clobber: r11, result: rax */			\
+  movq  %rax, %r11;								\
+  testq	%r11, %r11;								\
   jz	._ERS_CAT (ers_null_, suffix);						\
-  movq	%rax, %r12;								\
-  xorq	%rax, %rax;								\
-  get_new_thread (%r8)								\
-  movq	%r12, %r11;								\
-  popq	%r12;									\
+  popq	%rax;									\
   pushq	%rdi;									\
   pushq	%rsi;									\
   pushq	%rdx;									\
@@ -419,10 +407,10 @@ extern struct ers_recorder *ers_get_recorder (void);
   movq	%rdx, %r9;								\
   movq	%rsi, %r8;								\
   movq	%rdi, %rcx;								\
-  movl	%r12d, %edx;		/* system call number */			\
-  movq	%rax, %rsi;		/* new ers_thread */			        \
+  movl	%eax, %edx;		/* system call number */			\
+  movq	%r12, %rsi;		/* args */			        	\
   movq	%r11, %rdi;		/* ers_thread */				\
-  call	*0x20(%rbx);		/* call ers_syscall */				\
+  call	*0x10(%rbx);		/* call ers_syscall */				\
   may_skip_cleanup (suffix)							\
   popq	%r10;									\
   popq	%r8;									\
@@ -441,9 +429,9 @@ extern struct ers_recorder *ers_get_recorder (void);
 ._ERS_CAT (ers_done_syscall_, suffix):
 
 #define ERS_SYSCALL(get_thread) \
-  _ERS_SYSCALL (__COUNTER__, get_thread, _ERS_OMIT, _ERS_OMIT)
-#define ERS_CLONE(get_thread, get_new_thread) \
-  _ERS_SYSCALL (__COUNTER__, get_thread, get_new_thread, _ERS_CLONE_MAY_SKIP_CLEANUP)
+  _ERS_SYSCALL (__COUNTER__, get_thread, _ERS_OMIT)
+#define ERS_CLONE(get_thread) \
+  _ERS_SYSCALL (__COUNTER__, get_thread, _ERS_CLONE_MAY_SKIP_CLEANUP)
 
 #endif
 

@@ -11,7 +11,7 @@ struct block
   struct block *prev;
   unsigned char type : 1;
 
-  ERS_RBT_NODE_FIELDS (struct block)
+  ERS_RBT_NODE_FIELDS (block, struct block)
 };
 
 static inline size_t
@@ -38,7 +38,7 @@ ERS_DEFINE_RBTREE1 (static, block, struct ers_pool, struct block, less_than)
 #define ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
 
 #define MIN_BLOCK_SIZE ALIGN (sizeof (struct block))
-#define ALLOC_OFFSET __builtin_offsetof (struct block, parent)
+#define ALLOC_OFFSET __builtin_offsetof (struct block, block_parent)
 
 int
 ers_init_pool (struct ers_pool *pool, char *buf, size_t size)
@@ -46,8 +46,7 @@ ers_init_pool (struct ers_pool *pool, char *buf, size_t size)
   pool->buf = buf;
   pool->size = size;
   pool->used = 0;
-  ERS_RBT_INIT_TREE (pool);
-  pool->root = NULL;
+  ERS_RBT_INIT_TREE (block, pool);
   pool->lock = 0;
 
   if (pool->size < MIN_BLOCK_SIZE)
@@ -111,6 +110,8 @@ merge (struct block *b)
 int
 ers_free (struct ers_pool *pool, void *p)
 {
+  if (! p) return 0;
+
   ers_lock (&pool->lock);
 
   struct block *b = (struct block *) ((char *) p - ALLOC_OFFSET);

@@ -23,7 +23,10 @@
   })
 
 void ers_memset (void *p, char c, size_t s);
-char ers_strncmp (const char *s1, const char *s2, size_t n);
+void ers_memcpy (void *d, const void *s, size_t n);
+#define ers_strlen __builtin_strlen
+void ers_strcpy (char *d, const char *s);
+#define ers_strncmp __builtin_strncmp
 
 #define ers_less_than(x, a, b) ((a) < (b))
 
