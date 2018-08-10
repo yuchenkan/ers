@@ -3,8 +3,8 @@
 
 #include "util.h"
 
-/* tree_type { ERS_RBT_TREE_FIELDS (node_type) ... };
-   node_type { key_type key; ERS_RBT_NODE_FIELDS (node_type) ... };
+/* tree_type { ERS_RBT_TREE_FIELDS (pfx, node_type) ... };
+   node_type { key_type key; ERS_RBT_NODE_FIELDS (pfx, node_type) ... };
    int less_than (tree_type *tree, key_type *k1, key_type *k2);
 
    Zero out the ERS_RBT_TREE_FIELDS or call ERS_RBT_INIT_TREE before use.
@@ -12,7 +12,7 @@
    The key has to be the first field or the node to allow casting.
    The order of all other fields are irrelevant.
 
-   Bit fileds of ERS_RBT_NODE_FIELDS are in the beginning. */
+   Bit fileds of ERS_RBT_NODE_FIELDS are at the beginning. */
 
 #define ERS_RBT_INIT_TREE(pfx, tree) do { (tree)->pfx##_root = 0; } while (0)
 #define ERS_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root;
@@ -26,10 +26,12 @@
 #define ERS_DECALRE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
 attr __attribute__ ((used)) void pfx##_insert (tree_type *tree, node_type *node);	\
 attr __attribute__ ((used)) void pfx##_remove (tree_type *tree, node_type *node);	\
-attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key, int flags = ERS_RBT_EQ)
+attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key, int flags);	\
+attr __attribute__ ((used)) node_type *pfx##_get_first (tree_type *tree);		\
+attr __attribute__ ((used)) node_type *pfx##_get_next (node_type *node);
 
 #define ERS_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
-ERS_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
+ERS_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 
 #define _RBT_RED	0
 #define _RBT_BLACK	1
@@ -68,19 +70,19 @@ pfx##_check (tree_type *tree)							\
 }										\
 										\
 										\
-static inline node_type *							\
+static __attribute__ ((always_inline)) inline node_type *			\
 pfx##_parent (node_type *n)							\
 {										\
   return n->pfx##_parent;							\
 }										\
 										\
-static inline node_type *							\
+static __attribute__ ((always_inline)) inline node_type *			\
 pfx##_grandparent (node_type *n)						\
 {										\
   return pfx##_parent (n) ? pfx##_parent (pfx##_parent (n)) : 0;		\
 }										\
 										\
-static inline node_type *							\
+static __attribute__ ((always_inline)) inline node_type *			\
 pfx##_sibling (node_type *n)							\
 {										\
   node_type *p = pfx##_parent (n);						\
@@ -88,7 +90,7 @@ pfx##_sibling (node_type *n)							\
   return n == p->pfx##_left ? p->pfx##_right : p->pfx##_left;			\
 }										\
 										\
-static inline node_type *							\
+static __attribute__ ((always_inline)) inline node_type *			\
 pfx##_uncle (node_type *n)							\
 {										\
   return pfx##_grandparent (n) ? pfx##_sibling (pfx##_parent (n)) : 0;		\
@@ -197,17 +199,17 @@ pfx##_insert_repair (tree_type *tree, node_type *n)				\
 }										\
 										\
 attr __attribute__ ((used)) void						\
-pfx##_insert (tree_type *tree, node_type *n)					\
+pfx##_insert (tree_type *tree, node_type *node)					\
 {										\
-  n->pfx##_color = _RBT_RED;							\
-  n->pfx##_parent = n->pfx##_left = n->pfx##_right = 0;				\
+  node->pfx##_color = _RBT_RED;							\
+  node->pfx##_parent = node->pfx##_left = node->pfx##_right = 0;		\
 										\
-  if (! tree->pfx##_root) tree->pfx##_root = n;					\
-  else pfx##_insert_recurse (tree, tree->pfx##_root, n);			\
+  if (! tree->pfx##_root) tree->pfx##_root = node;				\
+  else pfx##_insert_recurse (tree, tree->pfx##_root, node);			\
 										\
-  pfx##_insert_repair (tree, n);						\
+  pfx##_insert_repair (tree, node);						\
 										\
-  pfx##_check (tree);								\
+  pfx##_check (tree); /* XXX safety check */					\
 }										\
 										\
 static void									\
@@ -293,46 +295,46 @@ pfx##_remove_one_child (tree_type *tree, node_type *n)				\
 }										\
 										\
 attr __attribute__ ((used)) void						\
-pfx##_remove (tree_type *tree, node_type *n)					\
+pfx##_remove (tree_type *tree, node_type *node)					\
 {										\
-  if (n->pfx##_left && n->pfx##_right)						\
+  if (node->pfx##_left && node->pfx##_right)					\
     {										\
-      node_type *m = n->pfx##_left;						\
+      node_type *m = node->pfx##_left;						\
       while (m->pfx##_right) m = m->pfx##_right;				\
       pfx##_remove_one_child (tree, m);						\
 										\
-      m->pfx##_parent = pfx##_parent (n);					\
-      m->pfx##_left = n->pfx##_left;						\
-      m->pfx##_right = n->pfx##_right;						\
-      m->pfx##_color = n->pfx##_color;						\
+      m->pfx##_parent = pfx##_parent (node);					\
+      m->pfx##_left = node->pfx##_left;						\
+      m->pfx##_right = node->pfx##_right;					\
+      m->pfx##_color = node->pfx##_color;					\
 										\
       if (! pfx##_parent (m)) tree->pfx##_root = m;				\
-      else if (m == pfx##_parent (m)->pfx##_left)				\
+      else if (node == pfx##_parent (m)->pfx##_left)				\
 	pfx##_parent (m)->pfx##_left = m;					\
       else pfx##_parent (m)->pfx##_right = m;					\
 										\
       if (m->pfx##_left) m->pfx##_left->pfx##_parent = m;			\
       if (m->pfx##_right) m->pfx##_right->pfx##_parent = m;			\
     }										\
-  else pfx##_remove_one_child (tree, n);					\
+  else pfx##_remove_one_child (tree, node);					\
 										\
-  pfx##_check (tree);								\
+  pfx##_check (tree); /* XXX safety check */					\
 }										\
 										\
 attr __attribute__ ((used)) node_type *						\
-pfx##_get (tree_type *tree, key_type *n, int flags)				\
+pfx##_get (tree_type *tree, key_type *key, int flags)				\
 {										\
   ers_assert (! (flags & ERS_RBT_LT) || ! (flags & ERS_RBT_GT));		\
   node_type *r = tree->pfx##_root;						\
   node_type *v = 0;								\
   while (r)									\
     {										\
-      if (less_than (tree, (key_type *) r, n))					\
+      if (less_than (tree, (key_type *) r, key))				\
 	{									\
 	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_LT) v = r;			\
 	  r = r->pfx##_right;							\
 	}									\
-      else if (less_than (tree, n, (key_type *) (r)))				\
+      else if (less_than (tree, key, (key_type *) (r)))				\
 	{									\
 	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_GT) v = r;			\
 	  r = r->pfx##_left;							\
@@ -346,9 +348,38 @@ pfx##_get (tree_type *tree, key_type *n, int flags)				\
 	}									\
     }										\
   return v;									\
+}										\
+										\
+static node_type *								\
+pfx##_get_min (node_type *n)							\
+{										\
+  while (n->pfx##_left) n = n->pfx##_left;					\
+  return n;									\
+}										\
+										\
+attr __attribute__ ((used)) node_type *						\
+pfx##_get_first (tree_type *tree)						\
+{										\
+  return tree->pfx##_root ? pfx##_get_min (tree->pfx##_root) : 0;		\
+}										\
+										\
+attr __attribute__ ((used)) node_type *						\
+pfx##_get_next (node_type *node)						\
+{										\
+  if (node->pfx##_right) return pfx##_get_min (node->pfx##_right);		\
+										\
+  node_type *n = node;								\
+  while (pfx##_parent (n) && n == pfx##_parent (n)->pfx##_right)		\
+    n = pfx##_parent (n);							\
+  return pfx##_parent (n);							\
 }
 
 #define ERS_DEFINE_RBTREE1(attr, pfx, tree_type, node_type, less_than) \
 ERS_DEFINE_RBTREE (attr, pfx, tree_type, node_type, node_type, less_than)
+
+#define ERS_RBT_FOREACH(pfx, tree, iter) \
+  for (iter = pfx##_get_first (tree); iter; iter = pfx##_get_next (iter))
+#define ERS_RBT_FOREACH_SAFE(pfx, tree, iter, next) \
+  for (iter = pfx##_get_first (tree); iter && ({ next = pfx##_get_next (iter); 1; }); iter = next)
 
 #endif

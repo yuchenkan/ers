@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#if 1
+#if 0
 # define EXIT_GROUP
 #endif
 

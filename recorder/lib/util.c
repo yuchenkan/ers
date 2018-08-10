@@ -15,7 +15,6 @@ ers_memcpy (void *d, const void *s, size_t n)
   for (i = 0; i < n; ++i) ((char *) d)[i] = ((const char *) s)[i];
 }
 
-#if 0
 size_t
 ers_strlen (const char *s)
 {
@@ -23,7 +22,6 @@ ers_strlen (const char *s)
   for (i = 0; s[i]; ++i) continue;
   return i;
 }
-#endif
 
 void
 ers_strcpy (char *d, const char *s)

@@ -41,4 +41,12 @@ pfx##_remove (node_type *node)							\
        && (iter = (typeof (iter)) ((char *) iter - __builtin_offsetof (typeof (*iter), pfx##_list)));	\
        iter = (typeof (iter)) iter->pfx##_list[1])
 
+#define ERS_LST_FOREACH_SAFE(pfx, list, iter, next) \
+  for (iter = (typeof (iter)) (list)->pfx##_list[1];				\
+       iter != (typeof (iter)) (list)->pfx##_list				\
+       && (iter = (typeof (iter)) ((char *) iter - __builtin_offsetof (typeof (*iter), pfx##_list)))	\
+       && ({ next = (typeof (iter)) iter->pfx##_list[1]; 1; });	\
+       iter = next)
+
+
 #endif

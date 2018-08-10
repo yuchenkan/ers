@@ -24,7 +24,7 @@
 
 void ers_memset (void *p, char c, size_t s);
 void ers_memcpy (void *d, const void *s, size_t n);
-#define ers_strlen __builtin_strlen
+size_t ers_strlen (const char *s);
 void ers_strcpy (char *d, const char *s);
 #define ers_strncmp __builtin_strncmp
 

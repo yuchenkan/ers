@@ -15,20 +15,20 @@ struct block
 };
 
 static inline size_t
-block_size (struct ers_pool *pool, struct block *n)
+block_size (struct ers_pool *pool, struct block *b)
 {
-  return (n->next ? (char *) n->next : pool->buf + pool->size) - (char *) n;
+  return (b->next ? (char *) b->next : pool->buf + pool->size) - (char *) b;
 }
 
 static char
-less_than (struct ers_pool *pool, struct block *n1, struct block *n2)
+less_than (struct ers_pool *pool, struct block *b1, struct block *b2)
 {
-  size_t s1 = block_size (pool, n1);
-  size_t s2 = block_size (pool, n2);
+  size_t s1 = block_size (pool, b1);
+  size_t s2 = block_size (pool, b2);
 
   if (s1 != s2) return s1 < s2;
-  if (n1->type != n2->type) return n1->type > n2->type; // sort reversely, for search
-  return n1 < n2;
+  if (b1->type != b2->type) return b1->type > b2->type; // sort reversely, for search
+  return b1 < b2;
 }
 
 #include "rbtree.h"
@@ -103,8 +103,10 @@ ers_calloc (struct ers_pool *pool, size_t size, void **p)
 static void
 merge (struct block *b)
 {
-  b->next = b->next->next;
+  struct block *n = b->next;
+  b->next = n->next;
   if (b->next) b->next->prev = b;
+  ers_memset (n, 0, sizeof *n); /* XXX safety check */
 }
 
 int
@@ -115,6 +117,7 @@ ers_free (struct ers_pool *pool, void *p)
   ers_lock (&pool->lock);
 
   struct block *b = (struct block *) ((char *) p - ALLOC_OFFSET);
+  ers_memset ((char *) b + sizeof *b, 0, block_size (pool, b) - sizeof *b); /* XXX safety check */
 
   pool->used -= block_size (pool, b);
   ers_assert (pool->used >= 0);
