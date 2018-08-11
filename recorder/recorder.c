@@ -31,7 +31,7 @@ struct atomic_lock
   ERS_RBT_NODE_FIELDS (atomic, struct atomic_lock)
 };
 
-struct ers_internal
+struct internal
 {
   char buf[64 * 1024 * 1024];
   struct ers_pool pool;
@@ -49,9 +49,9 @@ struct ers_internal
 
 #define atomic_less_than(x, a, b) (*(a) < *(b))
 
-ERS_DEFINE_RBTREE (static, atomic, struct ers_internal, struct atomic_lock, void *, atomic_less_than)
+ERS_DEFINE_RBTREE (static, atomic, struct internal, struct atomic_lock, void *, atomic_less_than)
 
-ERS_DEFINE_LIST (static, thread, struct ers_internal, struct ers_thread)
+ERS_DEFINE_LIST (static, thread, struct internal, struct ers_thread)
 
 static char
 itoc (char i)
@@ -71,7 +71,7 @@ static void
 phex (char *p, unsigned long v)
 {
   char i, s = 1;
-  while (s < 8 && v & ~((1 << (s * 8)) - 1)) ++s;
+  while (s < 8 && v & ~(((unsigned long) 1 << (s * 8)) - 1)) ++s;
   for (i = s * 2 - 1; i >= 0; --i)
     {
       p[(unsigned char) i] = itoc (v % 16);
@@ -108,14 +108,14 @@ open_path (const char *path, const char *name, unsigned long id)
 }
 
 static struct ers_thread *
-init_thread (struct ers_internal *internal)
+init_thread (struct internal *internal, unsigned long id)
 {
   struct ers_thread *th;
   ers_assert (ers_calloc (&internal->pool, sizeof *th, (void **) &th) == 0);
 
   ers_assert (ers_printf ("init_thread %lx\n", th) == 0);
 
-  th->id = __atomic_fetch_add (&internal->thread_id, 1, __ATOMIC_RELAXED);
+  th->id = id;
   th->fd = open_path (internal->path, "thread-", th->id);
 
   ers_lock (&internal->threads_lock);
@@ -125,7 +125,7 @@ init_thread (struct ers_internal *internal)
 }
 
 static void
-fini_thread (struct ers_internal *internal, struct ers_thread *th)
+fini_thread (struct internal *internal, struct ers_thread *th)
 {
   ers_lock (&internal->threads_lock);
   thread_remove (th);
@@ -137,12 +137,10 @@ fini_thread (struct ers_internal *internal, struct ers_thread *th)
 }
 
 static struct ers_thread *
-init_process (struct ers_recorder *recorder, const char *path)
+init_process (struct internal *internal, const char *path)
 {
-  ers_assert (ers_printf ("internal %u\n", __builtin_offsetof (struct ers_recorder, internal)) == 0);
-  ers_assert (ers_printf ("syscall %u\n", __builtin_offsetof (struct ers_recorder, syscall)) == 0);
+  ers_assert (ers_printf ("init_process %lx\n", internal) == 0);
 
-  struct ers_internal *internal = recorder->internal;
   ers_assert (ers_init_pool (&internal->pool,
 			     internal->buf, sizeof internal->buf) == 0);
   internal->path = path;
@@ -218,35 +216,31 @@ init_process (struct ers_recorder *recorder, const char *path)
   ers_assert (ers_fclose (maps) == 0);
 
   ERS_LST_INIT_LIST (thread, internal);
-  recorder->initialized = 1;
 
-  return init_thread (internal);
+  return init_thread (internal, internal->thread_id++);
 }
 
 static char
-acquire_active_lock (struct ers_internal *internal)
+acquire_active_lock (struct internal *internal, long v)
 {
-  return __atomic_add_fetch (&internal->active_lock, 1, __ATOMIC_ACQUIRE) > 0;
+  return __atomic_add_fetch (&internal->active_lock, v, __ATOMIC_ACQUIRE) > 0;
 }
 
 static void
-release_active_lock (struct ers_internal *internal)
+release_active_lock (struct internal *internal, long v)
 {
-  __atomic_sub_fetch (&internal->active_lock, 1, __ATOMIC_RELEASE);
+  __atomic_sub_fetch (&internal->active_lock, v, __ATOMIC_RELEASE);
 }
 
-static void __attribute__ ((used))
-pre_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
-	     long nr, long a1, long a2, long a3, long a4, long a5, long a6)
+static char __attribute__ ((used))
+pre_syscall (struct internal *internal, struct ers_thread *th, void **post,
+	     int nr, long a1, long a2, long a3, long a4, long a5, long a6)
 {
-  ers_assert (ers_printf ("pre_syscall %lx %lx %lu\n", th, args, nr) == 0);
-  if (! acquire_active_lock (internal)) return;
+  ers_assert (ers_printf ("pre_syscall %lx %u\n", th, nr) == 0);
+  if (! acquire_active_lock (internal, nr == __NR_clone ? 2 : 0)) return 0;
 
   if (nr == __NR_clone)
-    {
-      struct ers_thread **nthp = args;
-      *nthp = init_thread (internal);
-    }
+    *(unsigned long *) post = __atomic_fetch_add (&internal->thread_id, 1, __ATOMIC_RELAXED);
   else if (nr == __NR_exit || nr == __NR_exit_group)
     {
       char grp = th->id == 0 /* main thread */
@@ -276,136 +270,33 @@ pre_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
       else fini_thread (internal, th);
     }
   /* TODO */
-
-  release_active_lock (internal);
+  return 1;
 }
 
-static void __attribute__ ((used))
-post_syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
-	      long nr, long a1, long a2, long a3, long a4, long a5, long a6, long res)
+static void * __attribute__ ((used))
+post_syscall (struct internal *internal, struct ers_thread *th, void *post,
+	      int nr, long a1, long a2, long a3, long a4, long a5, long a6, long res)
 {
-  ers_assert (ers_printf ("post_syscall %lx %lx\n", th, args) == 0);
-  if (! acquire_active_lock (internal)) return;
+  ers_assert (ers_printf ("post_syscall %lx %u\n", th, nr) == 0);
 
-  if (nr == __NR_clone && ERS_SYSCALL_ERROR_P (res))
+  void *ret = 0;
+  long rel = 1;
+  if (nr == __NR_clone)
     {
-      struct ers_thread **nthp = args;
-      fini_thread (internal, *nthp);
-      *nthp = 0;
+      if (ERS_SYSCALL_ERROR_P (res)) rel = 2;
+      else if (res == 0) ret = init_thread (internal, (unsigned long) post);
     }
   /* TODO */
 
-  release_active_lock (internal);
+  release_active_lock (internal, rel);
+  return ret;
 }
 
-#if 1
-/* static */ long syscall (struct ers_internal *internal, struct ers_thread *th,
-			   void *args, int nr, long a1, long a2, long a3, long a4,
-			   long a5, long a6);
-
-asm ("  .text\n\
-  .type  syscall, @function\n\
-syscall:\n\
-  .cfi_startproc\n\
-  pushq  %rbp\n\
-  .cfi_def_cfa_offset 16\n\
-  .cfi_offset 6, -16\n\
-  movq  %rsp, %rbp\n\
-  .cfi_def_cfa_register 6\n\
-  subq  $64, %rsp\n\
-  movq  %rdi, -24(%rbp)		/* internal */\n\
-  movq  %rsi, -32(%rbp)		/* th */\n\
-  movq  %rdx, -40(%rbp)		/* args */\n\
-  movl  %ecx, -44(%rbp)		/* nr */\n\
-  movq  %r8, -56(%rbp)		/* a1 */\n\
-  movq  %r9, -64(%rbp)		/* a2 */\n\
-  pushq  40(%rbp)		/* a6 */\n\
-  pushq  32(%rbp)		/* a5 */\n\
-  pushq  24(%rbp)		/* a4 */\n\
-  pushq  16(%rbp)		/* a3 */\n\
-  movq  -64(%rbp), %r9		/* a2 */\n\
-  movq  -56(%rbp), %r8		/* a1 */\n\
-  movl  -44(%rbp), %ecx		/* nr */\n\
-  movq  -40(%rbp), %rdx		/* args */\n\
-  movq  -32(%rbp), %rsi		/* th */\n\
-  movq  -24(%rbp), %rdi		/* internal */\n\
-  call  pre_syscall\n\
-  addq  $32, %rsp\n\
-  movq  40(%rbp), %r9		/* a6 */\n\
-  movq  32(%rbp), %r8		/* a5 */\n\
-  movq  24(%rbp), %r10		/* a4 */\n\
-  movq  16(%rbp), %rdx		/* a3 */\n\
-  movq  -64(%rbp), %rsi		/* a2 */\n\
-  movq  -56(%rbp), %rdi		/* a1 */\n\
-  movl  -44(%rbp), %eax		/* nr */\n\
-  cmpl  $"ERS_STRINGIFY (__NR_clone)", -44(%rbp);\n\
-  je  .clone\n\
-  syscall\n\
-  movq  %rax, -8(%rbp)		/* res */\n\
-  jmp  .post\n\
-.clone:\n\
-  subq  $8, %rsi\n\
-  movq  8(%rbp), %r11		/* return address */\n\
-  movq  %r11, (%rsi)		/* push the return address on the new stack */\n\
-  .cfi_endproc\n\
-  syscall\n\
-  testq  %rax, %rax\n\
-  jz  .child\n\
-  .cfi_startproc\n\
-  .cfi_def_cfa_offset 16\n\
-  .cfi_offset 6, -16\n\
-  .cfi_def_cfa_register 6\n\
-  movq  %rax, -8(%rbp)		/* res */\n\
-  jmp  .post\n\
-.child:\n\
-  ret\n\
-.post:\n\
-  subq  $8, %rsp\n\
-  pushq  -8(%rbp)		/* res */\n\
-  pushq  40(%rbp)		/* a6 */\n\
-  pushq  32(%rbp)		/* a5 */\n\
-  pushq  24(%rbp)		/* a4 */\n\
-  pushq  16(%rbp)		/* a3 */\n\
-  movq  -64(%rbp), %r9		/* a2 */\n\
-  movq  -56(%rbp), %r8		/* a1 */\n\
-  movl  -44(%rbp), %ecx		/* nr */\n\
-  movq  -40(%rbp), %rdx		/* args */\n\
-  movq  -32(%rbp), %rsi		/* th */\n\
-  movq  -24(%rbp), %rdi		/* internal */\n\
-  call  post_syscall\n\
-  addq  $48, %rsp\n\
-  movq  -8(%rbp), %rax\n\
-  leave\n\
-  .cfi_def_cfa 7, 8\n\
-  ret\n\
-  .cfi_endproc\n\
-  .size syscall, .-syscall\n"
-);
-
-#else
-
-#define ERS_SYSCALL_NCS(nr, ...) \
-  _SYSCALL_NR (nr, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
-
-static long
-syscall (struct ers_internal *internal, struct ers_thread *th, void *args,
-	 int nr, long a1, long a2, long a3, long a4, long a5, long a6)
+static char
+atomic_lock (struct internal *internal, struct ers_thread* th, void *mem)
 {
-  pre_syscall (internal, th, args, nr, a1, a2, a3, a4, a5, a6);
-  long res = 1 /* (long) ERS_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6) */;
-  post_syscall (internal, th, args, nr, a1, a2, a3, a4, a5, a6, res);
-  return res;
-}
-
-#endif
-
-static void
-atomic_lock (struct ers_internal *internal, struct ers_thread* th, void *mem, int mo)
-{
-  ers_assert (ers_printf ("atomic_lock %lx %lx %u\n", th, mem, mo) == 0);
-  if (! acquire_active_lock (internal)) return;
-
-  ers_lock (&internal->atomic_lock);
+  ers_assert (ers_printf ("atomic_lock %lx %lx\n", th, mem) == 0);
+  if (! acquire_active_lock (internal, 1)) return 0;
 
   struct atomic_lock *lock = atomic_get (internal, &mem, ERS_RBT_EQ);
   if (! lock)
@@ -420,44 +311,222 @@ atomic_lock (struct ers_internal *internal, struct ers_thread* th, void *mem, in
   if (lock->fd == 0)
     lock->fd = open_path (internal->path, "atomic-", (unsigned long) mem);
   ers_unlock (&lock->lock);
-
-  release_active_lock (internal);
+  return 1;
 }
 
 static void
-atomic_unlock (struct ers_internal *internal, struct ers_thread *th, void *mem)
+atomic_unlock (struct internal *internal, struct ers_thread *th, void *mem, int mo)
 {
-  ers_assert (ers_printf ("atomic_unlock %lx\n", mem) == 0);
-  if (! acquire_active_lock (internal)) return;
+  ers_assert (ers_printf ("atomic_unlock %lx %u\n", mem, mo) == 0);
 
   ers_lock (&internal->atomic_lock);
   struct atomic_lock *lock = atomic_get (internal, &mem, ERS_RBT_EQ);
   ers_unlock (&internal->atomic_lock);
 
   ers_assert (lock);
-  release_active_lock (internal);
+  release_active_lock (internal, 1);
+}
+
+static char
+atomic_barrier (struct internal *internal, struct ers_thread *th, int mo)
+{
+  ers_assert (ers_printf ("atomic_barrier %lx %u\n", th, mo) == 0);
+  if (! acquire_active_lock (internal, 1)) return 0;
+  release_active_lock (internal, 1);
+  return 1;
+}
+
+static struct internal internal;
+
+static struct ers_thread * (*get_thread) (void);
+static void (*set_thread) (struct ers_thread *);
+static char initialized;
+
+static void
+rec_init_process (const char *path,
+		  struct ers_thread * (*get) (void),
+		  void (*set) (struct ers_thread *))
+{
+  get_thread = get;
+  set_thread = set;
+  set_thread (init_process (&internal, path));
+  initialized = 1;
+}
+
+#if 1
+/* static */ char rec_syscall (int nr, long a1, long a2, long a3, long a4,
+			       long a5, long a6, long *res);
+
+asm ("  .text\n\
+  .type  rec_syscall, @function\n\
+rec_syscall:\n\
+  .cfi_startproc\n\
+  pushq  %rbp\n\
+  .cfi_def_cfa_offset 16\n\
+  .cfi_offset 6, -16\n\
+  movq  %rsp, %rbp\n\
+  .cfi_def_cfa_register 6\n\
+  movb  initialized(%rip), %al\n\
+  testb  %al, %al\n\
+  jz  .leave\n\
+  subq  $64, %rsp\n\
+  movl  %edi, -4(%rbp)		/* nr */\n\
+  movq  %rsi, -16(%rbp)		/* a1 */\n\
+  movq  %rdx, -24(%rbp)		/* a2 */\n\
+  movq  %rcx, -32(%rbp)		/* a3 */\n\
+  movq  %r8, -40(%rbp)		/* a4 */\n\
+  movq  %r9, -48(%rbp)		/* a5 */\n\
+  call  *get_thread(%rip)\n\
+  movq  %rax, -64(%rbp)\n\
+  pushq  16(%rbp)		/* a6 */\n\
+  pushq  -48(%rbp)		/* a5 */\n\
+  pushq  -40(%rbp)		/* a4 */\n\
+  pushq  -32(%rbp)		/* a3 */\n\
+  movq  -24(%rbp), %r9		/* a2 */\n\
+  movq  -16(%rbp), %r8		/* a1 */\n\
+  movl  -4(%rbp), %ecx		/* nr */\n\
+  leaq  -56(%rbp), %rdx		/* &post */\n\
+  movq  -64(%rbp), %rsi		/* th */\n\
+  leaq  internal(%rip), %rdi	/* internal */\n\
+  call  pre_syscall\n\
+  addq  $96, %rsp\n\
+  testb  %al, %al\n\
+  jz  .leave\n\
+  movq  16(%rbp), %r9		/* a6 */\n\
+  movq  -48(%rbp), %r8		/* a5 */\n\
+  movq  -40(%rbp), %r10		/* a4 */\n\
+  movq  -32(%rbp), %rdx		/* a3 */\n\
+  movq  -24(%rbp), %rsi		/* a2 */\n\
+  movq  -16(%rbp), %rdi		/* a1 */\n\
+  cmpl  $"ERS_STRINGIFY (__NR_clone)", -4(%rbp)\n\
+  je  .clone\n\
+  movl  -4(%rbp), %eax		/* nr */\n\
+  syscall\n\
+  movq  %rax, 24(%rbp)\n\
+  jmp  .post\n\
+.clone:\n\
+  subq  $80, %rsi\n\
+  movq  8(%rbp), %rax		/* return address */\n\
+  movq  %rax, 72(%rsi)		/* push the return address on the new stack */\n\
+  movq  -56(%rbp), %rax\n\
+  movq  %rax, 56(%rsi)		/* post */\n\
+  movl  -4(%rbp), %eax\n\
+  movl  %eax, 52(%rsi)		/* nr */\n\
+  movq  -16(%rbp), %rax\n\
+  movq  %rax, 40(%rsi)		/* a1 */\n\
+  movq  -24(%rbp), %rax\n\
+  movq  %rax, 32(%rsi)		/* a2 */\n\
+  movq  -32(%rbp), %rax\n\
+  movq  %rax, 24(%rsi)		/* a3 */\n\
+  movq  -40(%rbp), %rax\n\
+  movq  %rax, 16(%rsi)		/* a4 */\n\
+  movq  -48(%rbp), %rax\n\
+  movq  %rax, 8(%rsi)		/* a5 */\n\
+  movq  16(%rbp), %rax\n\
+  movq  %rax, (%rsi)		/* a6 */\n\
+  movl  -4(%rbp), %eax		/* nr */\n\
+  .cfi_endproc\n\
+  syscall\n\
+  testq  %rax, %rax\n\
+  jz  .child\n\
+  .cfi_startproc\n\
+  .cfi_def_cfa_offset 16\n\
+  .cfi_offset 6, -16\n\
+  .cfi_def_cfa_register 6\n\
+.post:\n\
+  subq  $8, %rsp\n\
+  pushq  24(%rbp)		/* res */\n\
+  pushq  16(%rbp)		/* a6 */\n\
+  pushq  -48(%rbp)		/* a5 */\n\
+  pushq  -40(%rbp)		/* a4 */\n\
+  pushq  -32(%rbp)		/* a3 */\n\
+  movq  -24(%rbp), %r9		/* a2 */\n\
+  movq  -16(%rbp), %r8		/* a1 */\n\
+  movl  -4(%rbp), %ecx		/* nr */\n\
+  movq  -56(%rbp), %rdx		/* post */\n\
+  movq  -64(%rbp), %rsi		/* th */\n\
+  leaq  internal(%rip), %rdi	/* internal */\n\
+  call  post_syscall\n\
+  addq  $112, %rsp\n\
+  movb  $1, %al\n\
+.leave:\n\
+  leave\n\
+  .cfi_def_cfa 7, 8\n\
+  ret\n\
+.child:\n\
+  movq  %rsp, %rbp\n\
+  subq  $16, %rsp\n\
+  movq  $0, (%rsp)		/* res */\n\
+  pushq  (%rbp)			/* a6 */\n\
+  pushq  8(%rbp)		/* a5 */\n\
+  pushq  16(%rbp)		/* a4 */\n\
+  pushq  24(%rbp)		/* a3 */\n\
+  movq  32(%rbp), %r9		/* a2 */\n\
+  movq  40(%rbp), %r8		/* a1 */\n\
+  movl  52(%rbp), %ecx		/* nr */\n\
+  movq  56(%rbp), %rdx		/* post */\n\
+  movq  $0, %rsi		/* th */\n\
+  leaq  internal(%rip), %rdi	/* internal */\n\
+  call  post_syscall\n\
+  movq  %rax, %rdi\n\
+  call  *set_thread(%rip)\n\
+  addq  $120, %rsp\n\
+  movb  $2, %al\n\
+  ret\n\
+  .cfi_endproc\n\
+  .size rec_syscall, .-rec_syscall\n"
+);
+
+#else
+
+#define ERS_SYSCALL_NCS(nr, ...) \
+  _SYSCALL_NR (nr, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
+
+static char
+rec_syscall (int nr, long a1, long a2, long a3, long a4, long a5, long a6, long *res)
+{
+  if (! initialized) return 0;
+
+  char ret;
+  void *post;
+  struct ers_thread *th = get_thread ();
+  ret = pre_syscall (&internal, th, &post, nr, a1, a2, a3, a4, a5, a6);
+  if (ret)
+    {
+      *res = 1 /* (long) ERS_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6) */;
+      post_syscall (&internal, th, post, nr, a1, a2, a3, a4, a5, a6, res);
+      set_thread (post_syscall (&internal, 0, post, nr, a1, a2, a3, a4, a5, a6, res));
+    }
+  return ret;
+}
+
+#endif
+
+static char
+rec_atomic_lock (void *mem)
+{
+  return initialized && atomic_lock (&internal, get_thread (), mem);
 }
 
 static void
-atomic_barrier (struct ers_internal *internal, struct ers_thread *th, int mo)
+rec_atomic_unlock (void *mem, int mo)
 {
-  ers_assert (ers_printf ("atomic_barrier %lx %u\n", th, mo) == 0);
-  if (! acquire_active_lock (internal)) return;
-  release_active_lock (internal);
+  atomic_unlock (&internal, get_thread (), mem, mo);
 }
 
-static struct ers_internal internal;
+static char
+rec_atomic_barrier (int mo)
+{
+  return initialized && atomic_barrier (&internal, get_thread (), mo);
+}
 
 static struct ers_recorder recorder = {
 
-  0,
-  &internal,
-
-  init_process,
-  syscall,
-  atomic_lock,
-  atomic_unlock,
-  atomic_barrier
+  rec_init_process,
+  rec_syscall,
+  rec_atomic_lock,
+  rec_atomic_unlock,
+  rec_atomic_barrier
 };
 
 __attribute__ ((visibility ("default"))) struct ers_recorder *
