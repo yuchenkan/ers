@@ -11,8 +11,6 @@
 #include "lib/list.h"
 #include "lib/rbtree.h"
 
-#define S_IRWXU	0700
-
 struct ers_thread
 {
   unsigned long id;
@@ -137,6 +135,8 @@ fini_thread (struct internal *internal, struct ers_thread *th)
   ers_assert (ers_free (&internal->pool, th) == 0);
 }
 
+#define S_IRWXU	0700
+
 static struct ers_thread *
 init_process (struct internal *internal, const char *path)
 {
@@ -194,7 +194,9 @@ init_process (struct internal *internal, const char *path)
 	      }
 	    else
 	      {
-		ers_assert (buf[i] == 'p');
+		if (buf[i] != 'p')
+		  ers_assert (ers_printf ("warning: non private segment\n") == 0);
+		/* XXX ers_assert (buf[i] == 'p'); */
 		p = 3;
 	      }
 	  }
@@ -403,7 +405,6 @@ rec_syscall:\n\
   je  .clone\n\
   movl  -4(%rbp), %eax		/* nr */\n\
   syscall\n\
-  movq  %rax, 24(%rbp)\n\
   jmp  .post\n\
 .clone:\n\
   subq  $80, %rsi\n\
@@ -435,6 +436,8 @@ rec_syscall:\n\
   .cfi_offset 6, -16\n\
   .cfi_def_cfa_register 6\n\
 .post:\n\
+  movq  24(%rbp), %rdi\n\
+  movq  %rax, (%rdi)\n\
   subq  $8, %rsp\n\
   pushq  24(%rbp)		/* res */\n\
   pushq  16(%rbp)		/* a6 */\n\
