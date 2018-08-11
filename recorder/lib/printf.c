@@ -1,8 +1,15 @@
-#include <fcntl.h>
-
 #include "util.h"
 #include "printf.h"
 #include "syscall.h"
+
+#define S_IRUSR	0400	/* Read by owner.  */
+#define S_IWUSR	0200	/* Write by owner.  */
+#define S_IXUSR	0100	/* Execute by owner.  */
+
+#define O_RDONLY	00
+#define O_WRONLY	01
+#define O_CREAT		0100
+#define O_TRUNC		01000
 
 int
 ers_fopen (const char *path, char r, int *fd)

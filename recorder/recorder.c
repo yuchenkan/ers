@@ -1,4 +1,3 @@
-#include <fcntl.h>
 #include <limits.h>
 #include <asm/unistd.h>
 
@@ -11,6 +10,8 @@
 #include "lib/printf.h"
 #include "lib/list.h"
 #include "lib/rbtree.h"
+
+#define S_IRWXU	0700
 
 struct ers_thread
 {
