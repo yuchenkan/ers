@@ -8,10 +8,10 @@
 # define EXIT_GROUP
 #endif
 
-static void* f (void *p)
+static void *f (void *p)
 {
   int a = 123456789;
-  int* i = (int*) malloc (sizeof *i);
+  int* i = (int *) malloc (sizeof *i);
   *i = 987654321;
   fprintf (stderr, "xxx %p %p %d\n", &a, i, getpid ());
   free (i);
@@ -23,14 +23,17 @@ static void* f (void *p)
 
 int main ()
 {
+  struct timespec spec;
+  clock_gettime (CLOCK_REALTIME, &spec);
+  fprintf (stderr, "%ld\n", spec.tv_sec);
   pthread_t thread;
-  assert (pthread_create (&thread, NULL, f, NULL) == 0);
+  char ok = pthread_create (&thread, NULL, f, NULL) == 0;
   free (malloc (1));
-  fprintf (stderr, "yyy\n");
+  fprintf (stderr, "yyy %d\n", ok);
 #ifdef EXIT_GROUP
   syscall (231, 0);
 #endif
-  assert (pthread_join (thread, NULL) == 0);
+  if (ok) assert (pthread_join (thread, NULL) == 0);
   fprintf (stderr, "zzz\n");
   return 0;
 }

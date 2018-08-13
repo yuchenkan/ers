@@ -8,8 +8,9 @@ struct ers_thread;
 struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 {
   void (*init_process) (const char *path,
-			struct ers_thread * (*get) (void),
-			void (*set) (struct ers_thread *));
+			struct ers_thread *(*get) (void *),
+			void (*set) (struct ers_thread *, void *),
+			void *arg);
 
   /* 0 not replaced, 1 replaced, 2 replaced and child return */
   char (*syscall) (int nr, long a1, long a2, long a3,
@@ -22,13 +23,15 @@ struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 
 extern struct ers_recorder *ers_get_recorder (void);
 
-#define ERS_INIT_PROCESS_X(get, set) \
+#define ERS_INIT_PROCESS_X(get, set, arg) \
   do {										\
-    struct ers_thread * (*__ers_get) (void) = get;				\
-    void (*__ers_set) (struct ers_thread *) = set;				\
+    struct ers_thread *(*__ers_get) (void *) = get;				\
+    void (*__ers_set) (struct ers_thread *, void *) = set;			\
+    void *__ers_arg = arg;							\
     struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
     if (__ers_recorder) 							\
-      __ers_recorder->init_process ("ers_data", __ers_get, __ers_set);		\
+      __ers_recorder->init_process ("ers_data",					\
+				    __ers_get, __ers_set, __ers_arg);		\
   } while (0)
 
 #define ERS_REPLACE_X(macro, ...) \
