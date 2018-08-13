@@ -8,6 +8,21 @@
 # define EXIT_GROUP
 #endif
 
+
+#if 1
+# define SIGNAL
+#endif
+
+#ifdef SIGNAL
+#include <signal.h>
+int caught = 0;
+void handler (int sig)
+{
+  fprintf (stderr, "signal\n");
+  caught = 1;
+}
+#endif
+
 static void *f (void *p)
 {
   int a = 123456789;
@@ -35,5 +50,11 @@ int main ()
 #endif
   if (ok) assert (pthread_join (thread, NULL) == 0);
   fprintf (stderr, "zzz\n");
+#ifdef SIGNAL
+  fprintf (stderr, "%p\n", handler);
+  signal (SIGINT, handler);
+  while (! caught) continue;
+  assert (signal (SIGINT, 0) == handler);
+#endif
   return 0;
 }
