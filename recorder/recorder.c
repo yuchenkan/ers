@@ -59,6 +59,8 @@ struct internal
 
   const char *path;
 
+  char replay;
+
   int atomic_lock;
   ERS_RBT_TREE_FIELDS (atomic, struct atomic_lock)
 
@@ -118,13 +120,17 @@ phex (char *p, unsigned long v)
   p[s * 2] = '\0';
 }
 
+#define OPEN_WITHID 1
+#define OPEN_REPLAY 2
+
 static int
-open_path (const char *path, const char *name, unsigned long id)
+open_path (const char *path, const char *name, int flags, unsigned long id)
 {
   size_t npath = ers_strlen (path);
   int nname = ers_strlen (name);
 
-  size_t s = npath + 1 + nname + 2 * sizeof id + 1; /* path/name$id\0 */
+  size_t s = npath + 1 + nname + 1; /* path/name\0 */
+  if (flags & OPEN_WITHID) s += 2 * sizeof id; /* path/name$id\0 */
   char *p = (char *) __builtin_alloca (s);
 
   ers_strcpy (p, path);
@@ -135,7 +141,8 @@ open_path (const char *path, const char *name, unsigned long id)
   ers_strcpy (p + c, name);
   c += nname;
 
-  phex (p + c, id);
+  if (flags & OPEN_WITHID) phex (p + c, id);
+  else p[c] = '\0';
 
   ers_assert (ers_printf ("%s\n", p) == 0);
 
@@ -153,7 +160,8 @@ init_thread (struct internal *internal, unsigned long id)
   ers_assert (ers_printf ("init_thread %lx\n", th) == 0);
 
   th->id = id;
-  th->fd = open_path (internal->path, "thread-", th->id);
+  th->fd = open_path (internal->path, "thread-",
+		      OPEN_WITHID | internal->replay << OPEN_REPLAY, th->id);
 
   ers_lock (&internal->threads_lock);
   thread_append (internal, th);
@@ -171,6 +179,15 @@ fini_thread (struct internal *internal, struct ers_thread *th)
   ers_assert (ers_printf ("fini_thread %lx\n", th) == 0);
   ers_assert (ers_fclose (th->fd) == 0);
   ers_assert (ers_free (&internal->pool, th) == 0);
+}
+
+static void
+save_init_map (int init, unsigned long s, unsigned long e, char x)
+{
+  ers_assert (ers_fwrite (init, (const char *) &s, sizeof s) == 0);
+  ers_assert (ers_fwrite (init, (const char *) &e, sizeof e) == 0);
+  ers_assert (ers_fwrite (init, &x, sizeof x) == 0);
+  if (x & 1) ers_assert (ers_fwrite (init, (const char *) s, e - s) == 0);
 }
 
 #define S_IRWXU	0700
@@ -201,6 +218,7 @@ init_process (struct internal *internal, const char *path)
   ers_assert (ers_fclose (maps) == 0);
 #endif
 
+  int init = open_path (internal->path, "init", 0, 0);
   ers_assert (ers_fopen ("/proc/self/maps", 1, &maps) == 0);
 
   unsigned long s = 0, e = 0;
@@ -233,20 +251,21 @@ init_process (struct internal *internal, const char *path)
 	    else
 	      {
 		if (buf[i] != 'p')
-		  ers_assert (ers_printf ("warning: non private segment\n") == 0);
+		  ers_assert (ers_printf ("warning: non private map\n") == 0);
 		/* XXX ers_assert (buf[i] == 'p'); */
 		p = 3;
 	      }
 	  }
 	else if (p == 3 && buf[i] == '\n')
 	  {
-	    char v = i >= 6
-		     && (ers_strncmp (buf + i - 6, "[vdso]", 6) == 0
-			 || ers_strncmp (buf + i - 6, "[vvar]", 6) == 0);
+	    char v = (i >= 6 && ers_strncmp (buf + i - 6, "[vdso]", 6) == 0)
+		     || (i >= 6 && ers_strncmp (buf + i - 6, "[vvar]", 6) == 0)
+		     || (i >= 10 && ers_strncmp (buf + i - 10, "[vsyscall]", 10) == 0);
 
 	    ers_assert (ers_printf ("%lx-%lx %x %u\n", s, e, x, v) == 0);
 
-	    /* TODO */
+	    if (! v) save_init_map (init, s, e, x);
+
 	    p = 0;
 	    s = e = 0;
 	    x = n = 0;
@@ -255,8 +274,11 @@ init_process (struct internal *internal, const char *path)
       if (l != sizeof buf) break;
     }
   ers_assert (ers_fclose (maps) == 0);
+  ers_assert (ers_fclose (init) == 0);
 
   ERS_LST_INIT_LIST (thread, internal);
+
+  /* internal->replay = init_context (); */
 
   set_thread (internal, init_thread (internal, internal->thread_id++));
 }
@@ -388,7 +410,11 @@ pre_syscall (struct internal *internal, void **data,
 	  ers_assert (ers_printf ("used %lu\n", internal->pool.used) == 0);
 	  ers_assert (internal->pool.used == 0);
 	}
-      else fini_thread (internal, th);
+      else
+	{
+	  fini_thread (internal, th);
+	  release_active_lock (internal, 1, 1);
+	}
     }
   else if (*nr == __NR_rt_sigaction)
     {
@@ -432,8 +458,8 @@ pre_syscall (struct internal *internal, void **data,
 
   /* TODO */
 
-  if (interruptible (*nr) || *nr == __NR_exit || *nr == __NR_exit_group)
-    release_active_lock (internal, 1, *nr == __NR_exit || *nr == __NR_exit_group);
+  if (interruptible (*nr))
+    release_active_lock (internal, 1, 0);
   return 1;
 }
 
@@ -520,7 +546,8 @@ atomic_lock (struct internal *internal, void *mem)
 
   ers_lock (&lock->lock);
   if (lock->fd == 0)
-    lock->fd = open_path (internal->path, "atomic-", (unsigned long) mem);
+    lock->fd = open_path (internal->path, "atomic-",
+			  OPEN_WITHID | internal->replay << OPEN_REPLAY, (unsigned long) mem);
   ers_unlock (&lock->lock);
   return 1;
 }
