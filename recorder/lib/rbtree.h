@@ -14,8 +14,13 @@
 
    Bit fileds of ERI_RBT_NODE_FIELDS are at the beginning. */
 
-#define ERI_RBT_INIT_TREE(pfx, tree) do { (tree)->pfx##_root = 0; } while (0)
-#define ERI_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root;
+#define ERI_RBT_INIT_TREE(pfx, tree) \
+  do {						\
+    typeof (tree) __tree = tree;		\
+    __tree->pfx##_root = 0;			\
+    __tree->pfx##_size = 0;			\
+   } while (0)
+#define ERI_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root; size_t pfx##_size;
 #define ERI_RBT_NODE_FIELDS(pfx, node_type) \
   unsigned char pfx##_color : 1; node_type *pfx##_parent, *pfx##_left, *pfx##_right;
 
@@ -28,7 +33,8 @@ attr __attribute__ ((used)) void pfx##_insert (tree_type *tree, node_type *node)
 attr __attribute__ ((used)) void pfx##_remove (tree_type *tree, node_type *node);	\
 attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key, int flags);	\
 attr __attribute__ ((used)) node_type *pfx##_get_first (tree_type *tree);		\
-attr __attribute__ ((used)) node_type *pfx##_get_next (node_type *node);
+attr __attribute__ ((used)) node_type *pfx##_get_next (node_type *node);		\
+attr __attribute__ ((used)) size_t pfx##_get_size (tree_type *tree);
 
 #define ERI_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERI_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
@@ -208,6 +214,7 @@ pfx##_insert (tree_type *tree, node_type *node)					\
   else pfx##_insert_recurse (tree, tree->pfx##_root, node);			\
 										\
   pfx##_insert_repair (tree, node);						\
+  ++tree->pfx##_size;								\
 										\
   pfx##_check (tree); /* XXX safety check */					\
 }										\
@@ -318,6 +325,7 @@ pfx##_remove (tree_type *tree, node_type *node)					\
     }										\
   else pfx##_remove_one_child (tree, node);					\
 										\
+  --tree->pfx##_size;								\
   pfx##_check (tree); /* XXX safety check */					\
 }										\
 										\
@@ -372,6 +380,12 @@ pfx##_get_next (node_type *node)						\
   while (pfx##_parent (n) && n == pfx##_parent (n)->pfx##_right)		\
     n = pfx##_parent (n);							\
   return pfx##_parent (n);							\
+}										\
+										\
+attr __attribute__ ((used)) size_t						\
+pfx##_get_size (tree_type *tree)							\
+{										\
+  return tree->pfx##_size;							\
 }
 
 #define ERI_DEFINE_RBTREE1(attr, pfx, tree_type, node_type, less_than) \

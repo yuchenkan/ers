@@ -33,8 +33,7 @@ less_than (struct eri_pool *pool, struct block *b1, struct block *b2)
 #include "rbtree.h"
 ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 
-#define ALIGN(x) ALIGN_MASK (x, (typeof (x)) 15)
-#define ALIGN_MASK(x, mask) (((x) + (mask)) & ~(mask))
+#define ALIGN(x) eri_round_up (x, 16)
 
 #define MIN_BLOCK_SIZE ALIGN (sizeof (struct block))
 #define ALLOC_OFFSET __builtin_offsetof (struct block, block_parent)
@@ -53,6 +52,21 @@ eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
   struct block *b = (struct block *) pool->buf;
   eri_memset (b, 0, sizeof *b);
   block_insert (pool, b);
+  return 0;
+}
+
+int
+eri_fini_pool (struct eri_pool *pool)
+{
+  eri_assert (pool->used == 0);
+  if (pool->size >= MIN_BLOCK_SIZE)
+    {
+      struct block *b = (struct block *) pool->buf;
+      block_remove (pool, b);
+    }
+  eri_assert (! pool->block_root);
+  pool->size = 0;
+  pool->buf = 0;
   return 0;
 }
 

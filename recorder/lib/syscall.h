@@ -3,6 +3,8 @@
 
 #include <asm/unistd.h>
 
+#include "util.h"
+
 #define _SYSCALL_NARGS_X(a, b, c, d, e, f, g, h, i, ...) i
 #define _SYSCALL_NARGS(...) \
   _SYSCALL_NARGS_X (__VA_ARGS__, 7, 6, 5, 4, 3, 2, 1, 0)
@@ -82,5 +84,15 @@
 
 #define ERI_SYSCALL_ERROR_P(val) \
   ((unsigned long) (long) (val) >= -4095L)
+
+#define ERI_ASSERT_SYSCALL_RES(...) \
+  ({								\
+    unsigned long _result = ERI_SYSCALL (__VA_ARGS__);		\
+    eri_assert (! ERI_SYSCALL_ERROR_P (_result));		\
+    _result;							\
+  })
+
+#define ERI_ASSERT_SYSCALL(...) \
+  (void) ERI_ASSERT_SYSCALL_RES (__VA_ARGS__)
 
 #endif

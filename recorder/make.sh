@@ -1,3 +1,4 @@
 set -ex
 
-gcc -v -g -fPIC -Wall -nostdlib -Wl,--no-undefined recorder.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c -shared -fvisibility=hidden -o librecorder.so -save-temps -fno-tree-loop-distribute-patterns
+gcc -g -fPIC -Wall -nostdlib -Wl,--no-undefined common.c recorder.c lib/printf.c lib/malloc.c lib/util.c -shared -fvisibility=hidden -o librecorder.so -fno-tree-loop-distribute-patterns # -save-temps
+gcc -g -nostdlib replayer.c common.c lib/util.c lib/printf.c -o replayer

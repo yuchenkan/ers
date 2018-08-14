@@ -30,30 +30,37 @@ eri_fclose (int fd)
 }
 
 int
-eri_fwrite (int fd, const char *buf, int size)
+eri_fseek (int fd, long offset, int whence)
 {
-  int c = 0;
+  return ERI_SYSCALL_ERROR_P (ERI_SYSCALL (lseek, fd, offset, whence));
+}
+
+int
+eri_fwrite (int fd, const char *buf, size_t size)
+{
+  size_t c = 0;
   while (c != size)
     {
-      unsigned long res = ERI_SYSCALL (write, fd, buf, size - c);
+      unsigned long res = ERI_SYSCALL (write, fd, buf + c, size - c);
       if (ERI_SYSCALL_ERROR_P (res)) return 1;
-      c += (int) res;
+      c += (size_t) res;
     }
   return 0;
 }
 
 int
-eri_fread (int fd, char *buf, int size, int *len)
+eri_fread (int fd, char *buf, size_t size, size_t *len)
 {
-  int c = 0;
+  size_t c = 0;
   while (c != size)
     {
-      unsigned long res = ERI_SYSCALL (read, fd, buf, size);
+      unsigned long res = ERI_SYSCALL (read, fd, buf + c, size - c);
       if (ERI_SYSCALL_ERROR_P (res)) return 1;
       if (res == 0) break;
-      c += (int) res;
+      c += (size_t) res;
     }
-  *len = c;
+  if (len) *len = c;
+  else if (c != size) return 1;
   return 0;
 }
 
@@ -73,7 +80,7 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
   for (p = fmt; *p; ++p)
     if (*p == '%') s += 2;
 
-  struct iovec *iov = (struct iovec *) __builtin_alloca (s * sizeof (struct iovec));
+  struct iovec *iov = __builtin_alloca (s * sizeof (struct iovec));
   int niov = 0;
   while (*fmt)
     {
@@ -96,7 +103,7 @@ eri_vfprintf (int fd, const char *fmt, va_list arg)
 
 	      unsigned char base = *fmt == 'x' ? 16 : 10;
 
-	      char *buf = (char *) __builtin_alloca (3 * sizeof num);
+	      char *buf = __builtin_alloca (3 * sizeof num);
 	      char *endp = buf + 3 * sizeof num;
 
 	      char *cp = endp;

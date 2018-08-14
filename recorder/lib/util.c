@@ -30,7 +30,6 @@ eri_strcpy (char *d, const char *s)
   *d = '\0';
 }
 
-#if 0
 char
 eri_strncmp (const char *s1, const char *s2, size_t n)
 {
@@ -43,4 +42,31 @@ eri_strncmp (const char *s1, const char *s2, size_t n)
     }
   return 0;
 }
-#endif
+
+const char *
+eri_strtok (const char *s, char d)
+{
+  while (*s && *s != d) ++s;
+  return *s ? s : 0;
+}
+
+const char *
+eri_strntok (const char *s, char d, size_t n)
+{
+  size_t i;
+  for (i = 0; i < n && s[i] != d; ++i)
+    continue;
+  return i < n ? s + i : 0;
+}
+
+const char *
+eri_strstr (const char *s, const char *d)
+{
+  size_t sl = eri_strlen (s);
+  size_t dl = eri_strlen (d);
+  size_t i;
+  for (i = 0; i <= sl - dl; ++i)
+    if (eri_strncmp (s + i, d, dl) == 0)
+      return s + i;
+  return 0;
+}

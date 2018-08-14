@@ -1,0 +1,2 @@
+set -ex
+../recorder/replayer
