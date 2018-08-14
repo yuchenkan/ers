@@ -1,5 +1,5 @@
-#ifndef ERS_SYSCALL_H
-#define ERS_SYSCALL_H
+#ifndef ERI_SYSCALL_H
+#define ERI_SYSCALL_H
 
 #include <asm/unistd.h>
 
@@ -77,10 +77,10 @@
     __result; \
   })
 
-#define ERS_SYSCALL(name, ...) \
+#define ERI_SYSCALL(name, ...) \
   _SYSCALL_NR (__NR_##name, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
-#define ERS_SYSCALL_ERROR_P(val) \
+#define ERI_SYSCALL_ERROR_P(val) \
   ((unsigned long) (long) (val) >= -4095L)
 
 #endif

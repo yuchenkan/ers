@@ -1,42 +1,42 @@
-#ifndef ERS_RBTREE_H
-#define ERS_RBTREE_H
+#ifndef ERI_RBTREE_H
+#define ERI_RBTREE_H
 
 #include "util.h"
 
-/* tree_type { ERS_RBT_TREE_FIELDS (pfx, node_type) ... };
-   node_type { key_type key; ERS_RBT_NODE_FIELDS (pfx, node_type) ... };
+/* tree_type { ERI_RBT_TREE_FIELDS (pfx, node_type) ... };
+   node_type { key_type key; ERI_RBT_NODE_FIELDS (pfx, node_type) ... };
    int less_than (tree_type *tree, key_type *k1, key_type *k2);
 
-   Zero out the ERS_RBT_TREE_FIELDS or call ERS_RBT_INIT_TREE before use.
+   Zero out the ERI_RBT_TREE_FIELDS or call ERI_RBT_INIT_TREE before use.
 
    The key has to be the first field or the node to allow casting.
    The order of all other fields are irrelevant.
 
-   Bit fileds of ERS_RBT_NODE_FIELDS are at the beginning. */
+   Bit fileds of ERI_RBT_NODE_FIELDS are at the beginning. */
 
-#define ERS_RBT_INIT_TREE(pfx, tree) do { (tree)->pfx##_root = 0; } while (0)
-#define ERS_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root;
-#define ERS_RBT_NODE_FIELDS(pfx, node_type) \
+#define ERI_RBT_INIT_TREE(pfx, tree) do { (tree)->pfx##_root = 0; } while (0)
+#define ERI_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_root;
+#define ERI_RBT_NODE_FIELDS(pfx, node_type) \
   unsigned char pfx##_color : 1; node_type *pfx##_parent, *pfx##_left, *pfx##_right;
 
-#define ERS_RBT_EQ	1
-#define ERS_RBT_LT	2
-#define ERS_RBT_GT	4
+#define ERI_RBT_EQ	1
+#define ERI_RBT_LT	2
+#define ERI_RBT_GT	4
 
-#define ERS_DECALRE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
+#define ERI_DECALRE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
 attr __attribute__ ((used)) void pfx##_insert (tree_type *tree, node_type *node);	\
 attr __attribute__ ((used)) void pfx##_remove (tree_type *tree, node_type *node);	\
 attr __attribute__ ((used)) node_type *pfx##_get (tree_type *tree, key_type *key, int flags);	\
 attr __attribute__ ((used)) node_type *pfx##_get_first (tree_type *tree);		\
 attr __attribute__ ((used)) node_type *pfx##_get_next (node_type *node);
 
-#define ERS_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
-ERS_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
+#define ERI_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
+ERI_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 
 #define _RBT_RED	0
 #define _RBT_BLACK	1
 
-#define ERS_DEFINE_RBTREE(attr, pfx, tree_type, node_type, key_type, less_than) \
+#define ERI_DEFINE_RBTREE(attr, pfx, tree_type, node_type, key_type, less_than) \
 static int									\
 pfx##_check_recurse (tree_type *tree, node_type *n, node_type **v)		\
 {										\
@@ -44,17 +44,17 @@ pfx##_check_recurse (tree_type *tree, node_type *n, node_type **v)		\
 										\
   if (n->pfx##_color == _RBT_RED)						\
     {										\
-      ers_assert (! n->pfx##_left						\
+      eri_assert (! n->pfx##_left						\
 		  || n->pfx##_left->pfx##_color == _RBT_BLACK);			\
-      ers_assert (! n->pfx##_right						\
+      eri_assert (! n->pfx##_right						\
 		  || n->pfx##_right->pfx##_color == _RBT_BLACK);		\
     }										\
 										\
   int h = pfx##_check_recurse (tree, n->pfx##_left, v);				\
-  ers_assert (! *v || less_than (tree, (key_type *) *v, (key_type *) n));	\
+  eri_assert (! *v || less_than (tree, (key_type *) *v, (key_type *) n));	\
   v = &n;									\
-  ers_assert (h == pfx##_check_recurse (tree, n->pfx##_right, v));		\
-  ers_assert (*v == n || less_than (tree, (key_type *) n, (key_type *)*v));	\
+  eri_assert (h == pfx##_check_recurse (tree, n->pfx##_right, v));		\
+  eri_assert (*v == n || less_than (tree, (key_type *) n, (key_type *)*v));	\
 										\
   return h + (n->pfx##_color == _RBT_BLACK);					\
 }										\
@@ -63,7 +63,7 @@ static void									\
 pfx##_check (tree_type *tree)							\
 {										\
   if (tree->pfx##_root)								\
-    ers_assert (tree->pfx##_root->pfx##_color == _RBT_BLACK);			\
+    eri_assert (tree->pfx##_root->pfx##_color == _RBT_BLACK);			\
 										\
   node_type *v = 0;								\
   pfx##_check_recurse (tree, tree->pfx##_root, &v);				\
@@ -153,7 +153,7 @@ pfx##_insert_recurse (tree_type *tree, node_type *r, node_type *n)		\
 	  n->pfx##_parent = r;							\
 	}									\
     }										\
-  else ers_assert (0);								\
+  else eri_assert (0);								\
 }										\
 										\
 static void									\
@@ -324,27 +324,27 @@ pfx##_remove (tree_type *tree, node_type *node)					\
 attr __attribute__ ((used)) node_type *						\
 pfx##_get (tree_type *tree, key_type *key, int flags)				\
 {										\
-  ers_assert (! (flags & ERS_RBT_LT) || ! (flags & ERS_RBT_GT));		\
+  eri_assert (! (flags & ERI_RBT_LT) || ! (flags & ERI_RBT_GT));		\
   node_type *r = tree->pfx##_root;						\
   node_type *v = 0;								\
   while (r)									\
     {										\
       if (less_than (tree, (key_type *) r, key))				\
 	{									\
-	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_LT) v = r;			\
+	  if ((flags & ~ERI_RBT_EQ) == ERI_RBT_LT) v = r;			\
 	  r = r->pfx##_right;							\
 	}									\
       else if (less_than (tree, key, (key_type *) (r)))				\
 	{									\
-	  if ((flags & ~ERS_RBT_EQ) == ERS_RBT_GT) v = r;			\
+	  if ((flags & ~ERI_RBT_EQ) == ERI_RBT_GT) v = r;			\
 	  r = r->pfx##_left;							\
 	}									\
       else									\
 	{									\
-	  if (flags & ERS_RBT_EQ) return r;					\
-	  else if (flags == ERS_RBT_LT) r = r->pfx##_left;			\
-	  else if (flags == ERS_RBT_GT) r = r->pfx##_right;			\
-	  else ers_assert (0);							\
+	  if (flags & ERI_RBT_EQ) return r;					\
+	  else if (flags == ERI_RBT_LT) r = r->pfx##_left;			\
+	  else if (flags == ERI_RBT_GT) r = r->pfx##_right;			\
+	  else eri_assert (0);							\
 	}									\
     }										\
   return v;									\
@@ -374,12 +374,12 @@ pfx##_get_next (node_type *node)						\
   return pfx##_parent (n);							\
 }
 
-#define ERS_DEFINE_RBTREE1(attr, pfx, tree_type, node_type, less_than) \
-ERS_DEFINE_RBTREE (attr, pfx, tree_type, node_type, node_type, less_than)
+#define ERI_DEFINE_RBTREE1(attr, pfx, tree_type, node_type, less_than) \
+ERI_DEFINE_RBTREE (attr, pfx, tree_type, node_type, node_type, less_than)
 
-#define ERS_RBT_FOREACH(pfx, tree, iter) \
+#define ERI_RBT_FOREACH(pfx, tree, iter) \
   for (iter = pfx##_get_first (tree); iter; iter = pfx##_get_next (iter))
-#define ERS_RBT_FOREACH_SAFE(pfx, tree, iter, next) \
+#define ERI_RBT_FOREACH_SAFE(pfx, tree, iter, next) \
   for (iter = pfx##_get_first (tree); iter && ({ next = pfx##_get_next (iter); 1; }); iter = next)
 
 #endif

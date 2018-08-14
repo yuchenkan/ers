@@ -1,7 +1,7 @@
 #include "util.h"
 
 void
-ers_memset (void *p, char c, size_t s)
+eri_memset (void *p, char c, size_t s)
 {
   size_t i;
   char *b = (char *) p;
@@ -9,14 +9,14 @@ ers_memset (void *p, char c, size_t s)
 }
 
 void
-ers_memcpy (void *d, const void *s, size_t n)
+eri_memcpy (void *d, const void *s, size_t n)
 {
   size_t i;
   for (i = 0; i < n; ++i) ((char *) d)[i] = ((const char *) s)[i];
 }
 
 size_t
-ers_strlen (const char *s)
+eri_strlen (const char *s)
 {
   size_t i;
   for (i = 0; s[i]; ++i) continue;
@@ -24,7 +24,7 @@ ers_strlen (const char *s)
 }
 
 void
-ers_strcpy (char *d, const char *s)
+eri_strcpy (char *d, const char *s)
 {
   while (*s) *d++ = *s++;
   *d = '\0';
@@ -32,7 +32,7 @@ ers_strcpy (char *d, const char *s)
 
 #if 0
 char
-ers_strncmp (const char *s1, const char *s2, size_t n)
+eri_strncmp (const char *s1, const char *s2, size_t n)
 {
   size_t i;
   for (i = 0; i < n; ++i)

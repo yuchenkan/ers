@@ -1,12 +1,14 @@
+#include "lock.h"
+
 void
-ers_lock (int *lock)
+eri_lock (char replay, unsigned long tid, struct eri_lock *lock)
 {
-  while (__atomic_exchange_n (lock, 1, __ATOMIC_ACQUIRE))
+  while (__atomic_exchange_n (&lock->lock, 1, __ATOMIC_ACQUIRE))
     continue;
 }
 
 void
-ers_unlock (int *lock)
+eri_unlock (struct eri_lock *lock)
 {
-  __atomic_store_n (lock, 0, __ATOMIC_RELEASE);
+  __atomic_store_n (&lock->lock, 0, __ATOMIC_RELEASE);
 }

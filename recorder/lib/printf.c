@@ -12,44 +12,44 @@
 #define O_TRUNC		01000
 
 int
-ers_fopen (const char *path, char r, int *fd)
+eri_fopen (const char *path, char r, int *fd)
 {
-  unsigned long res = ERS_SYSCALL (open, path,
+  unsigned long res = ERI_SYSCALL (open, path,
 				   r ? O_RDONLY : O_WRONLY | O_TRUNC | O_CREAT,
 				   S_IRUSR | S_IWUSR);
-  if (ERS_SYSCALL_ERROR_P (res)) return 1;
+  if (ERI_SYSCALL_ERROR_P (res)) return 1;
 
   *fd = (long) res;
   return 0;
 }
 
 int
-ers_fclose (int fd)
+eri_fclose (int fd)
 {
-  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (close, fd));
+  return ERI_SYSCALL_ERROR_P (ERI_SYSCALL (close, fd));
 }
 
 int
-ers_fwrite (int fd, const char *buf, int size)
+eri_fwrite (int fd, const char *buf, int size)
 {
   int c = 0;
   while (c != size)
     {
-      unsigned long res = ERS_SYSCALL (write, fd, buf, size - c);
-      if (ERS_SYSCALL_ERROR_P (res)) return 1;
+      unsigned long res = ERI_SYSCALL (write, fd, buf, size - c);
+      if (ERI_SYSCALL_ERROR_P (res)) return 1;
       c += (int) res;
     }
   return 0;
 }
 
 int
-ers_fread (int fd, char *buf, int size, int *len)
+eri_fread (int fd, char *buf, int size, int *len)
 {
   int c = 0;
   while (c != size)
     {
-      unsigned long res = ERS_SYSCALL (read, fd, buf, size);
-      if (ERS_SYSCALL_ERROR_P (res)) return 1;
+      unsigned long res = ERI_SYSCALL (read, fd, buf, size);
+      if (ERI_SYSCALL_ERROR_P (res)) return 1;
       if (res == 0) break;
       c += (int) res;
     }
@@ -66,7 +66,7 @@ struct iovec
 static const char digits[] = "0123456789abcdef";
 
 int
-ers_vfprintf (int fd, const char *fmt, va_list arg)
+eri_vfprintf (int fd, const char *fmt, va_list arg)
 {
   const char *p;
   int s = 1;
@@ -77,7 +77,7 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
   int niov = 0;
   while (*fmt)
     {
-      ers_assert (niov < s);
+      eri_assert (niov < s);
       if (*fmt == '%')
 	{
 	  ++fmt;
@@ -89,7 +89,7 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
 	      if (*fmt == 'l')
 		{
 		  ++fmt;
-		  ers_assert (*fmt == 'u' || *fmt == 'x');
+		  eri_assert (*fmt == 'u' || *fmt == 'x');
 		  num = (unsigned long) va_arg (arg, unsigned long);
 		}
 	      else num = (unsigned long) va_arg (arg, unsigned);
@@ -118,9 +118,9 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
 	  else if (*fmt == 's')
 	    {
 	      iov[niov].base = (void *) va_arg (arg, char *);
-	      iov[niov].len = ers_strlen (iov[niov].base);
+	      iov[niov].len = eri_strlen (iov[niov].base);
 	    }
-	  else ers_assert (0);
+	  else eri_assert (0);
 	  ++fmt;
 	}
       else
@@ -132,31 +132,31 @@ ers_vfprintf (int fd, const char *fmt, va_list arg)
       ++niov;
     }
 
-  return ERS_SYSCALL_ERROR_P (ERS_SYSCALL (writev, fd, iov, niov));
+  return ERI_SYSCALL_ERROR_P (ERI_SYSCALL (writev, fd, iov, niov));
 }
 
 int
-ers_fprintf (int fd, const char *fmt, ...)
+eri_fprintf (int fd, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = ers_vfprintf (fd, fmt, arg);
+  int res = eri_vfprintf (fd, fmt, arg);
   va_end (arg);
   return res;
 }
 
 int
-ers_vprintf (const char *fmt, va_list arg)
+eri_vprintf (const char *fmt, va_list arg)
 {
-  return ers_vfprintf (1, fmt, arg);
+  return eri_vfprintf (1, fmt, arg);
 }
 
 int
-ers_printf (const char *fmt, ...)
+eri_printf (const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = ers_vprintf (fmt, arg);
+  int res = eri_vprintf (fmt, arg);
   va_end (arg);
   return res;
 }

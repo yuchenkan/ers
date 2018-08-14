@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <stdarg.h>
 #include <asm/unistd.h>
 
 #include "recorder.h"
@@ -22,7 +23,7 @@ struct ers_thread
 
   int fd;
 
-  ERS_LST_NODE_FIELDS (thread)
+  ERI_LST_NODE_FIELDS (thread)
 
   struct sigset old_set;
 };
@@ -31,10 +32,10 @@ struct atomic_lock
 {
   void *mem;
 
-  int lock;
+  struct eri_lock lock;
   int fd;
 
-  ERS_RBT_NODE_FIELDS (atomic, struct atomic_lock)
+  ERI_RBT_NODE_FIELDS (atomic, struct atomic_lock)
 };
 
 struct siginfo;
@@ -44,7 +45,7 @@ struct sigact_wrap
   void *act;
   int flags;
 
-  ERS_RBT_NODE_FIELDS (sigact, struct sigact_wrap)
+  ERI_RBT_NODE_FIELDS (sigact, struct sigact_wrap)
 };
 
 struct internal
@@ -53,32 +54,60 @@ struct internal
   void (*set_thread) (struct ers_thread *, void *);
   void *get_set_thread_arg;
 
-  char *mbuf;
-  size_t mbuf_size;
-  struct ers_pool pool;
+  struct eri_lock pool_lock;
+  char *pool_buf;
+  size_t pool_buf_size;
+  struct eri_pool pool;
 
   const char *path;
 
   char replay;
 
-  int atomic_lock;
-  ERS_RBT_TREE_FIELDS (atomic, struct atomic_lock)
+  struct eri_lock atomic_lock;
+  ERI_RBT_TREE_FIELDS (atomic, struct atomic_lock)
 
-  unsigned long thread_id;
-  long active_lock;
-  int threads_lock;
-  ERS_LST_LIST_FIELDS (thread)
+  ERI_ATOMIC_TYPE (unsigned long) thread_id;
+  ERI_ATOMIC_TYPE (long) active_lock;
+  struct eri_lock threads_lock;
+  ERI_LST_LIST_FIELDS (thread)
 
-  int sigact_lock;
-  ERS_RBT_TREE_FIELDS (sigact, struct sigact_wrap)
+  struct eri_lock sigact_lock;
+  ERI_RBT_TREE_FIELDS (sigact, struct sigact_wrap)
 };
 
 #define atomic_less_than(x, a, b) (*(a) < *(b))
 
-ERS_DEFINE_RBTREE (static, atomic, struct internal, struct atomic_lock, void *, atomic_less_than)
-ERS_DEFINE_RBTREE (static, sigact, struct internal, struct sigact_wrap, int, atomic_less_than)
+ERI_DEFINE_RBTREE (static, atomic, struct internal, struct atomic_lock, void *, atomic_less_than)
+ERI_DEFINE_RBTREE (static, sigact, struct internal, struct sigact_wrap, int, atomic_less_than)
 
-ERS_DEFINE_LIST (static, thread, struct internal, struct ers_thread)
+ERI_DEFINE_LIST (static, thread, struct internal, struct ers_thread)
+
+static void *
+imalloc (struct internal *internal, unsigned long tid, size_t size)
+{
+  void *p;
+  eri_lock (internal->replay, tid, &internal->pool_lock);
+  eri_assert (eri_malloc (&internal->pool, size, &p) == 0);
+  eri_unlock (&internal->pool_lock);
+  return p;
+}
+
+static void *
+icalloc (struct internal *internal, unsigned long tid, size_t size)
+{
+  void *p = imalloc (internal, tid, size);
+  eri_memset (p, 0, size);
+  return p;
+}
+
+static void
+ifree (struct internal *internal, unsigned long tid, void *p)
+{
+  if (! p) return;
+  eri_lock (internal->replay, tid, &internal->pool_lock);
+  eri_assert (eri_free (&internal->pool, p) == 0);
+  eri_unlock (&internal->pool_lock);
+}
 
 inline static struct ers_thread *
 get_thread (struct internal *internal)
@@ -95,14 +124,14 @@ set_thread (struct internal *internal, struct ers_thread *th)
 static char
 itoc (char i)
 {
-  ers_assert (i >= 0 && i <= 15);
+  eri_assert (i >= 0 && i <= 15);
   return i < 10 ? '0' + i : 'a' + i - 10;
 }
 
 static char
 ctoi (char c)
 {
-  ers_assert ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+  eri_assert ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
   return c >= '0' && c <= '9' ? c - '0' : c - 'a' + 10;
 }
 
@@ -116,7 +145,7 @@ phex (char *p, unsigned long v)
       p[(unsigned char) i] = itoc (v % 16);
       v /= 16;
     }
-  ers_assert (v == 0);
+  eri_assert (v == 0);
   p[s * 2] = '\0';
 }
 
@@ -126,68 +155,143 @@ phex (char *p, unsigned long v)
 static int
 open_path (const char *path, const char *name, int flags, unsigned long id)
 {
-  size_t npath = ers_strlen (path);
-  int nname = ers_strlen (name);
+  size_t npath = eri_strlen (path);
+  int nname = eri_strlen (name);
 
   size_t s = npath + 1 + nname + 1; /* path/name\0 */
   if (flags & OPEN_WITHID) s += 2 * sizeof id; /* path/name$id\0 */
   char *p = (char *) __builtin_alloca (s);
 
-  ers_strcpy (p, path);
+  eri_strcpy (p, path);
 
   size_t c = npath;
   if (npath == 0 || p[npath - 1] != '/') p[c++] = '/';
 
-  ers_strcpy (p + c, name);
+  eri_strcpy (p + c, name);
   c += nname;
 
   if (flags & OPEN_WITHID) phex (p + c, id);
   else p[c] = '\0';
 
-  ers_assert (ers_printf ("%s\n", p) == 0);
+  eri_assert (eri_printf ("%s\n", p) == 0);
 
   int fd;
-  ers_assert (ers_fopen (p, 0, &fd) == 0);
+  eri_assert (eri_fopen (p, 0, &fd) == 0);
   return fd;
 }
 
 static struct ers_thread *
 init_thread (struct internal *internal, unsigned long id)
 {
-  struct ers_thread *th;
-  ers_assert (ers_calloc (&internal->pool, sizeof *th, (void **) &th) == 0);
+  char re = internal->replay;
+  struct ers_thread *th = icalloc (internal, id, sizeof *th);
 
-  ers_assert (ers_printf ("init_thread %lx\n", th) == 0);
+  eri_assert (eri_printf ("init_thread %lx\n", th) == 0);
 
   th->id = id;
   th->fd = open_path (internal->path, "thread-",
-		      OPEN_WITHID | internal->replay << OPEN_REPLAY, th->id);
+		      OPEN_WITHID | re << OPEN_REPLAY, th->id);
 
-  ers_lock (&internal->threads_lock);
+  eri_lock (re, th->id, &internal->threads_lock);
   thread_append (internal, th);
-  ers_unlock (&internal->threads_lock);
+  eri_unlock (&internal->threads_lock);
   return th;
 }
 
 static void
 fini_thread (struct internal *internal, struct ers_thread *th)
 {
-  ers_lock (&internal->threads_lock);
+  eri_lock (internal->replay, th->id, &internal->threads_lock);
   thread_remove (th);
-  ers_unlock (&internal->threads_lock);
+  eri_unlock (&internal->threads_lock);
 
-  ers_assert (ers_printf ("fini_thread %lx\n", th) == 0);
-  ers_assert (ers_fclose (th->fd) == 0);
-  ers_assert (ers_free (&internal->pool, th) == 0);
+  eri_assert (eri_printf ("fini_thread %lx\n", th) == 0);
+  eri_assert (eri_fclose (th->fd) == 0);
+  ifree (internal, th->id, th);
 }
 
+#define SMARK_INIT_MAP 1
+#define SMARK_INIT_CONTEXT 2
+
 static void
-save_init_map (int init, unsigned long s, unsigned long e, char x)
+save_init_map (int init, char x, int n, ...)
 {
-  ers_assert (ers_fwrite (init, (const char *) &s, sizeof s) == 0);
-  ers_assert (ers_fwrite (init, (const char *) &e, sizeof e) == 0);
-  ers_assert (ers_fwrite (init, &x, sizeof x) == 0);
-  if (x & 1) ers_assert (ers_fwrite (init, (const char *) s, e - s) == 0);
+  char mk = SMARK_INIT_MAP;
+  eri_assert (eri_fwrite (init, &mk, sizeof mk) == 0);
+  eri_assert (eri_fwrite (init, &x, sizeof x) == 0);
+  eri_assert (eri_fwrite (init, (const char *) &n, sizeof n) == 0);
+
+  va_list arg;
+  va_start (arg, n);
+
+  int i;
+  for (i = 0; i < n; ++i)
+    {
+      unsigned long s = (unsigned long) va_arg (arg, unsigned long);
+      unsigned long e = (unsigned long) va_arg (arg, unsigned long);
+      eri_assert (eri_fwrite (init, (const char *) &s, sizeof s) == 0);
+      eri_assert (eri_fwrite (init, (const char *) &e, sizeof e) == 0);
+      if (x & 1) eri_assert (eri_fwrite (init, (const char *) s, e - s) == 0);
+    }
+
+  va_end (arg);
+}
+
+struct context { char buf[14 * 8 + 24 + 4]; };
+
+static void
+save_init_context (int init, const struct context *ctx)
+{
+  char mk = SMARK_INIT_CONTEXT;
+  eri_assert (eri_fwrite (init, &mk, 1) == 0);
+  eri_assert (eri_fwrite (init, (const char *) ctx, sizeof *ctx) == 0);
+}
+
+asm ("  .text\n\
+  .type set_context, @function\n\
+set_context:\n\
+  movq  %rbx, (%rdi)\n\
+  movq  %rbp, 8(%rdi)\n\
+  movq  %r12, 16(%rdi)\n\
+  movq  %r13, 24(%rdi)\n\
+  movq  %r14, 32(%rdi)\n\
+  movq  %r15, 40(%rdi)\n\
+\n\
+  movq  %rdi, 48(%rdi)\n\
+  movq  %rsi, 56(%rdi)\n\
+  movq  %rdx, 64(%rdi)\n\
+  movq  %rcx, 72(%rdi)\n\
+  movq  %r8, 80(%rdi)\n\
+  movq  %r9, 88(%rdi)\n\
+\n\
+  movq  (%rsp), %rcx\n\
+  movq  %rcx, 96(%rdi)\n\
+  leaq  8(%rsp), %rcx\n\
+  movq  %rcx, 104(%rdi)\n\
+\n\
+  leaq    112(%rdi), %rcx\n\
+  fnstenv (%rcx)\n\
+  fldenv  (%rcx)\n\
+  stmxcsr 136(%rdi)\n\
+\n\
+  xorb %al, %al\n\
+  ret\n\
+  .size set_context, .-set_context\n"
+);
+
+/* static */ char set_context (struct context *ctx);
+
+static char
+init_context (int init)
+{
+  struct context ctx;
+  if (set_context (&ctx) == 0)
+    {
+      save_init_context (init, &ctx);
+      eri_assert (eri_fclose (init) == 0);
+      return 0;
+    }
+  return 1; /* replay */
 }
 
 #define S_IRWXU	0700
@@ -195,31 +299,29 @@ save_init_map (int init, unsigned long s, unsigned long e, char x)
 static void
 init_process (struct internal *internal, const char *path)
 {
-  ers_assert (ers_printf ("init_process %lx\n", internal) == 0);
+  eri_assert (eri_printf ("init_process %lx\n", internal) == 0);
 
-  ers_assert (ers_init_pool (&internal->pool,
-			     internal->mbuf, internal->mbuf_size) == 0);
   internal->path = path;
 
-  ers_assert (! ERS_SYSCALL_ERROR_P (ERS_SYSCALL (mkdir, internal->path, S_IRWXU)));
+  eri_assert (! ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, internal->path, S_IRWXU)));
 
   int maps;
   char buf[256];
 #if 1
-  ers_assert (ers_fopen ("/proc/self/maps", 1, &maps) == 0);
+  eri_assert (eri_fopen ("/proc/self/maps", 1, &maps) == 0);
   while (1)
     {
       int l;
-      ers_assert (ers_fread (maps, buf, sizeof buf - 1, &l) == 0);
+      eri_assert (eri_fread (maps, buf, sizeof buf - 1, &l) == 0);
       buf[l] = '\0';
-      ers_assert (ers_printf ("%s", buf) == 0);
+      eri_assert (eri_printf ("%s", buf) == 0);
       if (l != sizeof buf - 1) break;
     }
-  ers_assert (ers_fclose (maps) == 0);
+  eri_assert (eri_fclose (maps) == 0);
 #endif
 
   int init = open_path (internal->path, "init", 0, 0);
-  ers_assert (ers_fopen ("/proc/self/maps", 1, &maps) == 0);
+  eri_assert (eri_fopen ("/proc/self/maps", 1, &maps) == 0);
 
   unsigned long s = 0, e = 0;
   char x = 0, n = 0;
@@ -227,7 +329,7 @@ init_process (struct internal *internal, const char *path)
   while (1)
     {
       int l;
-      ers_assert (ers_fread (maps, buf, sizeof buf, &l) == 0);
+      eri_assert (eri_fread (maps, buf, sizeof buf, &l) == 0);
 
       int i;
       for (i = 0; i < l; ++i)
@@ -251,20 +353,31 @@ init_process (struct internal *internal, const char *path)
 	    else
 	      {
 		if (buf[i] != 'p')
-		  ers_assert (ers_printf ("warning: non private map\n") == 0);
-		/* XXX ers_assert (buf[i] == 'p'); */
+		  eri_assert (eri_printf ("warning: non private map\n") == 0);
+		/* XXX eri_assert (buf[i] == 'p'); */
 		p = 3;
 	      }
 	  }
 	else if (p == 3 && buf[i] == '\n')
 	  {
-	    char v = (i >= 6 && ers_strncmp (buf + i - 6, "[vdso]", 6) == 0)
-		     || (i >= 6 && ers_strncmp (buf + i - 6, "[vvar]", 6) == 0)
-		     || (i >= 10 && ers_strncmp (buf + i - 10, "[vsyscall]", 10) == 0);
+	    char v = (i >= 6 && eri_strncmp (buf + i - 6, "[vdso]", 6) == 0)
+		     || (i >= 6 && eri_strncmp (buf + i - 6, "[vvar]", 6) == 0)
+		     || (i >= 10 && eri_strncmp (buf + i - 10, "[vsyscall]", 10) == 0);
 
-	    ers_assert (ers_printf ("%lx-%lx %x %u\n", s, e, x, v) == 0);
+	    eri_assert (eri_printf ("%lx-%lx %x %u\n", s, e, x, v) == 0);
 
-	    if (! v) save_init_map (init, s, e, x);
+	    if (! v)
+	      {
+		unsigned long pbs = (unsigned long) internal->pool_buf;
+		unsigned long pbe = (unsigned long) internal->pool_buf + internal->pool_buf_size;
+		if (pbs >= s && pbe <= e)
+		  {
+		    if (pbs == s) save_init_map (init, x, 1, pbe, e);
+		    else if (pbe == e) save_init_map (init, x, 1, s, pbs);
+		    else save_init_map (init, x, 2, s, pbs, pbe, e);
+		  }
+		else save_init_map (init, x, 1, s, e);
+	      }
 
 	    p = 0;
 	    s = e = 0;
@@ -273,52 +386,62 @@ init_process (struct internal *internal, const char *path)
 
       if (l != sizeof buf) break;
     }
-  ers_assert (ers_fclose (maps) == 0);
-  ers_assert (ers_fclose (init) == 0);
+  eri_assert (eri_fclose (maps) == 0);
 
-  ERS_LST_INIT_LIST (thread, internal);
+  ERI_LST_INIT_LIST (thread, internal);
 
-  /* internal->replay = init_context (); */
+  internal->replay = init_context (init);
 
-  set_thread (internal, init_thread (internal, internal->thread_id++));
+  eri_assert (eri_init_pool (&internal->pool,
+			     internal->pool_buf, internal->pool_buf_size) == 0);
+
+  set_thread (internal, init_thread (internal, internal->thread_id.val++));
 }
 
 #define SIG_SETMASK	2
 #define SIG_SETSIZE	8
 
 static void
-block_signals (struct sigset *old_set)
+block_signals (char replay, struct sigset *old_set)
 {
+  if (replay) return;
+
   struct sigset set;
-  ers_memset (&set, 0xff, sizeof set);
-  ers_assert (! ERS_SYSCALL_ERROR_P (ERS_SYSCALL (rt_sigprocmask, SIG_SETMASK, &set, old_set, SIG_SETSIZE)));
+  eri_memset (&set, 0xff, sizeof set);
+  eri_assert (! ERI_SYSCALL_ERROR_P (ERI_SYSCALL (rt_sigprocmask, SIG_SETMASK, &set, old_set, SIG_SETSIZE)));
 }
 
 static void
-restore_signals (const struct sigset *old_set)
+restore_signals (char replay, const struct sigset *old_set)
 {
-  ers_assert (! ERS_SYSCALL_ERROR_P (ERS_SYSCALL (rt_sigprocmask, SIG_SETMASK, old_set, 0, SIG_SETSIZE)));
+  if (replay) return;
+  eri_assert (! ERI_SYSCALL_ERROR_P (ERI_SYSCALL (rt_sigprocmask, SIG_SETMASK, old_set, 0, SIG_SETSIZE)));
 }
 
 static char
 acquire_active_lock (struct internal *internal, long v)
 {
+  char re = internal->replay;
+  struct ers_thread *th = get_thread (internal);
+
   struct sigset old_set;
-  block_signals (&old_set);
-  if (__atomic_add_fetch (&internal->active_lock, v, __ATOMIC_ACQUIRE) > 0)
+  block_signals (re, &old_set);
+  if (ERI_ATOMIC_ADD_FETCH (re, th->id, &internal->active_lock, v) > 0)
     {
-      ers_memcpy (&get_thread (internal)->old_set, &old_set, sizeof old_set);
+      eri_memcpy (&th->old_set, &old_set, sizeof old_set);
       return 1;
     }
-  restore_signals (&old_set);
+  restore_signals (re, &old_set);
   return 0;
 }
 
 static void
 release_active_lock (struct internal *internal, long v, char exit)
 {
-  __atomic_sub_fetch (&internal->active_lock, v, __ATOMIC_RELEASE);
-  if (! exit) restore_signals (&get_thread (internal)->old_set);
+  char re = internal->replay;
+  struct ers_thread *th = get_thread (internal);
+  ERI_ATOMIC_SUB_FETCH (re, th->id, &internal->active_lock, v);
+  if (! exit) restore_signals (re, &get_thread (internal)->old_set);
 }
 
 inline static char
@@ -363,17 +486,18 @@ static char __attribute__ ((used))
 pre_syscall (struct internal *internal, void **data,
 	     int *nr, long *a1, long *a2, long *a3, long *a4, long *a5, long *a6)
 {
-  ers_assert (ers_printf ("pre_syscall %u\n", *nr) == 0);
+  eri_assert (eri_printf ("pre_syscall %u\n", *nr) == 0);
   if (! acquire_active_lock (internal, *nr == __NR_clone ? 2 : 1)) return 0;
+  char re = internal->replay;
   struct ers_thread *th = get_thread (internal);
 
   *data = 0;
   if (*nr == __NR_clone)
     {
-      ers_assert (ers_malloc (&internal->pool, sizeof (struct clone_data), data) == 0);
+      *data = imalloc (internal, th->id, sizeof (struct clone_data));
       struct clone_data *d = *data;
-      d->child_id = __atomic_fetch_add (&internal->thread_id, 1, __ATOMIC_RELAXED);
-      ers_memcpy (&d->old_set, &th->old_set, sizeof th->old_set);
+      d->child_id = ERI_ATOMIC_FETCH_ADD (re, th->id, &internal->thread_id, 1);
+      eri_memcpy (&d->old_set, &th->old_set, sizeof th->old_set);
     }
   else if (*nr == __NR_exit || *nr == __NR_exit_group)
     {
@@ -382,33 +506,32 @@ pre_syscall (struct internal *internal, void **data,
       if (grp)
 	{
 	  unsigned long exp = 1;
-	  while (! __atomic_compare_exchange_n (&internal->active_lock, &exp,
-						LONG_MIN + 1, 1,
-						__ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
-	    exp = 1;
+	  while (! ERI_ATOMIC_COMPARE_EXCHANGE (re, th->id, &internal->active_lock, exp,
+						LONG_MIN + 1))
+	    continue;
 
 	  struct ers_thread *t, *nt;
-	  ERS_LST_FOREACH_SAFE (thread, internal, t, nt) fini_thread (internal, t);
+	  ERI_LST_FOREACH_SAFE (thread, internal, t, nt) fini_thread (internal, t);
 
 	  struct atomic_lock *l, *nl;
-	  ERS_RBT_FOREACH_SAFE (atomic, internal, l, nl)
+	  ERI_RBT_FOREACH_SAFE (atomic, internal, l, nl)
 	    {
-	      ers_assert (ers_printf ("remove atomic lock %lx\n", l) == 0);
-	      ers_assert (ers_fclose (l->fd) == 0);
+	      eri_assert (eri_printf ("remove atomic lock %lx\n", l) == 0);
+	      eri_assert (eri_fclose (l->fd) == 0);
 	      atomic_remove (internal, l);
-	      ers_assert (ers_free (&internal->pool, l) == 0);
+	      ifree (internal, th->id, l);
 	    }
 
 	  struct sigact_wrap *w, *nw;
-	  ERS_RBT_FOREACH_SAFE (sigact, internal, w, nw)
+	  ERI_RBT_FOREACH_SAFE (sigact, internal, w, nw)
 	    {
-	      ers_assert (ers_printf ("remove sigact wrap %lx\n", w) == 0);
+	      eri_assert (eri_printf ("remove sigact wrap %lx\n", w) == 0);
 	      sigact_remove (internal, w);
-	      ers_assert (ers_free (&internal->pool, w) == 0);
+	      ifree (internal, th->id, w);
 	    }
 
-	  ers_assert (ers_printf ("used %lu\n", internal->pool.used) == 0);
-	  ers_assert (internal->pool.used == 0);
+	  eri_assert (eri_printf ("used %lu\n", internal->pool.used) == 0);
+	  eri_assert (internal->pool.used == 0);
 	}
       else
 	{
@@ -422,12 +545,12 @@ pre_syscall (struct internal *internal, void **data,
 	{
 	  int sig = (int) *a1;
 	  const struct sigaction *act = (const struct sigaction *) *a2;
-	  ers_lock (&internal->sigact_lock);
-	  struct sigact_wrap *wrap = sigact_get (internal, &sig, ERS_RBT_EQ);
+	  eri_lock (internal->replay, th->id, &internal->sigact_lock);
+	  struct sigact_wrap *wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
 
 	  if (a3 && wrap)
 	    {
-	      ers_assert (ers_malloc (&internal->pool, sizeof (struct rt_sigaction_data), data) == 0);
+	      *data = imalloc (internal, th->id, sizeof (struct rt_sigaction_data));
 	      struct rt_sigaction_data *d = *data;
 	      d->old_act = wrap->act;
 	      d->old_flags = wrap->flags;
@@ -437,7 +560,7 @@ pre_syscall (struct internal *internal, void **data,
 	    {
 	      if (! wrap)
 		{
-		  ers_assert (ers_malloc (&internal->pool, sizeof *wrap, (void **) &wrap) == 0);
+		  wrap = imalloc (internal, th->id, sizeof *wrap);
 		  wrap->sig = sig;
 		  sigact_insert (internal, wrap);
 		}
@@ -445,8 +568,7 @@ pre_syscall (struct internal *internal, void **data,
 	      wrap->act = act->act;
 	      wrap->flags = act->flags;
 
-	      struct sigaction *newact;
-	      ers_assert (ers_malloc (&internal->pool, sizeof *newact, (void **) &newact) == 0);
+	      struct sigaction *newact = imalloc (internal, th->id, sizeof *newact);
 	      newact->act = ent_sigaction;
 	      newact->mask = act->mask;
 	      newact->flags = act->flags | SA_SIGINFO;
@@ -467,39 +589,39 @@ static void __attribute__ ((used))
 post_syscall (struct internal *internal, void *data,
 	      int nr, long a1, long a2, long a3, long a4, long a5, long a6, long ret)
 {
-  ers_assert (ers_printf ("post_syscall %u %lu\n", nr, ret) == 0);
+  eri_assert (eri_printf ("post_syscall %u %lu\n", nr, ret) == 0);
   if (interruptible (nr) && ! acquire_active_lock (internal, 1)) return;
+  struct ers_thread *th = (nr != __NR_clone || ! ret) ? get_thread (internal) : 0;
 
   long rel = 1;
   if (nr == __NR_clone)
     {
-      if (ERS_SYSCALL_ERROR_P (ret))
+      struct clone_data *d = data;
+      if (ERI_SYSCALL_ERROR_P (ret))
 	{
 	  rel = 2;
-	  ers_assert (ers_free (&internal->pool, data) == 0);
+	  ifree (internal, th->id, data);
 	}
       else if (ret == 0)
 	{
-          struct clone_data *d = data;
-	  struct ers_thread *th = init_thread (internal, d->child_id);
-	  set_thread (internal, th);
-	  ers_memcpy (&th->old_set, &d->old_set, sizeof d->old_set);
-	  ers_assert (ers_free (&internal->pool, data) == 0);
+	  set_thread (internal, th = init_thread (internal, d->child_id));
+	  eri_memcpy (&th->old_set, &d->old_set, sizeof d->old_set);
+	  ifree (internal, th->id, data);
 	}
     }
   else if (nr == __NR_rt_sigaction)
     {
-      if (a2 || a3) ers_unlock (&internal->sigact_lock);
+      if (a2 || a3) eri_unlock (&internal->sigact_lock);
 
-      ers_assert (ers_free (&internal->pool, (void *) a2) == 0);
-      if (! ERS_SYSCALL_ERROR_P (ret) && a3 && data)
+      ifree (internal, th->id, (void *) a2);
+      if (! ERI_SYSCALL_ERROR_P (ret) && a3 && data)
 	{
 	  struct sigaction *act = (struct sigaction *) a3;
 	  struct rt_sigaction_data *d = data;
 	  act->act = d->old_act;
 	  act->flags = d->old_flags;
 	}
-      ers_assert (ers_free (&internal->pool, data) == 0);
+      ifree (internal, th->id, data);
     }
   /* TODO */
 
@@ -509,19 +631,20 @@ post_syscall (struct internal *internal, void *data,
 static void
 sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucontext)
 {
-  ers_assert (ers_printf ("sigaction %u\n", sig) == 0);
+  eri_assert (eri_printf ("sigaction %u\n", sig) == 0);
+  struct ers_thread *th = get_thread (internal);
 
   struct sigset old_set;
-  block_signals (&old_set);
-  ers_lock (&internal->sigact_lock);
+  block_signals (internal->replay, &old_set);
+  eri_lock (internal->replay, th->id, &internal->sigact_lock);
 
-  struct sigact_wrap *wrap = sigact_get (internal, &sig, ERS_RBT_EQ);
-  ers_assert (wrap);
+  struct sigact_wrap *wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
+  eri_assert (wrap);
   void *act = wrap->act;
   int flags = wrap->flags;
 
-  ers_unlock (&internal->sigact_lock);
-  restore_signals (&old_set);
+  eri_unlock (&internal->sigact_lock);
+  restore_signals (internal->replay, &old_set);
 
   if (flags & SA_SIGINFO)
     ((void (*) (int, struct siginfo *, void *)) act) (sig, info, ucontext);
@@ -532,50 +655,52 @@ sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucont
 static char
 atomic_lock (struct internal *internal, void *mem)
 {
-  ers_assert (ers_printf ("atomic_lock %lx\n", mem) == 0);
+  eri_assert (eri_printf ("atomic_lock %lx\n", mem) == 0);
   if (! acquire_active_lock (internal, 1)) return 0;
+  struct ers_thread *th = get_thread (internal);
 
-  struct atomic_lock *lock = atomic_get (internal, &mem, ERS_RBT_EQ);
+  struct atomic_lock *lock = atomic_get (internal, &mem, ERI_RBT_EQ);
   if (! lock)
     {
-      ers_assert (ers_calloc (&internal->pool, sizeof *lock, (void **) &lock) == 0);
+      lock = icalloc (internal, th->id, sizeof *lock);
       lock->mem = mem;
       atomic_insert (internal, lock);
     }
-  ers_unlock (&internal->atomic_lock);
+  eri_unlock (&internal->atomic_lock);
 
-  ers_lock (&lock->lock);
+  eri_lock (internal->replay, th->id, &lock->lock);
   if (lock->fd == 0)
     lock->fd = open_path (internal->path, "atomic-",
 			  OPEN_WITHID | internal->replay << OPEN_REPLAY, (unsigned long) mem);
-  ers_unlock (&lock->lock);
+  eri_unlock (&lock->lock);
   return 1;
 }
 
 static void
 atomic_unlock (struct internal *internal, void *mem, int mo)
 {
-  ers_assert (ers_printf ("atomic_unlock %lx %u\n", mem, mo) == 0);
+  eri_assert (eri_printf ("atomic_unlock %lx %u\n", mem, mo) == 0);
+  struct ers_thread *th = get_thread (internal);
 
-  ers_lock (&internal->atomic_lock);
-  struct atomic_lock *lock = atomic_get (internal, &mem, ERS_RBT_EQ);
-  ers_unlock (&internal->atomic_lock);
+  eri_lock (internal->replay, th->id, &internal->atomic_lock);
+  struct atomic_lock *lock = atomic_get (internal, &mem, ERI_RBT_EQ);
+  eri_unlock (&internal->atomic_lock);
 
-  ers_assert (lock);
+  eri_assert (lock);
   release_active_lock (internal, 1, 0);
 }
 
 static char
 atomic_barrier (struct internal *internal, int mo)
 {
-  ers_assert (ers_printf ("atomic_barrier %u\n", mo) == 0);
+  eri_assert (eri_printf ("atomic_barrier %u\n", mo) == 0);
   if (! acquire_active_lock (internal, 1)) return 0;
   release_active_lock (internal, 1, 0);
   return 1;
 }
 
 static struct internal internal;
-static char mbuf[64 * 1024 * 1024];
+static char pool_buf[64 * 1024 * 1024];
 static char initialized;
 
 static void
@@ -588,8 +713,8 @@ ent_init_process (const char *path,
   internal.set_thread = set;
   internal.get_set_thread_arg = arg;
 
-  internal.mbuf = mbuf;
-  internal.mbuf_size = sizeof mbuf;
+  internal.pool_buf = pool_buf;
+  internal.pool_buf_size = sizeof pool_buf;
 
   init_process (&internal, path);
   initialized = 1;
@@ -642,7 +767,7 @@ ent_syscall:\n\
   movq  -32(%rbp), %rdx		/* a3 */\n\
   movq  -24(%rbp), %rsi		/* a2 */\n\
   movq  -16(%rbp), %rdi		/* a1 */\n\
-  cmpl  $"ERS_STRINGIFY (__NR_clone)", -4(%rbp)\n\
+  cmpl  $"ERI_STRINGIFY (__NR_clone)", -4(%rbp)\n\
   je  .clone\n\
   movl  -4(%rbp), %eax		/* nr */\n\
   syscall\n\
@@ -720,7 +845,7 @@ ent_syscall:\n\
 
 #else
 
-#define ERS_SYSCALL_NCS(nr, ...) \
+#define ERI_SYSCALL_NCS(nr, ...) \
   _SYSCALL_NR (nr, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
 static char
@@ -733,7 +858,7 @@ ent_syscall (int nr, long a1, long a2, long a3, long a4, long a5, long a6, long 
   res = pre_syscall (&internal, &data, nr, a1, a2, a3, a4, a5, a6);
   if (ret)
     {
-      *ret = 1 /* (long) ERS_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6) */;
+      *ret = 1 /* (long) ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6) */;
       post_syscall (&internal, data, nr, a1, a2, a3, a4, a5, a6, *ret);
     }
   return res;
