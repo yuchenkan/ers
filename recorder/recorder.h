@@ -423,17 +423,21 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 #else
 
-#define _ERS_CAT(x, y) x##y
+#define ERS_NONE
 
-#define _ERS_SYSCALL(suffix) \
+#define ERS_SYSCALL \
   pushq	%rbx;									\
-  pushq	%rax;			/* system call number */			\
+  movq	%rsp, %rbx;								\
   subq	$8, %rsp;								\
+  andq	$-16, %rsp;		/* align stack */				\
+  movq  %rbx, (%rsp);								\
+  pushq	%rax;			/* system call number */			\
+  subq  $8, %rsp;								\
   call	ers_get_recorder@PLT;							\
   addq	$8, %rsp;								\
   movq	%rax, %rbx;		/* ers_recorder */				\
   testq	%rbx, %rbx;								\
-  jz	._ERS_CAT (ers_null1_, suffix);						\
+  jz	92f;			/* no ers_recorder, leave 2 */			\
   movl	(%rsp), %eax;								\
   pushq	%rdi;									\
   pushq	%rsi;									\
@@ -451,9 +455,9 @@ extern struct ers_recorder *ers_get_recorder (void);
   movl	%eax, %edi;		/* nr */					\
   call	*0x8(%rbx);		/* call ers_recorder->syscall */		\
   cmpb	$2, %al;								\
-  je	._ERS_CAT (ers_child_, suffix);	/* child return */			\
+  je	93f;			/* child, leave */				\
   testb	%al, %al;								\
-  jz	._ERS_CAT (ers_null2_, suffix);	/* not replaced */			\
+  jz	91f;			/* not replaced, leave 1 */			\
   popq	%r9;									\
   movq	8(%rsp), %rax;								\
   addq	$16, %rsp;								\
@@ -463,9 +467,10 @@ extern struct ers_recorder *ers_get_recorder (void);
   popq	%rsi;									\
   popq	%rdi;									\
   addq	$8, %rsp;								\
+  popq  %rsp;									\
   popq	%rbx;									\
-  jmp	._ERS_CAT (ers_done_syscall_, suffix);					\
-._ERS_CAT (ers_null2_, suffix):							\
+  jmp	94f;			/* replaced, leave 4 */				\
+91:				/* leave 1 */					\
   popq	%r9;									\
   addq	$16, %rsp;								\
   popq	%r8;									\
@@ -473,16 +478,124 @@ extern struct ers_recorder *ers_get_recorder (void);
   popq	%rdx;									\
   popq	%rsi;									\
   popq	%rdi;									\
-._ERS_CAT (ers_null1_, suffix):							\
+92:				/* leave 2 */					\
   popq	%rax;									\
+  popq  %rsp;									\
   popq	%rbx;									\
   syscall;									\
-  jmp	._ERS_CAT (ers_done_syscall_, suffix);					\
-._ERS_CAT (ers_child_, suffix):							\
+  jmp	94f;									\
+93:				/* child leave */				\
   xorq	%rax, %rax;								\
-._ERS_CAT (ers_done_syscall_, suffix):
+94:				/* leave 3 */
 
-#define ERS_SYSCALL _ERS_SYSCALL (__COUNTER__)
+#define ERS_LOCK_1(mem)	\
+  pushq	mem;			\
+  pushq	%rbp;			\
+  pushq	%rax;			\
+  movq	%rsp, %rbp;		\
+  subq	$8, %rsp;		\
+  andq	$-16, %rsp;		\
+  movq	%rbp, (%rsp);		\
+  call	ers_get_recorder@PLT;	\
+  testq	%rax, %rax;		\
+  jz	96f;			\
+				\
+  pushq	%rbx;			\
+  pushq	%rdi;			\
+  movq	%rax, %rbx;		\
+  movq	16(%rbp), %rdi;		\
+  call	*16(%rbx);		\
+  testb	%al, %al;		\
+  jz	95f;			\
+				\
+  movq	16(%rbp), %rdi;
+
+#define ERS_LOCK_2(mem)	\
+  pushfq;			\
+  pushq	%rsi;			\
+  movl	$5, %esi;		\
+  call  *24(%rbx);		\
+  popq	%rsi;			\
+  popfq;			\
+  popq	%rdi;			\
+  popq	%rbx;			\
+  popq	%rsp;			\
+  popq	%rax;			\
+  popq	%rbp;			\
+  popq	mem;			\
+  jmp	97f;			\
+95:				\
+  popq	%rdi;			\
+  popq	%rbx;			\
+96:				\
+  popq	%rsp;			\
+  popq	%rax;			\
+  popq	%rbp;			\
+  popq	mem;
+
+#define ERS_CMPL(lock, val, mem) \
+  ERS_LOCK_1 (mem)		\
+  cmpl	val, (%rdi);		\
+  ERS_LOCK_2 (mem)		\
+  lock;	cmpl	val, (mem);	\
+97:
+
+#define ERS_MOVL(lock, val, mem) \
+  ERS_LOCK_1 (mem)		\
+  movl	val, (%rdi);		\
+  ERS_LOCK_2 (mem)		\
+  lock;	movl	val, (mem);	\
+97:
+
+#define ERS_DECL(lock, mem) \
+  ERS_LOCK_1 (mem)		\
+  decl	(%rdi);			\
+  ERS_LOCK_2 (mem)		\
+  lock;	decl	(mem);		\
+97:
+
+#define ERS_XCHGL(reg, mem) \
+  subq	$8, %rsp;		\
+  movl	reg, (%rsp);		\
+  ERS_LOCK_1 (mem)		\
+				\
+  movl	24(%rbp), %esi;	 	\
+  xchgl	%esi, (%rdi);		\
+  movl	%esi, 24(%rbp);		\
+				\
+  ERS_LOCK_2 (mem)		\
+  movl	(%rsp), reg;		\
+  addq	$8, %rsp;		\
+  xchgl	reg, (mem);		\
+  jmp	98f;			\
+97:				\
+  movl	(%rsp), reg;		\
+  addq	$8, %rsp;		\
+98:
+
+#define ERS_CMPXCHGL(lock, reg, mem) \
+  subq	$8, %rsp;			\
+  movl	%eax, 4(%rsp);			\
+  movl	reg, (%rsp);			\
+  ERS_LOCK_1 (mem)			\
+					\
+  movl	24(%rbp), %esi;			\
+  movl	28(%rbp), %eax;			\
+  cmpxchgl	%esi, (%rdi);		\
+  movl	%eax, 28(%rbp);			\
+					\
+  ERS_LOCK_2 (mem)			\
+  movl	(%rsp), reg;			\
+  movl	4(%rsp), %eax;			\
+  addq	$8, %rsp;			\
+  lock;	cmpxchgl	reg, (mem);	\
+  jmp	98f;				\
+97:					\
+  movl	(%rsp), reg;			\
+  movl	4(%rsp), %eax;			\
+  addq	$8, %rsp;			\
+98:
+
 
 #endif
 

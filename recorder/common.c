@@ -25,7 +25,7 @@ eri_dump_maps (void)
 static void
 process_map_entry (char *buf, struct eri_map_entry *ent)
 {
-  eri_assert (eri_printf ("%s\n", buf) == 0);
+  /* eri_assert (eri_printf ("%s\n", buf) == 0); */
 
   ent->start = ent->end = 0;
   ent->perms = 0;

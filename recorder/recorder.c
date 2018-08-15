@@ -260,35 +260,35 @@ fini_thread (struct internal *internal, struct ers_thread *th)
 }
 
 asm ("  .text\n\
-  .type set_context, @function\n\
+  .type	set_context, @function\n\
 set_context:\n\
-  movq  %rbx, (%rdi)\n\
-  movq  %rbp, 8(%rdi)\n\
-  movq  %r12, 16(%rdi)\n\
-  movq  %r13, 24(%rdi)\n\
-  movq  %r14, 32(%rdi)\n\
-  movq  %r15, 40(%rdi)\n\
+  movq	%rbx, (%rdi)\n\
+  movq	%rbp, 8(%rdi)\n\
+  movq	%r12, 16(%rdi)\n\
+  movq	%r13, 24(%rdi)\n\
+  movq	%r14, 32(%rdi)\n\
+  movq	%r15, 40(%rdi)\n\
 \n\
-  movq  %rdi, 48(%rdi)\n\
-  movq  %rsi, 56(%rdi)\n\
-  movq  %rdx, 64(%rdi)\n\
-  movq  %rcx, 72(%rdi)\n\
-  movq  %r8, 80(%rdi)\n\
-  movq  %r9, 88(%rdi)\n\
+  movq	%rdi, 48(%rdi)\n\
+  movq	%rsi, 56(%rdi)\n\
+  movq	%rdx, 64(%rdi)\n\
+  movq	%rcx, 72(%rdi)\n\
+  movq	%r8, 80(%rdi)\n\
+  movq	%r9, 88(%rdi)\n\
 \n\
-  movq  (%rsp), %rcx\n\
-  movq  %rcx, 96(%rdi)		/* %rip */\n\
-  leaq  8(%rsp), %rcx\n\
-  movq  %rcx, 104(%rdi)		/* %rsp */\n\
+  movq	(%rsp), %rcx\n\
+  movq	%rcx, 96(%rdi)		/* %rip */\n\
+  leaq	8(%rsp), %rcx\n\
+  movq	%rcx, 104(%rdi)		/* %rsp */\n\
 \n\
-  leaq    112(%rdi), %rcx\n\
-  fnstenv (%rcx)\n\
-  fldenv  (%rcx)\n\
-  stmxcsr 136(%rdi)\n\
+  leaq	112(%rdi), %rcx\n\
+  fnstenv	(%rcx)\n\
+  fldenv	(%rcx)\n\
+  stmxcsr	136(%rdi)\n\
 \n\
-  xorb %al, %al\n\
+  xorb	%al, %al\n\
   ret\n\
-  .size set_context, .-set_context\n"
+  .size	set_context, .-set_context\n"
 );
 
 /* static */ char set_context (struct eri_context *ctx);
@@ -600,6 +600,7 @@ syscall (struct internal *internal, int nr,
 
   char replay = internal->replay;
   struct ers_thread *th = get_thread (internal);
+  eri_assert (eri_printf ("th %lu\n", th->id) == 0);
 
   if (nr == __NR_exit || nr == __NR_exit_group)
     {
@@ -868,6 +869,7 @@ atomic_lock (struct internal *internal, void *mem)
 
   char replay = internal->replay;
   struct ers_thread *th = get_thread (internal);
+  eri_assert (eri_printf ("th %lu\n", th->id) == 0);
 
   llock (replay, th->id, &internal->atomics_lock);
   struct atomic_lock *lock = atomic_get (internal, &mem, ERI_RBT_EQ);
@@ -935,132 +937,133 @@ ent_init_process (const char *path,
 			       long a5, long a6, long *ret);
 
 asm ("  .text\n\
-  .type  ent_syscall, @function\n\
+  .type	ent_syscall, @function\n\
 ent_syscall:\n\
   .cfi_startproc\n\
-  pushq  %rbp\n\
+  pushq	%rbp\n\
   .cfi_def_cfa_offset 16\n\
   .cfi_offset 6, -16\n\
-  movq  %rsp, %rbp\n\
+  movq	%rsp, %rbp\n\
   .cfi_def_cfa_register 6\n\
-  movb  initialized(%rip), %al\n\
-  testb  %al, %al\n\
-  jz  .leave\n\
+  movb	initialized(%rip), %al\n\
+  testb	%al, %al\n\
+  jz	.leave\n\
 \n\
-  subq  $56, %rsp\n\
-  movl  %edi, -4(%rbp)		/* nr */\n\
-  movq  %rsi, -16(%rbp)		/* a1 */\n\
-  movq  %rdx, -24(%rbp)		/* a2 */\n\
-  movq  %rcx, -32(%rbp)		/* a3 */\n\
-  movq  %r8, -40(%rbp)		/* a4 */\n\
-  movq  %r9, -48(%rbp)		/* a5 */\n\
-  movq  16(%rbp), %rax\n\
-  movq  %rax, -56(%rbp)		/* a6 */\n\
+  subq	$56, %rsp\n\
+  movl	%edi, -4(%rbp)		/* nr */\n\
+  movq	%rsi, -16(%rbp)		/* a1 */\n\
+  movq	%rdx, -24(%rbp)		/* a2 */\n\
+  movq	%rcx, -32(%rbp)		/* a3 */\n\
+  movq	%r8, -40(%rbp)		/* a4 */\n\
+  movq	%r9, -48(%rbp)		/* a5 */\n\
+  movq	16(%rbp), %rax\n\
+  movq	%rax, -56(%rbp)		/* a6 */\n\
 \n\
-  cmpl  $"ERI_STRINGIFY (__NR_clone)", -4(%rbp)\n\
-  je  .clone\n\
-  pushq  24(%rbp)		/* ret */\n\
-  pushq  -56(%rbp)		/* a6 */\n\
-  pushq  -48(%rbp)		/* a5 */\n\
-  movq  -40(%rbp), %r9		/* a4 */\n\
-  movq  -32(%rbp), %r8		/* a3 */\n\
-  movq  -24(%rbp), %rcx		/* a2 */\n\
-  movq  -16(%rbp), %rdx		/* a1 */\n\
-  movl  -4(%rbp), %esi		/* nr */\n\
-  leaq  internal(%rip), %rdi	/* internal */\n\
-  call  syscall\n\
-  addq  $80,  %rsp\n\
-  jmp  .leave\n\
+  cmpl	$"ERI_STRINGIFY (__NR_clone)", -4(%rbp)\n\
+  je	.clone\n\
+  pushq	24(%rbp)		/* ret */\n\
+  pushq	-56(%rbp)		/* a6 */\n\
+  pushq	-48(%rbp)		/* a5 */\n\
+  movq	-40(%rbp), %r9		/* a4 */\n\
+  movq	-32(%rbp), %r8		/* a3 */\n\
+  movq	-24(%rbp), %rcx		/* a2 */\n\
+  movq	-16(%rbp), %rdx		/* a1 */\n\
+  movl	-4(%rbp), %esi		/* nr */\n\
+  leaq	internal(%rip), %rdi	/* internal */\n\
+  call	syscall\n\
+  addq	$80,  %rsp\n\
+  jmp	.leave\n\
 .clone:\n\
-  subq  $8, %rsp\n\
-  pushq  -56(%rbp)		/* a6 */\n\
-  pushq  -48(%rbp)		/* a5 */\n\
-  movq  -40(%rbp), %r9		/* a4 */\n\
-  movq  -32(%rbp), %r8		/* a3 */\n\
-  movq  -24(%rbp), %rcx		/* a2 */\n\
-  movq  -16(%rbp), %rdx		/* a1 */\n\
-  leaq  -64(%rbp), %rsi		/* &clone */\n\
-  leaq  internal(%rip), %rdi	/* internal */\n\
-  call  pre_clone\n\
-  testb  %al, %al\n\
-  jnz  .continue\n\
-  addq  $80, %rsp\n\
-  jmp  .leave\n\
+  subq	$8, %rsp		/* -64(%rbp) clone */\n\
+  pushq	-56(%rbp)		/* a6 */\n\
+  pushq	-48(%rbp)		/* a5 */\n\
+  movq	-40(%rbp), %r9		/* a4 */\n\
+  movq	-32(%rbp), %r8		/* a3 */\n\
+  movq	-24(%rbp), %rcx		/* a2 */\n\
+  movq	-16(%rbp), %rdx		/* a1 */\n\
+  leaq	-64(%rbp), %rsi		/* &clone */\n\
+  leaq	internal(%rip), %rdi	/* internal */\n\
+  call	pre_clone\n\
+  test	 %al, %al\n\
+  jnz	.continue\n\
+  addq	$80, %rsp\n\
+  jmp	.leave\n\
 \n\
 .continue:\n\
-  addq  $24, %rsp\n\
-  movq  -56(%rbp), %r9		/* a6 */\n\
-  movq  -48(%rbp), %r8		/* a5 */\n\
-  movq  -40(%rbp), %r10		/* a4 */\n\
-  movq  -32(%rbp), %rdx		/* a3 */\n\
-  movq  -24(%rbp), %rsi		/* a2 */\n\
-  movq  -16(%rbp), %rdi		/* a1 */\n\
+  addq	$16, %rsp\n\
+  movq	-56(%rbp), %r9		/* a6 */\n\
+  movq	-48(%rbp), %r8		/* a5 */\n\
+  movq	-40(%rbp), %r10		/* a4 */\n\
+  movq	-32(%rbp), %rdx		/* a3 */\n\
+  movq	-24(%rbp), %rsi		/* a2 */\n\
+  movq	-16(%rbp), %rdi		/* a1 */\n\
 \n\
-  subq  $64, %rsi\n\
-  movq  8(%rbp), %rax		/* return address */\n\
-  movq  %rax, 56(%rsi)		/* push the return address on the new stack */\n\
-  movq  -64(%rbp), %rax\n\
-  movq  %rax, 48(%rsi)		/* clone */\n\
-  movq  -16(%rbp), %rax\n\
-  movq  %rax, 40(%rsi)		/* a1 */\n\
-  movq  -24(%rbp), %rax\n\
-  movq  %rax, 32(%rsi)		/* a2 */\n\
-  movq  -32(%rbp), %rax\n\
-  movq  %rax, 24(%rsi)		/* a3 */\n\
-  movq  -40(%rbp), %rax\n\
-  movq  %rax, 16(%rsi)		/* a4 */\n\
-  movq  -48(%rbp), %rax\n\
-  movq  %rax, 8(%rsi)		/* a5 */\n\
-  movq  -56(%rbp), %rax\n\
-  movq  %rax, (%rsi)		/* a6 */\n\
+  subq	$64, %rsi\n\
+  movq	8(%rbp), %rax		/* return address */\n\
+  movq	%rax, 56(%rsi)		/* push the return address on the new stack */\n\
+  movq	-64(%rbp), %rax\n\
+  movq	%rax, 48(%rsi)		/* clone */\n\
+  movq	-16(%rbp), %rax\n\
+  movq	%rax, 40(%rsi)		/* a1 */\n\
+  movq	-24(%rbp), %rax\n\
+  movq	%rax, 32(%rsi)		/* a2 */\n\
+  movq	-32(%rbp), %rax\n\
+  movq	%rax, 24(%rsi)		/* a3 */\n\
+  movq	-40(%rbp), %rax\n\
+  movq	%rax, 16(%rsi)		/* a4 */\n\
+  movq	-48(%rbp), %rax\n\
+  movq	%rax, 8(%rsi)		/* a5 */\n\
+  movq	-56(%rbp), %rax\n\
+  movq	%rax, (%rsi)		/* a6 */\n\
 \n\
-  movl  -4(%rbp), %eax		/* nr */\n\
+  movl	-4(%rbp), %eax		/* nr */\n\
   .cfi_endproc\n\
   syscall\n\
-  testq  %rax, %rax\n\
-  jz  .child\n\
+  testq	%rax, %rax\n\
+  jz	.child\n\
 \n\
   .cfi_startproc\n\
   .cfi_def_cfa_offset 16\n\
   .cfi_offset 6, -16\n\
   .cfi_def_cfa_register 6\n\
-  movq  24(%rbp), %rdi\n\
-  movq  %rax, (%rdi)\n\
-  pushq  %rax			/* *ret */\n\
-  pushq  -56(%rbp)		/* a6 */\n\
-  pushq  -48(%rbp)		/* a5 */\n\
-  movq  -40(%rbp), %r9		/* a4 */\n\
-  movq  -32(%rbp), %r8		/* a3 */\n\
-  movq  -24(%rbp), %rcx		/* a2 */\n\
-  movq  -16(%rbp), %rdx		/* a1 */\n\
-  movq  -64(%rbp), %rsi		/* clone */\n\
-  leaq  internal(%rip), %rdi	/* internal */\n\
-  call  post_clone\n\
-  addq  $80, %rsp\n\
-  movb  $1, %al\n\
+  subq	$8, %rsp\n\
+  movq	24(%rbp), %rdi\n\
+  movq	%rax, (%rdi)\n\
+  pushq	%rax			/* *ret */\n\
+  pushq	-56(%rbp)		/* a6 */\n\
+  pushq	-48(%rbp)		/* a5 */\n\
+  movq	-40(%rbp), %r9		/* a4 */\n\
+  movq	-32(%rbp), %r8		/* a3 */\n\
+  movq	-24(%rbp), %rcx		/* a2 */\n\
+  movq	-16(%rbp), %rdx		/* a1 */\n\
+  movq	-64(%rbp), %rsi		/* clone */\n\
+  leaq	internal(%rip), %rdi	/* internal */\n\
+  call	post_clone\n\
+  addq	$96, %rsp\n\
+  movb	$1, %al\n\
 .leave:\n\
   leave\n\
   .cfi_def_cfa 7, 8\n\
   ret\n\
 \n\
 .child:\n\
-  movq  %rsp, %rbp\n\
-  subq  $16, %rsp\n\
-  movq  $0, (%rsp)		/* *ret */\n\
-  pushq  (%rbp)			/* a6 */\n\
-  pushq  8(%rbp)		/* a5 */\n\
-  movq  16(%rbp), %r9		/* a4 */\n\
-  movq  24(%rbp), %r8		/* a3 */\n\
-  movq  32(%rbp), %rcx		/* a2 */\n\
-  movq  40(%rbp), %rdx		/* a1 */\n\
-  movq  48(%rbp), %rsi		/* clone */\n\
-  leaq  internal(%rip), %rdi	/* internal */\n\
-  call  post_clone\n\
-  addq  $88, %rsp\n\
-  movb  $2, %al\n\
+  movq	%rsp, %rbp\n\
+  subq	$16, %rsp\n\
+  movq	$0, (%rsp)		/* *ret */\n\
+  pushq	(%rbp)			/* a6 */\n\
+  pushq	8(%rbp)		/* a5 */\n\
+  movq	16(%rbp), %r9		/* a4 */\n\
+  movq	24(%rbp), %r8		/* a3 */\n\
+  movq	32(%rbp), %rcx		/* a2 */\n\
+  movq	40(%rbp), %rdx		/* a1 */\n\
+  movq	48(%rbp), %rsi		/* clone */\n\
+  leaq	internal(%rip), %rdi	/* internal */\n\
+  call	post_clone\n\
+  addq	$88, %rsp\n\
+  movb	$2, %al\n\
   ret\n\
   .cfi_endproc\n\
-  .size ent_syscall, .-ent_syscall\n"
+  .size	ent_syscall, .-ent_syscall\n"
 );
 
 #else
