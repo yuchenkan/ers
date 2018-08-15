@@ -179,7 +179,7 @@ eri_load_mark (int fd)
   size_t s;
   char mk;
   eri_assert (eri_fread (fd, &mk, sizeof mk, &s) == 0);
-  return s == 0 ? ERI_SMARK_NONE : mk;
+  return s == 0 ? ERI_MARK_NONE : mk;
 }
 
 void

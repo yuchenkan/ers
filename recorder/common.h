@@ -34,9 +34,10 @@ void eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 #define ERI_OPEN_REPLAY 2
 int eri_open_path (const char *path, const char *name, int flags, unsigned long id);
 
-#define ERI_SMARK_NONE 0
-#define ERI_SMARK_INIT_MAP 1
-#define ERI_SMARK_INIT_CONTEXT 2
+#define ERI_MARK_NONE 0
+
+#define ERI_MARK_INIT_MAP 1
+#define ERI_MARK_INIT_CONTEXT 2
 
 struct eri_context
 {

@@ -234,7 +234,7 @@ start (void **arg)
 
   int init = eri_open_path (path, "init", ERI_OPEN_REPLAY, 0);
   char mk;
-  while ((mk = eri_load_mark (init)) == ERI_SMARK_INIT_MAP)
+  while ((mk = eri_load_mark (init)) == ERI_MARK_INIT_MAP)
     {
       struct map *map = __builtin_alloca (sizeof *map);
       eri_load_init_map (init, &map->start, &map->end, &map->flags);
@@ -244,10 +244,10 @@ start (void **arg)
 	eri_skip_init_map_data (init, map->end - map->start);
       map_insert (&maps, map);
     }
-  eri_assert (mk == ERI_SMARK_INIT_CONTEXT);
+  eri_assert (mk == ERI_MARK_INIT_CONTEXT);
   struct eri_context ctx;
   eri_load_init_context (init, &ctx);
-  eri_assert (eri_load_mark (init) == ERI_SMARK_NONE);
+  eri_assert (eri_load_mark (init) == ERI_MARK_NONE);
 
   size_t data_size = eri_round_up (
 	6 * sizeof (unsigned long) /* init, stack[2], text[2], map_size */
