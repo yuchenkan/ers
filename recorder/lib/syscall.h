@@ -82,6 +82,9 @@
 #define ERI_SYSCALL(name, ...) \
   _SYSCALL_NR (__NR_##name, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
+#define ERI_SYSCALL_NCS(no, ...) \
+  _SYSCALL_NR (no, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
+
 #define ERI_SYSCALL_ERROR_P(val) \
   ((unsigned long) (long) (val) >= -4095L)
 
