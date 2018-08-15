@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <stdarg.h>
 #include <asm/unistd.h>
 
 #include "recorder.h"
@@ -179,7 +180,7 @@ struct internal
   struct lock threads_lock;
   ERI_LST_LIST_FIELDS (thread)
 
-  struct lock sigacts_lock; /* TODO lock */
+  struct lock sigacts_lock;
   ERI_RBT_TREE_FIELDS (sigact, struct sigact_wrap)
 };
 
@@ -425,9 +426,42 @@ restore_signals (const struct sigset *old_set)
   ERI_ASSERT_SYSCALL (rt_sigprocmask, SIG_SETMASK, old_set, 0, SIG_SETSIZE);
 }
 
+struct siginfo
+{
+  char buf[128];
+};
+
+struct ucontext
+{
+  char buf[168];
+};
+
+static void
+save_signal (int fd, int sig, const struct siginfo *info,
+	     const struct ucontext *ucontext)
+{
+  eri_assert (eri_fwrite (fd, (const char *) &sig, sizeof sig) == 0);
+  eri_assert (eri_fwrite (fd, (const char *) info, sizeof *info) == 0);
+  eri_assert (eri_fwrite (fd, (const char *) ucontext, sizeof *ucontext) == 0);
+}
+
+static void
+load_signal (int fd, int *sig, struct siginfo *info,
+	     struct ucontext *ucontext)
+{
+  eri_assert (eri_fread (fd, (char *) sig, sizeof *sig, 0) == 0);
+  eri_assert (eri_fread (fd, (char *) info, sizeof *info, 0) == 0);
+  eri_assert (eri_fread (fd, (char *) ucontext, sizeof *ucontext, 0) == 0);
+}
+
+
 /* 0 for MARK_NONE */
 #define MARK_THREAD_ACTIVE 1
 #define MARK_THREAD_SIGNAL 2
+#define MARK_THREAD_SYSCALL 3
+
+static void sigaction (struct internal *internal, int sig,
+		       struct siginfo *info, void *ucontext);
 
 static char
 acquire_active_lock (struct internal *internal, long v, char mk)
@@ -456,13 +490,25 @@ acquire_active_lock (struct internal *internal, long v, char mk)
       do_lock (&internal->replay_lock);
       struct ers_thread *th = get_thread (internal);
       unsigned long tid = th->id;
-      char mk = eri_load_mark (th->fd);
-      eri_assert (mk == MARK_THREAD_SIGNAL || mk == MARK_THREAD_ACTIVE);
-      if (mk == MARK_THREAD_SIGNAL)
+
+      char trigger_signal = 0;
+      int sig;
+      struct siginfo info;
+      struct ucontext ucontext;
+
+      if (mk == MARK_THREAD_ACTIVE)
 	{
-	  /* TODO load signal */
+	  char m = eri_load_mark (th->fd);
+	  eri_assert (m == MARK_THREAD_SIGNAL || m == MARK_THREAD_ACTIVE);
+	  if (m == MARK_THREAD_SIGNAL)
+	    {
+	      trigger_signal = 1;
+	      load_signal (th->fd, &sig, &info, &ucontext);
+	    }
 	}
       do_unlock (&internal->replay_lock);
+
+      if (trigger_signal) sigaction (internal, sig, &info, &ucontext);
 
       unsigned long exp = tid;
       while (! __atomic_compare_exchange_n (&lock->tid, &exp, (unsigned long) -1, 1,
@@ -471,7 +517,6 @@ acquire_active_lock (struct internal *internal, long v, char mk)
       eri_assert (++internal->active_lock.val > 0);
       __atomic_store_n (&lock->tid,
 			load_lock (lock->fd), __ATOMIC_RELEASE);
-      /* if signal trigger signal and redo this function */
       return 0;
     }
 }
@@ -486,10 +531,50 @@ release_active_lock (struct internal *internal, long v, char exit)
     restore_signals (&get_thread (internal)->old_set);
 }
 
-struct siginfo
+static void
+check_syscall (char replay, int fd, int nr, ...)
 {
-  /* TODO */
-};
+  char n;
+  if (nr == __NR_exit || nr == __NR_exit_group) n = 1;
+  else if (nr == __NR_rt_sigaction) n = 3;
+  else if (nr == __NR_clone) n = 5;
+
+  long a[6];
+
+  va_list arg;
+  va_start (arg, nr);
+  short i = 0;
+  for (i = 0; i < n; ++i)
+    a[i] = (long) va_arg (arg, long);
+  va_end (arg);
+
+  if (! replay)
+    {
+      eri_save_mark (fd, MARK_THREAD_SYSCALL);
+      eri_assert (eri_fwrite (fd, (const char *) a, n * sizeof a[0]) == 0);
+    }
+  else
+    {
+      eri_assert (eri_load_mark (fd) == MARK_THREAD_SYSCALL);
+      long b[6];
+      eri_assert (eri_fread (fd, (char *) b, n * sizeof a[0], 0) == 0);
+      eri_assert (eri_strncmp ((const char *) a, (const char *) b, n * sizeof a[0]) == 0);
+    }
+}
+
+static void
+save_rt_sigaction (int fd, long a3, long ret)
+{
+  eri_assert (eri_fwrite (fd, (const char *) &a3, sizeof a3) == 0);
+  eri_assert (eri_fwrite (fd, (const char *) &ret, sizeof ret) == 0);
+}
+
+static void
+load_rt_sigaction (int fd, long *a3, long *ret)
+{
+  eri_assert (eri_fread (fd, (char *) a3, sizeof *a3, 0) == 0);
+  eri_assert (eri_fread (fd, (char *) ret, sizeof *ret, 0) == 0);
+}
 
 struct sigaction
 {
@@ -518,6 +603,8 @@ syscall (struct internal *internal, int nr,
 
   if (nr == __NR_exit || nr == __NR_exit_group)
     {
+      check_syscall (replay, th->fd, nr, a1);
+
       char grp = th->id == 0 /* main thread */
 		 || nr == __NR_exit_group;
       if (grp)
@@ -590,6 +677,8 @@ syscall (struct internal *internal, int nr,
     }
   else if (nr == __NR_rt_sigaction)
     {
+      check_syscall (replay, th->fd, nr, a1, a2, a3);
+
       int sig = (int) a1;
 
       struct sigact_wrap *wrap;
@@ -628,7 +717,13 @@ syscall (struct internal *internal, int nr,
 	  newact.restorer = act->restorer;
 	}
 
-      *ret = ERI_SYSCALL_NCS (nr, a1, a2 ? &newact : 0, a3);
+      if (! replay)
+	{
+	  *ret = ERI_SYSCALL_NCS (nr, a1, a2 ? &newact : 0, a3);
+	  save_rt_sigaction (th->fd, a3, *ret);
+	}
+      else
+	load_rt_sigaction (th->fd, &a3, ret);
 
       if (a2 || a3) lunlock (replay, &internal->sigacts_lock);
 
@@ -689,10 +784,12 @@ pre_clone (struct internal *internal, struct clone **clone,
   if (! acquire_active_lock (internal, 2, MARK_THREAD_ACTIVE))
     return 0;
 
+  char replay = internal->replay;
   struct ers_thread *th = get_thread (internal);
+  check_syscall (replay, th->fd, __NR_clone, a1, a2, a3, a4, a5);
 
   *clone = imalloc (internal, th->id, sizeof **clone);
-  (*clone)->child_id = ATOMIC_FETCH_ADD (internal->replay, th->id, &internal->thread_id, 1);
+  (*clone)->child_id = ATOMIC_FETCH_ADD (replay, th->id, &internal->thread_id, 1);
   eri_memcpy (&(*clone)->old_set, &th->old_set, sizeof th->old_set);
   return 1;
 }
@@ -730,6 +827,8 @@ sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucont
   if (acquire_active_lock (internal, 1, MARK_THREAD_SIGNAL))
     {
       struct ers_thread *th = get_thread (internal);
+      save_signal (th->fd, sig, info, ucontext);
+
       llock (internal->replay, th->id, &internal->sigacts_lock);
 
       struct sigact_wrap *wrap = sigact_get (internal, &sig, ERI_RBT_EQ);

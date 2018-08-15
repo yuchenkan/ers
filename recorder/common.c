@@ -127,11 +127,11 @@ eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 static void
 phex (char *p, unsigned long v)
 {
-  char i, s = 1;
+  short i, s = 1;
   while (s < 8 && v & ~(((unsigned long) 1 << (s * 8)) - 1)) ++s;
   for (i = s * 2 - 1; i >= 0; --i)
     {
-      p[(unsigned char) i] = eri_itoc (v % 16);
+      p[i] = eri_itoc (v % 16);
       v /= 16;
     }
   eri_assert (v == 0);

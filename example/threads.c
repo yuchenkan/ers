@@ -15,11 +15,11 @@
 
 #ifdef SIGNAL
 #include <signal.h>
-int caught = 0;
+pthread_spinlock_t caught;
 void handler (int sig)
 {
   fprintf (stderr, "signal\n");
-  caught = 1;
+  pthread_spin_unlock (&caught);
 }
 #endif
 
@@ -51,9 +51,12 @@ int main ()
   if (ok) assert (pthread_join (thread, NULL) == 0);
   fprintf (stderr, "zzz\n");
 #ifdef SIGNAL
+  pthread_spin_init (&caught, PTHREAD_PROCESS_PRIVATE);
+  pthread_spin_lock (&caught);
   fprintf (stderr, "%p\n", handler);
   signal (SIGINT, handler);
-  while (! caught) continue;
+  pthread_spin_lock (&caught);
+  pthread_spin_destroy (&caught);
   assert (signal (SIGINT, 0) == handler);
 #endif
   return 0;
