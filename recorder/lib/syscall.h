@@ -6,7 +6,7 @@
 #include "util.h"
 
 #define _SYSCALL_NARGS_X(a, b, c, d, e, f, g, h, i, ...) i
-#define _SYSCALL_NARGS(...) \
+#define ERI_SYSCALL_NARGS(...) \
   _SYSCALL_NARGS_X (__VA_ARGS__, 7, 6, 5, 4, 3, 2, 1, 0)
 
 #define _LOAD_ARGS_0()
@@ -80,10 +80,10 @@
   })
 
 #define ERI_SYSCALL(name, ...) \
-  _SYSCALL_NR (__NR_##name, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
+  _SYSCALL_NR (__NR_##name, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
 #define ERI_SYSCALL_NCS(no, ...) \
-  _SYSCALL_NR (no, _SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
+  _SYSCALL_NR (no, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
 #define ERI_SYSCALL_ERROR_P(val) \
   ((unsigned long) (long) (val) >= -4095L)
