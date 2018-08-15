@@ -359,7 +359,7 @@ extern struct ers_recorder *ers_get_recorder (void);
 #define ers_atomic_read_barrier(rec) ERS_ATOMIC_BARRIER (rec, ERS_ATOMIC_ACQUIRE)
 #define ers_atomic_write_barrier(rec) ERS_ATOMIC_BARRIER (rec, ERS_ATOMIC_RELEASE)
 #define ers_atomic_forced_read(rec, res, x) \
-  ERS_ATOMIC_LOAD (rec, res, &(x), ERS_ATOMIC_SEQ_CST)
+  ERS_ATOMIC_LOAD (rec, res, &(x), ERS_ATOMIC_RELAXED)
 #define ers_atomic_thread_fence_acquire(rec) \
   ERS_ATOMIC_BARRIER (rec, ERS_ATOMIC_ACQUIRE)
 #define ers_atomic_thread_fence_release(rec) \
