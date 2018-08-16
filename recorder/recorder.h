@@ -488,6 +488,10 @@ extern struct ers_recorder *ers_get_recorder (void);
   xorq	%rax, %rax;								\
 94:				/* leave 3 */
 
+/* %rdi is mem. %rax is free to use.
+   24(%rbp) is last addr on the stack before the call.
+   Instructions followed immedaitely are executed when there is no
+   interception. Otherwise is jumped to 97f.  */
 #define _ERS_LOCK_1(mem)	\
   pushq	mem;			\
   pushq	%rbp;			\
@@ -533,6 +537,7 @@ extern struct ers_recorder *ers_get_recorder (void);
   popq	%rbp;			\
   popq	mem;
 
+
 #define ERS_CMPL(lock, val, mem) \
   _ERS_LOCK_1 (mem)		\
   cmpl	val, (%rdi);		\
@@ -540,12 +545,36 @@ extern struct ers_recorder *ers_get_recorder (void);
   lock;	cmpl	val, (mem);	\
 97:
 
-#define ERS_MOVL(lock, val, mem) \
+#define ERS_MOVL_VM(lock, val, mem) \
+  pushfq;			\
   _ERS_LOCK_1 (mem)		\
   movl	val, (%rdi);		\
   _ERS_LOCK_2 (mem)		\
+  popfq;			\
   lock;	movl	val, (mem);	\
-97:
+  jmp	98f;			\
+97:				\
+  popfq;			\
+98:
+
+#define ERS_MOVL_MR(lock, mem, reg) \
+  pushfq;			\
+  subq	$8, %rsp;		\
+  _ERS_LOCK_1 (mem)		\
+				\
+  movl	(%rdi), %eax;		\
+  movl	%eax, 24(%rbp);		\
+				\
+  _ERS_LOCK_2 (mem)		\
+  addq	$8, %rsp;		\
+  popfq;			\
+  lock;	movl	(mem), reg;	\
+  jmp	98f;			\
+97:				\
+  movl	(%rsp), reg;		\
+  addq	$8, %rsp;		\
+  popfq;			\
+98:
 
 #define ERS_DECL(lock, mem) \
   _ERS_LOCK_1 (mem)		\
@@ -555,6 +584,7 @@ extern struct ers_recorder *ers_get_recorder (void);
 97:
 
 #define ERS_XCHGL(reg, mem) \
+  pushfq;			\
   subq	$8, %rsp;		\
   movl	reg, (%rsp);		\
   _ERS_LOCK_1 (mem)		\
@@ -566,34 +596,36 @@ extern struct ers_recorder *ers_get_recorder (void);
   _ERS_LOCK_2 (mem)		\
   movl	(%rsp), reg;		\
   addq	$8, %rsp;		\
+  popfq;			\
   xchgl	reg, (mem);		\
   jmp	98f;			\
 97:				\
   movl	(%rsp), reg;		\
   addq	$8, %rsp;		\
+  popfq;			\
 98:
 
 #define ERS_CMPXCHGL(lock, reg, mem) \
-  subq	$8, %rsp;			\
-  movl	%eax, 4(%rsp);			\
-  movl	reg, (%rsp);			\
-  _ERS_LOCK_1 (mem)			\
-					\
-  movl	24(%rbp), %esi;			\
-  movl	28(%rbp), %eax;			\
-  cmpxchgl	%esi, (%rdi);		\
-  movl	%eax, 28(%rbp);			\
-					\
-  _ERS_LOCK_2 (mem)			\
-  movl	(%rsp), reg;			\
-  movl	4(%rsp), %eax;			\
-  addq	$8, %rsp;			\
-  lock;	cmpxchgl	reg, (mem);	\
-  jmp	98f;				\
-97:					\
-  movl	(%rsp), reg;			\
-  movl	4(%rsp), %eax;			\
-  addq	$8, %rsp;			\
+  subq	$8, %rsp;					\
+  movl	%eax, 4(%rsp);					\
+  movl	reg, (%rsp);					\
+  _ERS_LOCK_1 (mem)					\
+							\
+  movl	24(%rbp), %esi;					\
+  movl	28(%rbp), %eax;					\
+  cmpxchgl	%esi, (%rdi);				\
+  movl	%eax, 28(%rbp);					\
+							\
+  _ERS_LOCK_2 (mem)					\
+  movl	(%rsp), reg;					\
+  movl	4(%rsp), %eax;					\
+  addq	$8, %rsp;					\
+  lock;	cmpxchgl	reg, (mem);			\
+  jmp	98f;						\
+97:							\
+  movl	(%rsp), reg;					\
+  movl	4(%rsp), %eax;					\
+  leaq	8(%rsp), %rsp;	/* avoid affecting flags */	\
 98:
 
 

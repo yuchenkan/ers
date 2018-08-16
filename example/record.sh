@@ -1,3 +1,4 @@
 set -ex
+SRC=${1:-threads}
 rm -rf ers_data
-LD_PRELOAD=../recorder/librecorder.so ./threads-normal | tee record.log
+time LD_PRELOAD=../recorder/librecorder.so ./$SRC-normal | tee record.log

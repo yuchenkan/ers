@@ -1,5 +1,7 @@
 set -ex
 
+SRC=${1:-threads}
+
 # glibc pieces:
 BUILD=/work/glibc-obj
 SYSROOT=/work/glibc-local
@@ -20,12 +22,12 @@ GCCINSTALL=$(gcc -print-search-dirs | grep 'install:' | sed -e 's,^install: ,,g'
 LD=$(gcc -print-prog-name="collect2")
 
 # Application pieces:
-PROG_NAME_STATIC=threads-static
-PROG_NAME_NORMAL=threads-normal
-PROG_NAME_PIE=threads-pie
-PROG_SOURCE=threads.c
-PROG_OBJ=threads.o
-PROG_OBJ_PIE=threads.os
+PROG_NAME_STATIC=$SRC-static
+PROG_NAME_NORMAL=$SRC-normal
+PROG_NAME_PIE=$SRC-pie
+PROG_SOURCE=$SRC.c
+PROG_OBJ=$SRC.o
+PROG_OBJ_PIE=$SRC.os
 MAP_STATIC=mapfile-static.txt
 MAP_NORMAL=mapfile-normal.txt
 MAP_PIE=mapfile-pie.txt

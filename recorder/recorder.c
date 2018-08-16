@@ -48,8 +48,10 @@ init_lock (char replay, struct lock *lock, int fd)
 static inline void
 do_lock (int *lock)
 {
+  int i = 0;
   while (__atomic_exchange_n (lock, 1, __ATOMIC_ACQUIRE))
-    continue;
+    if ((i = (i + 1) % 65536) == 0)
+      ERI_ASSERT_SYSCALL (sched_yield);
 }
 
 static inline void
@@ -68,7 +70,7 @@ llock (char replay, unsigned long tid, struct lock *lock)
     }
   else
     while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
-      continue;
+      ERI_ASSERT_SYSCALL (sched_yield);
 }
 
 static void
@@ -252,7 +254,7 @@ init_thread (struct internal *internal, unsigned long id, int *ctid)
   char replay = internal->replay;
   struct ers_thread *th = icalloc (internal, id, sizeof *th);
 
-  iprintf (internal, th->id, "init_thread %lx\n", th);
+  iprintf (internal, id, "init_thread %lu %lx\n", id, th);
 
   th->id = id;
   th->clear_tid = ctid;
@@ -555,7 +557,11 @@ acquire_active_lock (struct internal *internal, long v, char mk)
       unsigned long exp = tid;
       while (! __atomic_compare_exchange_n (&lock->tid, &exp, (unsigned long) -1, 1,
 					    __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
-	exp = tid;
+	{
+	  exp = tid;
+	  ERI_ASSERT_SYSCALL (sched_yield);
+	}
+
       eri_assert ((internal->active_lock.val += v) > 0);
       __atomic_store_n (&lock->tid,
 			load_lock (lock->fd), __ATOMIC_RELEASE);
@@ -713,8 +719,10 @@ get_atomic_lock (struct internal *internal, struct ers_thread * th,
 struct rlimit { char buf[16]; };
 struct timespec { char buf[16]; };
 
-#define FUTEX_WAKE	1
-#define FUTEX_WAKE_OP	5
+#define FUTEX_WAIT		0
+#define FUTEX_WAKE		1
+#define FUTEX_WAKE_OP		5
+#define FUTEX_WAIT_BITSET	9
 
 #define	EINTR	4
 
@@ -731,23 +739,24 @@ syscall (struct internal *internal, int nr,
 
   char replay = internal->replay;
   struct ers_thread *th = get_thread (internal);
-  iprintf (internal, th->id, "syscall %lu %u\n", th->id, nr);
+  unsigned long tid = th->id;
+  iprintf (internal, tid, "syscall %lu %u\n", tid, nr);
 
   if (nr == __NR_exit || nr == __NR_exit_group)
     {
       check_syscall (replay, th->fd, nr, 1, a1);
 
-      char grp = th->id == 0 /* main thread */
+      char grp = tid == 0 /* main thread */
 		 || nr == __NR_exit_group;
       if (grp)
 	{
 	  release_active_lock (internal, 1, 1);
-	  while (! ATOMIC_COMPARE_EXCHANGE (replay, th->id, &internal->active_lock, 0,
+	  while (! ATOMIC_COMPARE_EXCHANGE (replay, tid, &internal->active_lock, 0,
 					    LONG_MIN))
-	    if (! replay) ERI_ASSERT_SYSCALL (sched_yield);
+	    ERI_ASSERT_SYSCALL (sched_yield);
 
 	  if (replay) do_lock (&internal->replay_lock);
-	  eri_assert (eri_fprintf (2, "group exiting\n") == 0);
+	  iprintf (internal, tid, "group exiting\n");
 
 	  eri_assert (internal->brk_lock.lock == 0);
 	  eri_assert (eri_fclose (internal->brk_lock.fd) == 0);
@@ -755,7 +764,7 @@ syscall (struct internal *internal, int nr,
 	  struct sigact_wrap *w, *nw;
 	  ERI_RBT_FOREACH_SAFE (sigact, internal, w, nw)
 	    {
-	      if (!replay)
+	      if (! replay)
 		{
 		  struct sigaction act;
 		  ERI_ASSERT_SYSCALL (rt_sigaction, w->sig, 0, &act);
@@ -765,9 +774,9 @@ syscall (struct internal *internal, int nr,
 		  ERI_ASSERT_SYSCALL (rt_sigaction, w->sig, &act, 0);
 		}
 
-	      eri_assert (eri_fprintf (2, "remove sigact wrap %lx\n", w) == 0);
+	      iprintf (internal, tid, "remove sigact wrap %lx\n", w);
 	      sigact_remove (internal, w);
-	      ifree (internal, th->id, w);
+	      ifree (internal, tid, w);
 	    }
 	  eri_assert (internal->sigacts_lock.lock == 0);
 	  eri_assert (eri_fclose (internal->sigacts_lock.fd) == 0);
@@ -782,16 +791,16 @@ syscall (struct internal *internal, int nr,
 	  struct atomic_lock *l, *nl;
 	  ERI_RBT_FOREACH_SAFE (atomic, internal, l, nl)
 	    {
-	      eri_assert (eri_fprintf (2, "remove atomic lock %lx\n", l) == 0);
+	      iprintf (internal, tid, "remove atomic lock %lx\n", l);
 	      while (__atomic_load_n (&l->lock.lock, __ATOMIC_RELAXED)) continue;
 	      eri_assert (eri_fclose (l->lock.fd) == 0);
 	      atomic_remove (internal, l);
-	      ifree (internal, th->id, l);
+	      ifree (internal, tid, l);
 	    }
 	  eri_assert (internal->atomics_lock.lock == 0);
 	  eri_assert (eri_fclose (internal->atomics_lock.fd) == 0);
 
-	  eri_assert (eri_fprintf (2, "used %lu\n", internal->pool.used) == 0);
+	  iprintf (internal, tid, "used %lu\n", internal->pool.used);
 	  eri_assert (eri_fini_pool (&internal->pool) == 0);
 	  ERI_ASSERT_SYSCALL (munmap, internal->pool_buf, internal->pool_buf_size);
 	  internal->pool_buf = 0;
@@ -813,9 +822,9 @@ syscall (struct internal *internal, int nr,
 	{
 	  if (th->clear_tid)
 	    {
-	      iprintf (internal, th->id, "clear_tid %lx\n", th->clear_tid);
+	      iprintf (internal, tid, "clear_tid %lx\n", th->clear_tid);
 	      struct atomic_lock *lock = get_atomic_lock (internal, th, th->clear_tid, 1);
-	      llock (replay, th->id, &lock->lock);
+	      llock (replay, tid, &lock->lock);
 	      *th->clear_tid = 0;
 	      if (! replay)
 		{
@@ -839,19 +848,16 @@ syscall (struct internal *internal, int nr,
 
       int sig = (int) a1;
 
-      struct sigact_wrap *wrap;
+      struct sigact_wrap *wrap = 0;
       void *old_act = 0;
       int old_flags = 0;
-      char replace = 0;
       struct sigaction newact;
 
       const struct sigaction *act = (const struct sigaction *) a2;
       struct sigaction *old = (struct sigaction *) a3;
-      if (act || old)
-	{
-	  llock (replay, th->id, &internal->sigacts_lock);
-	  wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
-	}
+
+      llock (replay, tid, &internal->sigacts_lock);
+      wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
 
       if (old && wrap)
 	{
@@ -859,41 +865,42 @@ syscall (struct internal *internal, int nr,
 	  old_flags = wrap->flags;
 	}
 
-      if (act)
+      char replace = act
+		     && ((act->flags & SA_SIGINFO)
+			 || (act->act != SIG_DFL && act->act != SIG_IGN));
+      if (replace)
 	{
-	  if (! (act->flags & SA_SIGINFO)
-	      && (act->act == SIG_DFL || act->act == SIG_IGN))
+	  newact.act = ent_sigaction;
+	  eri_memcpy (&newact.mask, &act->mask, sizeof act->mask);
+	  newact.flags = act->flags | SA_SIGINFO;
+	  newact.restorer = act->restorer;
+	}
+
+      SYSCALL_REC_RET_OLD (replay, th->fd, ret, old,
+			   nr, sig, replace ? &newact : act, old);
+
+      if (! ERI_SYSCALL_ERROR_P (*ret))
+	{
+	  if (act && ! replace && wrap)
 	    {
-	      if (wrap)
-		{
-		  sigact_remove (internal, wrap);
-		  ifree (internal, th->id, wrap);
-		}
+	      sigact_remove (internal, wrap);
+	      ifree (internal, tid, wrap);
 	    }
-	  else
+	  else if (act && replace)
 	    {
 	      if (! wrap)
 		{
-		  wrap = imalloc (internal, th->id, sizeof *wrap);
+		  wrap = imalloc (internal, tid, sizeof *wrap);
 		  wrap->sig = sig;
 		  sigact_insert (internal, wrap);
 		}
 
 	      wrap->act = act->act;
 	      wrap->flags = act->flags;
-
-	      newact.act = ent_sigaction;
-	      eri_memcpy (&newact.mask, &act->mask, sizeof act->mask);
-	      newact.flags = act->flags | SA_SIGINFO;
-	      newact.restorer = act->restorer;
-	      replace = 1;
 	    }
 	}
 
-      SYSCALL_REC_RET_OLD (replay, th->fd, ret, old,
-			   nr, sig, replace ? &newact : act, old);
-
-      if (act || old) lunlock (replay, &internal->sigacts_lock);
+      lunlock (replay, &internal->sigacts_lock);
 
       if (old && wrap && ! ERI_SYSCALL_ERROR_P (*ret))
 	{
@@ -953,7 +960,7 @@ syscall (struct internal *internal, int nr,
   else if (nr == __NR_brk)
     {
       CHECK_SYSCALL (replay, th->fd, nr, a1);
-      llock (replay, th->id, &internal->brk_lock);
+      llock (replay, tid, &internal->brk_lock);
 
       if (! internal->cur_brk && a1)
 	CSYSCALL_REC_RET (replay, th->fd, (long *) &internal->cur_brk, nr, 0);
@@ -990,14 +997,18 @@ syscall (struct internal *internal, int nr,
     CSYSCALL_CHECK_RET (replay, th->fd, ret, nr, a1, a2);
   else if (nr == __NR_futex)
     {
-      eri_assert ((a2 & FUTEX_WAKE_OP) == 0); /* XXX */
+      eri_fprintf (2, "a1 %lx a2 %lu\n", a1, a2);
+      iprintf (internal, tid, "a1 %lx a2 %lu\n", a1, a2);
+      eri_assert (a2 != FUTEX_WAKE_OP); /* XXX */
       check_syscall (replay, th->fd, nr, 6, a1, a2, a3, a4, a5, a6);
-      release_active_lock (internal, 1, 0);
+      if (a2 == FUTEX_WAIT || a2 == FUTEX_WAIT_BITSET)
+	release_active_lock (internal, 1, 0);
 
       if (! replay)
 	*ret = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
 
-      if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
+      if ((a2 == FUTEX_WAIT || a2 == FUTEX_WAIT_BITSET)
+	  && ! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
 	return 1;
 
       if (! replay) save_return (th->fd, *ret);
@@ -1008,13 +1019,17 @@ syscall (struct internal *internal, int nr,
   else if (nr == __NR_madvise)
     /* XXX check advice */
     CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3);
+  else if (nr == __NR_time)
+    CSYSCALL_REC_RET_OLD (replay, th->fd, ret, (long *) a1, nr, a1);
+  else if (nr == __NR_openat)
+    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3, a4);
   else
     {
-      iprintf (internal, th->id, "not support %u\n", nr);
+      iprintf (internal, tid, "not support %u\n", nr);
       eri_assert (0);
     }
 
-  iprintf (internal, th->id, "syscall done %lu %u\n", th->id, nr);
+  iprintf (internal, tid, "syscall done %lu %u\n", tid, nr);
   release_active_lock (internal, 1, 0);
   return 1;
 }
@@ -1096,10 +1111,11 @@ post_clone (struct internal *internal, struct clone *clone, long ret)
 	ret = clone->ret;
     }
 
+  long rel = 1;
   if (ERI_SYSCALL_ERROR_P (ret))
     {
       ifree (internal, tid, clone);
-      release_active_lock (internal, 2, 0);
+      rel = 2;
     }
   else if (ret == 0)
     {
@@ -1107,10 +1123,10 @@ post_clone (struct internal *internal, struct clone *clone, long ret)
       set_thread (internal, th);
       eri_memcpy (&th->old_set, &clone->old_set, sizeof th->old_set);
       ifree (internal, th->id, clone);
-
-      release_active_lock (internal, 1, 0);
     }
-  else release_active_lock (internal, 1, 0);
+
+  iprintf (internal, tid, "post_clone done %lu\n", tid);
+  release_active_lock (internal, rel, 0);
   return ret;
 }
 

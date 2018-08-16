@@ -210,7 +210,7 @@ overlap (unsigned long a, unsigned long b, unsigned long c, unsigned long d)
   return b > c && a < d;
 }
 
-static void
+static void __attribute__ ((used))
 start (void **arg)
 {
   unsigned long  argc = *(unsigned long *) arg;
