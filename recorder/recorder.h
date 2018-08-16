@@ -488,7 +488,7 @@ extern struct ers_recorder *ers_get_recorder (void);
   xorq	%rax, %rax;								\
 94:				/* leave 3 */
 
-#define ERS_LOCK_1(mem)	\
+#define _ERS_LOCK_1(mem)	\
   pushq	mem;			\
   pushq	%rbp;			\
   pushq	%rax;			\
@@ -510,7 +510,7 @@ extern struct ers_recorder *ers_get_recorder (void);
 				\
   movq	16(%rbp), %rdi;
 
-#define ERS_LOCK_2(mem)	\
+#define _ERS_LOCK_2(mem)	\
   pushfq;			\
   pushq	%rsi;			\
   movl	$5, %esi;		\
@@ -534,36 +534,36 @@ extern struct ers_recorder *ers_get_recorder (void);
   popq	mem;
 
 #define ERS_CMPL(lock, val, mem) \
-  ERS_LOCK_1 (mem)		\
+  _ERS_LOCK_1 (mem)		\
   cmpl	val, (%rdi);		\
-  ERS_LOCK_2 (mem)		\
+  _ERS_LOCK_2 (mem)		\
   lock;	cmpl	val, (mem);	\
 97:
 
 #define ERS_MOVL(lock, val, mem) \
-  ERS_LOCK_1 (mem)		\
+  _ERS_LOCK_1 (mem)		\
   movl	val, (%rdi);		\
-  ERS_LOCK_2 (mem)		\
+  _ERS_LOCK_2 (mem)		\
   lock;	movl	val, (mem);	\
 97:
 
 #define ERS_DECL(lock, mem) \
-  ERS_LOCK_1 (mem)		\
+  _ERS_LOCK_1 (mem)		\
   decl	(%rdi);			\
-  ERS_LOCK_2 (mem)		\
+  _ERS_LOCK_2 (mem)		\
   lock;	decl	(mem);		\
 97:
 
 #define ERS_XCHGL(reg, mem) \
   subq	$8, %rsp;		\
   movl	reg, (%rsp);		\
-  ERS_LOCK_1 (mem)		\
+  _ERS_LOCK_1 (mem)		\
 				\
   movl	24(%rbp), %esi;	 	\
   xchgl	%esi, (%rdi);		\
   movl	%esi, 24(%rbp);		\
 				\
-  ERS_LOCK_2 (mem)		\
+  _ERS_LOCK_2 (mem)		\
   movl	(%rsp), reg;		\
   addq	$8, %rsp;		\
   xchgl	reg, (mem);		\
@@ -577,14 +577,14 @@ extern struct ers_recorder *ers_get_recorder (void);
   subq	$8, %rsp;			\
   movl	%eax, 4(%rsp);			\
   movl	reg, (%rsp);			\
-  ERS_LOCK_1 (mem)			\
+  _ERS_LOCK_1 (mem)			\
 					\
   movl	24(%rbp), %esi;			\
   movl	28(%rbp), %eax;			\
   cmpxchgl	%esi, (%rdi);		\
   movl	%eax, 28(%rbp);			\
 					\
-  ERS_LOCK_2 (mem)			\
+  _ERS_LOCK_2 (mem)			\
   movl	(%rsp), reg;			\
   movl	4(%rsp), %eax;			\
   addq	$8, %rsp;			\

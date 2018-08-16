@@ -1,2 +1,2 @@
 set -ex
-../recorder/replayer
+../recorder/replayer | tee replay.log

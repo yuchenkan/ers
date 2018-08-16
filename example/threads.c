@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#if 1
+#if 0
 # define EXIT_GROUP
 #endif
 
@@ -30,7 +30,7 @@ static void *f (void *p)
   int *i = (int *) malloc (sizeof *i);
   *i = 987654321;
   int j;
-  for (j = 0; j < 2; ++j)
+  for (j = 0; j < 64; ++j)
     fprintf (stderr, "xxx %p %p %d\n", &a, i, getpid ());
   free (i);
   pthread_spin_unlock (&lock);

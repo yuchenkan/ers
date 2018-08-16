@@ -16,7 +16,7 @@ eri_dump_maps (void)
       size_t l;
       eri_assert (eri_fread (maps, buf, sizeof buf - 1, &l) == 0);
       buf[l] = '\0';
-      eri_assert (eri_printf ("%s", buf) == 0);
+      eri_assert (eri_fprintf (2, "%s", buf) == 0);
       if (l != sizeof buf - 1) break;
     }
   eri_assert (eri_fclose (maps) == 0);
@@ -160,7 +160,7 @@ eri_open_path (const char *path, const char *name, int flags,
   if (flags & ERI_OPEN_WITHID) phex (p + c, id);
   else p[c] = '\0';
 
-  eri_assert (eri_printf ("%s\n", p) == 0);
+  eri_assert (eri_fprintf (2, "%s\n", p) == 0);
 
   int fd;
   eri_assert (eri_fopen (p, flags & ERI_OPEN_REPLAY, &fd) == 0);

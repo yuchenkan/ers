@@ -226,7 +226,7 @@ start (void **arg)
   ERI_ASSERT_SYSCALL (munmap, pd.vdso_start, pd.vdso_end - pd.vdso_start);
   ERI_ASSERT_SYSCALL (munmap, pd.vvar_start, pd.vvar_end - pd.vvar_start);
 
-  eri_assert (eri_printf ("\n") == 0);
+  eri_assert (eri_fprintf (2, "\n") == 0);
   eri_dump_maps ();
 
   struct maps maps;
@@ -239,7 +239,7 @@ start (void **arg)
     {
       struct map *map = __builtin_alloca (sizeof *map);
       eri_load_init_map (init, &map->start, &map->end, &map->flags);
-      eri_assert (eri_printf ("%lx-%lx, %u\n", map->start, map->end, map->flags) == 0);
+      eri_assert (eri_fprintf (2, "%lx-%lx, %u\n", map->start, map->end, map->flags) == 0);
       if (map->flags & 16) stack = map;
       else map->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
       if (map->flags & 1 && ! (map->flags & 24))
@@ -263,7 +263,7 @@ start (void **arg)
 	4096);
   extern const char restore_end[];
   size_t size = data_size + eri_round_up (restore_end - (char *) restore, 4096);
-  eri_assert (eri_printf ("size %lu\n", size) == 0);
+  eri_assert (eri_fprintf (2, "size %lu\n", size) == 0);
 
   unsigned long addr = 0;
   struct map *m;
@@ -283,7 +283,7 @@ start (void **arg)
       addr = m->end;
     }
 mapped:
-  eri_assert (eri_printf ("addr %lx\n", addr) == 0);
+  eri_assert (eri_fprintf (2, "addr %lx\n", addr) == 0);
 
   char *data = (char *) addr;
   *(long *) data = init;
