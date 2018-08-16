@@ -232,6 +232,7 @@ start (void **arg)
   struct maps maps;
   ERI_RBT_INIT_TREE (map, &maps);
 
+  struct map *stack = 0;
   int init = eri_open_path (path, "init", ERI_OPEN_REPLAY, 0);
   char mk;
   while ((mk = eri_load_mark (init)) == ERI_MARK_INIT_MAP)
@@ -239,12 +240,17 @@ start (void **arg)
       struct map *map = __builtin_alloca (sizeof *map);
       eri_load_init_map (init, &map->start, &map->end, &map->flags);
       eri_assert (eri_printf ("%lx-%lx, %u\n", map->start, map->end, map->flags) == 0);
-      map->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
-      if (map->flags & 1 && ! (map->flags & 8))
+      if (map->flags & 16) stack = map;
+      else map->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
+      if (map->flags & 1 && ! (map->flags & 24))
 	eri_skip_init_map_data (init, map->end - map->start);
       map_insert (&maps, map);
     }
-  eri_assert (mk == ERI_MARK_INIT_CONTEXT);
+  eri_assert (stack);
+  eri_assert (mk == ERI_MARK_INIT_STACK);
+  stack->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
+  eri_skip_init_map_data (init, stack->end - stack->start);
+
   struct eri_context ctx;
   eri_load_init_context (init, &ctx);
   eri_assert (eri_load_mark (init) == ERI_MARK_NONE);

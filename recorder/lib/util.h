@@ -6,7 +6,7 @@
 #define ERI_EXPAND(x) #x
 #define ERI_STRINGIFY(x) ERI_EXPAND (x)
 
-#define eri_assert(exp) do { if (! (exp)) *((char *) 0) = 0; } while (0)
+#define eri_assert(exp) do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
 
 #define eri_min(a, b) \
   ({				\

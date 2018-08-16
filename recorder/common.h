@@ -37,7 +37,7 @@ int eri_open_path (const char *path, const char *name, int flags, unsigned long 
 #define ERI_MARK_NONE 0
 
 #define ERI_MARK_INIT_MAP 1
-#define ERI_MARK_INIT_CONTEXT 2
+#define ERI_MARK_INIT_STACK 2
 
 struct eri_context
 {
