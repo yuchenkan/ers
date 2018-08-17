@@ -21,7 +21,7 @@ int main ()
   eri_assert (eri_fclose (fd) == 0);
 
   char buf[4];
-  int l;
+  size_t l;
   eri_assert (eri_fopen ("tst_printf.out", 1, &fd) == 0);
   eri_assert (eri_fread (fd, buf, 4, &l) == 0);
   eri_assert (l == 4 && buf[0] == '1' && buf[1] == '2' && buf[2] == '3' && buf[3] == '4');
