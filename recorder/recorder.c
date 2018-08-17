@@ -636,11 +636,32 @@ load_return (int fd)
     else *(ret) = load_return (fd);				\
   } while (0)
 
+#define SYSCALL_REC_IRET(internal, fd, ret, nr, ...) \
+  ({									\
+    char __acq = 1;							\
+    release_active_lock (internal, 1, 0);				\
+									\
+    if (! (internal)->replay)						\
+      *ret = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+									\
+    if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))	\
+      __acq = 0;							\
+    else if (! (internal)->replay) save_return (fd, *ret);		\
+    else *ret = load_return (fd);					\
+    __acq;								\
+  })
+
 #define CSYSCALL_REC_RET(replay, fd, ret, nr, ...) \
   do {								\
     CHECK_SYSCALL (replay, fd, nr, ##__VA_ARGS__);		\
     SYSCALL_REC_RET (replay, fd, ret, nr, ##__VA_ARGS__);	\
   } while (0)
+
+#define CSYSCALL_REC_IRET(internal, fd, ret, nr, ...) \
+  ({								\
+    CHECK_SYSCALL (replay, fd, nr, ##__VA_ARGS__);		\
+    SYSCALL_REC_IRET (internal, fd, ret, nr, ##__VA_ARGS__);	\
+  })
 
 #define CSYSCALL_CHECK_RET(replay, fd, ret, nr, ...) \
   do {								\
@@ -659,35 +680,36 @@ struct sigaction
 };
 
 static void
-save_return_out (int fd, long ret, const void *old, size_t size)
+save_return_out (int fd, long ret, const void *out, size_t size)
 {
   save_return (fd, ret);
-  if (! ERI_SYSCALL_ERROR_P (ret) && old)
-    eri_assert (eri_fwrite (fd, old, size) == 0);
+  if (! ERI_SYSCALL_ERROR_P (ret) && out && size)
+    eri_assert (eri_fwrite (fd, out, size) == 0);
 }
 
 static void
-load_return_out (int fd, long *ret, void *old, size_t size)
+load_return_out (int fd, long *ret, void *out, size_t size)
 {
   *ret = load_return (fd);
-  if (! ERI_SYSCALL_ERROR_P (*ret) && old)
-    eri_assert (eri_fread (fd, old, size, 0) == 0);
+  if (size == -1) size = *ret;
+  if (! ERI_SYSCALL_ERROR_P (*ret) && out && size)
+    eri_assert (eri_fread (fd, out, size, 0) == 0);
 }
 
-#define SYSCALL_REC_RET_OLD(replay, fd, ret, out, nr, ...) \
+#define SYSCALL_REC_RET_OUT(replay, fd, ret, out, nr, ...) \
   do {									\
     if (! (replay))							\
       {									\
 	*(ret) = ERI_SYSCALL_NCS (nr, __VA_ARGS__);			\
 	save_return_out (fd, *(ret), out, sizeof *out);			\
       }									\
-    else load_return_out (fd, (ret), out, sizeof *out);			\
+    else load_return_out (fd, ret, out, sizeof *out);			\
   } while (0)
 
-#define CSYSCALL_REC_RET_OLD(replay, fd, ret, out, nr, ...) \
+#define CSYSCALL_REC_RET_OUT(replay, fd, ret, out, nr, ...) \
   do {									\
     CHECK_SYSCALL (replay, fd, nr, __VA_ARGS__);			\
-    SYSCALL_REC_RET_OLD (replay, fd, ret, out, nr, __VA_ARGS__);	\
+    SYSCALL_REC_RET_OUT (replay, fd, ret, out, nr, __VA_ARGS__);	\
   } while (0)
 
 static void
@@ -742,9 +764,10 @@ syscall (struct internal *internal, int nr,
   unsigned long tid = th->id;
   iprintf (internal, tid, "syscall %lu %u\n", tid, nr);
 
+  char acq = 1;
   if (nr == __NR_exit || nr == __NR_exit_group)
     {
-      check_syscall (replay, th->fd, nr, 1, a1);
+      CHECK_SYSCALL (replay, th->fd, nr, a1);
 
       char grp = tid == 0 /* main thread */
 		 || nr == __NR_exit_group;
@@ -844,7 +867,7 @@ syscall (struct internal *internal, int nr,
     }
   else if (nr == __NR_rt_sigaction)
     {
-      check_syscall (replay, th->fd, nr, 3, a1, a2, a3);
+      CHECK_SYSCALL (replay, th->fd, nr, a1, a2, a3);
 
       int sig = (int) a1;
 
@@ -876,7 +899,7 @@ syscall (struct internal *internal, int nr,
 	  newact.restorer = act->restorer;
 	}
 
-      SYSCALL_REC_RET_OLD (replay, th->fd, ret, old,
+      SYSCALL_REC_RET_OUT (replay, th->fd, ret, old,
 			   nr, sig, replace ? &newact : act, old);
 
       if (! ERI_SYSCALL_ERROR_P (*ret))
@@ -918,27 +941,33 @@ syscall (struct internal *internal, int nr,
   else if (nr == __NR_set_robust_list)
     CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2);
   else if (nr == __NR_rt_sigprocmask)
-    CSYSCALL_REC_RET_OLD (replay, th->fd, ret, (struct sigset *) a3,
+    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct sigset *) a3,
 			  nr, a1, a2, a3);
   else if (nr == __NR_prlimit64)
-    CSYSCALL_REC_RET_OLD (replay, th->fd, ret, (struct rlimit *) a4,
+    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct rlimit *) a4,
 			  nr, a1, a2, a3, a4);
   else if (nr == __NR_clock_gettime)
-    CSYSCALL_REC_RET_OLD (replay, th->fd, ret, (struct timespec *) a2,
+    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct timespec *) a2,
 			  nr, a1, a2);
-  else if (nr == __NR_write)
+  else if (nr == __NR_read)
     {
-      check_syscall (replay, th->fd, nr, 3, a1, a2, a3);
+      CHECK_SYSCALL (replay, th->fd, nr, a1, a2, a3);
       release_active_lock (internal, 1, 0);
 
       if (! replay)
 	*ret = ERI_SYSCALL_NCS (nr, a1, a2, a3);
 
       if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
-	return 1;
-      if (! replay) save_return (th->fd, *ret);
-      else *ret = load_return (th->fd);
+	acq = 0;
+      else if (! replay) save_return_out (th->fd, *ret, (void *) a2, *ret);
+      else load_return_out (th->fd, ret, (void *) a2, -1);
     }
+  else if (nr == __NR_write)
+    acq = CSYSCALL_REC_IRET (internal, th->fd, ret, nr, a1, a2, a3);
+  else if (nr == __NR_openat)
+    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3, a4);
+  else if (nr == __NR_close)
+    acq = CSYSCALL_REC_IRET (internal, th->fd, ret, nr, a1);
   else if (nr == __NR_mmap)
     {
       CHECK_SYSCALL (replay, th->fd, nr, a1, a2, a3, a4, a5, a6);
@@ -997,10 +1026,8 @@ syscall (struct internal *internal, int nr,
     CSYSCALL_CHECK_RET (replay, th->fd, ret, nr, a1, a2);
   else if (nr == __NR_futex)
     {
-      eri_fprintf (2, "a1 %lx a2 %lu\n", a1, a2);
-      iprintf (internal, tid, "a1 %lx a2 %lu\n", a1, a2);
       eri_assert (a2 != FUTEX_WAKE_OP); /* XXX */
-      check_syscall (replay, th->fd, nr, 6, a1, a2, a3, a4, a5, a6);
+      CHECK_SYSCALL (replay, th->fd, nr, a1, a2, a3, a4, a5, a6);
       if (a2 == FUTEX_WAIT || a2 == FUTEX_WAIT_BITSET)
 	release_active_lock (internal, 1, 0);
 
@@ -1016,13 +1043,13 @@ syscall (struct internal *internal, int nr,
     }
   else if (nr == __NR_getpid)
     CSYSCALL_REC_RET (replay, th->fd, ret, nr);
+  else if (nr == __NR_gettid)
+    CSYSCALL_REC_RET (replay, th->fd, ret, nr);
   else if (nr == __NR_madvise)
     /* XXX check advice */
     CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3);
   else if (nr == __NR_time)
-    CSYSCALL_REC_RET_OLD (replay, th->fd, ret, (long *) a1, nr, a1);
-  else if (nr == __NR_openat)
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3, a4);
+    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (long *) a1, nr, a1);
   else
     {
       iprintf (internal, tid, "not support %u\n", nr);
@@ -1030,7 +1057,7 @@ syscall (struct internal *internal, int nr,
     }
 
   iprintf (internal, tid, "syscall done %lu %u\n", tid, nr);
-  release_active_lock (internal, 1, 0);
+  if (acq) release_active_lock (internal, 1, 0);
   return 1;
 }
 
@@ -1060,7 +1087,7 @@ pre_clone (struct internal *internal, struct clone **clone,
   struct ers_thread *th = get_thread (internal);
 
   iprintf (internal, th->id, "pre_clone %lu\n", th->id);
-  check_syscall (replay, th->fd, __NR_clone, 5, flags, cstack, ptid, ctid, tp);
+  CHECK_SYSCALL (replay, th->fd, __NR_clone, flags, cstack, ptid, ctid, tp);
 
   *clone = imalloc (internal, th->id, sizeof **clone);
   (*clone)->child_id = ATOMIC_FETCH_ADD (replay, th->id, &internal->thread_id, 1);
@@ -1102,7 +1129,7 @@ post_clone (struct internal *internal, struct clone *clone, long ret)
     {
       if (ERI_SYSCALL_ERROR_P (clone->ret)) /* clone shall fail, no syscall */
 	ret = clone->ret;
-      else if (ERI_SYSCALL_ERROR_P (ret)) /* clone should not afil */
+      else if (ERI_SYSCALL_ERROR_P (ret)) /* clone should not fail */
 	{
 	  eri_assert (eri_fprintf (2, "failed to clone thread\n") == 0);
 	  eri_assert (0);

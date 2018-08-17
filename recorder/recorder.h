@@ -1,6 +1,12 @@
 #ifndef ERS_RECORDER_H
 #define ERS_RECORDER_H
 
+#define ERS_NONE
+#define ERS_OMIT(...)
+
+#define _ERS_STR(...) #__VA_ARGS__
+#define _ERS_EXP_STR(...) _ERS_STR (__VA_ARGS__)
+
 #ifndef __ASSEMBLER__
 
 struct ers_thread;
@@ -413,7 +419,7 @@ extern struct ers_recorder *ers_get_recorder (void);
   ERS_ATOMIC_FETCH_XOR (rec, res, mem, operand, ERS_ATOMIC_RELEASE)
 
 #define ers_THREAD_ATOMIC_CMPXCHG_VAL(rec, res, descr, member, new, old) \
-  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, res, &(descr)->member, new, old,		\
+  ERS_ATOMIC_COMPARE_EXCHANGE_VAL (rec, res, &(descr)->member, new, old,	\
 				   ERS_ATOMIC_SEQ_CST, ERS_ATOMIC_SEQ_CST)
 #define ers_THREAD_ATOMIC_AND(rec, descr, member, val) \
   ERS_ATOMIC_FETCH_AND (rec, 0, &(descr)->member, val, ERS_ATOMIC_SEQ_CST)
@@ -421,213 +427,262 @@ extern struct ers_recorder *ers_get_recorder (void);
   ERS_ATOMIC_FETCH_OR (rec, 0, &(descr)->member,			\
 		       ((typeof ((descr)->member)) 1 << (bit)), ERS_ATOMIC_SEQ_CST)
 
-#else
+#endif
 
-#define ERS_NONE
-
-#define ERS_SYSCALL \
-  pushq	%rbx;									\
-  movq	%rsp, %rbx;								\
-  subq	$8, %rsp;								\
-  andq	$-16, %rsp;		/* align stack */				\
-  movq  %rbx, (%rsp);								\
-  pushq	%rax;			/* system call number */			\
-  subq  $8, %rsp;								\
+#define _ERS_ASM_SYSCALL(esc) \
+  pushq	esc%rbx;								\
+  movq	esc%rsp, esc%rbx;							\
+  subq	$8, esc%rsp;								\
+  andq	$-16, esc%rsp;		/* align stack */				\
+  movq  esc%rbx, (esc%rsp);							\
+  pushq	esc%rax;		/* system call number */			\
+  subq  $8, esc%rsp;								\
   call	ers_get_recorder@PLT;							\
-  addq	$8, %rsp;								\
-  movq	%rax, %rbx;		/* ers_recorder */				\
-  testq	%rbx, %rbx;								\
+  addq	$8, esc%rsp;								\
+  movq	esc%rax, esc%rbx;	/* ers_recorder */				\
+  testq	esc%rbx, esc%rbx;							\
   jz	92f;			/* no ers_recorder, leave 2 */			\
-  movl	(%rsp), %eax;								\
-  pushq	%rdi;									\
-  pushq	%rsi;									\
-  pushq	%rdx;									\
-  pushq	%r10;									\
-  pushq	%r8;									\
-  subq	$8, %rsp;		/* res */					\
-  pushq	%rsp;			/* &res */					\
-  pushq	%r9;			/* a6 */					\
-  movq	%r8, %r9;		/* a5 */					\
-  movq	%r10, %r8;		/* a4 */					\
-  movq	%rdx, %rcx;		/* a3 */					\
-  movq	%rsi, %rdx;		/* a2 */					\
-  movq	%rdi, %rsi;		/* a1 */			        	\
-  movl	%eax, %edi;		/* nr */					\
-  call	*0x8(%rbx);		/* call ers_recorder->syscall */		\
-  cmpb	$2, %al;								\
+  movl	(esc%rsp), esc%eax;							\
+  pushq	esc%rdi;								\
+  pushq	esc%rsi;								\
+  pushq	esc%rdx;								\
+  pushq	esc%r10;								\
+  pushq	esc%r8;									\
+  subq	$8, esc%rsp;		/* res */					\
+  pushq	esc%rsp;		/* &res */					\
+  pushq	esc%r9;			/* a6 */					\
+  movq	esc%r8, esc%r9;		/* a5 */					\
+  movq	esc%r10, esc%r8;	/* a4 */					\
+  movq	esc%rdx, esc%rcx;	/* a3 */					\
+  movq	esc%rsi, esc%rdx;	/* a2 */					\
+  movq	esc%rdi, esc%rsi;	/* a1 */			       		\
+  movl	esc%eax, esc%edi;	/* nr */					\
+  call	*0x8(esc%rbx);		/* call ers_recorder->syscall */		\
+  cmpb	$2, esc%al;								\
   je	93f;			/* child, leave */				\
-  testb	%al, %al;								\
+  testb	esc%al, esc%al;								\
   jz	91f;			/* not replaced, leave 1 */			\
-  popq	%r9;									\
-  movq	8(%rsp), %rax;								\
-  addq	$16, %rsp;								\
-  popq	%r8;									\
-  popq	%r10;									\
-  popq	%rdx;									\
-  popq	%rsi;									\
-  popq	%rdi;									\
-  addq	$8, %rsp;								\
-  popq  %rsp;									\
-  popq	%rbx;									\
+  popq	esc%r9;									\
+  movq	8(esc%rsp), esc%rax;							\
+  addq	$16, esc%rsp;								\
+  popq	esc%r8;									\
+  popq	esc%r10;								\
+  popq	esc%rdx;								\
+  popq	esc%rsi;								\
+  popq	esc%rdi;								\
+  addq	$8, esc%rsp;								\
+  popq  esc%rsp;								\
+  popq	esc%rbx;								\
   jmp	94f;			/* replaced, leave 4 */				\
 91:				/* leave 1 */					\
-  popq	%r9;									\
-  addq	$16, %rsp;								\
-  popq	%r8;									\
-  popq	%r10;									\
-  popq	%rdx;									\
-  popq	%rsi;									\
-  popq	%rdi;									\
+  popq	esc%r9;									\
+  addq	$16, esc%rsp;								\
+  popq	esc%r8;									\
+  popq	esc%r10;								\
+  popq	esc%rdx;								\
+  popq	esc%rsi;								\
+  popq	esc%rdi;								\
 92:				/* leave 2 */					\
-  popq	%rax;									\
-  popq  %rsp;									\
-  popq	%rbx;									\
+  popq	esc%rax;								\
+  popq  esc%rsp;								\
+  popq	esc%rbx;								\
   syscall;									\
   jmp	94f;									\
 93:				/* child leave */				\
-  xorq	%rax, %rax;								\
+  xorq	esc%rax, esc%rax;							\
 94:				/* leave 3 */
 
-/* %rdi is mem. %rax is free to use.
-   24(%rbp) is last addr on the stack before the call.
-   Instructions followed immedaitely are executed when there is no
-   interception. Otherwise is jumped to 97f.  */
-#define _ERS_LOCK_1(mem)	\
-  pushq	mem;			\
-  pushq	%rbp;			\
-  pushq	%rax;			\
-  movq	%rsp, %rbp;		\
-  subq	$8, %rsp;		\
-  andq	$-16, %rsp;		\
-  movq	%rbp, (%rsp);		\
+#define ERS_ASM_SYSCALL _ERS_ASM_SYSCALL (ERS_NONE)
+
+#define _ERS_PUSH_SCRATCH_REGS(esc) \
+  pushq	esc%rax;		\
+  pushq	esc%rdi;		\
+  pushq	esc%rsi;		\
+  pushq	esc%rdx;		\
+  pushq	esc%rcx;		\
+  pushq	esc%r8;			\
+  pushq	esc%r9;			\
+  pushq	esc%r10;		\
+  pushq	esc%r11;
+
+# define _ERS_POP_SCRATCH_REGS(esc) \
+  popq	esc%r11;		\
+  popq	esc%r10;		\
+  popq	esc%r9;			\
+  popq	esc%r8;			\
+  popq	esc%rcx;		\
+  popq	esc%rdx;		\
+  popq	esc%rsi;		\
+  popq	esc%rdi;		\
+  popq	esc%rax;
+
+/* %r13 is the address to be locked.
+   All the registers are restored.
+   Instructions followed LOCK_2 are executed when there is no
+   interception. Otherwise the execution jumps to 96f.  */
+#define _ERS_ASM_LOCK_1(esc) \
+  pushfq;			\
+  pushq	esc%rbx;		\
+  _ERS_PUSH_SCRATCH_REGS (esc)	\
+  movq	esc%rsp, esc%rbx;	\
+  subq	$8, esc%rsp;		\
+  andq	$-16, esc%rsp;		\
+  movq	esc%rbx, (esc%rsp);	\
   call	ers_get_recorder@PLT;	\
-  testq	%rax, %rax;		\
-  jz	96f;			\
-				\
-  pushq	%rbx;			\
-  pushq	%rdi;			\
-  movq	%rax, %rbx;		\
-  movq	16(%rbp), %rdi;		\
-  call	*16(%rbx);		\
-  testb	%al, %al;		\
+  testq	esc%rax, esc%rax;	\
   jz	95f;			\
 				\
-  movq	16(%rbp), %rdi;
+  movq	esc%r13, esc%rdi;	\
+  movq	esc%rax, esc%rbx;	\
+  call	*16(esc%rbx);		\
+  testb	esc%al, esc%al;		\
+  jz	95f;			\
+  popq	esc%rsp;		\
+  _ERS_POP_SCRATCH_REGS (esc)	\
+  popq	esc%rbx;		\
+  popfq;
 
-#define _ERS_LOCK_2(mem)	\
+#define _ERS_ASM_LOCK_2(esc) \
   pushfq;			\
-  pushq	%rsi;			\
-  movl	$5, %esi;		\
-  call  *24(%rbx);		\
-  popq	%rsi;			\
+  pushq	esc%rbx;		\
+  _ERS_PUSH_SCRATCH_REGS (esc)	\
+  movq	esc%rsp, esc%rbx;	\
+  subq	$8, esc%rsp;		\
+  andq	$-16, esc%rsp;		\
+  movq	esc%rbx, (esc%rsp);	\
+  call	ers_get_recorder@PLT;	\
+  testq	esc%rax, esc%rax;	\
+  jz	95f;			\
+				\
+  movq	esc%r13, esc%rdi;	\
+  movl	$5, esc%esi;		\
+  movq	esc%rax, esc%rbx;	\
+  call	*24(esc%rbx);		\
+  popq	esc%rsp;		\
+  _ERS_POP_SCRATCH_REGS (esc)	\
+  popq	esc%rbx;		\
   popfq;			\
-  popq	%rdi;			\
-  popq	%rbx;			\
-  popq	%rsp;			\
-  popq	%rax;			\
-  popq	%rbp;			\
-  popq	mem;			\
-  jmp	97f;			\
+  jmp	96f;			\
 95:				\
-  popq	%rdi;			\
-  popq	%rbx;			\
-96:				\
-  popq	%rsp;			\
-  popq	%rax;			\
-  popq	%rbp;			\
-  popq	mem;
+  popq	esc%rsp;		\
+  _ERS_POP_SCRATCH_REGS (esc)	\
+  popq	esc%rbx;		\
+  popfq;
 
+/* lock; cmpl %r12d, (%r13) */
+#define __ERS_ASM_CMPL(esc, lock) \
+  _ERS_ASM_LOCK_1 (esc)	 		\
+  cmpl	esc%r12d, (esc%r13);		\
+  _ERS_ASM_LOCK_2 (esc)			\
+  lock;	cmpl	esc%r12d, (esc%r13);	\
+96:
 
-#define ERS_CMPL(lock, val, mem) \
-  _ERS_LOCK_1 (mem)		\
-  cmpl	val, (%rdi);		\
-  _ERS_LOCK_2 (mem)		\
-  lock;	cmpl	val, (mem);	\
-97:
+/* lock; movl %r12d, (%r13) */
+#define __ERS_ASM_MOVL_SV(esc, lock) \
+  _ERS_ASM_LOCK_1 (esc)			\
+  movl	esc%r12d, (esc%r13);		\
+  _ERS_ASM_LOCK_2 (esc)			\
+  lock;	movl	esc%r12d, (esc%r13);	\
+96:
 
-#define ERS_MOVL_VM(lock, val, mem) \
-  pushfq;			\
-  _ERS_LOCK_1 (mem)		\
-  movl	val, (%rdi);		\
-  _ERS_LOCK_2 (mem)		\
-  popfq;			\
-  lock;	movl	val, (mem);	\
-  jmp	98f;			\
-97:				\
-  popfq;			\
-98:
+/* lock; movl (%r13), %r12d */
+#define __ERS_ASM_MOVL_LD(esc, lock) \
+  _ERS_ASM_LOCK_1 (esc)			\
+  movl	(esc%r13), esc%r12d;		\
+  _ERS_ASM_LOCK_2 (esc)			\
+  lock;	movl	(esc%r13), esc%r12d;	\
+96:
 
-#define ERS_MOVL_MR(lock, mem, reg) \
-  pushfq;			\
-  subq	$8, %rsp;		\
-  _ERS_LOCK_1 (mem)		\
-				\
-  movl	(%rdi), %eax;		\
-  movl	%eax, 24(%rbp);		\
-				\
-  _ERS_LOCK_2 (mem)		\
-  addq	$8, %rsp;		\
-  popfq;			\
-  lock;	movl	(mem), reg;	\
-  jmp	98f;			\
-97:				\
-  movl	(%rsp), reg;		\
-  addq	$8, %rsp;		\
-  popfq;			\
-98:
+/* lock; decl (%r13) */
+#define __ERS_ASM_DECL(esc, lock) \
+  _ERS_ASM_LOCK_1 (esc)			\
+  decl	(esc%r13);			\
+  _ERS_ASM_LOCK_2 (esc)			\
+  lock;	decl	(esc%r13);		\
+96:
 
-#define ERS_DECL(lock, mem) \
-  _ERS_LOCK_1 (mem)		\
-  decl	(%rdi);			\
-  _ERS_LOCK_2 (mem)		\
-  lock;	decl	(mem);		\
-97:
+/* xchgl %r12d, (%r13) */
+#define __ERS_ASM_XCHGL(esc, ...) \
+  _ERS_ASM_LOCK_1 (esc)			\
+  xchgl	esc%r12d, (esc%r13);		\
+  _ERS_ASM_LOCK_2 (esc)			\
+  xchgl	esc%r12d, (esc%r13);		\
+96:
 
-#define ERS_XCHGL(reg, mem) \
-  pushfq;			\
-  subq	$8, %rsp;		\
-  movl	reg, (%rsp);		\
-  _ERS_LOCK_1 (mem)		\
-				\
-  movl	24(%rbp), %esi;	 	\
-  xchgl	%esi, (%rdi);		\
-  movl	%esi, 24(%rbp);		\
-				\
-  _ERS_LOCK_2 (mem)		\
-  movl	(%rsp), reg;		\
-  addq	$8, %rsp;		\
-  popfq;			\
-  xchgl	reg, (mem);		\
-  jmp	98f;			\
-97:				\
-  movl	(%rsp), reg;		\
-  addq	$8, %rsp;		\
-  popfq;			\
-98:
+/* lock; cmpxchgl %r12d, (%r13) */
+#define __ERS_ASM_CMPXCHGL(esc, lock) \
+  _ERS_ASM_LOCK_1 (esc)				\
+  cmpxchgl	esc%r12d, (esc%r13);		\
+  _ERS_ASM_LOCK_2 (esc)				\
+  lock;	cmpxchgl	esc%r12d, (esc%r13);	\
+96:
 
-#define ERS_CMPXCHGL(lock, reg, mem) \
-  subq	$8, %rsp;					\
-  movl	%eax, 4(%rsp);					\
-  movl	reg, (%rsp);					\
-  _ERS_LOCK_1 (mem)					\
-							\
-  movl	24(%rbp), %esi;					\
-  movl	28(%rbp), %eax;					\
-  cmpxchgl	%esi, (%rdi);				\
-  movl	%eax, 28(%rbp);					\
-							\
-  _ERS_LOCK_2 (mem)					\
-  movl	(%rsp), reg;					\
-  movl	4(%rsp), %eax;					\
-  addq	$8, %rsp;					\
-  lock;	cmpxchgl	reg, (mem);			\
-  jmp	98f;						\
-97:							\
-  movl	(%rsp), reg;					\
-  movl	4(%rsp), %eax;					\
-  leaq	8(%rsp), %rsp;	/* avoid affecting flags */	\
-98:
+#define _ERS_ASM_OP_IR_M(op, p, esc, lock, ir, m) \
+  leaq	-8(esc%rsp), esc%rsp;		\
+  pushq	esc%r12;			\
+  pushq	esc%r13;			\
+  leaq	m, esc%r13;			\
+  movq	esc%r13, 16(esc%rsp);		\
+  movq	(esc%rsp), esc%r13;		\
+  movl	ir, esc%r12d;			\
+  movq	16(esc%rsp), esc%r13;		\
+  __ERS_ASM_##op (esc, lock)		\
+  movl	esc%r12d, 16(esc%rsp);		\
+  popq	esc%r13;			\
+  popq	esc%r12;			\
+  p ((esc%rsp), ir)			\
+  leaq	8(esc%rsp), esc%rsp;
 
+#define _ERS_ASM_CMPL(esc, lock, ir, m) \
+  _ERS_ASM_OP_IR_M (CMPL, ERS_OMIT, esc, lock, ir, m)
+#define _ERS_ASM_MOVL_SV(esc, lock, ir, m) \
+  _ERS_ASM_OP_IR_M (MOVL_SV, ERS_OMIT, esc, lock, ir, m)
+
+#define _ERS_ASM_MOVL_LD(esc, lock, m, r) \
+  leaq	-8(esc%rsp), esc%rsp;		\
+  pushq	esc%r12;			\
+  pushq	esc%r13;			\
+  leaq	m, esc%r13;			\
+  __ERS_ASM_MOVL_LD (esc, lock)		\
+  movl	esc%r12d, 16(esc%rsp);		\
+  popq	esc%r13;			\
+  popq	esc%r12;			\
+  movl	(esc%rsp), r;			\
+  leaq	8(esc%rsp), esc%rsp;		\
+
+#define _ERS_ASM_DECL(esc, lock, m) \
+  pushq esc%r13;			\
+  leaq	m, esc%r13;			\
+  __ERS_ASM_DECL (esc, lock)		\
+  popq	esc%r13;
+
+#define _ERS_ASM_RE_R(m, r) movl	m, r;
+
+#define _ERS_ASM_XCHGL(esc, r, m) \
+  _ERS_ASM_OP_IR_M (XCHGL, _ERS_ASM_RE_R, esc, lock, r, m)
+
+#define _ERS_ASM_CMPXCHGL(esc, lock, r, m) \
+  _ERS_ASM_OP_IR_M (CMPXCHGL, _ERS_ASM_RE_R, esc, lock, r, m)
+
+#define ERS_ASM_CMPL(lock, ir, m) \
+  _ERS_ASM_CMPL (ERS_NONE, lock, ir, m)
+#define ERS_ASM_MOVL_SV(lock, ir, m) \
+  _ERS_ASM_MOVL_SV (ERS_NONE, lock, ir, m)
+#define ERS_ASM_MOVL_LD(lock, m, r) \
+  _ERS_ASM_MOVL_LD (ERS_NONE, lock, m, r)
+#define ERS_ASM_DECL(lock, m) \
+  _ERS_ASM_DECL (ERS_NONE, lock, m)
+#define ERS_ASM_XCHGL(r, m) \
+  _ERS_ASM_XCHGL (ERS_NONE, r, m)
+#define ERS_ASM_CMPXCHGL(lock, r, m) \
+  _ERS_ASM_CMPXCHGL (ERS_NONE, lock, r, m)
+
+#ifndef __ASSEMBLER__
+
+#define ERS_ASM_SDECL(lock, m) \
+  _ERS_EXP_STR (_ERS_ASM_DECL (%, lock, m))
+#define ERS_ASM_SCMPXCHGL(lock, r, m) \
+  _ERS_EXP_STR (_ERS_ASM_CMPXCHGL (%, lock, r, m))
 
 #endif
 
