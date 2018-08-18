@@ -26,7 +26,7 @@ struct eri_map_entry
   const char *path;
 };
 
-void eri_dump_maps (void);
+void eri_dump_maps (int fd);
 void eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 		       void *data);
 

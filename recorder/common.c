@@ -5,7 +5,7 @@
 #include "lib/printf.h"
 
 void
-eri_dump_maps (void)
+eri_dump_maps (int fd)
 {
   int maps;
   char buf[256];
@@ -14,10 +14,9 @@ eri_dump_maps (void)
   while (1)
     {
       size_t l;
-      eri_assert (eri_fread (maps, buf, sizeof buf - 1, &l) == 0);
-      buf[l] = '\0';
-      eri_assert (eri_fprintf (2, "%s", buf) == 0);
-      if (l != sizeof buf - 1) break;
+      eri_assert (eri_fread (maps, buf, sizeof buf, &l) == 0);
+      eri_assert (eri_fwrite (fd, buf, l) == 0);
+      if (l != sizeof buf) break;
     }
   eri_assert (eri_fclose (maps) == 0);
 }

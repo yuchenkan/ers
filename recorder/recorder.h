@@ -1,11 +1,120 @@
+#undef _ERS_CFI_STARTPROC
+#ifndef cfi_startproc
+# define _ERS_CFI_STARTPROC .cfi_startproc
+#else
+# define _ERS_CFI_STARTPROC cfi_startproc
+#endif
+
+#undef _ERS_CFI_ENDPROC
+#ifndef cfi_endproc
+# define _ERS_CFI_ENDPROC .cfi_endproc
+#else
+# define _ERS_CFI_ENDPROC cfi_endproc
+#endif
+
+#undef _ERS_CFI_DEF_CFA
+#ifndef cfi_def_cfa
+# define _ERS_CFI_DEF_CFA(reg, off) .cfi_def_cfa reg, off
+#else
+# define _ERS_CFI_DEF_CFA(reg, off) cfi_def_cfa (reg, off)
+#endif
+
+#undef _ERS_CFI_DEF_CFA_REGISTER
+#ifndef cfi_def_cfa_register
+# define _ERS_CFI_DEF_CFA_REGISTER(reg) .cfi_def_cfa_register reg
+#else
+# define _ERS_CFI_DEF_CFA_REGISTER(reg) cfi_def_cfa_register (reg)
+#endif
+
+#undef _ERS_CFI_DEF_CFA_OFFSET
+#ifndef cfi_def_cfa_offset
+# define _ERS_CFI_DEF_CFA_OFFSET(off) .cfi_def_cfa_offset off
+#else
+# define _ERS_CFI_DEF_CFA_OFFSET(off) cfi_def_cfa_offset (off)
+#endif
+
+#undef _ERS_CFI_ADJUST_CFA_OFFSET
+#ifndef cfi_adjust_cfa_offset
+# define _ERS_CFI_ADJUST_CFA_OFFSET(off) .cfi_adjust_cfa_offset off
+#else
+# define _ERS_CFI_ADJUST_CFA_OFFSET(off) cfi_adjust_cfa_offset (off)
+#endif
+
+#undef _ERS_CFI_OFFSET
+#ifndef cfi_offset
+# define _ERS_CFI_OFFSET(reg, off) .cfi_offset reg, off
+#else
+# define _ERS_CFI_OFFSET(reg, off) cfi_offset (reg, off)
+#endif
+
+#undef _ERS_CFI_VAL_OFFSET
+#ifndef cfi_val_offset
+# define _ERS_CFI_VAL_OFFSET(reg, off) .cfi_val_offset reg, off
+#else
+# define _ERS_CFI_VAL_OFFSET(reg, off) cfi_val_offset (reg, off)
+#endif
+
+#undef _ERS_CFI_REL_OFFSET
+#ifndef cfi_rel_offset
+# define _ERS_CFI_REL_OFFSET(reg, off) .cfi_rel_offset reg, off
+#else
+# define _ERS_CFI_REL_OFFSET(reg, off) cfi_rel_offset (reg, off)
+#endif
+
+#undef _ERS_CFI_REGISTER
+#ifndef cfi_register
+# define _ERS_CFI_REGISTER(r1, r2) .cfi_register r1, r2
+#else
+# define _ERS_CFI_REGISTER(r1, r2) cfi_register (r1, r2)
+#endif
+
+#undef _ERS_CFI_RESTORE
+#ifndef cfi_restore
+# define _ERS_CFI_RESTORE(reg) .cfi_restore reg
+#else
+# define _ERS_CFI_RESTORE(reg) cfi_restore (reg)
+#endif
+
+#undef _ERS_CFI_SAME_VALUE
+#ifndef cfi_same_value
+# define _ERS_CFI_SAME_VALUE(reg) .cfi_same_value reg
+#else
+# define _ERS_CFI_SAME_VALUE(reg) cfi_same_value (reg)
+#endif
+
+#undef _ERS_CFI_UNDEFINED
+#ifndef cfi_undefined
+# define _ERS_CFI_UNDEFINED(reg) .cfi_undefined reg
+#else
+# define _ERS_CFI_UNDEFINED(reg) cfi_undefined (reg)
+#endif
+
+#undef _ERS_CFI_REMEMBER_STATE
+#ifndef cfi_remember_state
+# define _ERS_CFI_REMEMBER_STATE .cfi_remember_state
+#else
+# define _ERS_CFI_REMEMBER_STATE cfi_remember_state
+#endif
+
+#undef _ERS_CFI_RESTORE_STATE
+#ifndef cfi_restore_state
+# define _ERS_CFI_RESTORE_STATE .cfi_restore_state
+#else
+# define _ERS_CFI_RESTORE_STATE cfi_restore_state
+#endif
+
+
 #ifndef ERS_RECORDER_H
 #define ERS_RECORDER_H
 
 #define ERS_NONE
 #define ERS_OMIT(...)
 
-#define _ERS_STR(...) #__VA_ARGS__
-#define _ERS_EXP_STR(...) _ERS_STR (__VA_ARGS__)
+#define _ERS_STR_I(...) #__VA_ARGS__
+#define _ERS_STR(...) _ERS_STR_I (__VA_ARGS__)
+
+#define _ERS_DEFER(...) __VA_ARGS__ ERS_OMIT ()
+#define _ERS_EVAL(...) __VA_ARGS__
 
 #ifndef __ASSEMBLER__
 
@@ -31,13 +140,9 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 #define ERS_INIT_PROCESS_X(get, set, arg) \
   do {										\
-    struct ers_thread *(*__ers_get) (void *) = get;				\
-    void (*__ers_set) (struct ers_thread *, void *) = set;			\
-    void *__ers_arg = arg;							\
     struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
     if (__ers_recorder) 							\
-      __ers_recorder->init_process ("ers_data",					\
-				    __ers_get, __ers_set, __ers_arg);		\
+      __ers_recorder->init_process ("ers_data",	get, set, arg);			\
   } while (0)
 
 #define ERS_REPLACE_X(macro, ...) \
@@ -429,7 +534,34 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 #endif
 
-#define _ERS_ASM_SYSCALL(esc) \
+#define _ERS_ASM_PUSH_FRAME(esc, l) \
+  call	l##f;				\
+l:					\
+  _ERS_CFI_REMEMBER_STATE;		\
+  _ERS_CFI_DEF_CFA (esc%rsp, 8);	\
+  _ERS_CFI_SAME_VALUE (esc%rax);	\
+  _ERS_CFI_SAME_VALUE (esc%rdx);	\
+  _ERS_CFI_SAME_VALUE (esc%rcx);	\
+  _ERS_CFI_SAME_VALUE (esc%rbx);	\
+  _ERS_CFI_SAME_VALUE (esc%rsi);	\
+  _ERS_CFI_SAME_VALUE (esc%rdi);	\
+  _ERS_CFI_SAME_VALUE (esc%rbp);	\
+  _ERS_CFI_VAL_OFFSET (esc%rsp, 0);	\
+  _ERS_CFI_SAME_VALUE (esc%r8);		\
+  _ERS_CFI_SAME_VALUE (esc%r9);		\
+  _ERS_CFI_SAME_VALUE (esc%r10);	\
+  _ERS_CFI_SAME_VALUE (esc%r11);	\
+  _ERS_CFI_SAME_VALUE (esc%r12);	\
+  _ERS_CFI_SAME_VALUE (esc%r13);	\
+  _ERS_CFI_SAME_VALUE (esc%r14);	\
+  _ERS_CFI_SAME_VALUE (esc%r15);	\
+  _ERS_CFI_OFFSET (esc%rip, -8);
+
+#define _ERS_ASM_POP_FRAME(esc, v)	\
+  leaq	v+8(esc%rsp), esc%rsp;		\
+  _ERS_CFI_RESTORE_STATE;
+
+#define _ERS_ASM_SYSCALL(esc, ...) /* TODO cfi */ \
   pushq	esc%rbx;								\
   movq	esc%rsp, esc%rbx;							\
   subq	$8, esc%rsp;								\
@@ -492,121 +624,192 @@ extern struct ers_recorder *ers_get_recorder (void);
   xorq	esc%rax, esc%rax;							\
 94:				/* leave 3 */
 
-#define ERS_ASM_SYSCALL _ERS_ASM_SYSCALL (ERS_NONE)
+#define ERS_ASM_SYSCALL _ERS_ASM_SYSCALL (ERS_NONE, _ERS_EVAL)
+#define ERS_ASM_CLONE _ERS_ASM_SYSCALL (ERS_NONE, ERS_OMIT)
 
-#define _ERS_PUSH_SCRATCH_REGS(esc) \
-  pushq	esc%rax;		\
-  pushq	esc%rdi;		\
-  pushq	esc%rsi;		\
-  pushq	esc%rdx;		\
-  pushq	esc%rcx;		\
-  pushq	esc%r8;			\
-  pushq	esc%r9;			\
-  pushq	esc%r10;		\
-  pushq	esc%r11;
+#define _ERS_ASM_PUSH_SCRATCH_REGS(esc) \
+  pushq	esc%rax;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rax, 0);		\
+  pushq	esc%rdi;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rdi, 0);		\
+  pushq	esc%rsi;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rsi, 0);		\
+  pushq	esc%rdx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rdx, 0);		\
+  pushq	esc%rcx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rcx, 0);		\
+  pushq	esc%r8;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r8, 0);		\
+  pushq	esc%r9;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r9, 0);		\
+  pushq	esc%r10;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r10, 0);		\
+  pushq	esc%r11;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r11, 0);
 
-# define _ERS_POP_SCRATCH_REGS(esc) \
-  popq	esc%r11;		\
-  popq	esc%r10;		\
-  popq	esc%r9;			\
-  popq	esc%r8;			\
-  popq	esc%rcx;		\
-  popq	esc%rdx;		\
-  popq	esc%rsi;		\
-  popq	esc%rdi;		\
-  popq	esc%rax;
+# define _ERS_ASM_POP_SCRATCH_REGS(esc) \
+  popq	esc%r11;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r11);			\
+  popq	esc%r10;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r10);			\
+  popq	esc%r9;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r9);			\
+  popq	esc%r8;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r8);			\
+  popq	esc%rcx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rcx);			\
+  popq	esc%rdx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rdx);			\
+  popq	esc%rsi;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rsi);			\
+  popq	esc%rdi;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rdi);			\
+  popq	esc%rax;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rax);
 
 /* %r13 is the address to be locked.
    All the registers are restored.
    Instructions followed LOCK_2 are executed when there is no
    interception. Otherwise the execution jumps to 96f.  */
 #define _ERS_ASM_LOCK_1(esc) \
-  pushfq;			\
-  pushq	esc%rbx;		\
-  _ERS_PUSH_SCRATCH_REGS (esc)	\
-  movq	esc%rsp, esc%rbx;	\
-  subq	$8, esc%rsp;		\
-  andq	$-16, esc%rsp;		\
-  movq	esc%rbx, (esc%rsp);	\
-  call	ers_get_recorder@PLT;	\
-  testq	esc%rax, esc%rax;	\
-  jz	95f;			\
-				\
-  movq	esc%r13, esc%rdi;	\
-  movq	esc%rax, esc%rbx;	\
-  call	*16(esc%rbx);		\
-  testb	esc%al, esc%al;		\
-  jz	95f;			\
-  popq	esc%rsp;		\
-  _ERS_POP_SCRATCH_REGS (esc)	\
-  popq	esc%rbx;		\
-  popfq;
+  pushfq;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  pushq	esc%rbx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rbx, 0);		\
+  pushq	esc%rbp;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rbp, 0);		\
+  _ERS_ASM_PUSH_SCRATCH_REGS (esc)		\
+  movq	esc%rsp, esc%rbp;			\
+  _ERS_CFI_DEF_CFA_REGISTER (esc%rbp);		\
+  subq	$8, esc%rsp;				\
+  andq	$-16, esc%rsp;				\
+  movq	esc%rbp, (esc%rsp);			\
+  call	ers_get_recorder@PLT;			\
+  testq	esc%rax, esc%rax;			\
+  _ERS_CFI_REMEMBER_STATE;			\
+  jz	95f;					\
+						\
+  movq	esc%r13, esc%rdi;			\
+  movq	esc%rax, esc%rbx;			\
+  call	*16(esc%rbx);				\
+  testb	esc%al, esc%al;				\
+  jz	95f;					\
+  popq	esc%rsp;				\
+  _ERS_CFI_DEF_CFA_REGISTER (esc%rsp);		\
+  _ERS_ASM_POP_SCRATCH_REGS (esc)		\
+  popq	esc%rbp;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbp);			\
+  popq	esc%rbx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbx);			\
+  popfq;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);
 
 #define _ERS_ASM_LOCK_2(esc) \
-  pushfq;			\
-  pushq	esc%rbx;		\
-  _ERS_PUSH_SCRATCH_REGS (esc)	\
-  movq	esc%rsp, esc%rbx;	\
-  subq	$8, esc%rsp;		\
-  andq	$-16, esc%rsp;		\
-  movq	esc%rbx, (esc%rsp);	\
-  call	ers_get_recorder@PLT;	\
-  testq	esc%rax, esc%rax;	\
-  jz	95f;			\
-				\
-  movq	esc%r13, esc%rdi;	\
-  movl	$5, esc%esi;		\
-  movq	esc%rax, esc%rbx;	\
-  call	*24(esc%rbx);		\
-  popq	esc%rsp;		\
-  _ERS_POP_SCRATCH_REGS (esc)	\
-  popq	esc%rbx;		\
-  popfq;			\
-  jmp	96f;			\
-95:				\
-  popq	esc%rsp;		\
-  _ERS_POP_SCRATCH_REGS (esc)	\
-  popq	esc%rbx;		\
-  popfq;
+  pushfq;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  pushq	esc%rbx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rbx, 0);		\
+  pushq	esc%rbp;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%rbp, 0);		\
+  _ERS_ASM_PUSH_SCRATCH_REGS (esc)		\
+  _ERS_CFI_DEF_CFA_REGISTER (esc%rbp);		\
+  movq	esc%rsp, esc%rbp;			\
+  subq	$8, esc%rsp;				\
+  andq	$-16, esc%rsp;				\
+  movq	esc%rbp, (esc%rsp);			\
+  call	ers_get_recorder@PLT;			\
+  movq	esc%r13, esc%rdi;			\
+  movl	$5, esc%esi;				\
+  movq	esc%rax, esc%rbx;			\
+  call	*24(esc%rbx);				\
+  popq	esc%rsp;				\
+  _ERS_CFI_DEF_CFA_REGISTER (esc%rsp);		\
+  _ERS_ASM_POP_SCRATCH_REGS (esc)		\
+  popq	esc%rbp;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbp);			\
+  popq	esc%rbx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbx);			\
+  popfq;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  jmp	96f;					\
+95:						\
+  _ERS_CFI_RESTORE_STATE;			\
+  popq	esc%rsp;				\
+  _ERS_CFI_DEF_CFA_REGISTER (esc%rsp);		\
+  _ERS_ASM_POP_SCRATCH_REGS (esc)		\
+  popq	esc%rbp;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbp);			\
+  popq	esc%rbx;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%rbx);			\
+  popfq;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);
 
 /* lock; cmpl %r12d, (%r13) */
-#define __ERS_ASM_CMPL(esc, lock) \
-  _ERS_ASM_LOCK_1 (esc)	 		\
-  cmpl	esc%r12d, (esc%r13);		\
-  _ERS_ASM_LOCK_2 (esc)			\
-  lock;	cmpl	esc%r12d, (esc%r13);	\
+#define __ERS_ASM_CMPL(esc, ...) \
+  _ERS_ASM_LOCK_1 (esc)	 			\
+  cmpl	esc%r12d, (esc%r13);			\
+  _ERS_ASM_LOCK_2 (esc)				\
+  cmpl	esc%r12d, (esc%r13);			\
 96:
 
 /* lock; movl %r12d, (%r13) */
-#define __ERS_ASM_MOVL_SV(esc, lock) \
-  _ERS_ASM_LOCK_1 (esc)			\
-  movl	esc%r12d, (esc%r13);		\
-  _ERS_ASM_LOCK_2 (esc)			\
-  lock;	movl	esc%r12d, (esc%r13);	\
+#define __ERS_ASM_MOVL_SV(esc, ...) \
+  _ERS_ASM_LOCK_1 (esc)				\
+  movl	esc%r12d, (esc%r13);			\
+  _ERS_ASM_LOCK_2 (esc)				\
+  movl	esc%r12d, (esc%r13);			\
 96:
 
 /* lock; movl (%r13), %r12d */
-#define __ERS_ASM_MOVL_LD(esc, lock) \
-  _ERS_ASM_LOCK_1 (esc)			\
-  movl	(esc%r13), esc%r12d;		\
-  _ERS_ASM_LOCK_2 (esc)			\
-  lock;	movl	(esc%r13), esc%r12d;	\
+#define __ERS_ASM_MOVL_LD(esc, ...) \
+  _ERS_ASM_LOCK_1 (esc)				\
+  movl	(esc%r13), esc%r12d;			\
+  _ERS_ASM_LOCK_2 (esc)				\
+  movl	(esc%r13), esc%r12d;			\
 96:
 
 /* lock; decl (%r13) */
 #define __ERS_ASM_DECL(esc, lock) \
-  _ERS_ASM_LOCK_1 (esc)			\
-  decl	(esc%r13);			\
-  _ERS_ASM_LOCK_2 (esc)			\
-  lock;	decl	(esc%r13);		\
+  _ERS_ASM_LOCK_1 (esc)				\
+  decl	(esc%r13);				\
+  _ERS_ASM_LOCK_2 (esc)				\
+  lock;	decl	(esc%r13);			\
 96:
 
 /* xchgl %r12d, (%r13) */
 #define __ERS_ASM_XCHGL(esc, ...) \
-  _ERS_ASM_LOCK_1 (esc)			\
-  xchgl	esc%r12d, (esc%r13);		\
-  _ERS_ASM_LOCK_2 (esc)			\
-  xchgl	esc%r12d, (esc%r13);		\
+  _ERS_ASM_LOCK_1 (esc)				\
+  xchgl	esc%r12d, (esc%r13);			\
+  _ERS_ASM_LOCK_2 (esc)				\
+  xchgl	esc%r12d, (esc%r13);			\
 96:
 
 /* lock; cmpxchgl %r12d, (%r13) */
@@ -618,58 +821,96 @@ extern struct ers_recorder *ers_get_recorder (void);
 96:
 
 #define _ERS_ASM_OP_IR_M(op, p, esc, lock, ir, m) \
-  leaq	-8(esc%rsp), esc%rsp;		\
-  pushq	esc%r12;			\
-  pushq	esc%r13;			\
-  leaq	m, esc%r13;			\
-  movq	esc%r13, 16(esc%rsp);		\
-  movq	(esc%rsp), esc%r13;		\
-  movl	ir, esc%r12d;			\
-  movq	16(esc%rsp), esc%r13;		\
-  __ERS_ASM_##op (esc, lock)		\
-  movl	esc%r12d, 16(esc%rsp);		\
-  popq	esc%r13;			\
-  popq	esc%r12;			\
-  p ((esc%rsp), ir)			\
-  leaq	8(esc%rsp), esc%rsp;
+  leaq	-8(esc%rsp), esc%rsp;			\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  pushq	esc%r12;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r12, 0);		\
+  pushq	esc%r13;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);		\
+  _ERS_CFI_REL_OFFSET (esc%r13, 0);		\
+  leaq	m, esc%r13;				\
+  movq	esc%r13, 16(esc%rsp);			\
+  movq	(esc%rsp), esc%r13;			\
+  movl	ir, esc%r12d;				\
+  movq	16(esc%rsp), esc%r13;			\
+  __ERS_ASM_##op (esc, lock)			\
+  p (movl	esc%r12d, 24(esc%rsp));		\
+  popq	esc%r13;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r13);			\
+  popq	esc%r12;				\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);		\
+  _ERS_CFI_RESTORE (esc%r12);			\
+  leaq	8(esc%rsp), esc%rsp;			\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);
 
-#define _ERS_ASM_CMPL(esc, lock, ir, m) \
-  _ERS_ASM_OP_IR_M (CMPL, ERS_OMIT, esc, lock, ir, m)
-#define _ERS_ASM_MOVL_SV(esc, lock, ir, m) \
-  _ERS_ASM_OP_IR_M (MOVL_SV, ERS_OMIT, esc, lock, ir, m)
+#define _ERS_ASM_CMPL(esc, ir, m) \
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  _ERS_ASM_OP_IR_M (CMPL, ERS_OMIT, esc, ERS_NONE, ir, m)	\
+  _ERS_ASM_POP_FRAME (esc, 0)
+#define _ERS_ASM_MOVL_SV(esc, ir, m) \
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  _ERS_ASM_OP_IR_M (MOVL_SV, ERS_OMIT, esc, ERS_NONE, ir, m)	\
+  _ERS_ASM_POP_FRAME (esc, 0)
 
-#define _ERS_ASM_MOVL_LD(esc, lock, m, r) \
-  leaq	-8(esc%rsp), esc%rsp;		\
-  pushq	esc%r12;			\
-  pushq	esc%r13;			\
-  leaq	m, esc%r13;			\
-  __ERS_ASM_MOVL_LD (esc, lock)		\
-  movl	esc%r12d, 16(esc%rsp);		\
-  popq	esc%r13;			\
-  popq	esc%r12;			\
-  movl	(esc%rsp), r;			\
-  leaq	8(esc%rsp), esc%rsp;		\
+#define _ERS_ASM_MOVL_LD(esc, m, r) \
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  leaq	-8(esc%rsp), esc%rsp;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  pushq	esc%r12;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  _ERS_CFI_REL_OFFSET (esc%r12, 0);				\
+  pushq	esc%r13;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  _ERS_CFI_REL_OFFSET (esc%r13, 0);				\
+  leaq	m, esc%r13;						\
+  __ERS_ASM_MOVL_LD (esc)					\
+  movl	esc%r12d, 16(esc%rsp);					\
+  popq	esc%r13;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);				\
+  _ERS_CFI_RESTORE (esc%r13);					\
+  popq	esc%r12;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);				\
+  _ERS_CFI_RESTORE (esc%r12);					\
+  /* We lost previous value of r here.  */			\
+  movl	(esc%rsp), r;						\
+  _ERS_ASM_POP_FRAME (esc, 8)
 
 #define _ERS_ASM_DECL(esc, lock, m) \
-  pushq esc%r13;			\
-  leaq	m, esc%r13;			\
-  __ERS_ASM_DECL (esc, lock)		\
-  popq	esc%r13;
-
-#define _ERS_ASM_RE_R(m, r) movl	m, r;
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  pushq esc%r13;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  _ERS_CFI_REL_OFFSET (esc%r13, 0);				\
+  leaq	m, esc%r13;						\
+  __ERS_ASM_DECL (esc, lock)					\
+  popq	esc%r13;						\
+  _ERS_CFI_ADJUST_CFA_OFFSET (-8);				\
+  _ERS_CFI_RESTORE (esc%r13);					\
+  _ERS_ASM_POP_FRAME (esc, 0)
 
 #define _ERS_ASM_XCHGL(esc, r, m) \
-  _ERS_ASM_OP_IR_M (XCHGL, _ERS_ASM_RE_R, esc, lock, r, m)
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  leaq	-8(esc%rsp), esc%rsp;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  _ERS_ASM_OP_IR_M (XCHGL, _ERS_EVAL, esc, ERS_NONE, r, m)	\
+  movl	(esc%rsp), r;						\
+  _ERS_ASM_POP_FRAME (esc, 8)
 
 #define _ERS_ASM_CMPXCHGL(esc, lock, r, m) \
-  _ERS_ASM_OP_IR_M (CMPXCHGL, _ERS_ASM_RE_R, esc, lock, r, m)
+  _ERS_ASM_PUSH_FRAME (esc, 97)					\
+  leaq	-8(esc%rsp), esc%rsp;					\
+  _ERS_CFI_ADJUST_CFA_OFFSET (8);				\
+  _ERS_ASM_OP_IR_M (CMPXCHGL, _ERS_EVAL, esc, lock, r, m)	\
+  movl	(esc%rsp), r;						\
+  _ERS_ASM_POP_FRAME (esc, 8)
 
-#define ERS_ASM_CMPL(lock, ir, m) \
-  _ERS_ASM_CMPL (ERS_NONE, lock, ir, m)
-#define ERS_ASM_MOVL_SV(lock, ir, m) \
-  _ERS_ASM_MOVL_SV (ERS_NONE, lock, ir, m)
-#define ERS_ASM_MOVL_LD(lock, m, r) \
-  _ERS_ASM_MOVL_LD (ERS_NONE, lock, m, r)
+#define ERS_ASM_CMPL(ir, m) \
+  _ERS_ASM_CMPL (ERS_NONE, ir, m)
+#define ERS_ASM_MOVL_SV(ir, m) \
+  _ERS_ASM_MOVL_SV (ERS_NONE, ir, m)
+#define ERS_ASM_MOVL_LD(m, r) \
+  _ERS_ASM_MOVL_LD (ERS_NONE, m, r)
 #define ERS_ASM_DECL(lock, m) \
   _ERS_ASM_DECL (ERS_NONE, lock, m)
 #define ERS_ASM_XCHGL(r, m) \
@@ -679,10 +920,31 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 #ifndef __ASSEMBLER__
 
+#define ERS_ASM_SCMPL(ir, m) \
+  _ERS_STR (_ERS_ASM_CMPL (ERS_NONE, ir, m))
+#define ERS_ASM_SMOVL_SV(ir, m) \
+  _ERS_STR (_ERS_ASM_MOVL_SV (ERS_NONE, ir, m))
+#define ERS_ASM_SMOVL_LD(m, r) \
+  _ERS_STR (_ERS_ASM_MOVL_LD (ERS_NONE, m, r))
 #define ERS_ASM_SDECL(lock, m) \
-  _ERS_EXP_STR (_ERS_ASM_DECL (%, lock, m))
+  _ERS_STR (_ERS_ASM_DECL (ERS_NONE, lock, m))
+#define ERS_ASM_SXCHGL(r, m) \
+  _ERS_STR (_ERS_ASM_XCHGL (ERS_NONE, r, m))
 #define ERS_ASM_SCMPXCHGL(lock, r, m) \
-  _ERS_EXP_STR (_ERS_ASM_CMPXCHGL (%, lock, r, m))
+  _ERS_STR (_ERS_ASM_CMPXCHGL (ERS_NONE, lock, r, m))
+
+#define ERS_ASM_ESCMPL(ir, m) \
+  _ERS_STR (_ERS_ASM_CMPL (%, ir, m))
+#define ERS_ASM_ESMOVL_SV(ir, m) \
+  _ERS_STR (_ERS_ASM_MOVL_SV (%, ir, m))
+#define ERS_ASM_ESMOVL_LD(m, r) \
+  _ERS_STR (_ERS_ASM_MOVL_LD (%, m, r))
+#define ERS_ASM_ESDECL(lock, m) \
+  _ERS_STR (_ERS_ASM_DECL (%, lock, m))
+#define ERS_ASM_ESXCHGL(r, m) \
+  _ERS_STR (_ERS_ASM_XCHGL (%, r, m))
+#define ERS_ASM_ESCMPXCHGL(lock, r, m) \
+  _ERS_STR (_ERS_ASM_CMPXCHGL (%, lock, r, m))
 
 #endif
 

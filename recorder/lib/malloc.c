@@ -114,7 +114,7 @@ merge (struct block *b)
   struct block *n = b->next;
   b->next = n->next;
   if (b->next) b->next->prev = b;
-  eri_memset (n, 0, sizeof *n); /* XXX safety check */
+  eri_memset (n, 0xfc, sizeof *n); /* XXX safety check */
 }
 
 int
@@ -122,7 +122,7 @@ eri_free (struct eri_pool *pool, void *p)
 {
   eri_assert (p);
   struct block *b = (struct block *) ((char *) p - ALLOC_OFFSET);
-  eri_memset ((char *) b + sizeof *b, 0, block_size (pool, b) - sizeof *b); /* XXX safety check */
+  eri_memset ((char *) b + sizeof *b, 0xfc, block_size (pool, b) - sizeof *b); /* XXX safety check */
 
   eri_assert (pool->used >= block_size (pool, b));
   pool->used -= block_size (pool, b);
