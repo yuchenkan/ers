@@ -282,7 +282,7 @@ init_thread (struct internal *internal, unsigned long id, int *ctid)
   iprintf (internal, th->log, "init_thread %lu %lx\n", id, th);
 
   llock (replay, th->id, &internal->threads_lock);
-  thread_append (internal, th);
+  thread_lst_append (internal, th);
   lunlock (replay, &internal->threads_lock);
   return th;
 }
@@ -291,7 +291,7 @@ static void
 fini_thread (struct internal *internal, struct ers_thread *th)
 {
   llock (internal->replay, th->id, &internal->threads_lock);
-  thread_remove (th);
+  thread_lst_remove (th);
   lunlock (internal->replay, &internal->threads_lock);
 
   iprintf (internal, th->log, "fini_thread %lx\n", th);
@@ -746,7 +746,7 @@ get_atomic_lock (struct internal *internal, struct ers_thread * th,
 {
   char replay = internal->replay;
   llock (replay, th->id, &internal->atomics_lock);
-  struct atomic_lock *lock = atomic_get (internal, &mem, ERI_RBT_EQ);
+  struct atomic_lock *lock = atomic_rbt_get (internal, &mem, ERI_RBT_EQ);
   if (create && ! lock)
     {
       lock = icalloc (internal, th->id, sizeof *lock);
@@ -755,7 +755,7 @@ get_atomic_lock (struct internal *internal, struct ers_thread * th,
       int lfd = eri_open_path (internal->path, "atomic-",
 			       ERI_OPEN_WITHID | replay * ERI_OPEN_REPLAY, lid);
       init_lock (replay, &lock->lock, lfd);
-      atomic_insert (internal, lock);
+      atomic_rbt_insert (internal, lock);
     }
   lunlock (internal->replay, &internal->atomics_lock);
   return lock;
@@ -828,7 +828,7 @@ syscall (struct internal *internal, int nr,
 		}
 
 	      iprintf (internal, th->log, "remove sigact wrap %lx\n", w);
-	      sigact_remove (internal, w);
+	      sigact_rbt_remove (internal, w);
 	      ifree (internal, tid, w);
 	    }
 	  eri_assert (internal->sigacts_lock.lock == 0);
@@ -847,7 +847,7 @@ syscall (struct internal *internal, int nr,
 	      iprintf (internal, -1, "remove atomic lock %lx\n", l);
 	      while (__atomic_load_n (&l->lock.lock, __ATOMIC_RELAXED)) continue;
 	      eri_assert (eri_fclose (l->lock.fd) == 0);
-	      atomic_remove (internal, l);
+	      atomic_rbt_remove (internal, l);
 	      ifree (internal, tid, l);
 	    }
 	  eri_assert (internal->atomics_lock.lock == 0);
@@ -907,7 +907,7 @@ syscall (struct internal *internal, int nr,
       struct sigaction *old = (struct sigaction *) a3;
 
       llock (replay, tid, &internal->sigacts_lock);
-      wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
+      wrap = sigact_rbt_get (internal, &sig, ERI_RBT_EQ);
 
       if (old && wrap)
 	{
@@ -933,7 +933,7 @@ syscall (struct internal *internal, int nr,
 	{
 	  if (act && ! replace && wrap)
 	    {
-	      sigact_remove (internal, wrap);
+	      sigact_rbt_remove (internal, wrap);
 	      ifree (internal, tid, wrap);
 	    }
 	  else if (act && replace)
@@ -942,7 +942,7 @@ syscall (struct internal *internal, int nr,
 		{
 		  wrap = imalloc (internal, tid, sizeof *wrap);
 		  wrap->sig = sig;
-		  sigact_insert (internal, wrap);
+		  sigact_rbt_insert (internal, wrap);
 		}
 
 	      wrap->act = act->act;
@@ -1218,7 +1218,7 @@ sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucont
 
       llock (internal->replay, th->id, &internal->sigacts_lock);
 
-      struct sigact_wrap *wrap = sigact_get (internal, &sig, ERI_RBT_EQ);
+      struct sigact_wrap *wrap = sigact_rbt_get (internal, &sig, ERI_RBT_EQ);
       eri_assert (wrap);
       act = wrap->act;
       flags = wrap->flags;

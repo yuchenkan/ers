@@ -249,7 +249,7 @@ start (void **arg)
       else map->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
       if (map->flags & 1 && ! (map->flags & 24))
 	eri_skip_init_map_data (init, map->end - map->start);
-      map_insert (&maps, map);
+      map_rbt_insert (&maps, map);
     }
   eri_assert (stack);
   eri_assert (mk == ERI_MARK_INIT_STACK);
@@ -262,7 +262,7 @@ start (void **arg)
 
   size_t data_size = eri_round_up (
 	6 * sizeof (unsigned long) /* init, stack[2], text[2], map_size */
-	+ map_get_size (&maps) * sizeof (unsigned long) * 5 /* map_size * (start, size, prot, flags, offset) */
+	+ map_rbt_get_size (&maps) * sizeof (unsigned long) * 5 /* map_size * (start, size, prot, flags, offset) */
 	+ eri_round_up (sizeof ctx.env, sizeof (unsigned long))
 	+ 2 * sizeof (unsigned long), /* unmap */
 	4096);
@@ -296,7 +296,7 @@ mapped:
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.stack_end - pd.stack_start;
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.start;
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.end - pd.start;
-  *(size_t *) (data += sizeof (unsigned long)) = map_get_size (&maps);
+  *(size_t *) (data += sizeof (unsigned long)) = map_rbt_get_size (&maps);
   ERI_RBT_FOREACH (map, &maps, m)
     {
       *(unsigned long *) (data += sizeof (unsigned long)) = m->start;
@@ -312,7 +312,7 @@ mapped:
   *(unsigned long *) (data += sizeof (unsigned long)) = size;
 
   struct map *nm;
-  ERI_RBT_FOREACH_SAFE (map, &maps, m, nm) map_remove (&maps, m);
+  ERI_RBT_FOREACH_SAFE (map, &maps, m, nm) map_rbt_remove (&maps, m);
 
   char *code = (char *) addr + data_size;
   eri_memcpy (code, restore, restore_end - (char *) restore);

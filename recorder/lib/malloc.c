@@ -36,7 +36,7 @@ ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 #define ALIGN(x) eri_round_up (x, 16)
 
 #define MIN_BLOCK_SIZE ALIGN (sizeof (struct block))
-#define ALLOC_OFFSET __builtin_offsetof (struct block, block_parent)
+#define ALLOC_OFFSET __builtin_offsetof (struct block, block_rbt_parent)
 
 int
 eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
@@ -51,7 +51,7 @@ eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
 
   struct block *b = (struct block *) pool->buf;
   eri_memset (b, 0, sizeof *b);
-  block_insert (pool, b);
+  block_rbt_insert (pool, b);
   return 0;
 }
 
@@ -62,9 +62,9 @@ eri_fini_pool (struct eri_pool *pool)
   if (pool->size >= MIN_BLOCK_SIZE)
     {
       struct block *b = (struct block *) pool->buf;
-      block_remove (pool, b);
+      block_rbt_remove (pool, b);
     }
-  eri_assert (! pool->block_root);
+  eri_assert (! pool->block_rbt_root);
   pool->size = 0;
   pool->buf = 0;
   return 0;
@@ -76,12 +76,12 @@ eri_malloc (struct eri_pool *pool, size_t size, void **p)
   size_t s = eri_max (MIN_BLOCK_SIZE, ALIGN (size + ALLOC_OFFSET));
 
   struct block k = { (struct block *) ((char *) &k + s), NULL, BLK_NOTFREE };
-  struct block *b = block_get (pool, &k, ERI_RBT_GT);
+  struct block *b = block_rbt_get (pool, &k, ERI_RBT_GT);
 
   *p = NULL;
   if (! b) return 1;
 
-  block_remove (pool, b);
+  block_rbt_remove (pool, b);
   b->type = BLK_NOTFREE;
   *p = (char *) b + ALLOC_OFFSET;
 
@@ -93,7 +93,7 @@ eri_malloc (struct eri_pool *pool, size_t size, void **p)
       n->prev = b;
       if (b->next) b->next->prev = n;
       b->next = n;
-      block_insert (pool, n);
+      block_rbt_insert (pool, n);
     }
 
   pool->used += block_size (pool, b);
@@ -130,17 +130,17 @@ eri_free (struct eri_pool *pool, void *p)
 
   if (b->next && b->next->type == BLK_FREE)
     {
-      block_remove (pool, b->next);
+      block_rbt_remove (pool, b->next);
       merge (b);
     }
 
   if (b->prev && b->prev->type == BLK_FREE)
     {
-      block_remove (pool, b->prev);
+      block_rbt_remove (pool, b->prev);
       b = b->prev;
       merge (b);
     }
 
-  block_insert (pool, b);
+  block_rbt_insert (pool, b);
   return 0;
 }
