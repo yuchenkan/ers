@@ -1,8 +1,20 @@
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <unistd.h>
 #include <asm/unistd.h>
+#include <sys/syscall.h>
 
+#define ers_get_recorder get_recorder
 #include "recorder.h"
+
+static struct ers_recorder *recorder;
+
+struct ers_recorder *
+get_recorder (void)
+{
+  return recorder;
+}
 
 static struct ers_thread *
 get (void *arg)
@@ -18,9 +30,6 @@ set (struct ers_thread *th, void *arg)
 
 #define CAT_I(x, y) x##y
 #define CAT(x, y) CAT_I (x, y)
-
-#define DEFER(...) __VA_ARGS__ ERS_OMIT ()
-#define EVAL(...) __VA_ARGS__
 
 #define REG_rax 0
 #define REG_rdx 1
@@ -148,16 +157,6 @@ set (struct ers_thread *th, void *arg)
   FOR_ALL (SAVE)
 #define SSAVE_ALL_REGS _ERS_STR (SAVE_ALL_REGS)
 
-#if 0
-#define MAY_SAVE1(reg, except) \
-  EVAL (DEFER (PP_IF) (PP_NE (REG_##reg, REG_##except), SAVE (reg)))
-
-#define SAVE_ALL_REGS_BUT1(except) \
-  _ERS_ASM_PUSH_FRAME (ERS_NONE, 20)	\
-  FOR_ALL (MAY_SAVE1, except)
-#define SSAVE_ALL_REGS_BUT1(except) _ERS_STR (SAVE_ALL_REGS_BUT1 (except))
-#endif
-
 #define ASSERT(cc) \
   j##cc	1f;		\
   movq	$0, %rax;	\
@@ -182,46 +181,37 @@ set (struct ers_thread *th, void *arg)
   _ERS_ASM_POP_FRAME (ERS_NONE, 0)
 #define SCHECK_ALL_REGS _ERS_STR (CHECK_ALL_REGS)
 
-#if 0
-#define MAY_CHECK1(reg, except) \
-  PP_IF (PP_NE (REG_##reg, REG_##except), CHECK (reg))
-
-#define CHECK_ALL_REGS_BUT1(except) \
-  RFOR_ALL (MAY_CHECK1, except)		\
-  _ERS_ASM_POP_FRAME (ERS_NONE, 0)
-#define SCHECK_ALL_REGS_BUT1(except) _ERS_STR (CHECK_ALL_REGS_BUT1 (except))
-#endif
-
 #define START_TST(name) \
-  .text;			\
-  .type tst_##name, @function;	\
-tst_##name:			\
-  .cfi_startproc;		\
-  pushq	%rbx;			\
-  .cfi_adjust_cfa_offset 8;	\
-  .cfi_rel_offset %rbx, 0;	\
-  pushq	%r12;			\
-  .cfi_adjust_cfa_offset 8;	\
-  .cfi_rel_offset %r12, 0;	\
-  pushq	%r13;			\
-  .cfi_adjust_cfa_offset 8;	\
+  .text;				\
+  .type tst_##name, @function;		\
+tst_##name:				\
+  .cfi_startproc;			\
+  pushq	%rbx;				\
+  .cfi_adjust_cfa_offset 8;		\
+  .cfi_rel_offset %rbx, 0;		\
+  pushq	%r12;				\
+  .cfi_adjust_cfa_offset 8;		\
+  .cfi_rel_offset %r12, 0;		\
+  pushq	%r13;				\
+  .cfi_adjust_cfa_offset 8;		\
   .cfi_rel_offset %r13, 0;
 #define SSTART_TST(name) _ERS_STR (START_TST (name))
 
 #define END_TST(name) \
-  .cfi_def_cfa_register %rsp;	\
-  popq	%r13;			\
-  .cfi_adjust_cfa_offset -8;	\
-  .cfi_restore %r13;		\
-  popq	%r12;			\
-  .cfi_adjust_cfa_offset -8;	\
-  .cfi_restore %r12;		\
-  popq	%rbx;			\
-  .cfi_adjust_cfa_offset -8;	\
-  .cfi_restore %rbx;		\
-  ret;				\
-  .cfi_endproc;			\
-  .size tst_##name, .-tst_##name;
+  .cfi_def_cfa_register %rsp;		\
+  popq	%r13;				\
+  .cfi_adjust_cfa_offset -8;		\
+  .cfi_restore %r13;			\
+  popq	%r12;				\
+  .cfi_adjust_cfa_offset -8;		\
+  .cfi_restore %r12;			\
+  popq	%rbx;				\
+  .cfi_adjust_cfa_offset -8;		\
+  .cfi_restore %rbx;			\
+  ret;					\
+  .cfi_endproc;				\
+  .size tst_##name, .-tst_##name;	\
+  .previous;
 #define SEND_TST(name) _ERS_STR (END_TST (name))
 
 #define DECLARE_TST(name) \
@@ -241,51 +231,51 @@ void tst_##name (int *a1, int *a2, int *a3, int *a4, int *a5, int *a6);
   .cfi_adjust_cfa_offset -8;
 #define SCMPL(ir, m) _ERS_STR (CMPL (ir, m))
 
-asm (SSTART_TST (cmpli) "\n\
-  movq	%rcx, %rbx\n\
-  movq	%r8, %r12\n\
-  movq	%r9, %r13\n"
-  SSAVE_ALL_REGS "\n\
-  leaq	-128(%rsp), %rsp\n\
-  .cfi_adjust_cfa_offset 128\n"
-  SCMPL ($0, (%rdi)) "\n"
-  SCMPL ($0, (%rsi)) "\n"
-  SCMPL ($0, (%rdx)) "\n"
-  SCMPL ($0, (%rcx)) "\n"
-  SCMPL ($0, (%r8)) "\n"
-  SCMPL ($0, (%r9)) "\n"
-  SCMPL ($0, (%rbx)) "\n"
-  SCMPL ($0, (%r12)) "\n"
-  SCMPL ($0, (%r13)) "\n\
-  leaq	128(%rsp), %rsp\n\
-  .cfi_adjust_cfa_offset -128\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (cmpli)
+asm (SSTART_TST (cmpli) "	\n\
+  movq	%rcx, %rbx		\n\
+  movq	%r8, %r12		\n\
+  movq	%r9, %r13		\n\
+  " SSAVE_ALL_REGS "		\n\
+  leaq	-128(%rsp), %rsp	\n\
+  .cfi_adjust_cfa_offset 128	\n\
+  " SCMPL ($0, (%rdi)) "	\n\
+  " SCMPL ($0, (%rsi)) "	\n\
+  " SCMPL ($0, (%rdx)) "	\n\
+  " SCMPL ($0, (%rcx)) "	\n\
+  " SCMPL ($0, (%r8)) "		\n\
+  " SCMPL ($0, (%r9)) "		\n\
+  " SCMPL ($0, (%rbx)) "	\n\
+  " SCMPL ($0, (%r12)) "	\n\
+  " SCMPL ($0, (%r13)) "	\n\
+  leaq	128(%rsp), %rsp		\n\
+  .cfi_adjust_cfa_offset -128	\n\
+  " SCHECK_ALL_REGS "		\n\
+  " SEND_TST (cmpli)
 );
 
 DECLARE_TST (cmpli)
 
-asm (SSTART_TST (cmplr) "\n\
-  movq	%rcx, %rbx\n\
-  movl	$0, %eax\n\
-  movl	$0, %r12d\n\
-  movl	$0, %r13d\n"
-  SSAVE_ALL_REGS "\n\
-  leaq	-128(%rsp), %rsp\n\
-  .cfi_adjust_cfa_offset 128\n"
-  SCMPL (%eax, (%rdi)) "\n"
-  SCMPL (%eax, (%rsi)) "\n"
-  SCMPL (%eax, (%rdx)) "\n"
-  SCMPL (%eax, (%rcx)) "\n"
-  SCMPL (%eax, (%r8)) "\n"
-  SCMPL (%eax, (%r9)) "\n"
-  SCMPL (%eax, (%rbx)) "\n"
-  SCMPL (%r12d, (%rbx)) "\n"
-  SCMPL (%r13d, (%rbx)) "\n\
-  leaq	128(%rsp), %rsp\n\
-  .cfi_adjust_cfa_offset -128\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (cmplr)
+asm (SSTART_TST (cmplr) "	\n\
+  movq	%rcx, %rbx		\n\
+  movl	$0, %eax		\n\
+  movl	$0, %r12d		\n\
+  movl	$0, %r13d		\n\
+  " SSAVE_ALL_REGS "		\n\
+  leaq	-128(%rsp), %rsp	\n\
+  .cfi_adjust_cfa_offset 128	\n\
+  " SCMPL (%eax, (%rdi)) "	\n\
+  " SCMPL (%eax, (%rsi)) "	\n\
+  " SCMPL (%eax, (%rdx)) "	\n\
+  " SCMPL (%eax, (%rcx)) "	\n\
+  " SCMPL (%eax, (%r8)) "	\n\
+  " SCMPL (%eax, (%r9)) "	\n\
+  " SCMPL (%eax, (%rbx)) "	\n\
+  " SCMPL (%r12d, (%rbx)) "	\n\
+  " SCMPL (%r13d, (%rbx)) "	\n\
+  leaq	128(%rsp), %rsp		\n\
+  .cfi_adjust_cfa_offset -128	\n\
+  " SCHECK_ALL_REGS "		\n\
+  " SEND_TST (cmplr)
 );
 
 DECLARE_TST (cmplr)
@@ -316,19 +306,19 @@ DECLARE_TST (cmplr)
   .cfi_adjust_cfa_offset -8;
 #define SCHECK_FLAGS _ERS_STR (CHECK_FLAGS)
 
-asm (SSTART_TST (movl_sv) "\n\
-  movl	$0, %eax\n\
-  movl	$0, %r12d\n\
-  movl	$0, %r13d\n"
-  SSAVE_ALL_REGS "\n"
-  SSAVE_FLAGS "\n"
-  ERS_ASM_SMOVL_SV ($0, (%rdi)) "\n"
-  ERS_ASM_SMOVL_SV (%eax, (%rsi)) "\n"
-  ERS_ASM_SMOVL_SV (%r12d, (%rdx)) "\n"
-  ERS_ASM_SMOVL_SV (%r13d, (%rcx)) "\n"
-  SCHECK_FLAGS "\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (movl_sv)
+asm (SSTART_TST (movl_sv) "		\n\
+  movl	$0, %eax			\n\
+  movl	$0, %r12d			\n\
+  movl	$0, %r13d			\n\
+  " SSAVE_ALL_REGS "			\n\
+  " SSAVE_FLAGS "			\n\
+  " ERS_ASM_SMOVL_SV ($0, (%rdi)) "	\n\
+  " ERS_ASM_SMOVL_SV (%eax, (%rsi)) "	\n\
+  " ERS_ASM_SMOVL_SV (%r12d, (%rdx)) "	\n\
+  " ERS_ASM_SMOVL_SV (%r13d, (%rcx)) "	\n\
+  " SCHECK_FLAGS "			\n\
+  " SCHECK_ALL_REGS "			\n\
+  " SEND_TST (movl_sv)
 );
 
 DECLARE_TST (movl_sv)
@@ -343,57 +333,57 @@ DECLARE_TST (movl_sv)
   .cfi_adjust_cfa_offset -8;
 #define SMOVL_LD(m, r, v) _ERS_STR (MOVL_LD (m, r, v))
 
-asm (SSTART_TST (movl_ld) "\n\
-  movq	%rcx, %rbx\n\
-  movq	%r8, %r12\n\
-  movq	%r9, %r13\n"
-  SSAVE_ALL_REGS "\n"
-  SSAVE_FLAGS "\n\
-  pushq	%rax\n\
-  .cfi_adjust_cfa_offset 8\n"
-  SMOVL_LD ((%rdi), %eax, $0) "\n"
-  SMOVL_LD ((%rsi), %eax, $0) "\n"
-  SMOVL_LD ((%rdx), %eax, $0) "\n"
-  SMOVL_LD ((%rcx), %eax, $0) "\n"
-  SMOVL_LD ((%r8), %eax, $0) "\n"
-  SMOVL_LD ((%r9), %eax, $0) "\n"
-  SMOVL_LD ((%rbx), %eax, $0) "\n"
-  SMOVL_LD ((%r12), %eax, $0) "\n"
-  SMOVL_LD ((%r13), %eax, $0) "\n\
-  popq	%rax\n\
-  .cfi_adjust_cfa_offset -8\n"
-  SCHECK_FLAGS "\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (movl_ld)
+asm (SSTART_TST (movl_ld) "		\n\
+  movq	%rcx, %rbx			\n\
+  movq	%r8, %r12			\n\
+  movq	%r9, %r13			\n\
+  " SSAVE_ALL_REGS "			\n\
+  " SSAVE_FLAGS "			\n\
+  pushq	%rax				\n\
+  .cfi_adjust_cfa_offset 8		\n\
+  " SMOVL_LD ((%rdi), %eax, $0) "	\n\
+  " SMOVL_LD ((%rsi), %eax, $0) "	\n\
+  " SMOVL_LD ((%rdx), %eax, $0) "	\n\
+  " SMOVL_LD ((%rcx), %eax, $0) "	\n\
+  " SMOVL_LD ((%r8), %eax, $0) "	\n\
+  " SMOVL_LD ((%r9), %eax, $0) "	\n\
+  " SMOVL_LD ((%rbx), %eax, $0) "	\n\
+  " SMOVL_LD ((%r12), %eax, $0) "	\n\
+  " SMOVL_LD ((%r13), %eax, $0) "	\n\
+  popq	%rax				\n\
+  .cfi_adjust_cfa_offset -8		\n\
+  " SCHECK_FLAGS "			\n\
+  " SCHECK_ALL_REGS "			\n\
+  " SEND_TST (movl_ld)
 );
 
 DECLARE_TST (movl_ld)
 
-asm (SSTART_TST (decl) "\n\
-  movq	%rcx, %rbx\n\
-  movq	%r8, %r12\n\
-  movq	%r9, %r13\n"
-  SSAVE_ALL_REGS "\n\
-  pushq	%rbp\n\
-  .cfi_adjust_cfa_offset 8\n\
-  .cfi_rel_offset %rbp, 0\n\
-  movq	%rsp, %rbp\n\
-  .cfi_def_cfa_register %rbp\n"
-  ERS_ASM_SDECL (lock, (%rdi)) "\n"
-  ERS_ASM_SDECL (lock, (%rsi)) "\n"
-  ERS_ASM_SDECL (lock, (%rdx)) "\n"
-  ERS_ASM_SDECL (lock, (%rcx)) "\n"
-  ERS_ASM_SDECL (lock, (%r8)) "\n"
-  ERS_ASM_SDECL (lock, (%r9)) "\n"
-  ERS_ASM_SDECL (lock, (%rbx)) "\n"
-  ERS_ASM_SDECL (lock, (%r12)) "\n"
-  ERS_ASM_SDECL (lock, (%r13)) "\n\
-  leaveq\n\
-  .cfi_def_cfa_register %rsp\n\
-  .cfi_restore %rbp\n\
-  .cfi_adjust_cfa_offset -8\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (decl)
+asm (SSTART_TST (decl) "		\n\
+  movq	%rcx, %rbx			\n\
+  movq	%r8, %r12			\n\
+  movq	%r9, %r13			\n\
+  " SSAVE_ALL_REGS "			\n\
+  pushq	%rbp				\n\
+  .cfi_adjust_cfa_offset 8		\n\
+  .cfi_rel_offset %rbp, 0		\n\
+  movq	%rsp, %rbp			\n\
+  .cfi_def_cfa_register %rbp		\n\
+  " ERS_ASM_SDECL (lock, (%rdi)) "	\n\
+  " ERS_ASM_SDECL (lock, (%rsi)) "	\n\
+  " ERS_ASM_SDECL (lock, (%rdx)) "	\n\
+  " ERS_ASM_SDECL (lock, (%rcx)) "	\n\
+  " ERS_ASM_SDECL (lock, (%r8)) "	\n\
+  " ERS_ASM_SDECL (lock, (%r9)) "	\n\
+  " ERS_ASM_SDECL (lock, (%rbx)) "	\n\
+  " ERS_ASM_SDECL (lock, (%r12)) "	\n\
+  " ERS_ASM_SDECL (lock, (%r13)) "	\n\
+  leave					\n\
+  .cfi_def_cfa_register %rsp		\n\
+  .cfi_restore %rbp			\n\
+  .cfi_adjust_cfa_offset -8		\n\
+  " SCHECK_ALL_REGS "			\n\
+  " SEND_TST (decl)
 );
 
 DECLARE_TST (decl)
@@ -411,94 +401,119 @@ DECLARE_TST (decl)
   .cfi_adjust_cfa_offset -8;
 #define SXCHGL(r, m, mv, rv) _ERS_STR (XCHGL (r, m, mv, rv))
 
-asm (SSTART_TST (xchgl) "\n\
-  movq	%rcx, %rbx\n\
-  movq	%r8, %r12\n\
-  movq	%r9, %r13\n"
-  SSAVE_ALL_REGS "\n"
-  SSAVE_FLAGS "\n\
-  pushq	%rax\n\
-  .cfi_adjust_cfa_offset 8\n"
-  SXCHGL (%eax, (%rdi), $1, $0) "\n"
-  SXCHGL (%eax, (%rsi), $1, $0) "\n"
-  SXCHGL (%eax, (%rdx), $1, $0) "\n"
-  SXCHGL (%eax, (%rcx), $1, $0) "\n"
-  SXCHGL (%eax, (%r8), $1, $0) "\n"
-  SXCHGL (%eax, (%r9), $1, $0) "\n"
-  SXCHGL (%eax, (%rbx), $0, $2) "\n"
-  SXCHGL (%eax, (%r12), $0, $2) "\n"
-  SXCHGL (%eax, (%r13), $0, $2) "\n\
-  popq	%rax\n\
-  .cfi_adjust_cfa_offset -8\n"
-  SCHECK_FLAGS "\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (xchgl)
+asm (SSTART_TST (xchgl) "		\n\
+  movq	%rcx, %rbx			\n\
+  movq	%r8, %r12			\n\
+  movq	%r9, %r13			\n\
+  " SSAVE_ALL_REGS "			\n\
+  " SSAVE_FLAGS "			\n\
+  pushq	%rax				\n\
+  .cfi_adjust_cfa_offset 8		\n\
+  " SXCHGL (%eax, (%rdi), $1, $0) "	\n\
+  " SXCHGL (%eax, (%rsi), $1, $0) "	\n\
+  " SXCHGL (%eax, (%rdx), $1, $0) "	\n\
+  " SXCHGL (%eax, (%rcx), $1, $0) "	\n\
+  " SXCHGL (%eax, (%r8), $1, $0) "	\n\
+  " SXCHGL (%eax, (%r9), $1, $0) "	\n\
+  " SXCHGL (%eax, (%rbx), $0, $2) "	\n\
+  " SXCHGL (%eax, (%r12), $0, $2) "	\n\
+  " SXCHGL (%eax, (%r13), $0, $2) "	\n\
+  popq	%rax				\n\
+  .cfi_adjust_cfa_offset -8		\n\
+  " SCHECK_FLAGS "			\n\
+  " SCHECK_ALL_REGS "			\n\
+  " SEND_TST (xchgl)
 );
 
 DECLARE_TST (xchgl)
 
-asm (SSTART_TST (cmpxchgl) "\n\
-  movq	%rsi, %rbx\n\
-  movq	%rdx, %r12\n"
-  SSAVE_ALL_REGS "\n\
-  pushq	%rax\n\
-  .cfi_adjust_cfa_offset 8\n\
-  pushq	%r13\n\
-  .cfi_adjust_cfa_offset 8\n\
-  movl	$1, %eax\n\
-  movl	$2, %r13d\n"
-  ERS_ASM_SCMPXCHGL (lock, %r13d, (%rdi)) "\n"
-  SASSERT_NE "\n\
-  cmpl	$0, %eax\n"
-  SASSERT_EQ "\n\
-  cmpl	$2, %r13d\n"
-  SASSERT_EQ "\n\
-  cmpl	$0, (%rdi)\n"
-  SASSERT_EQ "\n\
-  movl	$1, %eax\n\
-  movl	$2, %r13d\n"
-  ERS_ASM_SCMPXCHGL (lock, %r13d, (%rbx)) "\n"
-  SASSERT_EQ "\n\
-  cmpl	$1, %eax\n"
-  SASSERT_EQ "\n\
-  cmpl	$2, %r13d\n"
-  SASSERT_EQ "\n\
-  cmpl	$2, (%rbx)\n"
-  SASSERT_EQ "\n\
-  movl	$1, %eax\n\
-  movl	$2, %r13d\n"
-  ERS_ASM_SCMPXCHGL (lock, %r13d, (%r12)) "\n"
-  SASSERT_EQ "\n\
-  cmpl	$1, %eax\n"
-  SASSERT_EQ "\n\
-  cmpl	$2, %r13d\n"
-  SASSERT_EQ "\n\
-  cmpl	$2, (%r12)\n"
-  SASSERT_EQ "\n\
-  popq	%r13\n\
-  .cfi_adjust_cfa_offset -8\n\
-  popq	%rax\n\
-  .cfi_adjust_cfa_offset -8\n"
-  SCHECK_ALL_REGS "\n"
-  SEND_TST (cmpxchgl)
+asm (SSTART_TST (cmpxchgl) "			\n\
+  movq	%rsi, %rbx				\n\
+  movq	%rdx, %r12				\n\
+  " SSAVE_ALL_REGS "				\n\
+  pushq	%rax					\n\
+  .cfi_adjust_cfa_offset 8			\n\
+  pushq	%r13					\n\
+  .cfi_adjust_cfa_offset 8			\n\
+  movl	$1, %eax				\n\
+  movl	$2, %r13d				\n\
+  " ERS_ASM_SCMPXCHGL (lock, %r13d, (%rdi)) "	\n\
+  " SASSERT_NE "				\n\
+  cmpl	$0, %eax				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$2, %r13d				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$0, (%rdi)				\n\
+  " SASSERT_EQ "				\n\
+  movl	$1, %eax				\n\
+  movl	$2, %r13d				\n\
+  " ERS_ASM_SCMPXCHGL (lock, %r13d, (%rbx)) "	\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$1, %eax				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$2, %r13d				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$2, (%rbx)				\n\
+  " SASSERT_EQ "				\n\
+  movl	$1, %eax				\n\
+  movl	$2, %r13d				\n\
+  " ERS_ASM_SCMPXCHGL (lock, %r13d, (%r12)) "	\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$1, %eax				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$2, %r13d				\n\
+  " SASSERT_EQ "				\n\
+  cmpl	$2, (%r12)				\n\
+  " SASSERT_EQ "				\n\
+  popq	%r13					\n\
+  .cfi_adjust_cfa_offset -8			\n\
+  popq	%rax					\n\
+  .cfi_adjust_cfa_offset -8			\n\
+  " SCHECK_ALL_REGS "				\n\
+  " SEND_TST (cmpxchgl)
 );
 
 DECLARE_TST (cmpxchgl)
 
-#if 0
-struct ers_recorder *
-ers_get_recorder (void)
-{
-  return NULL;
-}
-#endif
+#define SAVE_SYSCALL_REGS \
+  SAVE_ALL_REGS					\
+  pushq	%rax;					\
+  .cfi_adjust_cfa_offset 8;			\
+  pushq	%rcx;					\
+  .cfi_adjust_cfa_offset 8;			\
+  pushq	%r11;					\
+  .cfi_adjust_cfa_offset 8;
+#define SSAVE_SYSCALL_REGS _ERS_STR (SAVE_SYSCALL_REGS)
 
-int main ()
-{
-  struct ers_recorder *rec = ers_get_recorder ();
-  struct ers_thread *th;
-  if (rec) rec->init_process ("ers_data", get, set, &th);
+#define CHECK_SYSCALL_REGS \
+  popq	%r11;					\
+  .cfi_adjust_cfa_offset -8;			\
+  popq	%rcx;					\
+  .cfi_adjust_cfa_offset -8;			\
+  popq	%rax;					\
+  .cfi_adjust_cfa_offset -8;			\
+  CHECK_ALL_REGS
+#define SCHECK_SYSCALL_REGS _ERS_STR (CHECK_SYSCALL_REGS)
 
+asm ("  .text					\n\
+  .type tst_syscall, @function			\n\
+tst_syscall:					\n\
+  .cfi_startproc				\n\
+  " SSAVE_SYSCALL_REGS "			\n\
+  movl	$" _ERS_STR (__NR_gettid) ", %eax	\n\
+  " _ERS_STR (ERS_ASM_SYSCALL) "		\n\
+  movq	%rax, (%rdi)				\n\
+  " SCHECK_SYSCALL_REGS "			\n\
+  ret						\n\
+  .cfi_endproc					\n\
+  .size tst_syscall, .-tst_syscall		\n\
+  .previous					\n"
+);
+
+void tst_syscall (long *t);
+
+void tst ()
+{
   int i;
 
   int a1[6] = { 0, 0, 0, 1, 1, 1 };
@@ -537,6 +552,140 @@ int main ()
   asm ("xor %%rax, %%rax; cmpl $1, %%eax;" ::: "rax");
   tst_cmpxchgl (f + 0, f + 1, f + 2, (int *) 123, (int *) 456, (int *) 789);
 
-  if (rec) rec->syscall (__NR_exit, 0, 0, 0, 0, 0, 0, NULL);
+  long tid;
+  tst_syscall (&tid);
+  printf ("tid %ld\n", tid);
+  assert (tid == syscall (SYS_gettid));
+}
+
+#define SYSCALL(nr, a1, a3, a4, a5, a6, ret) \
+  cmpl	CAT_I ($, nr), %eax;			\
+  ASSERT_EQ					\
+  cmpq	CAT_I ($, a1), %rdi;			\
+  ASSERT_EQ					\
+  cmpq	CAT_I ($, a3), %rdx;			\
+  ASSERT_EQ					\
+  cmpq	CAT_I ($, a4), %r10;			\
+  ASSERT_EQ					\
+  cmpq	CAT_I ($, a5), %r8;			\
+  ASSERT_EQ					\
+  cmpq	CAT_I ($, a6), %r9;			\
+  ASSERT_EQ					\
+  movq	CAT_I ($, ret), %rax;
+
+#define syscall SYSCALL (__NR_clone, 1, 3, 4, 5, 6, 7)
+
+asm ("  .text					\n\
+  .type tst_clone, @function			\n\
+tst_clone:					\n\
+  .cfi_startproc				\n\
+  subq	$264, %rsp				\n\
+  .cfi_adjust_cfa_offset 264			\n\
+  movq	$1, %rdi				\n\
+  leaq	256(%rsp), %rsi				\n\
+  movq	$3, %rdx				\n\
+  movq	$4, %r10				\n\
+  movq	$5, %r8					\n\
+  movq	$6, %r9					\n\
+  " SSAVE_SYSCALL_REGS "			\n\
+  movq	%rsp, (%rsi)				\n\
+  movl	$" _ERS_STR (__NR_clone) ", %eax	\n\
+  .cfi_endproc					\n\
+  " _ERS_STR (ERS_ASM_CLONE) "			\n\
+  .cfi_startproc				\n\
+  .cfi_undefined %rip				\n\
+  testq	%rax, %rax				\n\
+  jnz	1f					\n\
+  popq	%rsp					\n\
+1:						\n\
+  movq	%rax, (%rsi)				\n\
+  .cfi_remember_state				\n\
+  " SCHECK_SYSCALL_REGS "			\n\
+  addq	$256, %rsp				\n\
+  popq	%rax					\n\
+  ret						\n\
+  .cfi_endproc					\n\
+  .size tst_clone, .-tst_clone			\n\
+  .previous					\n"
+);
+
+#undef syscall
+
+long tst_clone ();
+
+#define CHECK_CLONE \
+  assert (nr == __NR_clone && a1 == 1 && a3 == 3	\
+	  && a4 == 4 && a5 == 5 && a6 == 6)
+
+static char
+syscall_clone1 (int nr, long a1, long a2, long a3,
+		long a4, long a5, long a6, long *res)
+{
+  CHECK_CLONE;
   return 0;
+}
+
+static char
+syscall_clone2 (int nr, long a1, long a2, long a3,
+		long a4, long a5, long a6, long *res)
+{
+  CHECK_CLONE;
+  *res = 1;
+  return 1;
+}
+
+asm ("  .text					\n\
+  .type syscall_clone3, @function		\n\
+syscall_clone3:					\n\
+  .cfi_startproc				\n\
+  .cfi_undefined %rip				\n\
+  subq	$8, %rdx				\n\
+  movq	(%rsp), %rax				\n\
+  movq	%rax, (%rdx)				\n\
+  movq	%rdx, %rsp				\n\
+  movb	$2, %al					\n\
+  ret						\n\
+  .cfi_endproc					\n\
+  .size syscall_clone3, .-syscall_clone3	\n\
+  .previous					\n"
+);
+
+char
+syscall_clone3 (int nr, long a1, long a2, long a3,
+		long a4, long a5, long a6, long *res);
+
+#undef ers_get_recorder
+extern struct ers_recorder *ers_get_recorder (void);
+
+int main ()
+{
+  struct ers_recorder clone1 = { 0, syscall_clone1 };
+  struct ers_recorder clone2 = { 0, syscall_clone2 };
+  struct ers_recorder clone3 = { 0, syscall_clone3 };
+
+  assert (tst_clone () == 7);
+
+  recorder = &clone1;
+  assert (tst_clone () == 7);
+
+  recorder = &clone2;
+  assert (tst_clone () == 1);
+
+  recorder = &clone3;
+  assert (tst_clone () == 0);
+
+  recorder = NULL;
+  tst ();
+
+  recorder = ers_get_recorder ();
+
+  tst ();
+
+  struct ers_thread *th;
+  recorder->init_process ("ers_data", get, set, &th);
+
+  tst ();
+
+  recorder->syscall (__NR_exit, 0, 0, 0, 0, 0, 0, NULL);
+  __builtin_unreachable ();
 }

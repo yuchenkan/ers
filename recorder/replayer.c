@@ -1,16 +1,17 @@
 #include "common.h"
+#include "recorder.h"
 
 #include "lib/util.h"
 #include "lib/rbtree.h"
 #include "lib/printf.h"
 #include "lib/syscall.h"
 
-asm ("  .text\n\
-  .global _start\n\
-_start:\n\
-  movq %rsp, %rdi\n\
-  call start\n\
-.previous\n"
+asm ("  .text		\n\
+  .global _start	\n\
+_start:			\n\
+  movq %rsp, %rdi	\n\
+  call start		\n\
+  .previous		\n"
 );
 
 struct proc_map_data
@@ -56,134 +57,138 @@ proc_map_entry (const struct eri_map_entry *ent, void *data)
     }
 }
 
-asm ("  .text\n\
-  .type restore, @function\n\
-restore:\n\
-  movq	%rdi, %r15\n\
-  movq	(%r15), %r12		/* init */\n\
-\n\
-  movq	8(%r15), %rdi		/* stack_start */\n\
-  movq	16(%r15), %rsi		/* stack_end - stack_start */\n\
-  movl	$" ERI_STRINGIFY (__NR_munmap) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-\n\
-  movq	24(%r15), %rdi		/* start */\n\
-  movq	32(%r15), %rsi		/* end - start */\n\
-  movl	$" ERI_STRINGIFY (__NR_munmap) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-\n\
-  movq	40(%r15), %r13		/* size */\n\
-  addq	$48, %r15\n\
-.map:\n\
-  testq	%r13, %r13\n\
-  jz	.mapped\n\
-\n\
-  movq	(%r15), %rdi		/* map_start */\n\
-  movq	8(%r15), %rsi		/* map_end - map_start */\n\
-  movq	16(%r15), %rdx\n\
-  andq	$7, %rdx		/* map_prot */\n\
-  orq	$" ERI_STRINGIFY (ERI_PROT_WRITE) ", %rdx	/* map_prot | write */\n\
-  movq	24(%r15), %r10		/* map_flags */\n\
-  movq	$-1, %r8\n\
-  xorq	%r9, %r9\n\
-  movl	$" ERI_STRINGIFY (__NR_mmap) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-\n\
-  movq	16(%r15), %rax		/* flags */\n\
-  andq	$" ERI_STRINGIFY (ERI_PROT_READ) ", %rax\n\
-  jz	.write_done		/* not readable */\n\
-  movq	16(%r15), %rax		/* flags */\n\
-  andq	$8, %rax\n\
-  jnz	.write_done		/* all zero */\n\
-\n\
-  movq	%r12, %rdi		/* init */\n\
-  movq	32(%r15), %rsi		/* offset */\n\
-  movq	$0, %rdx		/* SEEK_SET */\n\
-  movl	$" ERI_STRINGIFY (__NR_lseek) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-  xorq	%r14, %r14		/* count */\n\
-.write:\n\
-  movq	(%r15), %rsi\n\
-  addq	%r14, %rsi		/* buf */\n\
-  movq	8(%r15), %rdx\n\
-  subq	%r14, %rdx		/* count */\n\
-  movl	$" ERI_STRINGIFY (__NR_read) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-  testq	%rax, %rax\n\
-  jz	.error			/* eof */\n\
-  addq	%rax, %r14\n\
-  cmpq	8(%r15), %r14\n\
-  jne  .write\n\
-\n\
-.write_done:\n\
-  movq	16(%r15), %rax		/* flags */\n\
-  movq	%rax, %rbx\n\
-  orq	$" ERI_STRINGIFY (ERI_PROT_WRITE) ", %rbx\n\
-  cmpq	%rax, %rbx\n\
-  je	.map_next\n\
-\n\
-  movq	(%r15), %rdi		/* map_start */\n\
-  movq	8(%r15), %rsi		/* map_end - map_start */\n\
-  movq	16(%r15), %rdx\n\
-  andq	$7, %rdx		/* map_prot */\n\
-  movl	$" ERI_STRINGIFY (__NR_mprotect) ", %eax\n\
-  syscall\n\
-  cmpq	$-4095, %rax\n\
-  jae	.error\n\
-.map_next:\n\
-  addq	$40, %r15\n\
-  subq	$1, %r13\n\
-  jmp	.map\n\
-\n\
-.mapped:\n\
-  leaq	112(%r15), %rcx\n\
-  fldenv	(%rcx)\n\
-  ldmxcsr	136(%r15)\n\
-\n\
-  movq	104(%r15), %rsp\n\
-  movq	(%r15), %rbx\n\
-  movq	8(%r15), %rbp\n\
-  movq	16(%r15), %r12\n\
-  movq	24(%r15), %r13\n\
-  movq	32(%r15), %r14\n\
-\n\
-  movq	96(%r15), %rcx\n\
-  pushq	%rcx			/* rip */\n\
-\n\
-  movq	48(%r15), %rdi\n\
-  movq	56(%r15), %rsi\n\
-  movq	64(%r15), %rdx\n\
-  movq	72(%r15), %rcx\n\
-  movq	80(%r15), %r8\n\
-  movq	88(%r15), %r9\n\
-\n\
-  movq	144(%r15), %rax\n\
-  movq	%rax, 144(%rdi)		/* unmap_start */\n\
-  movq	152(%r15), %rax\n\
-  movq	%rax, 152(%rdi)		/* unmap_size */\n\
-\n\
-  movq	40(%r15), %r15\n\
-  jmp	.return\n\
-\n\
-.error:\n\
-  movq	$0, %rax\n\
-  movq	$1, (%rax)\n\
-\n\
-.return:\n\
-  movb	$1, %al\n\
-  ret\n\
-  .size restore, .-restore\n\
-restore_end:\n"
+asm ("  .text								\n\
+  .type restore, @function						\n\
+restore:								\n\
+  .cfi_startproc							\n\
+  .cfi_undefined %rip							\n\
+  movq	%rdi, %r15							\n\
+  movq	(%r15), %r12		/* init */				\n\
+									\n\
+  movq	8(%r15), %rdi		/* stack_start */			\n\
+  movq	16(%r15), %rsi		/* stack_end - stack_start */		\n\
+  movl	$" _ERS_STR (__NR_munmap) ", %eax				\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+									\n\
+  movq	24(%r15), %rdi		/* start */				\n\
+  movq	32(%r15), %rsi		/* end - start */			\n\
+  movl	$" _ERS_STR (__NR_munmap) ", %eax				\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+									\n\
+  movq	40(%r15), %r13		/* size */				\n\
+  addq	$48, %r15							\n\
+.map:									\n\
+  testq	%r13, %r13							\n\
+  jz	.mapped								\n\
+									\n\
+  movq	(%r15), %rdi		/* map_start */				\n\
+  movq	8(%r15), %rsi		/* map_end - map_start */		\n\
+  movq	16(%r15), %rdx							\n\
+  andq	$7, %rdx		/* map_prot */				\n\
+  orq	$" _ERS_STR (ERI_PROT_WRITE) ", %rdx	/* map_prot | write */	\n\
+  movq	24(%r15), %r10		/* map_flags */				\n\
+  movq	$-1, %r8							\n\
+  xorq	%r9, %r9							\n\
+  movl	$" _ERS_STR (__NR_mmap) ", %eax					\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+									\n\
+  movq	16(%r15), %rax		/* flags */				\n\
+  andq	$" _ERS_STR (ERI_PROT_READ) ", %rax				\n\
+  jz	.write_done		/* not readable */			\n\
+  movq	16(%r15), %rax		/* flags */				\n\
+  andq	$8, %rax							\n\
+  jnz	.write_done		/* all zero */				\n\
+									\n\
+  movq	%r12, %rdi		/* init */				\n\
+  movq	32(%r15), %rsi		/* offset */				\n\
+  movq	$0, %rdx		/* SEEK_SET */				\n\
+  movl	$" _ERS_STR (__NR_lseek) ", %eax				\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+  xorq	%r14, %r14		/* count */				\n\
+.write:									\n\
+  movq	(%r15), %rsi							\n\
+  addq	%r14, %rsi		/* buf */				\n\
+  movq	8(%r15), %rdx							\n\
+  subq	%r14, %rdx		/* count */				\n\
+  movl	$" _ERS_STR (__NR_read) ", %eax					\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+  testq	%rax, %rax							\n\
+  jz	.error			/* eof */				\n\
+  addq	%rax, %r14							\n\
+  cmpq	8(%r15), %r14							\n\
+  jne	.write								\n\
+									\n\
+.write_done:								\n\
+  movq	16(%r15), %rax		/* flags */				\n\
+  movq	%rax, %rbx							\n\
+  orq	$" _ERS_STR (ERI_PROT_WRITE) ", %rbx				\n\
+  cmpq	%rax, %rbx							\n\
+  je	.map_next							\n\
+									\n\
+  movq	(%r15), %rdi		/* map_start */				\n\
+  movq	8(%r15), %rsi		/* map_end - map_start */		\n\
+  movq	16(%r15), %rdx							\n\
+  andq	$7, %rdx		/* map_prot */				\n\
+  movl	$" _ERS_STR (__NR_mprotect) ", %eax				\n\
+  syscall								\n\
+  cmpq	$-4095, %rax							\n\
+  jae	.error								\n\
+.map_next:								\n\
+  addq	$40, %r15							\n\
+  subq	$1, %r13							\n\
+  jmp	.map								\n\
+									\n\
+.mapped:								\n\
+  leaq	112(%r15), %rcx							\n\
+  fldenv	(%rcx)							\n\
+  ldmxcsr	136(%r15)						\n\
+									\n\
+  movq	104(%r15), %rsp							\n\
+  movq	(%r15), %rbx							\n\
+  movq	8(%r15), %rbp							\n\
+  movq	16(%r15), %r12							\n\
+  movq	24(%r15), %r13							\n\
+  movq	32(%r15), %r14							\n\
+									\n\
+  movq	96(%r15), %rcx							\n\
+  pushq	%rcx			/* rip */				\n\
+									\n\
+  movq	48(%r15), %rdi							\n\
+  movq	56(%r15), %rsi							\n\
+  movq	64(%r15), %rdx							\n\
+  movq	72(%r15), %rcx							\n\
+  movq	80(%r15), %r8							\n\
+  movq	88(%r15), %r9							\n\
+									\n\
+  movq	144(%r15), %rax							\n\
+  movq	%rax, 144(%rdi)		/* unmap_start */			\n\
+  movq	152(%r15), %rax							\n\
+  movq	%rax, 152(%rdi)		/* unmap_size */			\n\
+									\n\
+  movq	40(%r15), %r15							\n\
+  jmp	.return								\n\
+									\n\
+.error:									\n\
+  movq	$0, %rax							\n\
+  movq	$1, (%rax)							\n\
+									\n\
+.return:								\n\
+  movb	$1, %al								\n\
+  ret									\n\
+  .cfi_endproc								\n\
+  .size restore, .-restore						\n\
+restore_end:								\n\
+  .previous								\n"
 );
 
 /* static */ void restore (unsigned long addr);

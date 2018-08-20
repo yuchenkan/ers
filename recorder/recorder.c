@@ -300,36 +300,37 @@ fini_thread (struct internal *internal, struct ers_thread *th)
   ifree (internal, th->id, th);
 }
 
-asm ("  .text\n\
-  .type set_context, @function\n\
-set_context:\n\
-  movq	%rbx, (%rdi)\n\
-  movq	%rbp, 8(%rdi)\n\
-  movq	%r12, 16(%rdi)\n\
-  movq	%r13, 24(%rdi)\n\
-  movq	%r14, 32(%rdi)\n\
-  movq	%r15, 40(%rdi)\n\
-\n\
-  movq	%rdi, 48(%rdi)\n\
-  movq	%rsi, 56(%rdi)\n\
-  movq	%rdx, 64(%rdi)\n\
-  movq	%rcx, 72(%rdi)\n\
-  movq	%r8, 80(%rdi)\n\
-  movq	%r9, 88(%rdi)\n\
-\n\
-  movq	(%rsp), %rcx\n\
-  movq	%rcx, 96(%rdi)		/* %rip */\n\
-  leaq	8(%rsp), %rcx\n\
-  movq	%rcx, 104(%rdi)		/* %rsp */\n\
-\n\
-  leaq	112(%rdi), %rcx\n\
-  fnstenv	(%rcx)\n\
-  fldenv	(%rcx)\n\
-  stmxcsr	136(%rdi)\n\
-\n\
-  xorb	%al, %al\n\
-  ret\n\
-  .size set_context, .-set_context\n"
+asm ("  .text						\n\
+  .type set_context, @function				\n\
+set_context:						\n\
+  movq	%rbx, (%rdi)					\n\
+  movq	%rbp, 8(%rdi)					\n\
+  movq	%r12, 16(%rdi)					\n\
+  movq	%r13, 24(%rdi)					\n\
+  movq	%r14, 32(%rdi)					\n\
+  movq	%r15, 40(%rdi)					\n\
+							\n\
+  movq	%rdi, 48(%rdi)					\n\
+  movq	%rsi, 56(%rdi)					\n\
+  movq	%rdx, 64(%rdi)					\n\
+  movq	%rcx, 72(%rdi)					\n\
+  movq	%r8, 80(%rdi)					\n\
+  movq	%r9, 88(%rdi)					\n\
+							\n\
+  movq	(%rsp), %rcx					\n\
+  movq	%rcx, 96(%rdi)		/* %rip */		\n\
+  leaq	8(%rsp), %rcx					\n\
+  movq	%rcx, 104(%rdi)		/* %rsp */		\n\
+							\n\
+  leaq	112(%rdi), %rcx					\n\
+  fnstenv	(%rcx)					\n\
+  fldenv	(%rcx)					\n\
+  stmxcsr	136(%rdi)				\n\
+							\n\
+  xorb	%al, %al					\n\
+  ret							\n\
+  .size set_context, .-set_context			\n\
+  .previous						\n"
 );
 
 /* static */ char set_context (struct eri_context *ctx);
@@ -627,70 +628,70 @@ check_syscall (char replay, int fd, int nr, int n, ...)
 }
 
 static void
-save_return (int fd, long ret)
+save_result (int fd, long res)
 {
-  eri_assert (eri_fwrite (fd, (const char *) &ret, sizeof ret) == 0);
+  eri_assert (eri_fwrite (fd, (const char *) &res, sizeof res) == 0);
 }
 
 static long
-load_return (int fd)
+load_result (int fd)
 {
-  long ret;
-  eri_assert (eri_fread (fd, (char *) &ret, sizeof ret, 0) == 0);
-  return ret;
+  long res;
+  eri_assert (eri_fread (fd, (char *) &res, sizeof res, 0) == 0);
+  return res;
 }
 
 #define CHECK_SYSCALL(replay, fd, nr, ...) \
   check_syscall (replay, fd, nr, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
-#define SYSCALL_REC_RET(replay, fd, ret, nr, ...) \
+#define SYSCALL_REC_RES(replay, fd, res, nr, ...) \
   do {									\
     if (! (replay))							\
       {									\
-	*(ret) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
-	save_return (fd, *(ret));					\
+	*(res) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+	save_result (fd, *(res));					\
       }									\
-    else *(ret) = load_return (fd);					\
+    else *(res) = load_result (fd);					\
   } while (0)
 
-#define SYSCALL_REC_IRET(internal, th, ret, nr, ...) \
+#define SYSCALL_REC_IRES(internal, th, res, nr, ...) \
   ({									\
     char __acq = 1;							\
     release_active_lock (internal, (th)->id, 1, 0);			\
 									\
     if (! (internal)->replay)						\
-      *ret = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+      *res = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
 									\
     if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))	\
       __acq = 0;							\
-    else if (! (internal)->replay) save_return ((th)->fd, *ret);	\
-    else *ret = load_return ((th)->fd);					\
+    else if (! (internal)->replay) save_result ((th)->fd, *res);	\
+    else *res = load_result ((th)->fd);					\
     __acq;								\
   })
 
-#define CSYSCALL_REC_RET(replay, fd, ret, nr, ...) \
+#define CSYSCALL_REC_RES(replay, fd, res, nr, ...) \
   do {									\
     CHECK_SYSCALL (replay, fd, nr, ##__VA_ARGS__);			\
-    SYSCALL_REC_RET (replay, fd, ret, nr, ##__VA_ARGS__);		\
+    SYSCALL_REC_RES (replay, fd, res, nr, ##__VA_ARGS__);		\
   } while (0)
 
-#define CSYSCALL_REC_IRET(internal, th, ret, nr, ...) \
+#define CSYSCALL_REC_IRES(internal, th, res, nr, ...) \
   ({									\
     CHECK_SYSCALL (replay, (th)->fd, nr, ##__VA_ARGS__);		\
-    SYSCALL_REC_IRET (internal, th, ret, nr, ##__VA_ARGS__);		\
+    SYSCALL_REC_IRES (internal, th, res, nr, ##__VA_ARGS__);		\
   })
 
-#define SYSCALL_CHECK_RET(replay, fd, ret, nr, ...) \
+#define SYSCALL_CHECK_RES(replay, fd, res, nr, ...) \
   do {									\
-    *(ret) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
-    if (! (replay)) save_return (fd, *(ret));				\
-    else eri_assert (*(ret) == load_return (fd));			\
+    *(res) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+    if (! (replay)) save_result (fd, *(res));				\
+    else eri_assert (*(res) == load_result (fd));			\
   } while (0)
 
-#define CSYSCALL_CHECK_RET(replay, fd, ret, nr, ...) \
+#define CSYSCALL_CHECK_RES(replay, fd, res, nr, ...) \
   do {									\
     CHECK_SYSCALL (replay, fd, nr, ##__VA_ARGS__);			\
-    SYSCALL_CHECK_RET (replay, fd, ret, nr, ##__VA_ARGS__);		\
+    SYSCALL_CHECK_RES (replay, fd, res, nr, ##__VA_ARGS__);		\
   } while (0)
 
 struct sigaction
@@ -702,36 +703,36 @@ struct sigaction
 };
 
 static void
-save_return_out (int fd, long ret, const void *out, size_t size)
+save_result_out (int fd, long res, const void *out, size_t size)
 {
-  save_return (fd, ret);
-  if (! ERI_SYSCALL_ERROR_P (ret) && out && size)
+  save_result (fd, res);
+  if (! ERI_SYSCALL_ERROR_P (res) && out && size)
     eri_assert (eri_fwrite (fd, out, size) == 0);
 }
 
 static void
-load_return_out (int fd, long *ret, void *out, size_t size)
+load_result_out (int fd, long *res, void *out, size_t size)
 {
-  *ret = load_return (fd);
-  if (size == -1) size = *ret;
-  if (! ERI_SYSCALL_ERROR_P (*ret) && out && size)
+  *res = load_result (fd);
+  if (size == -1) size = *res;
+  if (! ERI_SYSCALL_ERROR_P (*res) && out && size)
     eri_assert (eri_fread (fd, out, size, 0) == 0);
 }
 
-#define SYSCALL_REC_RET_OUT(replay, fd, ret, out, nr, ...) \
+#define SYSCALL_REC_RES_OUT(replay, fd, res, out, nr, ...) \
   do {									\
     if (! (replay))							\
       {									\
-	*(ret) = ERI_SYSCALL_NCS (nr, __VA_ARGS__);			\
-	save_return_out (fd, *(ret), out, sizeof *out);			\
+	*(res) = ERI_SYSCALL_NCS (nr, __VA_ARGS__);			\
+	save_result_out (fd, *(res), out, sizeof *out);			\
       }									\
-    else load_return_out (fd, ret, out, sizeof *out);			\
+    else load_result_out (fd, res, out, sizeof *out);			\
   } while (0)
 
-#define CSYSCALL_REC_RET_OUT(replay, fd, ret, out, nr, ...) \
+#define CSYSCALL_REC_RES_OUT(replay, fd, res, out, nr, ...) \
   do {									\
     CHECK_SYSCALL (replay, fd, nr, __VA_ARGS__);			\
-    SYSCALL_REC_RET_OUT (replay, fd, ret, out, nr, __VA_ARGS__);	\
+    SYSCALL_REC_RES_OUT (replay, fd, res, out, nr, __VA_ARGS__);	\
   } while (0)
 
 static void
@@ -779,7 +780,7 @@ struct timespec { char buf[16]; };
 
 static char __attribute__ ((used))
 syscall (struct internal *internal, int nr,
-	 long a1, long a2, long a3, long a4, long a5, long a6, long *ret)
+	 long a1, long a2, long a3, long a4, long a5, long a6, long *res)
 {
   eri_assert (nr != __NR_clone);
   if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
@@ -925,10 +926,10 @@ syscall (struct internal *internal, int nr,
 	  newact.restorer = act->restorer;
 	}
 
-      SYSCALL_REC_RET_OUT (replay, th->fd, ret, old,
+      SYSCALL_REC_RES_OUT (replay, th->fd, res, old,
 			   nr, sig, replace ? &newact : act, old);
 
-      if (! ERI_SYSCALL_ERROR_P (*ret))
+      if (! ERI_SYSCALL_ERROR_P (*res))
 	{
 	  if (act && ! replace && wrap)
 	    {
@@ -951,7 +952,7 @@ syscall (struct internal *internal, int nr,
 
       lunlock (replay, &internal->sigacts_lock);
 
-      if (old && wrap && ! ERI_SYSCALL_ERROR_P (*ret))
+      if (old && wrap && ! ERI_SYSCALL_ERROR_P (*res))
 	{
 	  old->act = old_act;
 	  old->flags = old_flags;
@@ -962,18 +963,18 @@ syscall (struct internal *internal, int nr,
       CHECK_SYSCALL (replay, th->fd, nr, a1);
 
       th->clear_tid = (int *) a1;
-      SYSCALL_REC_RET (replay, th->fd, ret, nr, a1);
+      SYSCALL_REC_RES (replay, th->fd, res, nr, a1);
     }
   else if (nr == __NR_set_robust_list)
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2);
+    CSYSCALL_REC_RES (replay, th->fd, res, nr, a1, a2);
   else if (nr == __NR_rt_sigprocmask)
-    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct sigset *) a3,
+    CSYSCALL_REC_RES_OUT (replay, th->fd, res, (struct sigset *) a3,
 			  nr, a1, a2, a3);
   else if (nr == __NR_prlimit64)
-    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct rlimit *) a4,
+    CSYSCALL_REC_RES_OUT (replay, th->fd, res, (struct rlimit *) a4,
 			  nr, a1, a2, a3, a4);
   else if (nr == __NR_clock_gettime)
-    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (struct timespec *) a2,
+    CSYSCALL_REC_RES_OUT (replay, th->fd, res, (struct timespec *) a2,
 			  nr, a1, a2);
   else if (nr == __NR_read)
     {
@@ -981,61 +982,61 @@ syscall (struct internal *internal, int nr,
       release_active_lock (internal, tid, 1, 0);
 
       if (! replay)
-	*ret = ERI_SYSCALL_NCS (nr, a1, a2, a3);
+	*res = ERI_SYSCALL_NCS (nr, a1, a2, a3);
 
       if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
 	acq = 0;
-      else if (! replay) save_return_out (th->fd, *ret, (void *) a2, *ret);
-      else load_return_out (th->fd, ret, (void *) a2, -1);
+      else if (! replay) save_result_out (th->fd, *res, (void *) a2, *res);
+      else load_result_out (th->fd, res, (void *) a2, -1);
     }
   else if (nr == __NR_write)
-    acq = CSYSCALL_REC_IRET (internal, th, ret, nr, a1, a2, a3);
+    acq = CSYSCALL_REC_IRES (internal, th, res, nr, a1, a2, a3);
   else if (nr == __NR_openat)
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3, a4);
+    CSYSCALL_REC_RES (replay, th->fd, res, nr, a1, a2, a3, a4);
   else if (nr == __NR_close)
-    acq = CSYSCALL_REC_IRET (internal, th, ret, nr, a1);
+    acq = CSYSCALL_REC_IRES (internal, th, res, nr, a1);
   else if (nr == __NR_mmap)
     {
       CHECK_SYSCALL (replay, th->fd, nr, a1, a2, a3, a4, a5, a6);
       llock (replay, tid, &internal->mmap_lock);
       if (! replay)
 	{
-	  *ret = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
-	  save_return (th->fd, *ret);
+	  *res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
+	  save_result (th->fd, *res);
 	}
       else
 	{
-	  *ret = load_return (th->fd);
-	  if (! ERI_SYSCALL_ERROR_P (*ret))
-	    ERI_ASSERT_SYSCALL (mmap, *ret, a2, a3, a4 | ERI_MAP_FIXED,
+	  *res = load_result (th->fd);
+	  if (! ERI_SYSCALL_ERROR_P (*res))
+	    ERI_ASSERT_SYSCALL (mmap, *res, a2, a3, a4 | ERI_MAP_FIXED,
 				a5, a6);
 	}
       lunlock (replay, &internal->mmap_lock);
     }
   else if (nr == __NR_mprotect)
-    CSYSCALL_CHECK_RET (replay, th->fd, ret, nr, a1, a2, a3);
+    CSYSCALL_CHECK_RES (replay, th->fd, res, nr, a1, a2, a3);
   else if (nr == __NR_brk)
     {
       CHECK_SYSCALL (replay, th->fd, nr, a1);
       llock (replay, tid, &internal->brk_lock);
 
       if (! internal->cur_brk && a1)
-	CSYSCALL_REC_RET (replay, th->fd, (long *) &internal->cur_brk, nr, 0);
+	CSYSCALL_REC_RES (replay, th->fd, (long *) &internal->cur_brk, nr, 0);
 
-      SYSCALL_REC_RET (replay, th->fd, ret, nr, a1);
-      eri_assert (! ERI_SYSCALL_ERROR_P (*ret));
+      SYSCALL_REC_RES (replay, th->fd, res, nr, a1);
+      eri_assert (! ERI_SYSCALL_ERROR_P (*res));
 
       if (a1 == 0)
 	{
-	  if (! internal->cur_brk) internal->cur_brk = (unsigned long) *ret;
-	  else eri_assert (internal->cur_brk == (unsigned long) *ret);
+	  if (! internal->cur_brk) internal->cur_brk = (unsigned long) *res;
+	  else eri_assert (internal->cur_brk == (unsigned long) *res);
 	}
-      else if (*ret == a1)
+      else if (*res == a1)
 	{
 	  if (replay)
 	    {
 	      unsigned long c = eri_round_up (internal->cur_brk, 4096);
-	      unsigned long n = eri_round_up ((unsigned long) *ret, 4096);
+	      unsigned long n = eri_round_up ((unsigned long) *res, 4096);
 	      if (n > c)
 		ERI_ASSERT_SYSCALL (mmap, c, n - c,
 				    ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
@@ -1044,7 +1045,7 @@ syscall (struct internal *internal, int nr,
 	      else if (c > n)
 		ERI_ASSERT_SYSCALL (munmap, n, c - n);
 	    }
-	  internal->cur_brk = (unsigned long) *ret;
+	  internal->cur_brk = (unsigned long) *res;
 	}
 
       eri_assert (internal->cur_brk);
@@ -1054,7 +1055,7 @@ syscall (struct internal *internal, int nr,
     {
       CHECK_SYSCALL (replay, th->fd, nr, a1, a2);
       llock (replay, tid, &internal->mmap_lock);
-      SYSCALL_CHECK_RET (replay, th->fd, ret, nr, a1, a2);
+      SYSCALL_CHECK_RES (replay, th->fd, res, nr, a1, a2);
       lunlock (replay, &internal->mmap_lock);
     }
   else if (nr == __NR_futex)
@@ -1066,24 +1067,24 @@ syscall (struct internal *internal, int nr,
 	release_active_lock (internal, tid, 1, 0);
 
       if (! replay)
-	*ret = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
+	*res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
 
       if ((op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET)
 	  && ! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
 	return 1;
 
-      if (! replay) save_return (th->fd, *ret);
-      else *ret = load_return (th->fd);
+      if (! replay) save_result (th->fd, *res);
+      else *res = load_result (th->fd);
     }
   else if (nr == __NR_getpid)
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr);
+    CSYSCALL_REC_RES (replay, th->fd, res, nr);
   else if (nr == __NR_gettid)
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr);
+    CSYSCALL_REC_RES (replay, th->fd, res, nr);
   else if (nr == __NR_madvise)
     /* XXX check advice */
-    CSYSCALL_REC_RET (replay, th->fd, ret, nr, a1, a2, a3);
+    CSYSCALL_REC_RES (replay, th->fd, res, nr, a1, a2, a3);
   else if (nr == __NR_time)
-    CSYSCALL_REC_RET_OUT (replay, th->fd, ret, (long *) a1, nr, a1);
+    CSYSCALL_REC_RES_OUT (replay, th->fd, res, (long *) a1, nr, a1);
   else
     {
       iprintf (internal, th->log, "not support %u\n", nr);
@@ -1101,7 +1102,7 @@ struct clone
   struct sigset old_set;
   int *ctid;
 
-  long ret; /* replay */
+  long res; /* replay */
 };
 
 #define CLONE_PARENT_SETTID	0x00100000
@@ -1131,66 +1132,74 @@ pre_clone (struct internal *internal, struct clone **clone,
 
   if (replay)
     {
-      (*clone)->ret = load_return (th->fd);
-      if (ERI_SYSCALL_ERROR_P ((*clone)->ret))
+      (*clone)->res = load_result (th->fd);
+      eri_assert ((*clone)->res);
+      if (ERI_SYSCALL_ERROR_P ((*clone)->res))
 	{
 	  iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
 	  return 2;
 	}
 
       *flags &= ~(CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID);
-      *ptid = (*clone)->ret;
+      *ptid = (*clone)->res;
     }
   iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
   return 1;
 }
 
 static long __attribute__ ((used))
-post_clone (struct internal *internal, struct clone *clone, long ret)
+post_clone (struct internal *internal, struct clone *clone, long res)
 {
   char replay = internal->replay;
-  struct ers_thread *th = ret == 0 ? 0 : get_thread (internal);
-  if (ret != 0)
+  struct ers_thread *th = res == 0 ? 0 : get_thread (internal);
+  if (res != 0)
     iprintf (internal, th->log,
-	     "post_clone %lu %lu\n", th->id, ! replay ? ret : clone->ret);
+	     "post_clone %lu %lu\n", th->id, ! replay ? res : clone->res);
 
   if (! replay)
     {
-      if (ret != 0)
-	save_return (th->fd, ret);
+      if (res != 0)
+	save_result (th->fd, res);
     }
   else
     {
-      if (ERI_SYSCALL_ERROR_P (clone->ret)) /* clone shall fail, no syscall */
-	ret = clone->ret;
-      else if (ERI_SYSCALL_ERROR_P (ret)) /* clone should not fail */
+      if (ERI_SYSCALL_ERROR_P (clone->res)) /* clone shall fail, no syscall */
+	res = clone->res;
+      else if (ERI_SYSCALL_ERROR_P (res)) /* clone should not fail */
 	{
 	  eri_assert (eri_fprintf (2, "failed to clone thread\n") == 0);
 	  eri_assert (0);
 	}
-      else if (ret != 0) /* clone succeeded, replace the return value */
-	ret = clone->ret;
+      else if (res != 0) /* clone succeeded and we are the parent, replace the result */
+	{
+	  res = clone->res;
+	  __atomic_store_n (&clone->res, 0, __ATOMIC_RELEASE);
+	}
     }
 
   long rel = 1;
-  if (ERI_SYSCALL_ERROR_P (ret))
+  if (ERI_SYSCALL_ERROR_P (res))
     {
       ifree (internal, th->id, clone);
       rel = 2;
     }
-  else if (ret == 0)
+  else if (res == 0)
     {
       th = init_thread (internal, clone->child_id, clone->ctid);
       iprintf (internal, th->log,
 	       "post_clone %lu %lu\n", th->id, 0);
       set_thread (internal, th);
       eri_memcpy (&th->old_set, &clone->old_set, sizeof th->old_set);
+
+      if (replay)
+	while (__atomic_load_n (&clone->res, __ATOMIC_ACQUIRE) != 0)
+	  continue;
       ifree (internal, th->id, clone);
     }
 
   iprintf (internal, th->log, "post_clone done %lu\n", th->id);
   release_active_lock (internal, th->id, rel, 0);
-  return ret;
+  return res;
 }
 
 static void
@@ -1299,140 +1308,120 @@ ent_init_process (const char *path,
   initialized = 1;
 }
 
-#if 1
 /* static */ char ent_syscall (int nr, long a1, long a2, long a3, long a4,
-			       long a5, long a6, long *ret);
+			       long a5, long a6, long *res);
 
-asm ("  .text\n\
-  .type ent_syscall, @function\n\
-ent_syscall:\n\
-  .cfi_startproc\n\
-  pushq	%rbp\n\
-  .cfi_def_cfa_offset 16\n\
-  .cfi_offset 6, -16\n\
-  movq	%rsp, %rbp\n\
-  .cfi_def_cfa_register 6\n\
-  movb	initialized(%rip), %al\n\
-  testb	%al, %al\n\
-  jz	.leave\n\
-\n\
-  subq	$56, %rsp\n\
-  movl	%edi, -4(%rbp)		/* nr */\n\
-  movq	%rsi, -16(%rbp)		/* a1 */\n\
-  movq	%rdx, -24(%rbp)		/* a2 */\n\
-  movq	%rcx, -32(%rbp)		/* a3 */\n\
-  movq	%r8, -40(%rbp)		/* a4 */\n\
-  movq	%r9, -48(%rbp)		/* a5 */\n\
-  movq	16(%rbp), %rax\n\
-  movq	%rax, -56(%rbp)		/* a6 */\n\
-\n\
-  cmpl	$" ERI_STRINGIFY (__NR_clone) ", -4(%rbp)\n\
-  je	.clone\n\
-  pushq	24(%rbp)		/* ret */\n\
-  pushq	-56(%rbp)		/* a6 */\n\
-  pushq	-48(%rbp)		/* a5 */\n\
-  movq	-40(%rbp), %r9		/* a4 */\n\
-  movq	-32(%rbp), %r8		/* a3 */\n\
-  movq	-24(%rbp), %rcx		/* a2 */\n\
-  movq	-16(%rbp), %rdx		/* a1 */\n\
-  movl	-4(%rbp), %esi		/* nr */\n\
-  leaq	internal(%rip), %rdi	/* internal */\n\
-  call	syscall\n\
-  addq	$80,  %rsp\n\
-  jmp	.leave\n\
-.clone:\n\
-  subq	$16, %rsp		/* -64(%rbp) clone, aligment */\n\
-  pushq	-48(%rbp)		/* tp */\n\
-  movq	-40(%rbp), %r9		/* ctid */\n\
-  movq	-32(%rbp), %r8		/* ptid */\n\
-  movq	-24(%rbp), %rcx		/* cstack */\n\
-  leaq	-16(%rbp), %rdx		/* &flags */\n\
-  leaq	-64(%rbp), %rsi		/* &clone */\n\
-  leaq	internal(%rip), %rdi	/* internal */\n\
-  call	pre_clone\n\
-  test	 %al, %al\n\
-  jnz	.continue\n\
-  addq	$80, %rsp\n\
-  jmp	.leave\n\
-\n\
-.continue:\n\
-  addq	$16, %rsp\n\
-  cmpb	$2, %al			/* replay & no syscall */\n\
-  je	.post\n\
-  movq	-48(%rbp), %r8		/* tp */\n\
-  movq	-40(%rbp), %r10		/* ctid */\n\
-  movq	-32(%rbp), %rdx		/* ptid */\n\
-  movq	-24(%rbp), %rsi		/* cstack */\n\
-  movq	-16(%rbp), %rdi		/* flags */\n\
-\n\
-  subq	$16, %rsi\n\
-  movq	8(%rbp), %rax		/* return address */\n\
-  movq	%rax, 8(%rsi)		/* push the return address on the new stack */\n\
-  movq	-64(%rbp), %rax\n\
-  movq	%rax, (%rsi)		/* clone */\n\
-\n\
-  movl	-4(%rbp), %eax		/* nr_clone */\n\
-  .cfi_endproc\n\
-  syscall\n\
-  testq	%rax, %rax\n\
-  jz	.child\n\
-\n\
-  .cfi_startproc\n\
-  .cfi_def_cfa_offset 16\n\
-  .cfi_offset 6, -16\n\
-  .cfi_def_cfa_register 6\n\
-.post:\n\
-  movq	24(%rbp), %rdi		/* &ret */\n\
-  movq	%rax, (%rdi)\n\
-  movq	%rax, %rdx		/* ret */\n\
-  movq	-64(%rbp), %rsi		/* clone */\n\
-  leaq	internal(%rip), %rdi	/* internal */\n\
-  call	post_clone\n\
-  movq	24(%rbp), %rdi\n\
-  movq	%rax, (%rdi)\n\
-  addq	$64, %rsp\n\
-  movb	$1, %al\n\
-.leave:\n\
-  leave\n\
-  .cfi_def_cfa 7, 8\n\
-  ret\n\
-\n\
-.child:\n\
-  movq	%rsp, %rbp\n\
-  movq	$0, %rdx		/* ret */\n\
-  movq	(%rbp), %rsi		/* clone */\n\
-  leaq	internal(%rip), %rdi	/* internal */\n\
-  call	post_clone\n\
-  addq	$8, %rsp\n\
-  movb	$2, %al\n\
-  ret\n\
-  .cfi_endproc\n\
-  .size ent_syscall, .-ent_syscall\n"
+asm ("  .text							\n\
+  .type ent_syscall, @function					\n\
+ent_syscall:							\n\
+  .cfi_startproc						\n\
+								\n\
+  cmpb	$0, initialized(%rip)					\n\
+  movb	$0, %al							\n\
+  je	.return1						\n\
+								\n\
+  cmpl	$" _ERS_STR (__NR_clone) ", %edi			\n\
+  je	.call_clone						\n\
+								\n\
+  pushq	16(%rsp)		/* res */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	16(%rsp)		/* a6 */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%r9			/* a5 */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  movq	%r8, %r9		/* a4 */			\n\
+  movq	%rcx, %r8		/* a3 */			\n\
+  movq	%rdx, %rcx		/* a2 */			\n\
+  movq	%rsi, %rdx		/* a1 */			\n\
+  movl	%edi, %esi		/* nr */			\n\
+  leaq	internal(%rip), %rdi	/* internal */			\n\
+  call	syscall							\n\
+  addq	$24,  %rsp						\n\
+  .cfi_adjust_cfa_offset -24					\n\
+								\n\
+.return1:							\n\
+  ret								\n\
+								\n\
+.call_clone:							\n\
+  call .clone							\n\
+  .cfi_endproc							\n\
+								\n\
+.clone:								\n\
+  .cfi_startproc						\n\
+  subq	$8, %rsp		/* alignment, clone */		\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%rsi			/* flags */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%rdx			/* cstack */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%rcx			/* ptid */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%r8			/* ctid */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+  pushq	%r9			/* tp */			\n\
+  .cfi_adjust_cfa_offset 8					\n\
+								\n\
+  movq	%r8, %r9		/* ctid */			\n\
+  movq	%rcx, %r8		/* ptid */			\n\
+  movq	%rdx, %rcx		/* cstack */			\n\
+  leaq	32(%rsp), %rdx		/* &flags */			\n\
+  leaq	40(%rsp), %rsi		/* &clone */			\n\
+  leaq	internal(%rip), %rdi	/* internal */			\n\
+  call	pre_clone						\n\
+  testb	 %al, %al						\n\
+  jz	.return2						\n\
+								\n\
+  cmpb	$2, %al			/* replay & no syscall */	\n\
+  je	.post							\n\
+								\n\
+  movq	(%rsp), %r8		/* tp */			\n\
+  movq	8(%rsp), %r10		/* ctid */			\n\
+  movq	16(%rsp), %rdx		/* ptid */			\n\
+  movq	24(%rsp), %rsi		/* cstack */			\n\
+  movq	32(%rsp), %rdi		/* flags */			\n\
+								\n\
+  subq	$16, %rsi						\n\
+  movq	56(%rsp), %rax						\n\
+  movq	%rax, 8(%rsi)		/* return address */		\n\
+  movq	40(%rsp), %rax						\n\
+  movq	%rax, (%rsi)		/* clone */			\n\
+								\n\
+  movl	$" _ERS_STR (__NR_clone) ", %eax	/* nr_clone */	\n\
+  syscall							\n\
+  .cfi_undefined %rip						\n\
+								\n\
+  testq	%rax, %rax						\n\
+  jz	.child							\n\
+  .cfi_restore %rip						\n\
+								\n\
+.post:								\n\
+  movq	%rax, %rdx		/* *res */			\n\
+  movq	40(%rsp), %rsi		/* clone */			\n\
+  leaq	internal(%rip), %rdi	/* internal */			\n\
+  call	post_clone						\n\
+  movq	72(%rsp), %rdi		/* res */			\n\
+  movq	%rax, (%rdi)						\n\
+								\n\
+.return2:							\n\
+  movb	$1, %al							\n\
+  addq	$56, %rsp						\n\
+  .cfi_adjust_cfa_offset -56					\n\
+  .cfi_rel_offset %rip, 0					\n\
+  ret								\n\
+								\n\
+.child:								\n\
+  .cfi_undefined %rip						\n\
+  movq	$0, %rdx		/* *res */			\n\
+  movq	(%rsp), %rsi		/* clone */			\n\
+  leaq	internal(%rip), %rdi	/* internal */			\n\
+  call	post_clone						\n\
+  addq	$8, %rsp						\n\
+  movb	$2, %al							\n\
+  ret								\n\
+  .cfi_endproc							\n\
+  .size ent_syscall, .-ent_syscall				\n\
+  .previous							\n"
 );
-
-#else
-
-static char
-ent_syscall (int nr, long a1, long a2, long a3, long a4, long a5, long a6, long *ret)
-{
-  if (! initialized) return 0;
-
-  char res;
-  if (nr == __NR_clone)
-    {
-      struct clone *clone;
-      res = pre_clone (&internal, &clone, a1, a2, a3, a4, a5, a6);
-      if (ret)
-	{
-	  *ret = 1 /* (long) ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6) */;
-	  post_clone (&internal, clone, a1, a2, a3, a4, a5, a6, *ret);
-	}
-    }
-  else res = syscall (&internal, nr, a1, a2, a3, a4, a5, a6, ret);
-  return res;
-}
-
-#endif
 
 static char
 ent_atomic_lock (void *mem)

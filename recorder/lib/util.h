@@ -3,9 +3,6 @@
 
 #include <stddef.h>
 
-#define ERI_STRINGIFY_I(x) #x
-#define ERI_STRINGIFY(x) ERI_STRINGIFY_I (x)
-
 #define eri_assert(exp) do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
 
 #define eri_min(a, b) \
