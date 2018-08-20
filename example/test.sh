@@ -1,4 +1,4 @@
-set -ex
+set -x
 
 bash record.sh "$@"
 bash replay.sh

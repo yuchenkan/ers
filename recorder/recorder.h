@@ -678,7 +678,7 @@ l:					\
   addq	$8, %rsp;								\
   movq	%rsp, %rsi;								\
   xorq	esc%rax, esc%rax;							\
-  jmp	98f;			/* child, leave */				\
+  jmp	97f;			/* child, leave */				\
   _ERS_CFI_RESTORE (esc%rip);							\
 										\
 94:										\
@@ -721,6 +721,8 @@ l:					\
   popq	esc%rax;								\
   _ERS_CFI_ADJUST_CFA_OFFSET (-8);						\
   _ERS_CFI_RESTORE (esc%rax);							\
+  leaq	8(esc%rsp), %rsp;							\
+  _ERS_CFI_UNDEFINED (esc%rip);							\
   syscall;									\
   _ERS_CFI_UNDEFINED (esc%rax);							\
   jmp	97f;									\
@@ -729,11 +731,9 @@ l:					\
   _ERS_CFI_RESTORE (esc%rax);							\
   addq	$8, %rsp;								\
   _ERS_CFI_UNDEFINED (esc%rax);							\
-										\
-97:										\
   _ERS_PP_IF (outside, _ERS_ASM_END_FRAME (esc, 0))				\
   _ERS_PP_IF (_ERS_PP_NOT (outside), _ERS_ASM_POP_FRAME (esc, 0))		\
-98:
+97:
 
 #define ERS_ASM_SYSCALL _ERS_ASM_SYSCALL (ERS_NONE, 0)
 #define ERS_ASM_CLONE _ERS_ASM_SYSCALL (ERS_NONE, 1)
