@@ -2,7 +2,7 @@ RECORDER := recorder.c common.c lib/printf.c lib/malloc.c lib/util.c
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 
 CFLAGS := -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC
-BUILD := ../build/recorder
+BUILD := ../build/src
 
 MAKEFILES := Makefile
 
@@ -43,7 +43,7 @@ $(BUILD)/lib/tst-%: $(BUILD)/lib/tst-%.o $(BUILD)/librecorder.a
 
 $(BUILD)/%.o: %.c $(MAKEFILES)
 	mkdir -p $(dir $@)
-	gcc $(CFLAGS) -MM -MQ $@ -MP -MF $(@:.o=.d) $<
+	@gcc $(CFLAGS) -MM -MQ $@ -MP -MF $(@:.o=.d) $<
 	gcc $(CFLAGS) -c -o $@ $<
 
 -include $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.d)) $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.d)) $(BUILD)/tst-asm.d

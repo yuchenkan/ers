@@ -1,4 +1,4 @@
-BUILD := ../build/example
+BUILD := ../build/examples
 
 GLIBC_BUILD := /work/glibc-obj
 GLIBC_SYSROOT := /work/glibc-local

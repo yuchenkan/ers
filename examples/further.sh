@@ -3,7 +3,7 @@ set -ex
 for i in {1..50}
 do
   rm ers_data/replay-*
-  ../recorder/replayer
+  ../src/replayer
 
   for f in ers_data/record-log-*
   do

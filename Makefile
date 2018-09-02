@@ -1,5 +1,5 @@
 TOPTARGETS := all check
-SUBDIRS := recorder example
+SUBDIRS := src examples
 
 $(TOPTARGETS): $(SUBDIRS)
 
