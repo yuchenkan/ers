@@ -226,7 +226,7 @@ start (void **arg)
   struct proc_map_data pd;
   eri_memset (&pd, 0, sizeof pd);
   eri_process_maps (proc_map_entry, &pd);
-  eri_assert (pd.num == 5);
+  eri_assert (pd.num == 6);
 
   ERI_ASSERT_SYSCALL (munmap, pd.vdso_start, pd.vdso_end - pd.vdso_start);
   ERI_ASSERT_SYSCALL (munmap, pd.vvar_start, pd.vvar_end - pd.vvar_start);

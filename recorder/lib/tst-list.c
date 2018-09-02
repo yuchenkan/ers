@@ -28,7 +28,7 @@ int main ()
     {
       n[i].a = i;
       n[i].b = (char) i;
-      x_append (&l, n + i);
+      x_lst_append (&l, n + i);
     }
 
   struct node *it;
@@ -38,7 +38,7 @@ int main ()
 
   for (i = 0; i < sizeof n / sizeof n[0]; ++i)
     {
-      x_remove (n + (i % 2 == 0 ? i + 1 : i - 1));
+      x_lst_remove (n + (i % 2 == 0 ? i + 1 : i - 1));
       ERI_LST_FOREACH (x, &l, it)
         eri_assert (eri_printf ("%u %u\n", it->a, it->b) == 0);
       eri_assert (eri_printf ("\n") == 0);

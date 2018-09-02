@@ -1,0 +1,9 @@
+TOPTARGETS := all check
+SUBDIRS := recorder example
+
+$(TOPTARGETS): $(SUBDIRS)
+
+$(SUBDIRS):
+	$(MAKE) -C $@ $(MAKECMDGOALS)
+
+.PHONY: $(TOPTARGETS) $(SUBDIRS)

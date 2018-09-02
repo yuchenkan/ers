@@ -11,8 +11,8 @@ function add_symbol_file ()
   echo add-symbol-file $f $s
 }
 
-add_symbol_file /work/demo/example/$SRC-normal
+add_symbol_file /work/demo/build/example/$SRC-normal
 add_symbol_file /work/glibc-obj/nptl/libpthread.so
 add_symbol_file /work/glibc-obj/libc.so
 add_symbol_file /work/glibc-obj/elf/ld.so
-add_symbol_file /work/demo/recorder/librecorder.so
+add_symbol_file /work/demo/build/recorder/librecorder.so
