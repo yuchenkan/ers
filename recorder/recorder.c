@@ -952,7 +952,7 @@ syscall (struct internal *internal, int nr,
 	  fini_thread (internal, th);
 	  release_active_lock (internal, tid, 1, 1);
 
-	  if (ctid_lock)
+	  if (! live && ctid_lock)
 	    {
 	      /* So memory maps used by this thread won't be freed
 		 due to the notification.  */
