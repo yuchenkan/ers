@@ -139,10 +139,10 @@ struct ers_thread;
 
 struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 {
-  void (*init_process) (const char *path,
-			struct ers_thread *(*get) (void *),
-			void (*set) (struct ers_thread *, void *),
-			void *arg);
+  void (*init_process) (const char *path);
+  void (*setup_tls) (struct ers_thread *(*get) (void *),
+		     void (*set) (struct ers_thread *, void *),
+		     void *arg);
 
   /* 0 not replaced, 1 replaced, 2 replaced and child return */
   char (*syscall) (int nr, long a1, long a2, long a3,
@@ -155,11 +155,17 @@ struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 
 extern struct ers_recorder *ers_get_recorder (void);
 
-#define ERS_INIT_PROCESS_X(get, set, arg) \
+struct ers_info
+{
+  const char *libname;
+  struct ers_recorder *recorder;
+};
+
+#define ERS_SETUP_TLS_X(get, set, arg) \
   do {										\
     struct ers_recorder *__ers_recorder = ers_get_recorder ();			\
     if (__ers_recorder) 							\
-      __ers_recorder->init_process ("ers_data",	get, set, arg);			\
+      __ers_recorder->setup_tls (get, set, arg);				\
   } while (0)
 
 #define ERS_REPLACE_X(macro, ...) \
@@ -662,7 +668,7 @@ l:					\
   movq	(esc%rbp), esc%rdx;	/* a2 */					\
   movq	48(esc%rbp), esc%rsi;	/* a1 */			       		\
   movl	72(esc%rbp), esc%edi;	/* nr */					\
-  call	*0x8(esc%rbx);		/* call ers_recorder->syscall */		\
+  call	*16(esc%rbx);		/* call ers_recorder->syscall */		\
 										\
   _ERS_CFI_UNDEFINED (esc%rip);							\
   cmpb	$2, esc%al;								\
@@ -822,7 +828,7 @@ l:					\
 						\
   movq	esc%r13, esc%rdi;			\
   movq	esc%rax, esc%rbx;			\
-  call	*16(esc%rbx);				\
+  call	*24(esc%rbx);				\
   testb	esc%al, esc%al;				\
   jz	91f;					\
   popq	esc%rsp;				\
@@ -856,7 +862,7 @@ l:					\
   movq	esc%r13, esc%rdi;			\
   movl	$5, esc%esi;				\
   movq	esc%rax, esc%rbx;			\
-  call	*24(esc%rbx);				\
+  call	*32(esc%rbx);				\
   popq	esc%rsp;				\
   _ERS_CFI_DEF_CFA_REGISTER (esc%rsp);		\
   _ERS_ASM_POP_SCRATCH_REGS (esc)		\

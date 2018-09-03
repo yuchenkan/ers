@@ -3,7 +3,7 @@ BUILD := ../build/examples
 GLIBC_BUILD := /work/glibc-obj
 GLIBC_SYSROOT := /work/glibc-local
 
-DYNLINKER := --dynamic-linker=$(GLIBC_BUILD)/elf/ld.so
+DYNLINKER := --dynamic-linker=$(abspath ../build/src/librecorder.so)
 LINKPATH := -rpath=$(GLIBC_BUILD):$(GLIBC_BUILD)/math:$(GLIBC_BUILD)/elf:$(GLIBC_BUILD)/dlfcn:$(GLIBC_BUILD)/nss:$(GLIBC_BUILD)/nis:$(GLIBC_BUILD)/rt:$(GLIBC_BUILD)/resolv:$(GLIBC_BUILD)/crypt:$(GLIBC_BUILD)/mathvec:$(GLIBC_BUILD)/nptl
 
 CRT1 := $(GLIBC_BUILD)/csu/crt1.o

@@ -62,9 +62,14 @@ void eri_load_init_context (int init, struct eri_context *ctx);
 #define ERI_PROT_READ	0x1
 #define ERI_PROT_WRITE	0x2
 #define ERI_PROT_EXEC	0x4
+
+#define ERI_MAP_FILE		0
 #define ERI_MAP_PRIVATE		0x2
 #define ERI_MAP_FIXED		0x10
 #define ERI_MAP_ANONYMOUS	0x20
 #define ERI_MAP_GROWSDOWN	0x100
+#define ERI_MAP_DENYWRITE	0x0800
+
+#define ERI_MAP_COPY		(ERI_MAP_PRIVATE | ERI_MAP_DENYWRITE)
 
 #endif

@@ -24,7 +24,7 @@ void eri_memcpy (void *d, const void *s, size_t n);
 size_t eri_strlen (const char *s);
 void eri_strcpy (char *d, const char *s);
 char eri_strncmp (const char *s1, const char *s2, size_t n);
-#define eri_strcmp __builtin_strcmp
+char eri_strcmp (const char *s1, const char *s2);
 const char *eri_strtok (const char *s, char d);
 const char *eri_strntok (const char *s, char d, size_t n);
 const char *eri_strstr (const char *s, const char *d);
@@ -36,6 +36,7 @@ const char *eri_strstr (const char *s, const char *d);
     (__x + __m) & ~__m;				\
   })
 #define eri_round_up(x, u) eri_round_up_mask (x, (u) - 1)
+#define eri_round_down(x, u) ((x) & ~((u) - 1))
 
 #define eri_less_than(x, a, b) (*(a) < *(b))
 

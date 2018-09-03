@@ -16,18 +16,6 @@ get_recorder (void)
   return recorder;
 }
 
-static struct ers_thread *
-get (void *arg)
-{
-  return *(struct ers_thread **) arg;
-}
-
-static void
-set (struct ers_thread *th, void *arg)
-{
-  *(struct ers_thread **) arg = th;
-}
-
 #define CAT_I(x, y) x##y
 #define CAT(x, y) CAT_I (x, y)
 
@@ -659,9 +647,9 @@ extern struct ers_recorder *ers_get_recorder (void);
 
 int main ()
 {
-  struct ers_recorder clone1 = { 0, syscall_clone1 };
-  struct ers_recorder clone2 = { 0, syscall_clone2 };
-  struct ers_recorder clone3 = { 0, syscall_clone3 };
+  struct ers_recorder clone1 = { 0, 0, syscall_clone1 };
+  struct ers_recorder clone2 = { 0, 0, syscall_clone2 };
+  struct ers_recorder clone3 = { 0, 0, syscall_clone3 };
 
   assert (tst_clone () == 7);
 
@@ -681,8 +669,7 @@ int main ()
 
   tst ();
 
-  struct ers_thread *th;
-  recorder->init_process ("ers_data", get, set, &th);
+  recorder->init_process ("ers_data");
 
   tst ();
 

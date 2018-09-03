@@ -1,7 +1,7 @@
-RECORDER := recorder.c common.c lib/printf.c lib/malloc.c lib/util.c
+RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 
-CFLAGS := -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC
+CFLAGS := -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden
 BUILD := ../build/src
 
 MAKEFILES := Makefile
@@ -10,7 +10,7 @@ all: $(BUILD)/librecorder.so $(BUILD)/replayer
 
 $(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o))
 	mkdir -p $(dir $@)
-	gcc $(CFLAGS) -nostdlib -Wl,--no-undefined -shared -fvisibility=hidden -o $@ $^
+	gcc $(CFLAGS) -nostdlib -Wl,--no-undefined -shared -Wl,-e,entry -o $@ $^
 	objdump -W $@ >$(@:.so=.dwarf)
 	objdump -dSl $@ >$(@:.so=.asm)
 
@@ -25,8 +25,9 @@ $(BUILD)/replayer: $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.o))
 	objdump -dSl $@ >$@.asm
 
 LIB_TSTS := malloc printf list rbtree
+BUILD_TSTS := $(BUILD)/tst-asm $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
 
-check: $(BUILD)/tst-asm.out $(patsubst %,$(BUILD)/lib/tst-%.out, $(LIB_TSTS))
+check: $(BUILD_TSTS) $(patsubst %,%.out,$(BUILD_TSTS))
 
 $(BUILD)/%.out: $(BUILD)/%
 	cd $(dir $@) && ./$(notdir $<) && touch $(notdir $@)
