@@ -254,6 +254,8 @@ struct elf64_dyn
 /* XXX */
 #define DEFAULT_ORIGINAL_INTERPRETER "/work/glibc-obj/elf/ld.so"
 
+struct ers_recorder *eri_get_recorder (void);
+
 static uint64_t __attribute__ ((used))
 start (void **arg)
 {
@@ -335,7 +337,7 @@ start (void **arg)
 
   if (! disable)
     {
-      ip->recorder = ers_get_recorder ();
+      ip->recorder = eri_get_recorder ();
       ip->recorder->init_process ("ers_data");
     }
 

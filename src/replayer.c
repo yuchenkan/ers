@@ -58,6 +58,7 @@ proc_map_entry (const struct eri_map_entry *ent, void *data)
 }
 
 asm ("  .text								\n\
+  .align 16								\n\
   .type restore, @function						\n\
 restore:								\n\
   .cfi_startproc							\n\

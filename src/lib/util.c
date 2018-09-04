@@ -1,11 +1,10 @@
 #include "util.h"
 
 void
-eri_memset (void *p, char c, size_t s)
+eri_memset (void *s, char c, size_t n)
 {
   size_t i;
-  char *b = (char *) p;
-  for (i = 0; i < s; ++i) b[i] = c;
+  for (i = 0; i < n; ++i) ((char *) s)[i] = c;
 }
 
 void
@@ -13,6 +12,16 @@ eri_memcpy (void *d, const void *s, size_t n)
 {
   size_t i;
   for (i = 0; i < n; ++i) ((char *) d)[i] = ((const char *) s)[i];
+}
+
+char
+eri_memcmp (const void *s1, const void *s2, size_t n)
+{
+  size_t i;
+  for (i = 0; i < n; ++i)
+    if (((const char *) s1)[i] < ((const char *) s2)[i]) return -1;
+    else if (((const char *) s1)[i] > ((const char *) s2)[i]) return 1;
+  return 0;
 }
 
 size_t
@@ -27,6 +36,15 @@ void
 eri_strcpy (char *d, const char *s)
 {
   while (*s) *d++ = *s++;
+  *d = '\0';
+}
+
+void
+eri_strncat (char *d, const char *s, size_t n)
+{
+  d = d + eri_strlen (d);
+  size_t i;
+  for (i = 0; i < n && *s; ++i) *d++ = *s++;
   *d = '\0';
 }
 

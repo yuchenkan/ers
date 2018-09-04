@@ -19,12 +19,14 @@
     __a > __b ? __a : __b;	\
   })
 
-void eri_memset (void *p, char c, size_t s);
+void eri_memset (void *s, char c, size_t n);
 void eri_memcpy (void *d, const void *s, size_t n);
+char eri_memcmp (const void *s1, const void *s2, size_t n);
 size_t eri_strlen (const char *s);
 void eri_strcpy (char *d, const char *s);
-char eri_strncmp (const char *s1, const char *s2, size_t n);
+void eri_strncat (char *d, const char *s, size_t n);
 char eri_strcmp (const char *s1, const char *s2);
+char eri_strncmp (const char *s1, const char *s2, size_t n);
 const char *eri_strtok (const char *s, char d);
 const char *eri_strntok (const char *s, char d, size_t n);
 const char *eri_strstr (const char *s, const char *d);
@@ -39,6 +41,5 @@ const char *eri_strstr (const char *s, const char *d);
 #define eri_round_down(x, u) ((x) & ~((u) - 1))
 
 #define eri_less_than(x, a, b) (*(a) < *(b))
-
 
 #endif

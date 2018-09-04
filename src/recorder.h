@@ -120,7 +120,6 @@
 #define _ERS_STR_I(...) #__VA_ARGS__
 #define _ERS_STR(...) _ERS_STR_I (__VA_ARGS__)
 
-#define _ERS_DEFER(...) __VA_ARGS__ ERS_OMIT ()
 #define _ERS_EVAL(...) __VA_ARGS__
 
 #define _ERS_PP_IF_0(...)

@@ -1,4 +1,4 @@
-RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c
+RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 
 CFLAGS := -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden

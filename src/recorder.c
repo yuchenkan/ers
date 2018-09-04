@@ -11,40 +11,7 @@
 #include "lib/printf.h"
 #include "lib/list.h"
 #include "lib/rbtree.h"
-
-#define EAGAIN	11
-
-#define FUTEX_WAIT		0
-#define FUTEX_WAKE		1
-#define FUTEX_WAKE_OP		5
-#define FUTEX_WAIT_BITSET	9
-
-#define FUTEX_PRIVATE_FLAG	128
-#define FUTEX_CLOCK_REALTIME	256
-#define FUTEX_CMD_MASK		~(FUTEX_PRIVATE_FLAG | FUTEX_CLOCK_REALTIME)
-
-#define FUTEX_WAIT_PRIVATE	(FUTEX_WAIT | FUTEX_PRIVATE_FLAG)
-#define FUTEX_WAKE_PRIVATE	(FUTEX_WAKE | FUTEX_PRIVATE_FLAG)
-
-static inline void
-do_lock (int *lock, char futex)
-{
-  while (__atomic_exchange_n (lock, 1, __ATOMIC_ACQUIRE))
-    if (futex)
-      {
-	long res = ERI_SYSCALL (futex, lock,
-				FUTEX_WAIT, 1, 0);
-	eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == EAGAIN);
-      }
-}
-
-static inline void
-do_unlock (int *lock, char futex)
-{
-  __atomic_store_n (lock, 0, __ATOMIC_RELEASE);
-  if (futex)
-    ERI_ASSERT_SYSCALL (futex, lock, FUTEX_WAKE, 1);
-}
+#include "lib/lock.h"
 
 struct lock
 {
@@ -121,9 +88,9 @@ static void *
 replay_malloc (struct replay *replay, size_t size)
 {
   void *p;
-  do_lock (&replay->pool_lock, 1);
+  eri_lock (&replay->pool_lock, 1);
   eri_assert (eri_malloc (&replay->pool, size, &p) == 0);
-  do_unlock (&replay->pool_lock, 1);
+  eri_unlock (&replay->pool_lock, 1);
   return p;
 }
 
@@ -139,9 +106,9 @@ static void
 replay_free (struct replay *replay, void *p)
 {
   if (! p) return;
-  do_lock (&replay->pool_lock, 1);
+  eri_lock (&replay->pool_lock, 1);
   eri_assert (eri_free (&replay->pool, p) == 0);
-  do_unlock (&replay->pool_lock, 1);
+  eri_unlock (&replay->pool_lock, 1);
 }
 
 static void
@@ -238,7 +205,7 @@ init_lock (struct internal *internal, struct lock *lock, int fd)
 static struct replay_thread *
 replay_get_thread (struct replay *replay, unsigned long tid)
 {
-  do_lock (&replay->threads_lock, 1);
+  eri_lock (&replay->threads_lock, 1);
   struct replay_thread *rt = replay_thread_rbt_get (replay, &tid, ERI_RBT_EQ);
   if (! rt)
     {
@@ -246,7 +213,7 @@ replay_get_thread (struct replay *replay, unsigned long tid)
       rt->id = tid;
       replay_thread_rbt_insert (replay, rt);
     }
-  do_unlock (&replay->threads_lock, 1);
+  eri_unlock (&replay->threads_lock, 1);
   return rt;
 }
 
@@ -255,7 +222,7 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
 {
   if (internal->live)
     {
-      do_lock (&lock->lock, 1);
+      eri_lock (&lock->lock, 1);
       save_lock (lock->fd, tid);
     }
   else
@@ -265,8 +232,8 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
       while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
 	{
 	  long res = ERI_SYSCALL (futex, &rt->lock_version,
-				  FUTEX_WAIT_PRIVATE, version, 0);
-	  eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == EAGAIN);
+				  ERI_FUTEX_WAIT_PRIVATE, version, 0);
+	  eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
           version = __atomic_load_n (&rt->lock_version, __ATOMIC_RELAXED);
 	}
     }
@@ -276,7 +243,7 @@ static void
 lunlock (struct internal *internal, struct lock *lock)
 {
   if (internal->live)
-    do_unlock (&lock->lock, 1);
+    eri_unlock (&lock->lock, 1);
   else
     {
       __atomic_store_n (&lock->tid, load_lock (lock->fd), __ATOMIC_RELEASE);
@@ -285,7 +252,7 @@ lunlock (struct internal *internal, struct lock *lock)
 	  struct replay_thread *rt = replay_get_thread (&internal->replay, lock->tid);
 	  __atomic_add_fetch (&rt->lock_version, 1, __ATOMIC_RELAXED);
 	  ERI_ASSERT_SYSCALL (futex, &rt->lock_version,
-			      FUTEX_WAKE_PRIVATE, 1);
+			      ERI_FUTEX_WAKE_PRIVATE, 1);
 	}
     }
 }
@@ -386,11 +353,11 @@ iprintf (struct internal *internal, int tlog, const char *fmt, ...)
 
   if (internal->printf)
     {
-      do_lock (&internal->printf_lock, 1);
+      eri_lock (&internal->printf_lock, 1);
       va_start (arg, fmt);
       eri_assert (eri_vprintf (fmt, arg) == 0);
       va_end (arg);
-      do_unlock (&internal->printf_lock, 1);
+      eri_unlock (&internal->printf_lock, 1);
     }
 }
 
@@ -431,6 +398,7 @@ fini_thread (struct internal *internal, struct ers_thread *th)
 }
 
 asm ("  .text						\n\
+  .align 16						\n\
   .type set_context, @function				\n\
 set_context:						\n\
   .cfi_startproc					\n\
@@ -674,24 +642,24 @@ acquire_active_lock (struct internal *internal, long v, char mk)
     {
       struct sigset old_set;
       block_signals (&old_set);
-      do_lock (&lock->lock, 1);
+      eri_lock (&lock->lock, 1);
       if ((internal->active_lock.val += v) > 0)
 	{
 	  struct ers_thread *th = get_thread (internal);
 	  eri_save_mark (th->fd, mk);
 	  save_lock (lock->fd, th->id);
 	  eri_memcpy (&th->old_set, &old_set, sizeof old_set);
-	  do_unlock (&lock->lock, 1);
+	  eri_unlock (&lock->lock, 1);
 	  return 1;
 	}
-      do_unlock (&lock->lock, 1);
+      eri_unlock (&lock->lock, 1);
       restore_signals (&old_set);
       return 0;
     }
   else
     {
     retry:
-      do_lock (&internal->replay.active_lock, 1);
+      eri_lock (&internal->replay.active_lock, 1);
       struct ers_thread *th = get_thread (internal);
       unsigned long tid = th->id;
 
@@ -712,7 +680,7 @@ acquire_active_lock (struct internal *internal, long v, char mk)
 	      load_signal (th->fd, &sig, &info, &ucontext);
 	    }
 	}
-      do_unlock (&internal->replay.active_lock, 1);
+      eri_unlock (&internal->replay.active_lock, 1);
 
       if (trigger_signal)
 	{
@@ -933,7 +901,7 @@ syscall (struct internal *internal, int nr,
 					    LONG_MIN))
 	    ERI_ASSERT_SYSCALL (sched_yield);
 
-	  if (! live) do_lock (&internal->replay.active_lock, 1);
+	  if (! live) eri_lock (&internal->replay.active_lock, 1);
 	  iprintf (internal, th->log, "group exiting\n");
 
 	  struct sigact_wrap *w, *nw;
@@ -1001,7 +969,7 @@ syscall (struct internal *internal, int nr,
 
 	      if (live)
 		{
-		  ERI_ASSERT_SYSCALL (futex, th->clear_tid, FUTEX_WAKE, 1, 0, 0, 0);
+		  ERI_ASSERT_SYSCALL (futex, th->clear_tid, ERI_FUTEX_WAKE, 1, 0, 0, 0);
 
 		  /* So it's locked until real clear_tid happens.  */
 		  ERI_ASSERT_SYSCALL (set_tid_address, &ctid_lock->lock);
@@ -1014,7 +982,7 @@ syscall (struct internal *internal, int nr,
 	    {
 	      /* So memory maps used by this thread won't be freed
 		 due to the notification.  */
-	      do_lock (&internal->replay.mmap_lock, 0);
+	      eri_lock (&internal->replay.mmap_lock, 0);
 	      ERI_ASSERT_SYSCALL (set_tid_address, &internal->replay.mmap_lock);
 	      lunlock (internal, ctid_lock);
 	    }
@@ -1151,11 +1119,11 @@ syscall (struct internal *internal, int nr,
 	  *res = load_result (th->fd);
 	  if (! ERI_SYSCALL_ERROR_P (*res))
 	    {
-	      do_lock (&internal->replay.mmap_lock, 0);
+	      eri_lock (&internal->replay.mmap_lock, 0);
 	      ERI_ASSERT_SYSCALL (mmap, *res, a2, anony ? a3 : a3 | ERI_PROT_WRITE,
 				  ERI_MAP_FIXED | ERI_MAP_ANONYMOUS | ERI_MAP_PRIVATE,
 				  -1, 0);
-	      do_unlock (&internal->replay.mmap_lock, 0);
+	      eri_unlock (&internal->replay.mmap_lock, 0);
 
 	      if (! anony)
 		{
@@ -1217,9 +1185,9 @@ syscall (struct internal *internal, int nr,
 	}
       else
 	{
-	  do_lock (&internal->replay.mmap_lock, 0);
+	  eri_lock (&internal->replay.mmap_lock, 0);
 	  *res = ERI_SYSCALL_NCS (nr, a1, a2);
-	  do_unlock (&internal->replay.mmap_lock, 0);
+	  eri_unlock (&internal->replay.mmap_lock, 0);
 	  eri_assert (*res == load_result (th->fd));
 	}
 
@@ -1227,16 +1195,16 @@ syscall (struct internal *internal, int nr,
     }
   else if (nr == __NR_futex)
     {
-      int op = a2 & FUTEX_CMD_MASK;
-      eri_assert (op != FUTEX_WAKE_OP); /* XXX */
+      int op = a2 & ERI_FUTEX_CMD_MASK;
+      eri_assert (op != ERI_FUTEX_WAKE_OP); /* XXX */
       CHECK_SYSCALL (live, th->fd, nr, a1, a2, a3, a4, a5, a6);
-      if (op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET)
+      if (op == ERI_FUTEX_WAIT || op == ERI_FUTEX_WAIT_BITSET)
 	release_active_lock (internal, tid, 1, 0);
 
       if (live)
 	*res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
 
-      if ((op == FUTEX_WAIT || op == FUTEX_WAIT_BITSET)
+      if ((op == ERI_FUTEX_WAIT || op == ERI_FUTEX_WAIT_BITSET)
 	  && ! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
 	return 1;
 
@@ -1479,6 +1447,7 @@ ent_setup_tls (struct ers_thread *(*get) (void *),
 			       long a5, long a6, long *res);
 
 asm ("  .text							\n\
+  .align 16							\n\
   .type ent_syscall, @function					\n\
 ent_syscall:							\n\
   .cfi_startproc						\n\
@@ -1618,8 +1587,8 @@ static struct ers_recorder recorder = {
   ent_atomic_barrier
 };
 
-__attribute__ ((visibility ("default"))) struct ers_recorder *
-ers_get_recorder (void)
+struct ers_recorder *
+eri_get_recorder (void)
 {
   return &recorder;
 }
