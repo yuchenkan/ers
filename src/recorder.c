@@ -63,7 +63,7 @@ struct sigact_wrap
 struct replay_thread
 {
   unsigned long id;
-  ERI_RBT_NODE_FIELDS (replay_thread, struct replay_thread);
+  ERI_RBT_NODE_FIELDS (replay_thread, struct replay_thread)
 
   unsigned long lock_version;
 };
@@ -79,7 +79,7 @@ struct replay
   struct eri_pool pool;
 
   int threads_lock;
-  ERI_RBT_TREE_FIELDS (replay_thread, struct replay_thread);
+  ERI_RBT_TREE_FIELDS (replay_thread, struct replay_thread)
 };
 
 ERI_DEFINE_RBTREE (static, replay_thread, struct replay, struct replay_thread, unsigned long, eri_less_than)

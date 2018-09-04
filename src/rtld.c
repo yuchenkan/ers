@@ -298,7 +298,7 @@ start (void **arg)
     else if (a->type == AT_PHNUM)
       phnum = a->val;
     else if (a->type == AT_PAGESZ)
-      pagesize = a->val;
+      eri_assert (pagesize == a->val);
 
   eri_assert (base && phdr && phnum);
 
