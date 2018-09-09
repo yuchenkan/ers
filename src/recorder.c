@@ -73,43 +73,15 @@ struct replay
   int active_lock;
   int mmap_lock;
 
-  int pool_lock;
   char *pool_buf;
   size_t pool_buf_size;
-  struct eri_pool pool;
+  struct eri_mtpool pool;
 
   int threads_lock;
   ERI_RBT_TREE_FIELDS (replay_thread, struct replay_thread)
 };
 
 ERI_DEFINE_RBTREE (static, replay_thread, struct replay, struct replay_thread, unsigned long, eri_less_than)
-
-static void *
-replay_malloc (struct replay *replay, size_t size)
-{
-  void *p;
-  eri_lock (&replay->pool_lock, 1);
-  eri_assert (eri_malloc (&replay->pool, size, &p) == 0);
-  eri_unlock (&replay->pool_lock, 1);
-  return p;
-}
-
-static void *
-replay_calloc (struct replay *replay, size_t size)
-{
-  void *p = replay_malloc (replay, size);
-  eri_memset (p, 0, size);
-  return p;
-}
-
-static void
-replay_free (struct replay *replay, void *p)
-{
-  if (! p) return;
-  eri_lock (&replay->pool_lock, 1);
-  eri_assert (eri_free (&replay->pool, p) == 0);
-  eri_unlock (&replay->pool_lock, 1);
-}
 
 static void
 replay_exit (struct replay *replay)
@@ -120,11 +92,11 @@ replay_exit (struct replay *replay)
     {
       eri_assert (eri_fprintf (2, "remove replay thread %lx\n", rt) == 0);
       replay_thread_rbt_remove (replay, rt);
-      replay_free (replay, rt);
+      eri_assert_mtfree (&replay->pool, rt);
     }
 
-  eri_assert (eri_fprintf (2, "replay used %lu\n", replay->pool.used) == 0);
-  eri_assert (eri_fini_pool (&replay->pool) == 0);
+  eri_assert (eri_fprintf (2, "replay used %lu\n", replay->pool.pool.used) == 0);
+  eri_assert (eri_fini_pool (&replay->pool.pool) == 0);
 }
 
 struct internal
@@ -209,7 +181,7 @@ replay_get_thread (struct replay *replay, unsigned long tid)
   struct replay_thread *rt = replay_thread_rbt_get (replay, &tid, ERI_RBT_EQ);
   if (! rt)
     {
-      rt = replay_calloc (replay, sizeof *rt);
+      rt = eri_assert_mtcalloc (&replay->pool, sizeof *rt);
       rt->id = tid;
       replay_thread_rbt_insert (replay, rt);
     }
@@ -370,7 +342,7 @@ init_thread (struct internal *internal, unsigned long id, int *ctid)
   th->id = id;
   th->clear_tid = ctid;
   th->fd = eri_open_path (internal->path, "thread-",
-			  ERI_OPEN_WITHID | (! live) * ERI_OPEN_REPLAY,
+			  ERI_OPEN_WITHID | (! live) * ERI_OPEN_READ,
 			  th->id);
   th->log = eri_open_path (internal->path,
 			   live ? "record-log-" : "replay-log-",
@@ -435,15 +407,12 @@ set_context:						\n\
 
 /* static */ char set_context (struct eri_context *ctx);
 
-#define ARCH_SET_FS	0x1002
-#define ARCH_GET_FS	0x1003
-
 static char
 init_context (int init, unsigned long start, unsigned long end)
 {
   struct eri_context ctx;
   unsigned long fs;
-  ERI_ASSERT_SYSCALL (arch_prctl, ARCH_GET_FS, &fs);
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_GET_FS, &fs);
   eri_save_mark (init, ERI_MARK_INIT_STACK);
   eri_save_init_map_data (init, (const char *) start, end - start);
   if (set_context (&ctx) == 0)
@@ -455,11 +424,9 @@ init_context (int init, unsigned long start, unsigned long end)
   eri_assert (eri_fprintf (2, "replay!!!\n") == 0);
   eri_dump_maps (2);
   ERI_ASSERT_SYSCALL (munmap, ctx.unmap_start, ctx.unmap_size);
-  ERI_ASSERT_SYSCALL (arch_prctl, ARCH_SET_FS, fs);
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, fs);
   return 0; /* replay */
 }
-
-#define S_IRWXU	0700
 
 struct proc_map_data
 {
@@ -513,7 +480,7 @@ init_process (struct internal *internal, const char *path)
   eri_assert (eri_fprintf (2, "init_process %lx\n", internal) == 0);
 
   internal->path = path;
-  if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, S_IRWXU)))
+  if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, ERI_S_IRWXU)))
     eri_assert (eri_fprintf (2, "failed to create %s\n", path) == 0);
 
   size_t pool_size = 64 * 1024 * 1024;
@@ -541,7 +508,7 @@ init_process (struct internal *internal, const char *path)
 					     pd.stack_end);
 
   if (! live)
-    eri_assert (eri_init_pool (&internal->replay.pool,
+    eri_assert (eri_init_pool (&internal->replay.pool.pool,
 			       internal->replay.pool_buf,
 			       internal->replay.pool_buf_size) == 0);
 
@@ -556,7 +523,7 @@ init_process (struct internal *internal, const char *path)
   for (i = 0; i < sizeof locks / sizeof locks[0]; ++i)
     {
       int lfd = eri_open_path (path, "atomic-",
-			       ERI_OPEN_WITHID | (! live) * ERI_OPEN_REPLAY,
+			       ERI_OPEN_WITHID | (! live) * ERI_OPEN_READ,
 			       internal->lock_id.val++);
       init_lock (internal, locks[i], lfd);
     }
@@ -859,7 +826,7 @@ get_atomic_lock (struct internal *internal, struct ers_thread * th,
       lock->mem = mem;
       unsigned long lid = ATOMIC_FETCH_ADD (internal, th->id, &internal->lock_id, 1);
       int lfd = eri_open_path (internal->path, "atomic-",
-			       ERI_OPEN_WITHID | (! internal->live) * ERI_OPEN_REPLAY, lid);
+			       ERI_OPEN_WITHID | (! internal->live) * ERI_OPEN_READ, lid);
       init_lock (internal, &lock->lock, lfd);
       atomic_rbt_insert (internal, lock);
     }

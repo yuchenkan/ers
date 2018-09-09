@@ -120,7 +120,8 @@ merge (struct block *b)
 int
 eri_free (struct eri_pool *pool, void *p)
 {
-  eri_assert (p);
+  eri_assert ((char *) p >= pool->buf && (char *) p < pool->buf + pool->size);
+
   struct block *b = (struct block *) ((char *) p - ALLOC_OFFSET);
   eri_memset ((char *) b + sizeof *b, 0xfc, block_size (pool, b) - sizeof *b); /* XXX safety check */
 

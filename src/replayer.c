@@ -239,7 +239,7 @@ start (void **arg)
   ERI_RBT_INIT_TREE (map, &maps);
 
   struct map *stack = 0;
-  int init = eri_open_path (path, "init", ERI_OPEN_REPLAY, 0);
+  int init = eri_open_path (path, "init", ERI_OPEN_READ, 0);
   char mk;
   while ((mk = eri_load_mark (init)) == ERI_MARK_INIT_MAP)
     {

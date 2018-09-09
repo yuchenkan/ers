@@ -125,4 +125,9 @@
 
 #define ERI_MAP_COPY		(ERI_MAP_PRIVATE | ERI_MAP_DENYWRITE)
 
+#define ERI_ARCH_SET_FS	0x1002
+#define ERI_ARCH_GET_FS	0x1003
+
+#define ERI_S_IRWXU	0700
+
 #endif

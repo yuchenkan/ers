@@ -162,7 +162,7 @@ eri_open_path (const char *path, const char *name, int flags,
   /* eri_assert (eri_fprintf (2, "%s\n", p) == 0); */
 
   int fd;
-  eri_assert (eri_fopen (p, flags & ERI_OPEN_REPLAY, &fd) == 0);
+  eri_assert (eri_fopen (p, flags & ERI_OPEN_READ, &fd) == 0);
   return fd;
 }
 

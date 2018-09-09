@@ -152,7 +152,7 @@ struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
   char (*atomic_barrier) (int mo);
 };
 
-extern struct ers_recorder *ers_get_recorder (void);
+struct ers_recorder *ers_get_recorder (void);
 
 struct ers_info
 {

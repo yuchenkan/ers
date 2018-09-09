@@ -5,13 +5,12 @@
 #include <asm/unistd.h>
 #include <sys/syscall.h>
 
-#define ers_get_recorder get_recorder
 #include "recorder.h"
 
 static struct ers_recorder *recorder;
 
 struct ers_recorder *
-get_recorder (void)
+ers_get_recorder (void)
 {
   return recorder;
 }
@@ -642,8 +641,7 @@ char
 syscall_clone3 (int nr, long a1, long a2, long a3,
 		long a4, long a5, long a6, long *res);
 
-#undef ers_get_recorder
-extern struct ers_recorder *ers_get_recorder (void);
+struct ers_recorder *eri_get_recorder (void);
 
 int main ()
 {
@@ -665,7 +663,7 @@ int main ()
   recorder = NULL;
   tst ();
 
-  recorder = ers_get_recorder ();
+  recorder = eri_get_recorder ();
 
   tst ();
 

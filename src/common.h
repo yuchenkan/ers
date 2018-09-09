@@ -31,7 +31,7 @@ void eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 		       void *data);
 
 #define ERI_OPEN_WITHID 1
-#define ERI_OPEN_REPLAY 2
+#define ERI_OPEN_READ 2
 int eri_open_path (const char *path, const char *name, int flags, unsigned long id);
 
 #define ERI_MARK_NONE 0
