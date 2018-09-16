@@ -38,6 +38,8 @@ declare (void)
   CTX_OFFSET (RFLAGS, comm.rflags);
   CTX_OFFSET (FSBASE, comm.fsbase);
 
+  CTX_OFFSET (XSAVE, comm.xsave);
+
   CTX_OFFSET (INSTS, insts);
 
   CTX_OFFSET (RET, ret);

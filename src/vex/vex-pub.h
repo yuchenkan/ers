@@ -5,6 +5,11 @@
 
 #include "lib/malloc.h"
 
+struct eri_xsave
+{
+  char buf[832];
+} __attribute__ ((aligned (64)));
+
 struct eri_common_context
 {
   unsigned long rip;
@@ -28,6 +33,8 @@ struct eri_common_context
 
   unsigned long rflags;
   unsigned long fsbase;
+
+  struct eri_xsave xsave;
 };
 
 struct eri_vex_context

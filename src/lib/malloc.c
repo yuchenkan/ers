@@ -36,7 +36,7 @@ ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 #define ALIGN(x) eri_round_up (x, 16)
 
 #define MIN_BLOCK_SIZE ALIGN (sizeof (struct block))
-#define ALLOC_OFFSET __builtin_offsetof (struct block, block_rbt_parent)
+#define ALLOC_OFFSET ALIGN (__builtin_offsetof (struct block, block_rbt_parent))
 
 int
 eri_init_pool (struct eri_pool *pool, char *buf, size_t size)

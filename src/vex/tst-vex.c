@@ -2,6 +2,7 @@
 
 #include "vex-pub.h"
 #include "recorder.h"
+#include "common.h"
 
 #include "lib/syscall.h"
 #include "lib/util.h"
@@ -21,12 +22,15 @@ char __attribute__ ((aligned (16))) stack[8 * 1024 * 1024];
   call	*8(%rax, %rbx, 4)		\n\
   jmp	*8(%rax, %rbx, 4)		\n\
   jmp	*%fs:8(%rax, %rbx, 4)		\n\
+  jmp	*8(%rip)		\n\
+  jmp	*%fs:8(%rip)		\n\
 */
 
 asm ("  .text		\n\
   .align 16		\n\
   .type tst, @function	\n\
 tst:			\n\
+  movq	8(%rip), %rdi	\n\
   .cfi_startproc	\n\
   movq	%rdi, %rsi	\n\
   movq	$" _ERS_STR (ERI_ARCH_SET_FS) ", %rdi	\n\
@@ -46,14 +50,25 @@ tst:			\n\
 void *tst (void *);
 
 void __attribute__ ((visibility ("default")))
-entry ()
+entry (void *rip, void *rsp, unsigned long fsbase)
 {
+  eri_dump_maps (1);
+
   unsigned long p = 0x3039;
 
   struct eri_vex_context ctx = { 4096 };
-  ctx.comm.rip = (unsigned long) tst;
-  ctx.comm.rdi = (unsigned long) &p;
-  ctx.comm.rsp = (unsigned long) (stack + sizeof stack);
+  if (rip == 0)
+    {
+      ctx.comm.rip = (unsigned long) tst;
+      ctx.comm.rdi = (unsigned long) &p;
+      ctx.comm.rsp = (unsigned long) (stack + sizeof stack);
+    }
+  else
+    {
+      ctx.comm.rip = (unsigned long) rip;
+      ctx.comm.rsp = (unsigned long) rsp;
+      ctx.comm.fsbase = fsbase;
+    }
 
   /* eri_printf ("%lx %lx %lx\n", p, &p, tst (&p)); */
 
