@@ -8,7 +8,6 @@
 #include "lib/util.h"
 #include "lib/printf.h"
 
-char __attribute__ ((aligned (4096))) buf[256 * 1024 * 1024];
 char __attribute__ ((aligned (16))) stack[8 * 1024 * 1024];
 
 #define CHILD_STACK_SIZE (1024 * 1024)
@@ -98,6 +97,11 @@ entry (void *rip, void *rsp, unsigned long fsbase)
 
   unsigned long p = 0;
 
+  size_t buf_size = 256 * 1024 * 1024;
+  char *buf = (char *) ERI_ASSERT_SYSCALL_RES (
+		mmap, 0, buf_size, ERI_PROT_READ | ERI_PROT_WRITE,
+		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+
   struct eri_vex_context ctx = { 4096 };
   if (rip == 0)
     {
@@ -117,6 +121,6 @@ entry (void *rip, void *rsp, unsigned long fsbase)
   const char *path = "vex_data";
   if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, ERI_S_IRWXU)))
     eri_assert (eri_fprintf (2, "failed to create %s\n", path) == 0);
-  eri_vex_enter (buf, sizeof buf, &ctx, path);
+  eri_vex_enter (buf, buf_size, &ctx, path, 1);
   eri_assert (0);
 }

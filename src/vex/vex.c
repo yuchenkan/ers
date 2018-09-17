@@ -6,12 +6,6 @@
 #include "vex.h"
 #include "vex-offsets.h"
 
-#if 0
-#define cfi_adjust_cfa_offset(off)
-#define cfi_rel_offset(reg, off)
-#define cfi_restore(reg)
-#endif
-
 #include "recorder.h"
 #include "common.h"
 
@@ -32,9 +26,9 @@ struct context
   struct vex_context ctx;
 
   void *mp;
+  unsigned long id;
 
   struct vex *vex;
-  ERI_LST_NODE_FIELDS (context)
 
   void *stack;
 
@@ -178,12 +172,18 @@ struct vex
   size_t pagesize;
   const char *path;
 
+  void *mmap;
+  size_t mmap_size;
+  char group_exiting;
+
+  int exit_stack_lock;
+  void *exit_stack_top;
+
   int entrys_lock;
   ERI_RBT_TREE_FIELDS (entry, struct entry)
 
-  int context_lock;
   unsigned long context_id;
-  ERI_LST_LIST_FIELDS (context)
+  unsigned ncontexts;
 
   struct eri_mtpool pool;
   struct eri_mtpool epool;
@@ -192,8 +192,6 @@ struct vex
 };
 
 ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_less_than)
-
-ERI_DEFINE_LIST (static, context, struct vex, struct context)
 
 /* static */ void vex_syscall (void);
 /* static */ void vex_back (void);
@@ -239,13 +237,11 @@ alloc_child_context (struct context *c)
 }
 
 static void
-append_context (struct context *c)
+start_context (struct context *c)
 {
   struct vex *v = c->vex;
-  eri_lock (&v->context_lock, 1);
-  c->log = eri_open_path (v->path, "log-", ERI_OPEN_WITHID, v->context_id++);
-  context_lst_append (v, c);
-  eri_unlock (&v->context_lock, 1);
+  c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
+  c->log = eri_open_path (v->path, "log-", ERI_OPEN_WITHID, c->id);
 }
 
 static void
@@ -266,8 +262,129 @@ static void vex_loop (struct context *c);
 static void __attribute__ ((used))
 vex_start_child (struct context *c)
 {
-  append_context (c);
+  __atomic_add_fetch (&c->vex->ncontexts, 1, __ATOMIC_ACQUIRE);
+  start_context (c);
   vex_loop (c);
+}
+
+#define VEX_EXIT_GROUP	0
+#define VEX_EXIT_WAIT	1
+#define VEX_EXIT_SELF	2
+
+static void __attribute__ ((used))
+vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
+{
+  cprintf (c->log, "exit %u\n", type);
+
+  struct vex *v = c->vex;
+  eri_assert (eri_fclose (c->log) == 0);
+  eri_assert_mtfree (&v->pool, c->stack);
+  eri_assert_mtfree (&v->pool, c->mp);
+
+  __atomic_add_fetch (&v->ncontexts, -1, __ATOMIC_RELEASE);
+  if (type == VEX_EXIT_GROUP)
+    {
+      eri_assert (eri_printf ("pool used: %lu\n", v->pool.pool.used) == 0);
+      eri_assert (eri_fini_pool (&v->pool.pool) == 0);
+      if (v->mmap)
+	asm ("  movq	%q0, %%rdi\n\t"
+	     "  movq	%q1, %%rsi\n\t"
+	     "  movl	$" _ERS_STR (__NR_munmap) ", %%eax\n\t"
+	     "  syscall\n\t"
+	     "  cmpq	$-4095, %%rax\n\t"
+	     "  jb	1f\n\t"
+	     "  movq	$0, %%r11\n\t"
+	     "  movq	$0, (%%r11)\n\t"
+	     "1:\n\t"
+	     "  movq	%q2, %%rdi\n\t"
+	     "  movl	%3, %%eax\n\t"
+	     "  syscall\n\t"
+	     : : "r" (v->mmap), "r" (v->mmap_size), "r" (status), "r" (nr)
+	     : "rdi", "rsi", "rax");
+      else
+	ERI_SYSCALL_NCS (nr, status);
+    }
+  else if (type == VEX_EXIT_WAIT)
+      asm ("  movl	$0, (%q0)\n\t"
+	   "  movq	%q0, %%rdi\n\t"
+	   "  movq	$" _ERS_STR (ERI_FUTEX_WAKE) ", %%rsi\n\t"
+	   "  movq	$1, %%rdx\n\t"
+	   "  movl	$" _ERS_STR (__NR_futex)", %%eax\n\t"
+	   "  syscall\n\t"
+	   "  cmpq	$-4095, %%rax\n\t"
+	   "  jb	1f\n\t"
+	   "  movq	$0, %%r11\n\t"
+	   "  movq	$0, (%%r11)\n\t"
+	   "1:\n\t"
+	   "  jmp	1b\n\t"
+	   : : "r" (&v->exit_stack_lock)
+	   : "rdi", "rsi", "rdx", "rax");
+  else
+      asm ("  movl	$0, (%q0)\n\t"
+	   "  movq	%q0, %%rdi\n\t"
+	   "  movq	$" _ERS_STR (ERI_FUTEX_WAKE) ", %%rsi\n\t"
+	   "  movq	$1, %%rdx\n\t"
+	   "  movl	$" _ERS_STR (__NR_futex)", %%eax\n\t"
+	   "  syscall\n\t"
+	   "  cmpq	$-4095, %%rax\n\t"
+	   "  jb	1f\n\t"
+	   "  movq	$0, %%r11\n\t"
+	   "  movq	$0, (%%r11)\n\t"
+	   "1:\n\t"
+	   "  movq	%q1, %%rdi\n\t"
+	   "  movl	$" _ERS_STR (__NR_exit) ", %%eax\n\t"
+	   "  syscall\n\t"
+	   : : "r" (&v->exit_stack_lock), "r" (status)
+	   : "rdi", "rsi", "rdx", "rax");
+  eri_assert (0);
+}
+
+#define VEX_EXIT_ALT_STACK(c, type, status, nr) \
+  do {											\
+    struct context *__c = c;								\
+    struct vex *__v = c->vex;								\
+    eri_lock (&__v->exit_stack_lock, 1);						\
+    asm ("movq	%q0, %%rsp\n\t"								\
+	 "movl	%1, %%edi\n\t"								\
+	 "movq	%q2, %%rsi\n\t"								\
+	 "movl	%3, %%edx\n\t"								\
+	 "movq	%q4, %%rcx\n\t"								\
+	 "call	vex_exit_alt_stack"							\
+	 : : "r" (__v->exit_stack_top), "r" (type), "r" (status), "r" (nr), "r" (__c)	\
+	 : "rsp", "rdi", "rsi", "rdx", "rcx");						\
+  } while (0)
+
+static void __attribute__ ((used))
+vex_exit (unsigned long status, int nr, struct context *c)
+{
+  struct vex *v = c->vex;
+
+  int type = VEX_EXIT_SELF;
+  char grp = nr == __NR_exit_group || c->id == 0;
+  if (grp)
+    {
+      if (__atomic_exchange_n (&v->group_exiting, 1, __ATOMIC_ACQ_REL) == 0)
+	{
+	  while (__atomic_load_n (&v->ncontexts, __ATOMIC_ACQUIRE) != 1)
+	    continue;
+
+	  struct entry *e, *ne;
+	  ERI_RBT_FOREACH_SAFE (entry, v, e, ne)
+	    {
+	      entry_rbt_remove (v, e);
+	      eri_assert (eri_free (&v->pool.pool, e->inst_rips) == 0);
+	      eri_assert (eri_free (&v->epool.pool, e->insts) == 0);
+	      eri_assert (eri_free (&v->pool.pool, e) == 0);
+	    }
+
+	  type = VEX_EXIT_GROUP;
+	}
+      else
+	/* Exiting is already started by another context.  */
+	type = VEX_EXIT_WAIT;
+    }
+
+  VEX_EXIT_ALT_STACK (c, type, status, nr);
 }
 
 #define RAX	_ERS_STR (VEX_CTX_RAX)
@@ -349,24 +466,6 @@ vex_execute:						\n\
 
 /* static */ void vex_execute (void);
 
-/*
-   TODO
-   if clone
-     prepare child
-     syscall clone
-     if child
-       start thread
-     else if error
-       clean up child
-   else if group_exit
-     wait for stop
-     clean up all
-     syscall exit process
-   else if exit
-     clean up thread
-     syscall exit thread
-*/
-
 #define MIN_CLONE_FLAGS \
   (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
    | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM)
@@ -380,6 +479,10 @@ asm ("  .text						\n\
 vex_syscall:						\n\
   cmpl	$" _ERS_STR (__NR_clone) ", %eax		\n\
   je	.clone						\n\
+  cmpl	$" _ERS_STR (__NR_exit) ", %eax			\n\
+  je	.exit						\n\
+  cmpl	$" _ERS_STR (__NR_exit_group) ", %eax		\n\
+  je	.exit						\n\
   cmpl	$" _ERS_STR (__NR_arch_prctl) ", %eax		\n\
   je	.arch_prctl					\n\
   jmp	.syscall					\n\
@@ -418,8 +521,9 @@ vex_syscall:						\n\
 							\n\
   syscall						\n\
   movq	%fs:" R8 ", %r8					\n\
+  cmpq	$-4095, %rax					\n\
+  jae	.clone_failed					\n\
   testq	%rax, %rax					\n\
-  jl	.clone_failed					\n\
   jz	.clone_child					\n\
   jmp	vex_back					\n\
 							\n\
@@ -439,6 +543,13 @@ vex_syscall:						\n\
 1:							\n\
   movq	%fs:" CTX ", %rdi				\n\
   call	vex_start_child					\n\
+  jmp	.assert_failed					\n\
+							\n\
+.exit:							\n\
+  movq	%fs:" TOP ", %rsp				\n\
+  movl	%eax, %esi					\n\
+  movq	%fs:" CTX ", %rdx				\n\
+  call	vex_exit					\n\
   jmp	.assert_failed					\n\
 							\n\
 .arch_prctl:						\n\
@@ -1513,11 +1624,15 @@ vex_dispatch:						\n\
 static void
 vex_loop (struct context *c)
 {
+  struct vex *v = c->vex;
   while (1)
     {
       cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
-      struct entry *e = vex_get_entry (c->log, c->vex, c->ctx.comm.rip);
+      struct entry *e = vex_get_entry (c->log, v, c->ctx.comm.rip);
       c->ctx.insts = (unsigned long) e->insts;
+
+      if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
+	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
 
       /* ERI_ASSERT_SYSCALL (exit, 0); */
       cprintf (c->log, "execute rip: %lx "
@@ -1535,7 +1650,7 @@ vex_loop (struct context *c)
 		       c->ctx.comm.r12, c->ctx.comm.r13,
 		       c->ctx.comm.r14, c->ctx.comm.r15);
       int i;
-      for (i = 0; e->inst_rips[i] && i < c->vex->max_inst_count; ++i)
+      for (i = 0; e->inst_rips[i] && i < v->max_inst_count; ++i)
 	cprintf (c->log, ">>>> 0x%lx\n", e->inst_rips[i]);
 
       vex_execute ();
@@ -1548,29 +1663,42 @@ vex_loop (struct context *c)
 void
 eri_vex_enter (char *buf, size_t size,
 	       const struct eri_vex_context *ctx,
-	       const char *path)
+	       const char *path, char mmap)
 {
   size_t page = ctx->pagesize;
-  struct vex v = { page, path };
+  eri_assert (size >= 8 * 1024);
+  struct vex *v = (struct vex *) buf;
+  eri_memset (v, 0, sizeof *v);
+  v->pagesize = page;
+  v->path = path;
 
-  ERI_LST_INIT_LIST (context, &v);
+  if (mmap)
+    {
+      v->mmap = buf;
+      v->mmap_size = size;
+    }
+
+  buf += 8 * 1024;
+  size -= 8 * 1024;
+  v->exit_stack_top = buf;
 
   eri_assert ((unsigned long) buf % page == 0 && size % page == 0);
   size_t psize = size / page / 2 * page;
-  eri_assert (eri_init_pool (&v.pool.pool, buf, psize) == 0);
+  eri_assert (eri_init_pool (&v->pool.pool, buf, psize) == 0);
 
   char *ebuf = buf + psize;
   size_t esize = size - psize;
-  eri_assert (eri_init_pool (&v.epool.pool, ebuf, esize) == 0);
+  eri_assert (eri_init_pool (&v->epool.pool, ebuf, esize) == 0);
 
   ERI_ASSERT_SYSCALL (mprotect, ebuf, esize, 0x7);
 
-  v.max_inst_count = 256;
+  v->max_inst_count = 256;
 
-  struct context *c = alloc_context (&v);
+  struct context *c = alloc_context (v);
   eri_memcpy (&c->ctx.comm, &ctx->comm, sizeof c->ctx.comm);
 
-  append_context (c);
+  __atomic_add_fetch (&v->ncontexts, 1, __ATOMIC_ACQUIRE);
+  start_context (c);
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, c);
 

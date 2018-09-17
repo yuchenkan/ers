@@ -46,6 +46,6 @@ struct eri_vex_context
 
 void eri_vex_enter (char *buf, size_t size,
 		    const struct eri_vex_context *ctx,
-		    const char *path);
+		    const char *path, char mmap);
 
 #endif
