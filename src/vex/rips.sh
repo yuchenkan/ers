@@ -1,4 +1,4 @@
 set -ex
 
-bash test.sh 2>test.err | tee test.out | grep '>>>>' >test.rips
+bash main.sh 2>main.err | tee main.out | grep '>>>>' >main.rips
 LD_LIBRARY_PATH=. ./tracer | tee tracer.rips

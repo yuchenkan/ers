@@ -3,11 +3,14 @@
 
 #include "vex-pub.h"
 
+struct context;
+
 struct vex_context
 {
+  struct context *ctx;
+
   unsigned long syscall;
   unsigned long back;
-  unsigned long back_relbr;
 
   struct eri_common_context comm;
 

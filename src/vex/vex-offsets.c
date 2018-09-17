@@ -13,6 +13,8 @@
 void
 declare (void)
 {
+  CTX_OFFSET (CTX, ctx);
+
   CTX_OFFSET (SYSCALL, syscall);
   CTX_OFFSET (BACK, back);
 

@@ -8,7 +8,8 @@
 #include <sys/ptrace.h>
 #include <sys/personality.h>
 
-int main (int argc, const char **argv)
+int
+main (void)
 {
   pid_t pid = fork ();
   if (pid == 0)

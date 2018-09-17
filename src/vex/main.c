@@ -34,9 +34,6 @@ void raw (void *stack);
 int
 main (int argc)
 {
-#if 0
-  entry (0, 0, 0);
-#else
   if (argc == 1)
     {
       unsigned long fsbase;
@@ -44,6 +41,5 @@ main (int argc)
       entry (tst, stack + sizeof stack, fsbase);
     }
   else raw (stack + sizeof stack);
-#endif
   return 0;
 }

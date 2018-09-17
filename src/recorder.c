@@ -1207,8 +1207,10 @@ struct clone
   long res; /* replay */
 };
 
-#define CLONE_PARENT_SETTID	0x00100000
-#define CLONE_CHILD_CLEARTID	0x00200000
+#define CLONE_FLAGS \
+  (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
+   | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
+   | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
 
 static char __attribute__ ((used))
 pre_clone (struct internal *internal, struct clone **clone,
@@ -1217,8 +1219,7 @@ pre_clone (struct internal *internal, struct clone **clone,
   if (! acquire_active_lock (internal, 2, MARK_THREAD_ACTIVE))
     return 0;
 
-  /* VM, FS, FILES, SYSVSEM, SIGHAND, THREAD, SETTLS, PARENT_SETTID, CHILD_CLEAR_TID */
-  eri_assert (*flags == 0x3d0f00);
+  eri_assert (*flags == CLONE_FLAGS);
 
   char live = internal->live;
   struct ers_thread *th = get_thread (internal);
@@ -1242,7 +1243,7 @@ pre_clone (struct internal *internal, struct clone **clone,
 	  return 2;
 	}
 
-      *flags &= ~(CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID);
+      *flags &= ~(ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID);
       *ptid = (*clone)->res;
     }
   iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
