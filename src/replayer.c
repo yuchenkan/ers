@@ -64,6 +64,7 @@ restore:								\n\
   .cfi_startproc							\n\
   .cfi_undefined %rip							\n\
   movq	%rdi, %r15							\n\
+  movl	%esi, %ebp							\n\
   movq	(%r15), %r12		/* init */				\n\
 									\n\
   movq	8(%r15), %rdi		/* stack_start */			\n\
@@ -156,7 +157,6 @@ restore:								\n\
 									\n\
   movq	104(%r15), %rsp							\n\
   movq	(%r15), %rbx							\n\
-  movq	8(%r15), %rbp							\n\
   movq	16(%r15), %r12							\n\
   movq	24(%r15), %r13							\n\
   movq	32(%r15), %r14							\n\
@@ -176,15 +176,17 @@ restore:								\n\
   movq	152(%r15), %rax							\n\
   movq	%rax, 152(%rdi)		/* unmap_size */			\n\
 									\n\
+  movl	%ebp, %eax							\n\
+  movq	8(%r15), %rbp							\n\
+									\n\
   movq	40(%r15), %r15							\n\
   jmp	.return								\n\
 									\n\
 .error:									\n\
-  movq	$0, %rax							\n\
-  movq	$1, (%rax)							\n\
+  movq	$0, %r9								\n\
+  movq	$0, (%r9)							\n\
 									\n\
 .return:								\n\
-  movb	$1, %al								\n\
   ret									\n\
   .cfi_endproc								\n\
   .size restore, .-restore						\n\
@@ -192,7 +194,7 @@ restore_end:								\n\
   .previous								\n"
 );
 
-/* static */ void restore (unsigned long addr);
+/* static */ void restore (unsigned long addr, int mode);
 
 struct map
 {
@@ -222,7 +224,15 @@ start (void **arg)
   unsigned long  argc = *(unsigned long *) arg;
   const char **argv = (const char **) (arg + 1);
 
-  const char *path = argc == 1 ? "ers_data" : argv[1];
+  char analysis = 0;
+  const char *path = "ers_data";
+
+  int i;
+  for (i = 0; i < argc; ++i)
+    if (eri_strncmp (argv[i], "--path=", eri_strlen ("--path=")) == 0)
+      path = argv[i] + eri_strlen ("--path=");
+    else if (eri_strcmp (argv[i], "--analysis") == 0)
+      analysis = 1;
 
   struct proc_map_data pd;
   eri_memset (&pd, 0, sizeof pd);
@@ -318,5 +328,5 @@ mapped:
   char *code = (char *) addr + data_size;
   eri_memcpy (code, restore, restore_end - (char *) restore);
 
-  ((typeof (&restore)) code) (addr);
+  ((typeof (&restore)) code) (addr, analysis ? ERS_ANALYSIS : ERS_REPLAY);
 }

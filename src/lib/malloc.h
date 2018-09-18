@@ -11,6 +11,10 @@ struct eri_pool
   size_t size;
   size_t used;
 
+  void (*cb_malloc) (struct eri_pool *, size_t, int, void *, void *);
+  void (*cb_free) (struct eri_pool *, void *, int, void *);
+  void *cb_data;
+
   ERI_RBT_TREE_FIELDS (block, struct block)
 };
 

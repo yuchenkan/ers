@@ -5,12 +5,12 @@
 
 #include "lib/malloc.h"
 
-struct eri_xsave
+struct eri_vex_xsave
 {
   char buf[832];
 } __attribute__ ((aligned (64)));
 
-struct eri_common_context
+struct eri_vex_common_context
 {
   unsigned long rip;
 
@@ -34,14 +34,14 @@ struct eri_common_context
   unsigned long rflags;
   unsigned long fsbase;
 
-  struct eri_xsave xsave;
+  struct eri_vex_xsave xsave;
 };
 
 struct eri_vex_context
 {
   size_t pagesize;
 
-  struct eri_common_context comm;
+  struct eri_vex_common_context comm;
 };
 
 void eri_vex_enter (char *buf, size_t size,

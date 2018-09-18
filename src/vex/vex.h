@@ -12,7 +12,7 @@ struct vex_context
   unsigned long syscall;
   unsigned long back;
 
-  struct eri_common_context comm;
+  struct eri_vex_common_context comm;
 
   unsigned long insts;
 

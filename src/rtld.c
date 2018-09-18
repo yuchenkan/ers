@@ -8,21 +8,32 @@
 
 static struct ers_info info;
 
-asm ("  .text			\n\
-  .align 16			\n\
-  .global entry			\n\
-entry:				\n\
-  testq	%rsi, %rsi		\n\
-  jz	1f			\n\
-  movq	$0, %r15		\n\
-  movq	$0, (%r15)		\n\
-1:				\n\
-  movq	%rsp, %rdi		\n\
-  call	start			\n\
-  leaq	info(%rip), %rsi	\n\
-  jmp	*%rax			\n\
-  .size entry, .-entry		\n\
-  .previous			\n"
+asm ("  .text					\n\
+  .align 16					\n\
+  .global entry					\n\
+entry:						\n\
+  testq	%rsi, %rsi				\n\
+  jz	1f					\n\
+  movq	$0, %r15				\n\
+  movq	$0, (%r15)				\n\
+1:						\n\
+  subq	$16, %rsp				\n\
+  movq	%rsp, %rdi				\n\
+  call	start					\n\
+  popq	%rbx					\n\
+  addq	$8, %rsp				\n\
+  cmpl	$" _ERS_STR (ERS_ANALYSIS) ", %ebx	\n\
+  je	.analysis				\n\
+  leaq	info(%rip), %rsi			\n\
+  jmp	*%rax					\n\
+						\n\
+.analysis:					\n\
+  movq	%rax, %rdi				\n\
+  movq	%rsp, %rsi				\n\
+  call	analysis				\n\
+						\n\
+  .size entry, .-entry				\n\
+  .previous					\n"
 );
 
 struct elf64_rela
@@ -58,8 +69,10 @@ relocate (uint64_t base, const struct elf64_rela *rel, const struct elf64_rela *
     const struct elf64_sym *sym = symtab + (r->info >> 32);
     uint32_t type = r->info & 0xffffffff;
 
+#if 0
     eri_assert (eri_printf ("rel sym %lu %lu %s %u\n",
 			    r->info >> 32, sym->name, strtab + sym->name, type) == 0);
+#endif
 
     eri_assert ((sym->info & 0xf) != STT_GNU_IFUNC);
     if (type == R_X86_64_NONE)
@@ -261,7 +274,11 @@ start (void **arg)
 {
   struct ers_info *ip = &info;
 
+  int *mode = (int *) arg;
+
+  arg += 2;
   char disable = 0;
+  const char *path = "ers_data";
   uint64_t argc = *(uint64_t *) arg;
   char **envp;
   ip->libname = DEFAULT_ORIGINAL_INTERPRETER;
@@ -272,6 +289,9 @@ start (void **arg)
     else if (eri_strncmp (*envp, "ERS_DISABLE_RECORD=",
 			  eri_strlen ("ERS_DISABLE_RECORD=")) == 0)
       disable = eri_strcmp (*envp + eri_strlen ("ERS_DISABLE_RECORD="), "1") == 0;
+    else if (eri_strncmp (*envp, "ERS_DATA_PATH=",
+			  eri_strlen ("ERS_DATA_PATH=")) == 0)
+      path = *envp + eri_strlen ("ERS_DATA_PATH=");
 
   uint64_t base = 0;
   uint64_t *basep = 0;
@@ -338,10 +358,18 @@ start (void **arg)
   if (! disable)
     {
       ip->recorder = eri_get_recorder ();
-      ip->recorder->init_process ("ers_data");
+      *mode = ip->recorder->init_process (path);
     }
+  else *mode = ERS_LIVE;
 
   eri_assert (eri_printf ("ers_info libname %s ers_recorder %lu\n",
 			  ip->libname, ip->recorder) == 0);
   return entry;
+}
+
+static void __attribute__ ((used))
+analysis (unsigned long entry, unsigned long stack)
+{
+  info.recorder->analysis (entry, (unsigned long) &info, stack);
+  eri_assert (0);
 }

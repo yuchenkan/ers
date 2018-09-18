@@ -1,2 +1,2 @@
 set -ex
-../src/replayer
+../src/replayer "$@"

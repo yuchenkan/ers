@@ -41,10 +41,10 @@ ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 int
 eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
 {
+  eri_memset (pool, 0, sizeof *pool);
+
   pool->buf = buf;
   pool->size = size;
-  pool->used = 0;
-  ERI_RBT_INIT_TREE (block, pool);
 
   if (pool->size < MIN_BLOCK_SIZE)
     return 0;
@@ -79,7 +79,12 @@ eri_malloc (struct eri_pool *pool, size_t size, void **p)
   struct block *b = block_rbt_get (pool, &k, ERI_RBT_GT);
 
   *p = NULL;
-  if (! b) return 1;
+  if (! b)
+    {
+      if (pool->cb_malloc)
+	pool->cb_malloc (pool, size, 1, *p, pool->cb_data);
+      return 1;
+    }
 
   block_rbt_remove (pool, b);
   b->type = BLK_NOTFREE;
@@ -97,6 +102,8 @@ eri_malloc (struct eri_pool *pool, size_t size, void **p)
     }
 
   pool->used += block_size (pool, b);
+  if (pool->cb_malloc)
+    pool->cb_malloc (pool, size, 0, *p, pool->cb_data);
   return 0;
 }
 
@@ -143,5 +150,7 @@ eri_free (struct eri_pool *pool, void *p)
     }
 
   block_rbt_insert (pool, b);
+  if (pool->cb_free)
+    pool->cb_free (pool, p, 0, pool->cb_data);
   return 0;
 }

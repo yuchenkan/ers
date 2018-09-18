@@ -70,8 +70,8 @@ vex_dump_inst (int log, unsigned long rip, const xed_decoded_inst_t *xd)
 {
   xed_iform_enum_t iform = xed_decoded_inst_get_iform_enum (xd);
   cprintf (log, "iclass: %u %s,",
-	      xed_iform_to_iclass (iform),
-	      xed_iform_to_iclass_string_att (iform));
+	   xed_iform_to_iclass (iform),
+	   xed_iform_to_iclass_string_att (iform));
 
   xed_uint_t length = xed_decoded_inst_get_length (xd);
   xed_uint32_t eow = xed_operand_values_get_effective_operand_width (xd);
@@ -79,7 +79,7 @@ vex_dump_inst (int log, unsigned long rip, const xed_decoded_inst_t *xd)
   const xed_inst_t *xi = xed_decoded_inst_inst (xd);
   int noperands = xed_inst_noperands (xi);
   cprintf (log, "length: %u, eow: %u, noperands: %u\n",
-	      length, eow, noperands);
+	   length, eow, noperands);
 
   int i;
   for (i = 0; i < noperands; ++i)
@@ -199,6 +199,7 @@ ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_l
 static void
 cprintf (int log, const char *fmt, ...)
 {
+  return;
   va_list arg;
   va_start (arg, fmt);
   eri_assert (eri_vfprintf (log, fmt, arg) == 0);
@@ -217,8 +218,8 @@ alloc_context (struct vex *v)
 
   c->ctx.syscall = (unsigned long) vex_syscall;
   c->ctx.back = (unsigned long) vex_back;
-  c->stack = eri_assert_mtcalloc (&v->pool, 8 * 1024 * 1024);
-  c->ctx.top = (unsigned long) c->stack + 8 * 1024 * 1024;
+  c->stack = eri_assert_mtcalloc (&v->pool, 2 * 1024 * 1024);
+  c->ctx.top = (unsigned long) c->stack + 2 * 1024 * 1024;
 
   c->vex = v;
   return c;
@@ -241,7 +242,7 @@ start_context (struct context *c)
 {
   struct vex *v = c->vex;
   c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
-  c->log = eri_open_path (v->path, "log-", ERI_OPEN_WITHID, c->id);
+  c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id);
 }
 
 static void
@@ -284,7 +285,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   __atomic_add_fetch (&v->ncontexts, -1, __ATOMIC_RELEASE);
   if (type == VEX_EXIT_GROUP)
     {
-      eri_assert (eri_printf ("pool used: %lu\n", v->pool.pool.used) == 0);
+      eri_assert (eri_printf ("vex pool used: %lu\n", v->pool.pool.used) == 0);
       eri_assert (eri_fini_pool (&v->pool.pool) == 0);
       if (v->mmap)
 	asm ("  movq	%q0, %%rdi\n\t"
@@ -376,6 +377,9 @@ vex_exit (unsigned long status, int nr, struct context *c)
 	      eri_assert (eri_free (&v->epool.pool, e->insts) == 0);
 	      eri_assert (eri_free (&v->pool.pool, e) == 0);
 	    }
+
+	  eri_assert (eri_printf ("vex epool used: %lu\n", v->epool.pool.used) == 0);
+	  eri_assert (eri_fini_pool (&v->epool.pool) == 0);
 
 	  type = VEX_EXIT_GROUP;
 	}
@@ -1112,7 +1116,7 @@ save_translated (struct vex *v,
 {
   if (nmap == 0) return;
 
-  int fd = eri_open_path (v->path, "trans-", ERI_OPEN_WITHID, map[0][0]);
+  int fd = eri_open_path (v->path, "vex-trans-", ERI_OPEN_WITHID, map[0][0]);
   size_t page = v->pagesize;
 
   int i = 0;
@@ -1143,9 +1147,11 @@ save_translated (struct vex *v,
   eri_assert (i == nmap);
   eri_assert (eri_fclose (fd) == 0);
 
-  int cfd = eri_open_path (v->path, "trans-bin-", ERI_OPEN_WITHID, map[0][0]);
+#if 0
+  int cfd = eri_open_path (v->path, "vex-trans-bin-", ERI_OPEN_WITHID, map[0][0]);
   eri_assert (eri_fwrite (cfd, (const char *) b->p, b->off) == 0);
   eri_assert (eri_fclose (cfd) == 0);
+#endif
 }
 
 #define vex_assert_common_regs(reg) \
@@ -1621,7 +1627,7 @@ vex_dispatch:						\n\
 
 /* static */ void vex_dispatch (struct context *c);
 
-static void
+static void __attribute__ ((used))
 vex_loop (struct context *c)
 {
   struct vex *v = c->vex;
@@ -1660,6 +1666,35 @@ vex_loop (struct context *c)
   eri_assert (0);
 }
 
+static void
+monitor_pool_malloc (struct eri_pool *pool, size_t size,
+		     int res, void *p, void *name)
+{
+#if 0
+  if (res == 0)
+    eri_assert (eri_printf ("%s: %lu\n", name, pool->used) == 0);
+#endif
+}
+
+static void
+monitor_pool_free (struct eri_pool *pool,
+		   void *p, int res, void *name)
+{
+#if 0
+  if (res == 0)
+    eri_assert (eri_printf ("%s: %lu\n", name, pool->used) == 0);
+#endif
+}
+
+
+static void
+setup_pool_monitor (struct eri_pool *pool, const char *name)
+{
+  pool->cb_malloc = monitor_pool_malloc;
+  pool->cb_free = monitor_pool_free;
+  pool->cb_data = (void *) name;
+}
+
 void
 eri_vex_enter (char *buf, size_t size,
 	       const struct eri_vex_context *ctx,
@@ -1685,10 +1720,12 @@ eri_vex_enter (char *buf, size_t size,
   eri_assert ((unsigned long) buf % page == 0 && size % page == 0);
   size_t psize = size / page / 2 * page;
   eri_assert (eri_init_pool (&v->pool.pool, buf, psize) == 0);
+  setup_pool_monitor (&v->pool.pool, "pool");
 
   char *ebuf = buf + psize;
   size_t esize = size - psize;
   eri_assert (eri_init_pool (&v->epool.pool, ebuf, esize) == 0);
+  setup_pool_monitor (&v->epool.pool, "epool");
 
   ERI_ASSERT_SYSCALL (mprotect, ebuf, esize, 0x7);
 

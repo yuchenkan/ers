@@ -136,9 +136,13 @@
 
 struct ers_thread;
 
+#define ERS_LIVE	0
+#define ERS_REPLAY	1
+#define ERS_ANALYSIS	2
+
 struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
 {
-  void (*init_process) (const char *path);
+  char (*init_process) (const char *path); /* return mode */
   void (*setup_tls) (struct ers_thread *(*get) (void *),
 		     void (*set) (struct ers_thread *, void *),
 		     void *arg);
@@ -150,6 +154,9 @@ struct ers_recorder /* XXX fix offset for __ASSEMBLER__ */
   char (*atomic_lock) (void *mem);
   void (*atomic_unlock) (void *mem, int mo);
   char (*atomic_barrier) (int mo);
+
+  void (*analysis) (unsigned long entry, unsigned long info,
+		    unsigned long stack);
 };
 
 struct ers_recorder *ers_get_recorder (void);

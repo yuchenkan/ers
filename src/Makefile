@@ -1,16 +1,20 @@
-RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c
+RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c vex/vex.c
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 
-CFLAGS := -I . -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 BUILD := ../build/src
+CFLAGS := -I . -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+
+VEX_CFLAGS := -I $(BUILD) -I ../3rd/xed/include/public -I ../3rd/xed/include/public/xed -I ../3rd/xed/obj
+VEX_LDFLAGS := -Wl,--exclude-libs,ALL
 
 MAKEFILES := Makefile
+XED := ../3rd/xed/obj/libxed.a
 
 all: $(BUILD)/librecorder.so $(BUILD)/replayer
 
-$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o))
+$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o)) $(XED)
 	mkdir -p $(dir $@)
-	gcc $(CFLAGS) -nostdlib -Wl,--no-undefined -shared -Wl,-e,entry -o $@ $^
+	gcc $(CFLAGS) $(VEX_LDFLAGS) -nostdlib -Wl,--no-undefined -shared -Wl,-e,entry -o $@ $^
 	objdump -W $@ >$(@:.so=.dwarf)
 	objdump -dSl $@ >$(@:.so=.asm)
 
@@ -23,6 +27,19 @@ $(BUILD)/replayer: $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.o))
 	gcc $(CFLAGS) -nostdlib -o $@ $^
 	objdump -W $@ >$@.dwarf
 	objdump -dSl $@ >$@.asm
+
+$(XED):
+	cd ../3rd/xed && ./mfile.py --extra-flags='-fPIC -g -mgeneral-regs-only'
+
+$(BUILD)/vex/%: CFLAGS += $(VEX_CFLAGS)
+
+$(BUILD)/vex/vex.o: $(BUILD)/vex/vex-offsets.h
+
+$(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
+	mkdir -p $(dir $@)
+	gcc $(CFLAGS) -MM -MQ $(@:.h=.s) -MP -MF $(@:.h=.d) $<
+	gcc $(CFLAGS) -S -o $(@:.h=.s) $<
+	grep __AS_DEFINE__ $(@:.h=.s) | sed 's/__AS_DEFINE__/#define/g' >$@
 
 LIB_TSTS := malloc printf list rbtree
 BUILD_TSTS := $(BUILD)/tst-asm $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
@@ -44,9 +61,9 @@ $(BUILD)/lib/tst-%: $(BUILD)/lib/tst-%.o $(BUILD)/librecorder.a
 
 $(BUILD)/%.o: %.c $(MAKEFILES)
 	mkdir -p $(dir $@)
-	@gcc $(CFLAGS) -MM -MQ $@ -MP -MF $(@:.o=.d) $<
+	gcc $(CFLAGS) -MM -MQ $@ -MP -MF $(@:.o=.d) $<
 	gcc $(CFLAGS) -c -o $@ $<
 
--include $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.d)) $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.d)) $(BUILD)/tst-asm.d
+-include $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.d)) $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.d)) $(BUILD)/tst-asm.d $(BUILD)/vex/vex-offsets.d
 
 .PHONY: all check
