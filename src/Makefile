@@ -1,16 +1,17 @@
 RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c vex/vex.c
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
+TRACER := vex/tracer.c common.c lib/printf.c lib/util.c
 
 BUILD := ../build/src
 CFLAGS := -I . -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 
-VEX_CFLAGS := -I $(BUILD) -I ../3rd/xed/include/public -I ../3rd/xed/include/public/xed -I ../3rd/xed/obj
+VEX_CFLAGS := -I $(BUILD)/vex -I ../3rd/xed/include/public -I ../3rd/xed/include/public/xed -I ../3rd/xed/obj
 VEX_LDFLAGS := -Wl,--exclude-libs,ALL
 
 MAKEFILES := Makefile
 XED := ../3rd/xed/obj/libxed.a
 
-all: $(BUILD)/librecorder.so $(BUILD)/replayer
+all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer
 
 $(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o)) $(XED)
 	mkdir -p $(dir $@)
@@ -28,6 +29,10 @@ $(BUILD)/replayer: $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.o))
 	objdump -W $@ >$@.dwarf
 	objdump -dSl $@ >$@.asm
 
+$(BUILD)/tracer: $(patsubst %,$(BUILD)/%,$(TRACER:.c=.o))
+	mkdir -p $(dir $@)
+	gcc $(CFLAGS) -o $@ $^
+
 $(XED):
 	cd ../3rd/xed && ./mfile.py --extra-flags='-fPIC -g -mgeneral-regs-only'
 
@@ -41,6 +46,8 @@ $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 	gcc $(CFLAGS) -S -o $(@:.h=.s) $<
 	grep __AS_DEFINE__ $(@:.h=.s) | sed 's/__AS_DEFINE__/#define/g' >$@
 
+$(BUILD)/vex/tracer.o: CFLAGS := -g -I . -O3 -Wall
+
 LIB_TSTS := malloc printf list rbtree
 BUILD_TSTS := $(BUILD)/tst-asm $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
 
@@ -49,13 +56,13 @@ check: $(BUILD_TSTS) $(patsubst %,%.out,$(BUILD_TSTS))
 $(BUILD)/%.out: $(BUILD)/%
 	cd $(dir $@) && ./$(notdir $<) && touch $(notdir $@)
 
-$(BUILD)/tst-%: $(BUILD)/tst-%.o $(BUILD)/librecorder.a
+$(BUILD)/tst-%: $(BUILD)/tst-%.o $(BUILD)/librecorder.a $(XED)
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -o $@ $^
 	objdump -W $@ >$@.dwarf
 	objdump -dSl $@ >$@.asm
 
-$(BUILD)/lib/tst-%: $(BUILD)/lib/tst-%.o $(BUILD)/librecorder.a
+$(BUILD)/lib/tst-%: $(BUILD)/lib/tst-%.o $(BUILD)/librecorder.a $(XED)
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -o $@ $^
 

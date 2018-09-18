@@ -35,6 +35,7 @@ struct context
   struct context *child;
 
   int log;
+  int rip_log;
 };
 
 #define CTX	_ERS_STR (VEX_CTX_CTX)
@@ -155,13 +156,19 @@ vex_dump_inst (int log, unsigned long rip, const xed_decoded_inst_t *xd)
     }
 }
 
+struct inst_rip
+{
+  unsigned long rip;
+  char rep;
+};
+
 struct entry
 {
   unsigned long rip;
   ERI_RBT_NODE_FIELDS (entry, struct entry)
 
   int trans_lock;
-  unsigned long *inst_rips;
+  struct inst_rip *inst_rips;
   void *insts;
 
   unsigned refs;
@@ -199,7 +206,6 @@ ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_l
 static void
 cprintf (int log, const char *fmt, ...)
 {
-  return;
   va_list arg;
   va_start (arg, fmt);
   eri_assert (eri_vfprintf (log, fmt, arg) == 0);
@@ -243,6 +249,7 @@ start_context (struct context *c)
   struct vex *v = c->vex;
   c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
   c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id);
+  c->rip_log = eri_open_path (v->path, "vex-rip-log-", ERI_OPEN_WITHID, c->id);
 }
 
 static void
@@ -279,6 +286,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
 
   struct vex *v = c->vex;
   eri_assert (eri_fclose (c->log) == 0);
+  eri_assert (eri_fclose (c->rip_log) == 0);
   eri_assert_mtfree (&v->pool, c->stack);
   eri_assert_mtfree (&v->pool, c->mp);
 
@@ -1195,7 +1203,7 @@ vex_get_rip_tmp (struct encode_buf *b, unsigned short *used,
 }
 
 static void *
-vex_translate (int log, struct vex *v, unsigned long rip, unsigned long *inst_rips)
+vex_translate (int log, struct vex *v, unsigned long rip, struct inst_rip *inst_rips)
 {
   unsigned long map[v->max_inst_count][2];
 
@@ -1213,13 +1221,15 @@ vex_translate (int log, struct vex *v, unsigned long rip, unsigned long *inst_ri
   for (i = 0; ! branch && i < v->max_inst_count; ++i)
     {
       cprintf (log, "decode %lx\n", rip);
-      inst_rips[i] = rip;
 
       map[i][0] = rip;
       map[i][1] = b.off;
 
       xed_decoded_inst_t xd;
       vex_decode (rip, v->pagesize, &xd);
+
+      inst_rips[i].rip = rip;
+      inst_rips[i].rep = xed_operand_values_has_real_rep (&xd);
 
       xed_uint_t length = xed_decoded_inst_get_length (&xd);
       rip += length;
@@ -1577,7 +1587,7 @@ vex_translate (int log, struct vex *v, unsigned long rip, unsigned long *inst_ri
       vex_encode_jmp (&b, VEX_CTX_BACK);
     }
 
-  if (i != v->max_inst_count) inst_rips[i] = 0;
+  if (i != v->max_inst_count) inst_rips[i].rip = 0;
   save_translated (v, map, i, &b);
   return b.p;
 }
@@ -1603,7 +1613,7 @@ vex_get_entry (int log, struct vex *v, unsigned long rip)
       if (! e->insts)
 	{
 	  e->inst_rips = eri_assert_mtmalloc (
-	    &v->pool, sizeof (unsigned long) * v->max_inst_count);
+	    &v->pool, sizeof e->inst_rips[0] * v->max_inst_count);
 	  __atomic_store_n (&e->insts, vex_translate (log, v, rip, e->inst_rips),
 			    __ATOMIC_RELEASE);
 	}
@@ -1656,8 +1666,17 @@ vex_loop (struct context *c)
 		       c->ctx.comm.r12, c->ctx.comm.r13,
 		       c->ctx.comm.r14, c->ctx.comm.r15);
       int i;
-      for (i = 0; e->inst_rips[i] && i < v->max_inst_count; ++i)
-	cprintf (c->log, ">>>> 0x%lx\n", e->inst_rips[i]);
+      for (i = 0; e->inst_rips[i].rip && i < v->max_inst_count; ++i)
+	if (e->inst_rips[i].rep)
+	  {
+	    cprintf (c->log, ">>>> 0x%lx...\n", e->inst_rips[i].rip);
+	    cprintf (c->rip_log, "0x%lx...\n", e->inst_rips[i].rip);
+	  }
+	else
+	  {
+	    cprintf (c->log, ">>>> 0x%lx\n", e->inst_rips[i].rip);
+	    cprintf (c->rip_log, "0x%lx\n", e->inst_rips[i].rip);
+	  }
 
       vex_execute ();
 

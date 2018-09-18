@@ -140,9 +140,10 @@ struct internal
   struct lock sigacts_lock;
   ERI_RBT_TREE_FIELDS (sigact, struct sigact_wrap)
 
-  struct lock mmap_lock;
-  struct lock brk_lock;
+  struct lock mmap_lock; /* ensure the mmap syscall order */
+  struct lock brk_lock; /* make the brk syscall thread safe */
   unsigned long cur_brk;
+  struct lock clone_lock; /* ensure the clone syscall order */
 
   struct replay replay;
   struct analysis analysis;
@@ -154,7 +155,7 @@ struct internal
   &(internal)->pool_lock, &(internal)->atomics_lock,		\
   &(internal)->thread_id.lock, &(internal)->threads_lock,	\
   &(internal)->sigacts_lock, &(internal)->mmap_lock,		\
-  &(internal)->brk_lock						\
+  &(internal)->brk_lock, &(internal)->clone_lock		\
 }
 
 static void
@@ -1276,6 +1277,7 @@ pre_clone (struct internal *internal, struct clone **clone,
       *ptid = (*clone)->res;
     }
   iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
+  llock (internal, th->id, &internal->clone_lock);
   return 1;
 }
 
@@ -1308,6 +1310,9 @@ post_clone (struct internal *internal, struct clone *clone, long res)
 	  __atomic_store_n (&clone->res, 0, __ATOMIC_RELEASE);
 	}
     }
+
+  if (res != 0) /* the parent release the lock */
+    lunlock (internal, &internal->clone_lock);
 
   long rel = 1;
   if (ERI_SYSCALL_ERROR_P (res))

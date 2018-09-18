@@ -10,7 +10,7 @@ gcc -I .. -I ../../3rd/xed/include/public -I ../../3rd/xed/include/public/xed -I
 
 objdump -dSl libtst-vex.so >libtst-vex.asm
 
-gcc -g tst.c -o tst -ltst-vex -L.
+gcc -g tst.c -o tst -ltst-vex -L. -nostdlib
 
 # glibc pieces:
 BUILD=/work/glibc-obj
@@ -76,4 +76,4 @@ $CRTEND $CRTN \
 
 objdump -dSl main >main.asm
 
-gcc -O3 tracer.c -o tracer
+gcc -I .. -O3 tracer.c -o tracer
