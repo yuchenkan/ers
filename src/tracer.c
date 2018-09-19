@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/user.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -55,7 +56,17 @@ del_thread (struct threads *threads, struct thread *th)
 int
 main (int argc, const char *argv[])
 {
+  --argc;
+  ++argv;
+
   const char *path = "ers_data";
+  if (argc != 0
+      && strncmp (argv[0], "--path=", strlen ("--path=")) == 0)
+    {
+      path = argv[0] + strlen ("--path=");
+      --argc;
+      ++argv;
+    }
   if (mkdir (path, S_IRWXU) != 0) assert (errno == EEXIST);
 
   pid_t pid = fork ();
@@ -63,10 +74,10 @@ main (int argc, const char *argv[])
     {
       assert (personality (PER_LINUX | ADDR_NO_RANDOMIZE) >= 0);
       assert (ptrace (PTRACE_TRACEME, 0, NULL, NULL) >= 0);
-      if (argc == 1)
+      if (argc == 0)
 	assert (execl ("./tracee", "./tracee", NULL) >= 0);
       else
-	assert (execvp (argv[1], (void *) (argv + 1)) >= 0);
+	assert (execvp (argv[0], (void *) argv) >= 0);
     }
   else
     {

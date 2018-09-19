@@ -1,25 +1,34 @@
-RECORDER := rtld.c recorder.c common.c lib/printf.c lib/malloc.c lib/util.c lib/lock.c vex/vex.c
+include ../my-glibc.mk
+ 
+LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c
+LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
-TRACER := vex/tracer.c common.c lib/printf.c lib/util.c
+TRACER := tracer.c common.c lib/printf.c lib/util.c
 
 BUILD := ../build/src
-CFLAGS := -I . -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := -I. -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
-VEX_CFLAGS := -I $(BUILD)/vex -I ../3rd/xed/include/public -I ../3rd/xed/include/public/xed -I ../3rd/xed/obj
+VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj
 VEX_LDFLAGS := -Wl,--exclude-libs,ALL
 
-MAKEFILES := Makefile
+MAKEFILES := ../my-glibc.mk Makefile
 XED := ../3rd/xed/obj/libxed.a
 
-all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer
+LIB_TST_VEX := vex/tst-vex-entry.c vex/vex.c common.c $(LIB)
+BUILD_VEX_TSTS := $(BUILD)/vex/tst-vex $(BUILD)/vex/tst-vex-simple
 
-$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o)) $(XED)
+all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer $(BUILD)/tracee \
+	$(BUILD_VEX_TSTS)
+	cp vex/*.sh $(BUILD)/vex
+
+$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(LIB_RECORDER:.c=.o)) $(XED)
 	mkdir -p $(dir $@)
-	gcc $(CFLAGS) $(VEX_LDFLAGS) -nostdlib -Wl,--no-undefined -shared -Wl,-e,entry -o $@ $^
+	gcc $(CFLAGS) $(VEX_LDFLAGS) $(LIB_LDFLAGS) -Wl,-e,entry -o $@ $^
 	objdump -W $@ >$(@:.so=.dwarf)
 	objdump -dSl $@ >$(@:.so=.asm)
 
-$(BUILD)/librecorder.a: $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.o))
+$(BUILD)/librecorder.a: $(patsubst %,$(BUILD)/%,$(LIB_RECORDER:.c=.o))
 	mkdir -p $(dir $@)
 	ar rcs $@ $^
 
@@ -46,12 +55,14 @@ $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 	gcc $(CFLAGS) -S -o $(@:.h=.s) $<
 	grep __AS_DEFINE__ $(@:.h=.s) | sed 's/__AS_DEFINE__/#define/g' >$@
 
-$(BUILD)/vex/tracer.o: CFLAGS := -g -I . -O3 -Wall
+$(BUILD)/tracer.o: CFLAGS := -g -I. -O3 -Wall
 
 LIB_TSTS := malloc printf list rbtree
 BUILD_TSTS := $(BUILD)/tst-asm $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
+BUILD_TSTS_OUT := $(patsubst %,%.out,$(BUILD_TSTS))
 
-check: $(BUILD_TSTS) $(patsubst %,%.out,$(BUILD_TSTS))
+check: $(BUILD_TSTS) $(BUILD_TSTS_OUT)
+	cp vex/*.sh $(BUILD)/vex
 
 $(BUILD)/%.out: $(BUILD)/%
 	cd $(dir $@) && ./$(notdir $<) && touch $(notdir $@)
@@ -66,11 +77,34 @@ $(BUILD)/lib/tst-%: $(BUILD)/lib/tst-%.o $(BUILD)/librecorder.a $(XED)
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -o $@ $^
 
+$(patsubst %,%.o,$(BUILD_VEX_TSTS)): CFLAGS := -g -O3 -Wall
+
+$(BUILD)/vex/tst-vex-simple: CFLAGS += -nostdlib
+
+$(BUILD)/vex/tst-vex-simple: $(BUILD)/vex/tst-vex-simple.o $(BUILD)/vex/libtst-vex.so
+	mkdir -p $(dir $@)
+	gcc $(CFLAGS) -L$(BUILD)/vex -ltst-vex -o $@ $<
+
+$(BUILD)/vex/tst-vex: $(BUILD)/vex/tst-vex.o $(BUILD)/vex/libtst-vex.so $(GLIBC_CRTS_NORMAL)
+	mkdir -p $(dir $@)
+	$(GLIBC_LD_NORMAL) -L$(BUILD)/vex -ltst-vex
+
+$(BUILD)/vex/libtst-vex.so: $(patsubst %,$(BUILD)/%,$(LIB_TST_VEX:.c=.o)) $(XED)
+	mkdir -p $(dir $@)
+	gcc $(CFLAGS) $(VEX_LDFLAGS) $(LIB_LDFLAGS) -o $@ $^
+	objdump -dSl $@ >$(@:.so=.asm)
+
+$(BUILD)/tracee: tracee.c $(MAKEFILES)
+	mkdir -p $(dir $@)
+	gcc -MM -MQ $@ -MP -MF $(@).d $<
+	gcc -lpthread $< -o $@
+
 $(BUILD)/%.o: %.c $(MAKEFILES)
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -MM -MQ $@ -MP -MF $(@:.o=.d) $<
 	gcc $(CFLAGS) -c -o $@ $<
 
--include $(patsubst %,$(BUILD)/%,$(RECORDER:.c=.d)) $(patsubst %,$(BUILD)/%,$(REPLAYER:.c=.d)) $(BUILD)/tst-asm.d $(BUILD)/vex/vex-offsets.d
+SOURCES := $(shell find $(SOURCEDIR) -name '*.c')
+-include $(patsubst %,$(BUILD)/%,$(SOURCES:.c=.d))
 
 .PHONY: all check
