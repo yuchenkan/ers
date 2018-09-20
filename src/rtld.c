@@ -212,11 +212,12 @@ map_interp (struct elf64_phdr *phdr, uint16_t phnum, int fd, uint64_t pagesize)
 static uint64_t
 load_interp (const char *interp, uint64_t *entry, uint64_t pagesize)
 {
-  int fd;
-  eri_assert (eri_fopen (interp, 1, &fd) == 0);
+  eri_file_t file;
+  eri_file_buf_t file_buf[32 * 1024];
+  eri_assert (eri_fopen (interp, 1, &file, file_buf, sizeof file_buf) == 0);
 
   struct elf64_ehdr ehdr;
-  eri_assert (eri_fread (fd, (char *) &ehdr, sizeof ehdr, 0) == 0);
+  eri_assert (eri_fread (file, (char *) &ehdr, sizeof ehdr, 0) == 0);
 
   assert_elf (ehdr.ident);
   eri_assert (ehdr.phentsize == sizeof (struct elf64_phdr));
@@ -224,14 +225,15 @@ load_interp (const char *interp, uint64_t *entry, uint64_t pagesize)
   size_t sz = ehdr.phentsize * ehdr.phnum;
   struct elf64_phdr *phdr = __builtin_alloca (sz);
 
-  eri_assert (eri_fseek (fd, ehdr.phoff, 0) == 0);
-  eri_assert (eri_fread (fd, (char *) phdr, sz, 0) == 0);
+  eri_assert (eri_fseek (file, ehdr.phoff, 0, 0) == 0);
+  eri_assert (eri_fread (file, (char *) phdr, sz, 0) == 0);
 
+  int fd = eri_assert_frelease (file);
   uint64_t base = map_interp (phdr, ehdr.phnum, fd, pagesize);
 
   *entry = base + ehdr.entry;
 
-  eri_assert (eri_fclose (fd) == 0);
+  ERI_ASSERT_SYSCALL (close, fd);
   return base;
 }
 

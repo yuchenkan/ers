@@ -93,7 +93,7 @@ void *tst (void *);
 void __attribute__ ((visibility ("default")))
 entry (void *rip, void *rsp, unsigned long fsbase)
 {
-  eri_dump_maps (1);
+  eri_dump_maps (ERI_STDOUT);
 
   unsigned long p = 0;
 
@@ -120,7 +120,7 @@ entry (void *rip, void *rsp, unsigned long fsbase)
 
   const char *path = "vex_data";
   if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, ERI_S_IRWXU)))
-    eri_assert (eri_fprintf (2, "failed to create %s\n", path) == 0);
+    eri_assert (eri_fprintf (ERI_STDERR, "failed to create %s\n", path) == 0);
   eri_vex_enter (buf, buf_size, &ctx, path, 1);
   eri_assert (0);
 }

@@ -4,19 +4,34 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-int eri_fopen (const char *path, char r, int *fd);
-int eri_fclose (int fd);
+#include "util.h"
 
-#define ERI_SEEK_SET	0
-#define ERI_SEEK_CUR	1
-int eri_fseek (int fd, long offset, int whence);
+typedef unsigned long eri_file_t;
+#define eri_file_buf_t char __attribute__ ((aligned (16)))
 
-int eri_fwrite (int fd, const char *buf, size_t size);
-int eri_fread (int fd, char *buf, size_t size, size_t *len);
+#define _ERI_FILE_RAW		1
+
+#define _ERI_RAW_FILE_FROM_FD(fd)	((eri_file_t) ((fd) << 4 | _ERI_FILE_RAW))
+#define ERI_STDIN		_ERI_RAW_FILE_FROM_FD (0)
+#define ERI_STDOUT		_ERI_RAW_FILE_FROM_FD (1)
+#define ERI_STDERR		_ERI_RAW_FILE_FROM_FD (2)
+
+int eri_fopen (const char *path, char r, eri_file_t *file,
+	       char *buf, size_t buf_size);
+int eri_fclose (eri_file_t file);
+
+int eri_frelease (eri_file_t file, int *fd);
+#define eri_assert_frelease(file) \
+  ({ int __fd; eri_assert (eri_frelease (file, &__fd) == 0); __fd; })
+
+int eri_fseek (eri_file_t file, long offset, int whence, unsigned long *res_offset);
+
+int eri_fwrite (eri_file_t file, const char *buf, size_t size, size_t *len);
+int eri_fread (eri_file_t file, char *buf, size_t size, size_t *len);
 
 /* Support %u %lu %x %lx %s only */
-int eri_vfprintf (int fd, const char *fmt, va_list arg);
-int eri_fprintf (int fd, const char *fmd, ...);
+int eri_vfprintf (eri_file_t file, const char *fmt, va_list arg);
+int eri_fprintf (eri_file_t file, const char *fmd, ...);
 
 int eri_vprintf (const char *fmt, va_list arg);
 int eri_printf (const char *fmt, ...);

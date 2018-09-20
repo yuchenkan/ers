@@ -34,13 +34,13 @@ struct context
 
   struct context *child;
 
-  int log;
-  int rip_log;
+  eri_file_t log;
+  eri_file_t rip_log;
 };
 
 #define CTX	_ERS_STR (VEX_CTX_CTX)
 
-static void cprintf (int log, const char *fmt, ...);
+static void cprintf (eri_file_t log, const char *fmt, ...);
 
 static void
 vex_xed_abort (const char *msg, const char *file, int line, void *other)
@@ -67,7 +67,7 @@ vex_decode (unsigned long rip, size_t pagesize,
 }
 
 static void
-vex_dump_inst (int log, unsigned long rip, const xed_decoded_inst_t *xd)
+vex_dump_inst (eri_file_t log, unsigned long rip, const xed_decoded_inst_t *xd)
 {
   xed_iform_enum_t iform = xed_decoded_inst_get_iform_enum (xd);
   cprintf (log, "iclass: %u %s,",
@@ -178,6 +178,7 @@ struct vex
 {
   size_t pagesize;
   const char *path;
+  size_t file_buf_size;
 
   void *mmap;
   size_t mmap_size;
@@ -204,7 +205,7 @@ ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_l
 /* static */ void vex_back (void);
 
 static void
-cprintf (int log, const char *fmt, ...)
+cprintf (eri_file_t log, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
@@ -215,9 +216,12 @@ cprintf (int log, const char *fmt, ...)
 static struct context *
 alloc_context (struct vex *v)
 {
+  size_t size
+    = eri_round_up (sizeof (struct context) + 48, 16) + 2 * v->file_buf_size;
+
   void *p;
   struct context *c = (struct context *) eri_round_up (
-      (unsigned long) (p = eri_assert_mtcalloc (&v->pool, sizeof *c + 48)),
+      (unsigned long) (p = eri_assert_mtcalloc (&v->pool, size)),
       64);
   c->mp = p;
   c->ctx.ctx = c;
@@ -247,9 +251,13 @@ static void
 start_context (struct context *c)
 {
   struct vex *v = c->vex;
+  size_t buf_size = v->file_buf_size;
+
   c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
-  c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id);
-  c->rip_log = eri_open_path (v->path, "vex-rip-log-", ERI_OPEN_WITHID, c->id);
+  c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id,
+    (char *) c->mp + eri_round_up (sizeof *c + 48, 16), buf_size);
+  c->rip_log = eri_open_path (v->path, "vex-rip-log-", ERI_OPEN_WITHID, c->id,
+    (char *) c->log + buf_size, buf_size);
 }
 
 static void
@@ -678,7 +686,7 @@ vex_is_transfer (xed_iclass_enum_t iclass)
 
 struct encode_buf
 {
-  int log;
+  eri_file_t log;
   struct eri_mtpool *pool;
 
   size_t size;
@@ -1124,7 +1132,9 @@ save_translated (struct vex *v,
 {
   if (nmap == 0) return;
 
-  int fd = eri_open_path (v->path, "vex-trans-", ERI_OPEN_WITHID, map[0][0]);
+  eri_file_buf_t file_buf[32 * 1024];
+  eri_file_t file = eri_open_path (v->path, "vex-trans-", ERI_OPEN_WITHID,
+				   map[0][0], file_buf, sizeof file_buf);
   size_t page = v->pagesize;
 
   int i = 0;
@@ -1140,7 +1150,7 @@ save_translated (struct vex *v,
 		     buf + 1, sizeof buf - 1, page, &l);
 	  eri_assert (l < sizeof buf - 1);
 	  buf[l + 1] = '\n';
-	  eri_assert (eri_fwrite (fd, buf, l + 2) == 0);
+	  eri_assert (eri_fwrite (file, buf, l + 2, 0) == 0);
 	  ++i;
 	}
 
@@ -1149,15 +1159,15 @@ save_translated (struct vex *v,
 				buf + 3, sizeof buf - 3, page, &l);
       eri_assert (l < sizeof buf - 3);
       buf[l + 3] = '\n';
-      eri_assert (eri_fwrite (fd, buf, l + 4) == 0);
+      eri_assert (eri_fwrite (file, buf, l + 4, 0) == 0);
       off += len;
     }
   eri_assert (i == nmap);
-  eri_assert (eri_fclose (fd) == 0);
+  eri_assert (eri_fclose (file) == 0);
 
 #if 0
   int cfd = eri_open_path (v->path, "vex-trans-bin-", ERI_OPEN_WITHID, map[0][0]);
-  eri_assert (eri_fwrite (cfd, (const char *) b->p, b->off) == 0);
+  eri_assert (eri_fwrite (cfd, (const char *) b->p, b->off, 0) == 0);
   eri_assert (eri_fclose (cfd) == 0);
 #endif
 }
@@ -1203,7 +1213,7 @@ vex_get_rip_tmp (struct encode_buf *b, unsigned short *used,
 }
 
 static void *
-vex_translate (int log, struct vex *v, unsigned long rip, struct inst_rip *inst_rips)
+vex_translate (eri_file_t log, struct vex *v, unsigned long rip, struct inst_rip *inst_rips)
 {
   unsigned long map[v->max_inst_count][2];
 
@@ -1593,7 +1603,7 @@ vex_translate (int log, struct vex *v, unsigned long rip, struct inst_rip *inst_
 }
 
 static struct entry *
-vex_get_entry (int log, struct vex *v, unsigned long rip)
+vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
 {
   eri_lock (&v->entrys_lock, 1);
   struct entry *e = entry_rbt_get (v, &rip, ERI_RBT_EQ);
@@ -1725,6 +1735,7 @@ eri_vex_enter (char *buf, size_t size,
   eri_memset (v, 0, sizeof *v);
   v->pagesize = page;
   v->path = path;
+  v->file_buf_size = 64 * 1024;
 
   if (mmap)
     {

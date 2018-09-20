@@ -14,6 +14,21 @@ eri_memcpy (void *d, const void *s, size_t n)
   for (i = 0; i < n; ++i) ((char *) d)[i] = ((const char *) s)[i];
 }
 
+void
+eri_memmove (void *d, const void *s, size_t n)
+{
+  char *cd = (char *) d;
+  const char *cs = (const char *) s;
+  size_t i;
+  if (cd == cs) return;
+  else if (cd + n <= cs || cs + n <= cd)
+    eri_memcpy (d, s, n);
+  else if (cd + n > cs)
+    for (i = 0; i < n; ++i) cd[i] = cs[i];
+  else
+    for (i = n - 1; i >= 0; --i) cd[i] = cs[i];
+}
+
 char
 eri_memcmp (const void *s1, const void *s2, size_t n)
 {

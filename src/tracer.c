@@ -35,8 +35,9 @@ add_thread (const char *path, struct threads *threads, pid_t pid)
   struct thread *th = malloc (sizeof *th);
   assert (th);
   th->pid = pid;
-  int fd = eri_open_path (path, "tracer-", ERI_OPEN_WITHID, thread_rbt_get_size (threads));
-  th->f = fdopen (fd, "w");
+  eri_file_t file = eri_open_path (path, "tracer-", ERI_OPEN_WITHID,
+				   thread_rbt_get_size (threads), 0, 0);
+  th->f = fdopen (eri_assert_frelease (file), "w");
   assert (th->f);
   thread_rbt_insert (threads, th);
   printf ("add thread: %ld %lu\n", (long) pid, thread_rbt_get_size (threads));

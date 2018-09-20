@@ -98,6 +98,7 @@
 #define ERI_ASSERT_SYSCALL(...) \
   (void) ERI_ASSERT_SYSCALL_RES (__VA_ARGS__)
 
+#define ERI_EINTR	4
 #define ERI_EAGAIN	11
 
 #define ERI_FUTEX_WAIT			0
@@ -139,5 +140,8 @@
 #define ERI_CLONE_SETTLS		0x00080000
 #define ERI_CLONE_PARENT_SETTID		0x00100000
 #define ERI_CLONE_CHILD_CLEARTID	0x00200000
+
+#define ERI_SEEK_SET	0
+#define ERI_SEEK_CUR	1
 
 #endif

@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "lib/util.h"
+#include "lib/printf.h"
 
 static inline char
 eri_itoc (char i)
@@ -26,13 +27,14 @@ struct eri_map_entry
   const char *path;
 };
 
-void eri_dump_maps (int fd);
+void eri_dump_maps (eri_file_t file);
 void eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 		       void *data);
 
 #define ERI_OPEN_WITHID 1
 #define ERI_OPEN_READ 2
-int eri_open_path (const char *path, const char *name, int flags, unsigned long id);
+eri_file_t eri_open_path (const char *path, const char *name, int flags,
+			  unsigned long id, char *buf, size_t buf_size);
 
 #define ERI_MARK_NONE 0
 
@@ -46,17 +48,17 @@ struct eri_context
   size_t unmap_size;
 };
 
-void eri_save_mark (int fd, char mk);
-char eri_load_mark (int fd);
+void eri_save_mark (eri_file_t file, char mk);
+char eri_load_mark (eri_file_t file);
 
 /* flags: growsdown | zero | exec | write | read */
-void eri_save_init_map (int init, unsigned long start, unsigned long end, char flags);
-void eri_save_init_map_data (int init, const char *buf, size_t size);
-void eri_load_init_map (int init, unsigned long *start, unsigned long *end, char *flags);
-void eri_load_init_map_data (int init, char *buf, size_t size);
-void eri_skip_init_map_data (int init, size_t size);
+void eri_save_init_map (eri_file_t init, unsigned long start, unsigned long end, char flags);
+void eri_save_init_map_data (eri_file_t init, const char *buf, size_t size);
+void eri_load_init_map (eri_file_t init, unsigned long *start, unsigned long *end, char *flags);
+void eri_load_init_map_data (eri_file_t init, char *buf, size_t size);
+void eri_skip_init_map_data (eri_file_t init, size_t size);
 
-void eri_save_init_context (int init, const struct eri_context *ctx);
-void eri_load_init_context (int init, struct eri_context *ctx);
+void eri_save_init_context (eri_file_t init, const struct eri_context *ctx);
+void eri_load_init_context (eri_file_t init, struct eri_context *ctx);
 
 #endif

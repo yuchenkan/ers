@@ -6,7 +6,7 @@ REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 TRACER := tracer.c common.c lib/printf.c lib/util.c
 
 BUILD := ../build/src
-CFLAGS := -I. -O3 -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := -O3 -I. -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
 VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj

@@ -5,17 +5,17 @@
 #include "lib/printf.h"
 
 void
-eri_dump_maps (int fd)
+eri_dump_maps (eri_file_t file)
 {
-  int maps;
-  char buf[256];
+  eri_file_t maps;
+  char buf[1024];
 
-  eri_assert (eri_fopen ("/proc/self/maps", 1, &maps) == 0);
+  eri_assert (eri_fopen ("/proc/self/maps", 1, &maps, 0, 0) == 0);
   while (1)
     {
       size_t l;
       eri_assert (eri_fread (maps, buf, sizeof buf, &l) == 0);
-      eri_assert (eri_fwrite (fd, buf, l) == 0);
+      eri_assert (eri_fwrite (file, buf, l, 0) == 0);
       if (l != sizeof buf) break;
     }
   eri_assert (eri_fclose (maps) == 0);
@@ -74,9 +74,9 @@ void
 eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 		  void *data)
 {
-  int maps;
-  char buf[256];
-  eri_assert (eri_fopen ("/proc/self/smaps", 1, &maps) == 0);
+  eri_file_t maps;
+  char buf[1024];
+  eri_assert (eri_fopen ("/proc/self/smaps", 1, &maps, 0, 0) == 0);
 
   size_t last = 0;
   size_t count = 0;
@@ -96,7 +96,7 @@ eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 	      size_t nl = sizeof buf * count + (d - buf);
 
 	      char *e = __builtin_alloca (nl - last);
-	      eri_assert (eri_fseek (maps, last, ERI_SEEK_SET) == 0);
+	      eri_assert (eri_fseek (maps, last, ERI_SEEK_SET, 0) == 0);
 	      eri_assert (eri_fread (maps, e, nl - last, 0) == 0);
 	      e[nl - last] = '\0';
 
@@ -118,7 +118,7 @@ eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 
       ++count;
       if (reset)
-	eri_assert (eri_fseek (maps, count * sizeof buf, ERI_SEEK_SET) == 0);
+	eri_assert (eri_fseek (maps, count * sizeof buf, ERI_SEEK_SET, 0) == 0);
     }
   eri_assert (eri_fclose (maps) == 0);
 }
@@ -137,9 +137,9 @@ phex (char *p, unsigned long v)
   p[s * 2] = '\0';
 }
 
-int
+eri_file_t
 eri_open_path (const char *path, const char *name, int flags,
-	       unsigned long id)
+	       unsigned long id, char *buf, size_t buf_size)
 {
   size_t npath = eri_strlen (path);
   int nname = eri_strlen (name);
@@ -161,42 +161,42 @@ eri_open_path (const char *path, const char *name, int flags,
 
   /* eri_assert (eri_fprintf (2, "%s\n", p) == 0); */
 
-  int fd;
-  eri_assert (eri_fopen (p, flags & ERI_OPEN_READ, &fd) == 0);
-  return fd;
+  eri_file_t file;
+  eri_assert (eri_fopen (p, flags & ERI_OPEN_READ, &file, buf, buf_size) == 0);
+  return file;
 }
 
 void
-eri_save_mark (int fd, char mk)
+eri_save_mark (eri_file_t file, char mk)
 {
-  eri_assert (eri_fwrite (fd, &mk, sizeof mk) == 0);
+  eri_assert (eri_fwrite (file, &mk, sizeof mk, 0) == 0);
 }
 
 char
-eri_load_mark (int fd)
+eri_load_mark (eri_file_t file)
 {
   size_t s;
   char mk;
-  eri_assert (eri_fread (fd, &mk, sizeof mk, &s) == 0);
+  eri_assert (eri_fread (file, &mk, sizeof mk, &s) == 0);
   return s == 0 ? ERI_MARK_NONE : mk;
 }
 
 void
-eri_save_init_map (int init, unsigned long start, unsigned long end, char flags)
+eri_save_init_map (eri_file_t init, unsigned long start, unsigned long end, char flags)
 {
-  eri_assert (eri_fwrite (init, (const char *) &start, sizeof start) == 0);
-  eri_assert (eri_fwrite (init, (const char *) &end, sizeof end) == 0);
-  eri_assert (eri_fwrite (init, &flags, sizeof flags) == 0);
+  eri_assert (eri_fwrite (init, (const char *) &start, sizeof start, 0) == 0);
+  eri_assert (eri_fwrite (init, (const char *) &end, sizeof end, 0) == 0);
+  eri_assert (eri_fwrite (init, &flags, sizeof flags, 0) == 0);
 }
 
 void
-eri_save_init_map_data (int init, const char *buf, size_t size)
+eri_save_init_map_data (eri_file_t init, const char *buf, size_t size)
 {
-  eri_assert (eri_fwrite (init, buf, size) == 0);
+  eri_assert (eri_fwrite (init, buf, size, 0) == 0);
 }
 
 void
-eri_load_init_map (int init, unsigned long *start, unsigned long *end, char *flags)
+eri_load_init_map (eri_file_t init, unsigned long *start, unsigned long *end, char *flags)
 {
   eri_assert (eri_fread (init, (char *) start, sizeof *start, 0) == 0);
   eri_assert (eri_fread (init, (char *) end, sizeof *end, 0) == 0);
@@ -204,25 +204,25 @@ eri_load_init_map (int init, unsigned long *start, unsigned long *end, char *fla
 }
 
 void
-eri_load_init_map_data (int init, char *buf, size_t size)
+eri_load_init_map_data (eri_file_t init, char *buf, size_t size)
 {
   eri_assert (eri_fread (init, buf, size, 0) == 0);
 }
 
 void
-eri_skip_init_map_data (int init, size_t size)
+eri_skip_init_map_data (eri_file_t init, size_t size)
 {
-  eri_assert (eri_fseek (init, size, ERI_SEEK_CUR) == 0);
+  eri_assert (eri_fseek (init, size, ERI_SEEK_CUR, 0) == 0);
 }
 
 void
-eri_save_init_context (int init, const struct eri_context *ctx)
+eri_save_init_context (eri_file_t init, const struct eri_context *ctx)
 {
-  eri_assert (eri_fwrite (init, ctx->env, sizeof ctx->env) == 0);
+  eri_assert (eri_fwrite (init, ctx->env, sizeof ctx->env, 0) == 0);
 }
 
 void
-eri_load_init_context (int init, struct eri_context *ctx)
+eri_load_init_context (eri_file_t init, struct eri_context *ctx)
 {
   eri_assert (eri_fread (init, ctx->env, sizeof ctx->env, 0) == 0);
 }

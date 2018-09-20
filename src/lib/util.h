@@ -21,6 +21,7 @@
 
 void eri_memset (void *s, char c, size_t n);
 void eri_memcpy (void *d, const void *s, size_t n);
+void eri_memmove (void *d, const void *s, size_t n);
 char eri_memcmp (const void *s1, const void *s2, size_t n);
 size_t eri_strlen (const char *s);
 void eri_strcpy (char *d, const char *s);

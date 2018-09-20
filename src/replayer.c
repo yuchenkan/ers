@@ -242,29 +242,31 @@ start (void **arg)
   ERI_ASSERT_SYSCALL (munmap, pd.vdso_start, pd.vdso_end - pd.vdso_start);
   ERI_ASSERT_SYSCALL (munmap, pd.vvar_start, pd.vvar_end - pd.vvar_start);
 
-  eri_assert (eri_fprintf (2, "\n") == 0);
-  eri_dump_maps (2);
+  eri_assert (eri_fprintf (ERI_STDERR, "\n") == 0);
+  eri_dump_maps (ERI_STDERR);
 
   struct maps maps;
   ERI_RBT_INIT_TREE (map, &maps);
 
   struct map *stack = 0;
-  int init = eri_open_path (path, "init", ERI_OPEN_READ, 0);
+  eri_file_buf_t init_buf[32 * 1024];
+  eri_file_t init = eri_open_path (path, "init", ERI_OPEN_READ, 0,
+				   init_buf, sizeof init_buf);
   char mk;
   while ((mk = eri_load_mark (init)) == ERI_MARK_INIT_MAP)
     {
       struct map *map = __builtin_alloca (sizeof *map);
       eri_load_init_map (init, &map->start, &map->end, &map->flags);
-      eri_assert (eri_fprintf (2, "%lx-%lx, %u\n", map->start, map->end, map->flags) == 0);
+      eri_assert (eri_fprintf (ERI_STDERR, "%lx-%lx, %u\n", map->start, map->end, map->flags) == 0);
       if (map->flags & 16) stack = map;
-      else map->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
+      else eri_assert (eri_fseek (init, 0, ERI_SEEK_CUR, &map->offset) == 0);
       if (map->flags & 1 && ! (map->flags & 24))
 	eri_skip_init_map_data (init, map->end - map->start);
       map_rbt_insert (&maps, map);
     }
   eri_assert (stack);
   eri_assert (mk == ERI_MARK_INIT_STACK);
-  stack->offset = ERI_ASSERT_SYSCALL_RES (lseek, init, 0, ERI_SEEK_CUR);
+  eri_assert (eri_fseek (init, 0, ERI_SEEK_CUR, &stack->offset) == 0);
   eri_skip_init_map_data (init, stack->end - stack->start);
 
   struct eri_context ctx;
@@ -279,7 +281,7 @@ start (void **arg)
 	4096);
   extern const char restore_end[];
   size_t size = data_size + eri_round_up (restore_end - (char *) restore, 4096);
-  eri_assert (eri_fprintf (2, "size %lu\n", size) == 0);
+  eri_assert (eri_fprintf (ERI_STDERR, "size %lu\n", size) == 0);
 
   unsigned long addr = 0;
   struct map *m;
@@ -299,10 +301,10 @@ start (void **arg)
       addr = m->end;
     }
 mapped:
-  eri_assert (eri_fprintf (2, "addr %lx\n", addr) == 0);
+  eri_assert (eri_fprintf (ERI_STDERR, "addr %lx\n", addr) == 0);
 
   char *data = (char *) addr;
-  *(long *) data = init;
+  *(long *) data = eri_assert_frelease (init);
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.stack_start;
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.stack_end - pd.stack_start;
   *(unsigned long *) (data += sizeof (unsigned long)) = pd.start;
