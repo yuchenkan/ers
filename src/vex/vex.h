@@ -5,6 +5,11 @@
 
 struct context;
 
+struct vex_addr_range
+{
+  unsigned long size;
+};
+
 struct vex_context
 {
   struct context *ctx;
@@ -18,6 +23,14 @@ struct vex_context
 
   unsigned long ret;
   unsigned long top;
+
+  unsigned long nreads;
+  unsigned long *read_starts;
+  unsigned long *read_sizes;
+
+  unsigned long nwrites;
+  unsigned long *write_starts;
+  unsigned long *write_sizes;
 };
 
 #endif

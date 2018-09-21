@@ -169,8 +169,8 @@ vex_dump_inst (eri_file_t log, unsigned long rip, const xed_decoded_inst_t *xd)
 	  cprintf (log, "bytes: %u, ", bytes);
 	}
 
-      xed_operand_action_enum_t action = xed_decoded_inst_operand_action (xd, idx);
-      cprintf (log, "action: %s\n", xed_operand_action_enum_t2str (action));
+      xed_operand_action_enum_t rw = xed_decoded_inst_operand_action (xd, idx);
+      cprintf (log, "action: %s\n", xed_operand_action_enum_t2str (rw));
     }
 }
 
@@ -190,6 +190,9 @@ struct entry
   size_t length;
   void *insts;
   void *decoded_insts;
+
+  unsigned long max_nreads;
+  unsigned long max_nwrites;
 
   unsigned refs;
 };
@@ -757,6 +760,37 @@ vex_concat (struct encode_buf *b1, const struct encode_buf *b2)
   b1->off += b2->off;
 }
 
+struct mem0
+{
+  xed_operand_enum_t op_name;
+
+  xed_reg_enum_t seg;
+  xed_reg_enum_t base;
+  xed_reg_enum_t index;
+  xed_uint_t scale;
+  xed_int64_t disp;
+  xed_uint_t disp_width;
+
+  xed_operand_visibility_enum_t vis;
+  xed_operand_action_enum_t rw;
+};
+
+static void
+vex_xed_set_mem0 (xed_encoder_request_t *xe, struct mem0 *m)
+{
+  if (m->op_name == XED_OPERAND_MEM0)
+    xed_encoder_request_set_mem0 (xe);
+  else if (m->op_name == XED_OPERAND_AGEN)
+    xed_encoder_request_set_agen (xe);
+  else eri_assert (0);
+
+  xed_encoder_request_set_seg0 (xe, m->seg);
+  xed_encoder_request_set_base0 (xe, m->base);
+  xed_encoder_request_set_index (xe, m->index);
+  xed_encoder_request_set_scale (xe, m->scale);
+  xed_encoder_request_set_memory_displacement (xe, m->disp, m->disp_width);
+}
+
 #define REG_DISP(r) (VEX_CTX_RAX + (r) * 8)
 
 static void
@@ -1010,93 +1044,6 @@ vex_encode_jmp (struct encode_buf *b, long offset)
   vex_encode (b, &xe);
 }
 
-#define COPY_SEG	0x1
-#define COPY_BASE	0x2
-#define COPY_INDEX	0x4
-#define COPY_SCALE	0x8
-#define COPY_DISP	0x10
-
-static void
-vex_copy_mem0 (xed_encoder_request_t *xe, const xed_decoded_inst_t *xd,
-	       int flags, xed_reg_enum_t rip_tmp)
-{
-  if (flags & COPY_SEG)
-    xed_encoder_request_set_seg0 (xe, xed_decoded_inst_get_seg_reg (xd, 0));
-  if (flags & COPY_BASE)
-    {
-      xed_reg_enum_t base = xed_decoded_inst_get_base_reg (xd, 0);
-      eri_assert ((base == XED_REG_RIP) ^ (rip_tmp == XED_REG_INVALID));
-      xed_encoder_request_set_base0 (xe, base == XED_REG_RIP ? rip_tmp : base);
-    }
-  if (flags & COPY_INDEX)
-    xed_encoder_request_set_index (xe, xed_decoded_inst_get_index_reg (xd, 0));
-  if (flags & COPY_SCALE)
-    xed_encoder_request_set_scale (xe, xed_decoded_inst_get_scale (xd, 0));
-  if (flags & COPY_DISP)
-    xed_encoder_request_set_memory_displacement (
-      xe,
-      xed_decoded_inst_get_memory_displacement (xd, 0),
-      xed_decoded_inst_get_memory_displacement_width (xd, 0));
-}
-
-static void
-vex_encode_calc_fsbased_mem (struct encode_buf *b, const xed_decoded_inst_t *xd,
-			     xed_reg_enum_t tmp, xed_reg_enum_t rip_tmp)
-{
-  xed_state_t state;
-  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
-
-  /*
-     movq	%tmp, %fs:TMP
-     movq	%rsp, %fs:RSP
-     movq	%fs:TOP, %rsp
-     pushfq
-     popq	%fs:RFLAGS
-     leaq	mem, %tmp
-     addq	%fs:FSBASE, %tmp
-     pushq	%fs:RFLAGS
-     popfq
-     movq	%fs:RSP, %rsp
-  */
-
-  vex_encode_switch_to_internal_stack (b);
-  vex_encode_save_rflags (b);
-
-  xed_decoded_inst_t xe;
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_LEA);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
-  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
-
-  xed_encoder_request_set_agen (&xe);
-  vex_copy_mem0 (&xe, xd, ~COPY_SEG, rip_tmp);
-  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_AGEN);
-
-  vex_encode (b, &xe);
-
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_ADD);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
-  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
-
-  xed_encoder_request_set_memory_operand_length (&xe, 8);
-  xed_encoder_request_set_mem0 (&xe);
-  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
-  xed_encoder_request_set_memory_displacement (&xe, VEX_CTX_FSBASE, 4);
-  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
-
-  vex_encode (b, &xe);
-
-  vex_encode_restore_rflags (b);
-  vex_encode_restore_gpr (b, XED_REG_RSP);
-}
-
 static unsigned
 save_inst (const unsigned char *p, char *buf, int size, int *len)
 {
@@ -1222,14 +1169,47 @@ vex_get_tmp_reg (struct encode_buf *b, unsigned short *used)
   return tmp;
 }
 
-static xed_reg_enum_t
-vex_get_rip_tmp (struct encode_buf *b, unsigned short *used,
-		 unsigned long rip)
+#if 0
+static void
+vex_record_mem_operand (xed_decoded_inst_t *xd, int idx, unsigned short regs,
+			struct encode_buf *b, struct entry *e)
 {
-  xed_reg_enum_t tmp = vex_get_tmp_reg (b, used);
-  vex_encode_set_rip_tmp (b, tmp, rip);
-  return tmp;
+  const xed_inst_t *xi = xed_decoded_inst_inst (xd);
+  const xed_operand_t *op = xed_inst_operand (xi, idx);
+  xed_operand_enum_t op_name = xed_operand_name (op);
+  eri_assert (op_name == XED_OPERAND_MEM0 || op_name == XED_OPERAND_MEM1);
+  char mem_idx = op_name != XED_OPERAND_MEM0;
+
+  xed_operand_action_enum_t rw = xed_decoded_inst_operand_action (xd, idx);
+  if (xed_operand_action_read (rw)) ++e->max_nreads;
+  if (xed_operand_action_write (rw)) ++e->max_nwrites;
+
+  char rep = xed_operand_values_has_real_rep (xd);
+
+  xed_reg_enum_t tmp1 = vex_get_tmp_reg
+  if (xed_operand_action_read (rw))
+    vex_encode_record (b, 1, rep, idx, tmp1, tmp2, tmp3);
+  if (xed_operand_action_write (rw))
+    vex_encode_record (b, 0, rep, idx, tmp1, tmp2, tmp3);
+    {
+      /* TODO
+	 rw_starts[nrx] = mem;
+         if (! rep) rw_sizes[nrx] = eosz;
+	 ++nrw;
+
+	 movq	%fs:NRW, %tmp1
+	 movq	%fs:RW_STARTS, %tmp2
+	 movq	mem, %tmp3
+	 movq	%tmp3, (%tmp2, %tmp1, 8)
+	if ! rep
+	 movq	%fs:RW_SIZES, %tmp2
+	 movq	$eosz, (%tmp2, %tmp1, 8)
+	 leaq	1(%tmp1), %tmp1
+	 movq	%tmp1, %fs:NRW
+      */
+    }
 }
+#endif
 
 static void *
 vex_translate (eri_file_t log, struct vex *v, struct entry *e)
@@ -1245,12 +1225,15 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
+  xed_encoder_request_t xe;
+
   unsigned long rip = e->rip;
   eri_assert (e->length == 0);
+  eri_assert (e->max_nreads == 0);
+  eri_assert (e->max_nwrites == 0);
 
-  char branch = 0;
-  int i;
-  for (i = 0; ! branch && i < v->max_inst_count; ++i)
+  int i = 0;
+  while (1)
     {
       char *dec_buf = (char *) e->insts + e->length;
 
@@ -1289,9 +1272,11 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
       eri_assert (iclass != XED_ICLASS_CALL_FAR);
       eri_assert (iclass != XED_ICLASS_RET_FAR);
 
+      char rep = xed_operand_values_has_real_rep (&xd);
       xed_uint8_t noperands = xed_inst_noperands (xi);
       unsigned short regs = 0;
-      char ref_fs = 0, ref_rip = 0, has_mem0_exp = 0, has_relbr = 0;
+      char relbr = 0;
+      struct mem0 mem0 = { XED_OPERAND_INVALID };
 
       int j;
       for (j = 0; j < noperands; ++j)
@@ -1315,29 +1300,22 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	    }
 	  else if (op_name == XED_OPERAND_MEM0 || op_name == XED_OPERAND_AGEN)
 	    {
-	      xed_reg_enum_t base = xed_decoded_inst_get_base_reg (&xd, 0);
-	      xed_reg_enum_t seg = xed_decoded_inst_get_seg_reg (&xd, 0);
-	      xed_reg_enum_t index = xed_decoded_inst_get_index_reg (&xd, 0);
+	      eri_assert (mem0.op_name == XED_OPERAND_INVALID);
+	      mem0.op_name = op_name;
 
-	      vex_assert_common_regs (base);
-	      eri_assert (seg == XED_REG_INVALID
-			  || (seg >= XED_REG_CS && seg <= XED_REG_FS));
-	      vex_assert_common_regs (index);
-	      eri_assert (index != XED_REG_RIP);
+	      mem0.base = xed_decoded_inst_get_base_reg (&xd, 0);
+	      mem0.seg = xed_decoded_inst_get_seg_reg (&xd, 0);
+	      mem0.index = xed_decoded_inst_get_index_reg (&xd, 0);
 
-	      vex_mark_used_reg (regs, base);
-	      vex_mark_used_reg (regs, index);
+	      mem0.scale = xed_decoded_inst_get_scale (&xd, 0);
+	      mem0.disp = xed_decoded_inst_get_memory_displacement (&xd, 0);
+	      mem0.disp_width = xed_decoded_inst_get_memory_displacement_width (&xd, 0);
 
-	      if (seg == XED_REG_FS)
-		{
-		  eri_assert (op_name != XED_OPERAND_AGEN);
-		  eri_assert (! xed_operand_values_has_real_rep (&xd));
-		  ref_fs = 1;
-		}
+	      mem0.vis = xed_operand_operand_visibility (op);
+	      mem0.rw = xed_decoded_inst_operand_action (&xd, j);
 
-	      ref_rip |= base == XED_REG_RIP;
-	      has_mem0_exp |= op_name == XED_OPERAND_MEM0
-			      && xed_operand_operand_visibility (op) == XED_OPVIS_EXPLICIT;
+	      vex_mark_used_reg (regs, mem0.base);
+	      vex_mark_used_reg (regs, mem0.index);
 	    }
 	  else if (op_name == XED_OPERAND_MEM1)
 	    {
@@ -1349,108 +1327,115 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 			  || (seg >= XED_REG_CS && seg <= XED_REG_SS));
 	    }
 	  else if (op_name == XED_OPERAND_RELBR)
-	    has_relbr = 1;
+	    relbr = 1;
 	  else
 	    eri_assert (op_name == XED_OPERAND_IMM0
 			|| op_name == XED_OPERAND_IMM1
 			|| op_name == XED_OPERAND_RELBR);
 	}
 
+      xed_reg_enum_t mem0_tmp = XED_REG_INVALID;
+      if (mem0.op_name != XED_OPERAND_INVALID)
+	{
+	  vex_assert_common_regs (mem0.base);
+	  eri_assert (mem0.seg == XED_REG_INVALID
+		      || (mem0.seg >= XED_REG_CS && mem0.seg <= XED_REG_FS));
+	  vex_assert_common_regs (mem0.index);
+	  eri_assert (mem0.index != XED_REG_RIP);
+
+	  char ref_rip = mem0.base == XED_REG_RIP;
+	  char ref_fs = mem0.seg == XED_REG_FS && mem0.op_name == XED_OPERAND_MEM0;
+
+	  if (ref_rip || ref_fs) mem0_tmp = vex_get_tmp_reg (&b, &regs);
+
+	  if (ref_rip)
+	    {
+	      vex_encode_set_rip_tmp (&b, mem0_tmp, rip);
+	      mem0.base = mem0_tmp;
+	    }
+
+	  if (ref_fs)
+	    {
+	      eri_assert (! rep);
+
+	      vex_encode_switch_to_internal_stack (&b);
+	      vex_encode_save_rflags (&b);
+
+	      /*
+		 leaq	mem0, %mem0_tmp
+		 addq	%fs:FSBASE, %mem0_tmp
+	      */
+
+	      mem0.op_name = XED_OPERAND_AGEN;
+	      mem0.seg = XED_REG_INVALID;
+
+	      xed_encoder_request_zero_set_mode (&xe, &state);
+
+	      xed_encoder_request_set_iclass (&xe, XED_ICLASS_LEA);
+	      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, mem0_tmp);
+	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+	      vex_xed_set_mem0 (&xe, &mem0);
+	      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_AGEN);
+
+	      vex_encode (&b, &xe);
+
+	      xed_encoder_request_zero_set_mode (&xe, &state);
+
+	      xed_encoder_request_set_iclass (&xe, XED_ICLASS_ADD);
+	      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, mem0_tmp);
+	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+	      xed_encoder_request_set_memory_operand_length (&xe, 8);
+	      xed_encoder_request_set_mem0 (&xe);
+	      xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
+	      xed_encoder_request_set_memory_displacement (&xe, VEX_CTX_FSBASE, 4);
+	      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
+
+	      vex_encode (&b, &xe);
+
+	      vex_encode_restore_rflags (&b);
+	      vex_encode_restore_gpr (&b, XED_REG_RSP);
+
+	      mem0.op_name = XED_OPERAND_MEM0;
+	      mem0.seg = XED_REG_INVALID;
+	      mem0.base = mem0_tmp;
+	      mem0.index = XED_REG_INVALID;
+	      mem0.scale = 0;
+	      mem0.disp = 0;
+	      mem0.disp_width = 0;
+	    }
+	}
+
+#if 0
+      if (mem0_idx != -1) vex_record_mem_operand (&xd, mem0_idx, regs, &b, e);
+      if (mem1_idx != -1) vex_record_mem_operand (&xd, mem1_idx, regs, &b, e);
+#endif
+
+      ++i;
       if (iclass == XED_ICLASS_SYSCALL)
 	{
-	  eri_assert (! ref_fs && ! ref_rip);
+	  eri_assert (mem0_tmp == XED_REG_INVALID);
 
 	  vex_encode_set_rip_tmp (&b, XED_REG_R11, rip);
 	  vex_encode_save_rip (&b, XED_REG_R11);
 
 	  vex_encode_jmp (&b, VEX_CTX_SYSCALL);
-	  branch = 1;
+	  break;
 	}
       else if (vex_is_transfer (iclass))
 	{
-	  xed_reg_enum_t tmp = vex_get_tmp_reg (&b, &regs);
-	  if ((iclass == XED_ICLASS_JMP || iclass == XED_ICLASS_CALL_NEAR)
-	      && ! has_relbr)
+	  xed_reg_enum_t rip_tmp = vex_get_tmp_reg (&b, &regs);
+	  if (iclass == XED_ICLASS_RET_NEAR)
 	    {
-	      xed_reg_enum_t rip_tmp = XED_REG_INVALID;
-	      if (iclass == XED_ICLASS_CALL_NEAR)
-		{
-		  if (ref_rip)
-		    rip_tmp = vex_get_rip_tmp (&b, &regs, rip);
-		  else
-		    vex_encode_set_rip_tmp (&b, tmp, rip);
-		  vex_encode_push_reg (&b, rip_tmp != XED_REG_INVALID ? rip_tmp : tmp);
-		}
-	      else if (ref_rip)
-		rip_tmp = vex_get_rip_tmp (&b, &regs, rip);
-
-	      if (ref_fs)
-		{
-		  /* e.g. jmp	*%fs:(%rax) */
-		  vex_encode_calc_fsbased_mem (&b, &xd, tmp, rip_tmp);
-
-		  /* movq	(%tmp), %tmp */
-		  xed_encoder_request_t xe;
-		  xed_encoder_request_zero_set_mode (&xe, &state);
-
-		  xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
-		  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-		  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
-		  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
-
-		  xed_encoder_request_set_memory_operand_length (&xe, 8);
-		  xed_encoder_request_set_mem0 (&xe);
-		  xed_encoder_request_set_base0 (&xe, tmp);
-		  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
-
-		  vex_encode (&b, &xe);
-		}
-	      else
-		{
-		  /* e.g. jmp	*(%eax)
-		     =>   movq	(%eax), %tmp
-		  */
-		  xed_encoder_request_t xe;
-		  xed_encoder_request_zero_set_mode (&xe, &state);
-
-		  xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
-		  eri_assert (xed_operand_values_get_effective_operand_width (&xd) == 64);
-		  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-		  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
-		  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
-
-		  if (has_mem0_exp)
-		    {
-		      xed_encoder_request_set_memory_operand_length (&xe, 8);
-		      xed_encoder_request_set_mem0 (&xe);
-		      vex_copy_mem0 (&xe, &xd, ~0, rip_tmp);
-		      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
-		    }
-		  else
-		    {
-		      xed_encoder_request_set_reg (
-			&xe, XED_OPERAND_REG1,
-			xed_decoded_inst_get_reg (&xd, XED_OPERAND_REG0));
-		      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_REG1);
-		    }
-
-		  vex_encode (&b, &xe);
-		}
-
-	      /* movq	%tmp, %fs:RIP */
-	      vex_encode_save_rip (&b, tmp);
-	      if (rip_tmp != XED_REG_INVALID)
-		vex_encode_restore_gpr (&b, rip_tmp);
-	    }
-	  else if (iclass == XED_ICLASS_RET_NEAR)
-	    {
-	      xed_reg_enum_t tmp = vex_get_tmp_reg (&b, &regs);
+	      eri_assert (mem0_tmp == XED_REG_INVALID);
 	      /*
-		 popq	%tmp
-		 movq	%tmp, %fs:RIP
-		 movq	%fs:TMP, %tmp
+		 popq	%rip_tmp
+		 movq	%rip_tmp, %fs:RIP
 		 leaq	imm16(%rsp), %rsp
 	      */
 	      xed_encoder_request_t xe;
@@ -1459,43 +1444,38 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	      xed_encoder_request_set_iclass (&xe, XED_ICLASS_POP);
 	      xed_encoder_request_set_effective_operand_width (&xe, 64);
 
-	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
+	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, rip_tmp);
 	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
 
 	      vex_encode (&b, &xe);
-
-	      vex_encode_save_rip (&b, tmp);
 
 	      xed_uint64_t uimm = xed_decoded_inst_get_unsigned_immediate (&xd);
 	      if (uimm != 0)
 		vex_encode_lea_disp (&b, XED_REG_RSP, uimm);
 	    }
-	  else
+	  else if (relbr)
 	    {
-	      eri_assert (has_relbr);
+	      eri_assert (mem0_tmp == XED_REG_INVALID);
 
 	      xed_int32_t disp = xed_decoded_inst_get_branch_displacement (&xd);
 
-	      if (iclass == XED_ICLASS_JMP)
+	      if (iclass == XED_ICLASS_CALL_NEAR)
 		{
-		  vex_encode_set_rip_tmp (&b, tmp, rip + disp);
-		  vex_encode_save_rip (&b, tmp);
+		  vex_encode_set_rip_tmp (&b, rip_tmp, rip);
+		  vex_encode_push_reg (&b, rip_tmp);
+
+		  vex_encode_lea_disp (&b, rip_tmp, disp);
 		}
-	      else if (iclass == XED_ICLASS_CALL_NEAR)
-		{
-		  vex_encode_set_rip_tmp (&b, tmp, rip);
-		  vex_encode_push_reg (&b, tmp);
-		  vex_encode_lea_disp (&b, tmp, disp);
-		  vex_encode_save_rip (&b, tmp);
-		}
+	      else if (iclass == XED_ICLASS_JMP)
+		vex_encode_set_rip_tmp (&b, rip_tmp, rip + disp);
 	      else
 		{
 		  /*
 			e.g. ja	1f
-			movq	$rip, %tmp		; bnj // bjmp
+			movq	$rip, %rip_tmp		; bnj
 			jmp	2f
-		     1: movq	$rip + disp, %tmp	; bj
-		     2: movq	%tmp, %fs:RIP
+		     1: movq	$rip + disp, %rip_tmp	; bj
+		     2:
 		  */
 		  xed_uint8_t bnj_buf[2 * inst_size];
 		  struct encode_buf bnj = { log, 0, sizeof bnj_buf, bnj_buf };
@@ -1504,10 +1484,10 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 		  struct encode_buf bj = { log, 0, sizeof bj_buf, bj_buf };
 
 		  /* bj */
-		  vex_encode_set_rip_tmp (&bj, tmp, rip + disp);
+		  vex_encode_set_rip_tmp (&bj, rip_tmp, rip + disp);
 
 		  /* bnj */
-		  vex_encode_set_rip_tmp (&bnj, tmp, rip);
+		  vex_encode_set_rip_tmp (&bnj, rip_tmp, rip);
 
 		  xed_encoder_request_t xe;
 		  xed_encoder_request_zero_set_mode (&xe, &state);
@@ -1535,92 +1515,71 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 
 		  vex_concat (&b, &bnj);
 		  vex_concat (&b, &bj);
-
-		  vex_encode_save_rip (&b, tmp);
 		}
-	    }
-	  vex_encode_restore_gpr (&b, tmp);
-	  vex_encode_jmp (&b, VEX_CTX_BACK);
-	  branch = 1;
-	}
-      else if (ref_fs || ref_rip)
-	{
-	  xed_reg_enum_t rip_tmp = XED_REG_INVALID;
-	  if (ref_rip)
-	    rip_tmp = vex_get_rip_tmp (&b, &regs, rip);
-
-	  if (ref_fs)
-	    {
-	      xed_reg_enum_t tmp = vex_get_tmp_reg (&b, &regs);
-	      vex_encode_calc_fsbased_mem (&b, &xd, tmp, rip_tmp);
-
-	      /*
-		 e.g. movq	%rax, (%tmp)
-	      */
-
-	      xed_encoder_request_init_from_decode (&xd);
-	      xed_encoder_request_set_seg0 (&xd, XED_REG_INVALID);
-	      xed_encoder_request_set_base0 (&xd, tmp);
-	      xed_encoder_request_set_index (&xd, XED_REG_INVALID);
-	      xed_encoder_request_set_memory_displacement (&xd, 0, 0);
-
-	      vex_encode (&b, &xd);
-
-	      vex_encode_restore_gpr (&b, tmp);
 	    }
 	  else
 	    {
-	      xed_encoder_request_init_from_decode (&xd);
-	      xed_encoder_request_set_base0 (&xd, rip_tmp);
-	      vex_encode (&b, &xd);
+	      eri_assert (iclass == XED_ICLASS_JMP || iclass == XED_ICLASS_CALL_NEAR);
+
+	      if (iclass == XED_ICLASS_CALL_NEAR)
+		{
+		  vex_encode_set_rip_tmp (&b, rip_tmp, rip);
+		  vex_encode_push_reg (&b, rip_tmp);
+		}
+
+	      xed_encoder_request_zero_set_mode (&xe, &state);
+
+	      xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
+	      eri_assert (xed_operand_values_get_effective_operand_width (&xd) == 64);
+	      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, rip_tmp);
+	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+	      if (mem0.op_name == XED_OPERAND_MEM0 && mem0.vis == XED_OPVIS_EXPLICIT)
+		{
+		  xed_encoder_request_set_memory_operand_length (&xe, 8);
+		  vex_xed_set_mem0 (&xe, &mem0);
+		  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
+		}
+	      else
+		{
+		  xed_reg_enum_t reg = xed_decoded_inst_get_reg (&xd, XED_OPERAND_REG0);
+		  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG1, reg);
+		  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_REG1);
+		}
+
+	      vex_encode (&b, &xe);
 	    }
 
-	  if (rip_tmp != XED_REG_INVALID)
-	    vex_encode_restore_gpr (&b, rip_tmp);
+	  vex_encode_save_rip (&b, rip_tmp);
+	  vex_encode_restore_gpr (&b, rip_tmp);
+
+	  if (mem0_tmp != XED_REG_INVALID) vex_encode_restore_gpr (&b, mem0_tmp);
+
+	  vex_encode_jmp (&b, VEX_CTX_BACK);
+	  break;
 	}
       else
 	{
 	  xed_encoder_request_init_from_decode (&xd);
+	  if (mem0.op_name != XED_OPERAND_INVALID) vex_xed_set_mem0 (&xd, &mem0);
 	  vex_encode (&b, &xd);
-	}
 
-#if 0
-      int j;
-      for (j = 0; j < xed_inst_noperands (xi); ++j)
-	{
-	  const xed_operand_t *op = xed_inst_operand (xi, j);
-	  xed_operand_enum_t op_name = xed_operand_name (op);
-	  if (op_name == XED_OPERAND_MEM0
-	      || op_name == XED_OPERAND_MEM1)
+	  if (i == v->max_inst_count)
 	    {
-	      xed_operand_action_enum_t action = xed_decoded_inst_operand_action (&xd, j);
-
-	      if (action == XED_OPERAND_ACTION_RW
-		  || action == XED_OPERAND_ACTION_R
-		  || action == XED_OPERAND_ACTION_RCW
-		  || action == XED_OPERAND_ACTION_CRW
-		  || action == XED_OPERAND_ACTION_CR)
-		{
-		}
-
-	      if (action == XED_OPERAND_ACTION_RW
-		  || action == XED_OPERAND_ACTION_W
-		  || action == XED_OPERAND_ACTION_RCW
-		  || action == XED_OPERAND_ACTION_CW
-		  || action == XED_OPERAND_ACTION_CRW)
-		{
-		}
+	      xed_reg_enum_t rip_tmp = mem0_tmp != XED_REG_INVALID
+				       ? mem0_tmp : vex_get_tmp_reg (&b, 0);
+	      vex_encode_set_rip_tmp (&b, rip_tmp, rip);
+	      vex_encode_save_rip (&b, rip_tmp);
+	      vex_encode_restore_gpr (&b, rip_tmp);
+	      vex_encode_jmp (&b, VEX_CTX_BACK);
+	      break;
 	    }
-	}
-#endif
-    }
 
-  if (! branch)
-    {
-      xed_reg_enum_t tmp = vex_get_rip_tmp (&b, 0, rip);
-      vex_encode_save_rip (&b, tmp);
-      vex_encode_restore_gpr (&b, tmp);
-      vex_encode_jmp (&b, VEX_CTX_BACK);
+	  if (mem0_tmp != XED_REG_INVALID)
+	    vex_encode_restore_gpr (&b, mem0_tmp);
+	}
     }
 
   if (i != v->max_inst_count) e->inst_rips[i].rip = 0;
@@ -1642,7 +1601,6 @@ vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
       e->rip = rip;
       entry_rbt_insert (v, e);
       e->inst_rips = (struct inst_rip *) ((char *) e + esz);
-      e->length = 0;
       e->insts = (char *) e->inst_rips + ripsz;
     }
   ++e->refs;
