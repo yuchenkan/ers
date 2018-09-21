@@ -35,7 +35,7 @@ struct context
   struct context *child;
 
   eri_file_t log;
-  eri_file_t rip_log;
+  eri_file_t rip_file;
 };
 
 #define CTX	_ERS_STR (VEX_CTX_CTX)
@@ -52,17 +52,35 @@ vex_xed_abort (const char *msg, const char *file, int line, void *other)
 }
 
 static void
-vex_decode (unsigned long rip, size_t pagesize,
+vex_decode (unsigned long rip, size_t pagesize, char *dec_buf,
 	    xed_decoded_inst_t *xd)
 {
+  eri_assert (! pagesize || pagesize >= XED_MAX_INSTRUCTION_BYTES - 1);
+
   xed_decoded_inst_zero (xd);
   xed_decoded_inst_set_mode (xd, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  unsigned int bytes = eri_max (eri_round_up (rip + 1, pagesize) - rip,
-				XED_MAX_INSTRUCTION_BYTES);
-  xed_error_enum_t error = xed_decode (xd, (void *) rip, bytes);
-  if (error == XED_ERROR_BUFFER_TOO_SHORT)
-    error = xed_decode (xd, (void *) rip, XED_MAX_INSTRUCTION_BYTES);
+  unsigned bytes = XED_MAX_INSTRUCTION_BYTES;
+  if (pagesize)
+    bytes = eri_min (eri_round_up (rip + 1, pagesize) - rip, bytes);
+
+  const xed_uint8_t *it = dec_buf
+			  ? (const xed_uint8_t *) dec_buf : (const xed_uint8_t *) rip;
+
+  if (dec_buf) eri_memcpy (dec_buf, (void *) rip, bytes);
+  xed_error_enum_t error = xed_decode (xd, it, bytes);
+
+  if (bytes != XED_MAX_INSTRUCTION_BYTES
+      && error == XED_ERROR_BUFFER_TOO_SHORT)
+    {
+      if (dec_buf)
+	eri_memcpy (dec_buf + bytes, (void *) (rip + bytes),
+		    XED_MAX_INSTRUCTION_BYTES - bytes);
+
+      xed_decoded_inst_zero (xd);
+      xed_decoded_inst_set_mode (xd, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+      error = xed_decode (xd, it, XED_MAX_INSTRUCTION_BYTES);
+    }
   eri_assert (error == XED_ERROR_NONE);
 }
 
@@ -169,7 +187,9 @@ struct entry
 
   int trans_lock;
   struct inst_rip *inst_rips;
+  size_t length;
   void *insts;
+  void *decoded_insts;
 
   unsigned refs;
 };
@@ -179,6 +199,8 @@ struct vex
   size_t pagesize;
   const char *path;
   size_t file_buf_size;
+
+  char detail;
 
   void *mmap;
   size_t mmap_size;
@@ -256,7 +278,7 @@ start_context (struct context *c)
   c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
   c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id,
     (char *) c->mp + eri_round_up (sizeof *c + 48, 16), buf_size);
-  c->rip_log = eri_open_path (v->path, "vex-rip-log-", ERI_OPEN_WITHID, c->id,
+  c->rip_file = eri_open_path (v->path, "vex-rip-", ERI_OPEN_WITHID, c->id,
     (char *) c->log + buf_size, buf_size);
 }
 
@@ -294,7 +316,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
 
   struct vex *v = c->vex;
   eri_assert (eri_fclose (c->log) == 0);
-  eri_assert (eri_fclose (c->rip_log) == 0);
+  eri_assert (eri_fclose (c->rip_file) == 0);
   eri_assert_mtfree (&v->pool, c->stack);
   eri_assert_mtfree (&v->pool, c->mp);
 
@@ -389,8 +411,7 @@ vex_exit (unsigned long status, int nr, struct context *c)
 	  ERI_RBT_FOREACH_SAFE (entry, v, e, ne)
 	    {
 	      entry_rbt_remove (v, e);
-	      eri_assert (eri_free (&v->pool.pool, e->inst_rips) == 0);
-	      eri_assert (eri_free (&v->epool.pool, e->insts) == 0);
+	      eri_assert (eri_free (&v->epool.pool, e->decoded_insts) == 0);
 	      eri_assert (eri_free (&v->pool.pool, e) == 0);
 	    }
 
@@ -1077,7 +1098,7 @@ vex_encode_calc_fsbased_mem (struct encode_buf *b, const xed_decoded_inst_t *xd,
 }
 
 static unsigned
-save_inst (const unsigned char *p, char *buf, int size, size_t page, int *len)
+save_inst (const unsigned char *p, char *buf, int size, int *len)
 {
   int i;
 
@@ -1101,7 +1122,7 @@ save_inst (const unsigned char *p, char *buf, int size, size_t page, int *len)
   size -= 3 * XED_MAX_INSTRUCTION_BYTES;
 
   xed_decoded_inst_t xd;
-  vex_decode ((unsigned long) p, page, &xd);
+  vex_decode ((unsigned long) p, 0, 0, &xd);
 
   eri_assert (xed_format_context (XED_SYNTAX_ATT, &xd, b, size, (xed_uint64_t) p, 0, 0));
   *len = (b - buf) + eri_strlen (b);
@@ -1126,16 +1147,15 @@ save_inst (const unsigned char *p, char *buf, int size, size_t page, int *len)
 }
 
 static void
-save_translated (struct vex *v,
+save_translated (const char *path,
 		 unsigned long (*map)[2], int nmap,
 		 const struct encode_buf *b)
 {
   if (nmap == 0) return;
 
   eri_file_buf_t file_buf[32 * 1024];
-  eri_file_t file = eri_open_path (v->path, "vex-trans-", ERI_OPEN_WITHID,
+  eri_file_t file = eri_open_path (path, "vex-trans-", ERI_OPEN_WITHID,
 				   map[0][0], file_buf, sizeof file_buf);
-  size_t page = v->pagesize;
 
   int i = 0;
   size_t off = 0;
@@ -1147,7 +1167,7 @@ save_translated (struct vex *v,
 	{
 	  buf[0] = ' ';
 	  save_inst ((const unsigned char *) map[i][0],
-		     buf + 1, sizeof buf - 1, page, &l);
+		     buf + 1, sizeof buf - 1, &l);
 	  eri_assert (l < sizeof buf - 1);
 	  buf[l + 1] = '\n';
 	  eri_assert (eri_fwrite (file, buf, l + 2, 0) == 0);
@@ -1156,7 +1176,7 @@ save_translated (struct vex *v,
 
       buf[0] = buf[1] = buf[2] = ' ';
       unsigned len = save_inst ((const unsigned char *) b->p + off,
-				buf + 3, sizeof buf - 3, page, &l);
+				buf + 3, sizeof buf - 3, &l);
       eri_assert (l < sizeof buf - 3);
       buf[l + 3] = '\n';
       eri_assert (eri_fwrite (file, buf, l + 4, 0) == 0);
@@ -1197,7 +1217,6 @@ vex_get_tmp_reg (struct encode_buf *b, unsigned short *used)
   int ffs = __builtin_ffs (~*used) - 1;
   eri_assert (ffs >= 0);
   xed_reg_enum_t tmp = XED_REG_RAX + ffs;
-  cprintf (b->log, "*** used: %lu, tmp: %s\n", *used, xed_reg_enum_t2str (tmp));
   vex_mark_used_reg (*used, tmp);
   vex_encode_save_gpr (b, tmp);
   return tmp;
@@ -1213,7 +1232,7 @@ vex_get_rip_tmp (struct encode_buf *b, unsigned short *used,
 }
 
 static void *
-vex_translate (eri_file_t log, struct vex *v, unsigned long rip, struct inst_rip *inst_rips)
+vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 {
   unsigned long map[v->max_inst_count][2];
 
@@ -1226,30 +1245,37 @@ vex_translate (eri_file_t log, struct vex *v, unsigned long rip, struct inst_rip
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
+  unsigned long rip = e->rip;
+  eri_assert (e->length == 0);
+
   char branch = 0;
   int i;
   for (i = 0; ! branch && i < v->max_inst_count; ++i)
     {
-      cprintf (log, "decode %lx\n", rip);
+      char *dec_buf = (char *) e->insts + e->length;
 
-      map[i][0] = rip;
-      map[i][1] = b.off;
+      if (v->detail) cprintf (log, "decode %lx\n", rip);
 
       xed_decoded_inst_t xd;
-      vex_decode (rip, v->pagesize, &xd);
+      vex_decode (rip, v->pagesize, dec_buf, &xd);
 
-      inst_rips[i].rip = rip;
-      inst_rips[i].rep = xed_operand_values_has_real_rep (&xd);
+      map[i][0] = (unsigned long) dec_buf;
+      map[i][1] = b.off;
+
+      e->inst_rips[i].rip = rip;
+      e->inst_rips[i].rep = xed_operand_values_has_real_rep (&xd);
 
       xed_uint_t length = xed_decoded_inst_get_length (&xd);
       rip += length;
+      e->length += length;
 
       const xed_inst_t *xi = xed_decoded_inst_inst (&xd);
 
       xed_iform_enum_t iform = xed_decoded_inst_get_iform_enum (&xd);
       xed_iclass_enum_t iclass = xed_iform_to_iclass (iform);
 
-      if (iclass == XED_ICLASS_SYSCALL || vex_is_transfer (iclass))
+      if (v->detail
+	  && (iclass == XED_ICLASS_SYSCALL || vex_is_transfer (iclass)))
         vex_dump_inst (log, rip, &xd);
 
       eri_assert (iclass != XED_ICLASS_BOUND);
@@ -1597,8 +1623,8 @@ vex_translate (eri_file_t log, struct vex *v, unsigned long rip, struct inst_rip
       vex_encode_jmp (&b, VEX_CTX_BACK);
     }
 
-  if (i != v->max_inst_count) inst_rips[i].rip = 0;
-  save_translated (v, map, i, &b);
+  if (i != v->max_inst_count) e->inst_rips[i].rip = 0;
+  if (v->detail) save_translated (v->path, map, i, &b);
   return b.p;
 }
 
@@ -1609,24 +1635,36 @@ vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
   struct entry *e = entry_rbt_get (v, &rip, ERI_RBT_EQ);
   if (! e)
     {
-      e = eri_assert_mtcalloc (&v->pool, sizeof *e);
+      size_t esz = eri_round_up (sizeof *e, 16);
+      size_t ripsz = sizeof e->inst_rips[0] * v->max_inst_count;
+      e = eri_assert_mtcalloc (&v->pool,
+	esz + ripsz + XED_MAX_INSTRUCTION_BYTES * v->max_inst_count);
       e->rip = rip;
       entry_rbt_insert (v, e);
+      e->inst_rips = (struct inst_rip *) ((char *) e + esz);
+      e->length = 0;
+      e->insts = (char *) e->inst_rips + ripsz;
     }
   ++e->refs;
   /* TODO release lru  */
   eri_unlock (&v->entrys_lock, 1);
 
-  if (! __atomic_load_n (&e->insts, __ATOMIC_ACQUIRE))
+#if 0
+  if (e->length
+      && eri_memcmp ((void *) rip, e->insts, e->length) != 0)
+    {
+      eri_assert (e->decoded_insts);
+      eri_assert_mtfree (&v->epool, e->decoded_insts);
+      e->decoded_insts = 0;
+      e->length = 0;
+    }
+#endif
+  if (! __atomic_load_n (&e->decoded_insts, __ATOMIC_ACQUIRE))
     {
       eri_lock (&e->trans_lock, 1);
-      if (! e->insts)
-	{
-	  e->inst_rips = eri_assert_mtmalloc (
-	    &v->pool, sizeof e->inst_rips[0] * v->max_inst_count);
-	  __atomic_store_n (&e->insts, vex_translate (log, v, rip, e->inst_rips),
-			    __ATOMIC_RELEASE);
-	}
+      if (! e->decoded_insts)
+	__atomic_store_n (&e->decoded_insts, vex_translate (log, v, e),
+			  __ATOMIC_RELEASE);
       eri_unlock (&e->trans_lock, 1);
     }
   return e;
@@ -1653,41 +1691,43 @@ vex_loop (struct context *c)
   struct vex *v = c->vex;
   while (1)
     {
-      cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
+      if (v->detail) cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
       struct entry *e = vex_get_entry (c->log, v, c->ctx.comm.rip);
-      c->ctx.insts = (unsigned long) e->insts;
+      c->ctx.insts = (unsigned long) e->decoded_insts;
 
       if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
 	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
 
       /* ERI_ASSERT_SYSCALL (exit, 0); */
-      cprintf (c->log, "execute rip: %lx "
-		       "rax: %lx, rcx: %lx, rdx: %lx, rbx: %lx "
-		       "rsp: %lx, rbp: %lx, rsi: %lx, rdi: %lx "
-		       "r8: %lx, r9: %lx, r10: %lx, r11: %lx "
-		       "r12: %lx, r13: %lx, r14: %lx, r15: %lx\n",
-		       c->ctx.comm.rip,
-		       c->ctx.comm.rax, c->ctx.comm.rcx,
-		       c->ctx.comm.rdx, c->ctx.comm.rbx,
-		       c->ctx.comm.rsp, c->ctx.comm.rbp,
-		       c->ctx.comm.rsi, c->ctx.comm.rdi,
-		       c->ctx.comm.r8, c->ctx.comm.r9,
-		       c->ctx.comm.r10, c->ctx.comm.r11,
-		       c->ctx.comm.r12, c->ctx.comm.r13,
-		       c->ctx.comm.r14, c->ctx.comm.r15);
       int i;
-      for (i = 0; e->inst_rips[i].rip && i < v->max_inst_count; ++i)
-	if (e->inst_rips[i].rep)
-	  {
-	    cprintf (c->log, ">>>> 0x%lx...\n", e->inst_rips[i].rip);
-	    cprintf (c->rip_log, "0x%lx...\n", e->inst_rips[i].rip);
-	  }
-	else
-	  {
-	    cprintf (c->log, ">>>> 0x%lx\n", e->inst_rips[i].rip);
-	    cprintf (c->rip_log, "0x%lx\n", e->inst_rips[i].rip);
-	  }
+      if (v->detail)
+	{
+	  cprintf (c->log, "execute rip: %lx "
+			   "rax: %lx, rcx: %lx, rdx: %lx, rbx: %lx "
+			   "rsp: %lx, rbp: %lx, rsi: %lx, rdi: %lx "
+			   "r8: %lx, r9: %lx, r10: %lx, r11: %lx "
+			   "r12: %lx, r13: %lx, r14: %lx, r15: %lx\n",
+			   c->ctx.comm.rip,
+			   c->ctx.comm.rax, c->ctx.comm.rcx,
+			   c->ctx.comm.rdx, c->ctx.comm.rbx,
+			   c->ctx.comm.rsp, c->ctx.comm.rbp,
+			   c->ctx.comm.rsi, c->ctx.comm.rdi,
+			   c->ctx.comm.r8, c->ctx.comm.r9,
+			   c->ctx.comm.r10, c->ctx.comm.r11,
+			   c->ctx.comm.r12, c->ctx.comm.r13,
+			   c->ctx.comm.r14, c->ctx.comm.r15);
+	  for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+	    cprintf (c->log,
+		     e->inst_rips[i].rep ? ">>>> 0x%lx...\n" : ">>>> 0x%lx\n",
+		     e->inst_rips[i].rip);
+	}
 
+      for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+        {
+	  struct inst_rip *ir = e->inst_rips + i;
+	  eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rip, sizeof ir->rip, 0) == 0);
+	  eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rep, sizeof ir->rep, 0) == 0);
+        }
       vex_execute ();
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
@@ -1701,7 +1741,7 @@ monitor_pool_malloc (struct eri_pool *pool, size_t size,
 {
 #if 0
   if (res == 0)
-    eri_assert (eri_printf ("%s: %lu\n", name, pool->used) == 0);
+    eri_assert (eri_printf ("malloc %s: %lx %lu %lu\n", name, p, size, pool->used) == 0);
 #endif
 }
 
@@ -1711,7 +1751,7 @@ monitor_pool_free (struct eri_pool *pool,
 {
 #if 0
   if (res == 0)
-    eri_assert (eri_printf ("%s: %lu\n", name, pool->used) == 0);
+    eri_assert (eri_printf ("free %s: %lx %lu\n", name, p, pool->used) == 0);
 #endif
 }
 
@@ -1736,6 +1776,7 @@ eri_vex_enter (char *buf, size_t size,
   v->pagesize = page;
   v->path = path;
   v->file_buf_size = 64 * 1024;
+  v->detail = 0;
 
   if (mmap)
     {
@@ -1759,7 +1800,7 @@ eri_vex_enter (char *buf, size_t size,
 
   ERI_ASSERT_SYSCALL (mprotect, ebuf, esize, 0x7);
 
-  v->max_inst_count = 256;
+  v->max_inst_count = 32;
 
   struct context *c = alloc_context (v);
   eri_memcpy (&c->ctx.comm, &ctx->comm, sizeof c->ctx.comm);
