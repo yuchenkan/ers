@@ -5,9 +5,12 @@
 
 struct context;
 
-struct vex_addr_range
+struct vex_rw_ranges
 {
-  unsigned long size;
+  unsigned long naddrs;
+  unsigned long nsizes;
+  unsigned long *addrs;
+  unsigned long *sizes;
 };
 
 struct vex_context
@@ -24,13 +27,8 @@ struct vex_context
   unsigned long ret;
   unsigned long top;
 
-  unsigned long nreads;
-  unsigned long *read_starts;
-  unsigned long *read_sizes;
-
-  unsigned long nwrites;
-  unsigned long *write_starts;
-  unsigned long *write_sizes;
+  struct vex_rw_ranges reads;
+  struct vex_rw_ranges writes;
 };
 
 #endif

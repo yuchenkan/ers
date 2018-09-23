@@ -1,18 +1,33 @@
 include ../my-glibc.mk
  
+BUILD := ../build/src
+.DEFAULT_GOAL := all
+
+define DEPENDABLE_VAR
+
+.PHONY: phony
+$(BUILD)/$1: phony
+	@if [[ `cat $(BUILD)/$1 2>&1` != '$($1)' ]]; then \
+	  echo -n $($1) >$(BUILD)/$1; \
+	fi
+
+endef
+
+O := -O3
+$(eval $(call DEPENDABLE_VAR,O))
+
 LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c
 LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 TRACER := tracer.c common.c lib/printf.c lib/util.c
 
-BUILD := ../build/src
-CFLAGS := -O3 -I. -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := $O -I. -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
 VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj
 VEX_LDFLAGS := -Wl,--exclude-libs,ALL
 
-MAKEFILES := ../my-glibc.mk Makefile
+MAKEFILES := ../my-glibc.mk Makefile $(BUILD)/O
 XED := ../3rd/xed/obj/libxed.a
 
 LIB_TST_VEX := vex/tst-vex-entry.c vex/vex.c common.c $(LIB)

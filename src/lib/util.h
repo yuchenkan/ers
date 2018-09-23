@@ -43,4 +43,6 @@ const char *eri_strstr (const char *s, const char *d);
 
 #define eri_less_than(x, a, b) (*(a) < *(b))
 
+#define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
+
 #endif

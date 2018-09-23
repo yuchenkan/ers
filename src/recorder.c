@@ -512,7 +512,7 @@ init_process (struct internal *internal, const char *path)
 
   size_t file_buf_size = internal->file_buf_size = 64 * 1024;
   struct lock *locks[] = INTERNAL_LOCKS (internal);
-  size_t nlocks = sizeof locks / sizeof locks[0];
+  size_t nlocks = eri_length_of (locks);
   size_t pool_size = 64 * 1024 * 1024;
   eri_assert (pool_size >= nlocks * file_buf_size);
   internal->pool_buf = (char *) ERI_ASSERT_SYSCALL_RES (
@@ -958,7 +958,7 @@ syscall (struct internal *internal, int nr,
 
 	  int i;
 	  struct lock *locks[] = INTERNAL_LOCKS (internal);
-	  for (i = 0; i < sizeof locks / sizeof locks[0]; ++i)
+	  for (i = 0; i < eri_length_of (locks); ++i)
 	    {
 	      eri_assert (locks[i]->lock == 0);
 	      eri_assert (eri_fclose (locks[i]->file) == 0);

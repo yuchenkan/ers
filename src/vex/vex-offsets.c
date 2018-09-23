@@ -7,12 +7,20 @@
 #define STR_CAT_I(x, y) x##y
 #define STR_CAT(x, y) STR_CAT_I (x, y)
 
+#define RW_RANGES_OFFSET(name, member) \
+  DECLARE (STR_CAT (VEX_RW_RANGES_, name), __builtin_offsetof (struct vex_rw_ranges, member))
+
 #define CTX_OFFSET(name, member) \
   DECLARE (STR_CAT (VEX_CTX_, name), __builtin_offsetof (struct vex_context, member))
 
 void
 declare (void)
 {
+  RW_RANGES_OFFSET (NADDRS, naddrs);
+  RW_RANGES_OFFSET (NSIZES, nsizes);
+  RW_RANGES_OFFSET (ADDRS, addrs);
+  RW_RANGES_OFFSET (SIZES, sizes);
+
   CTX_OFFSET (CTX, ctx);
 
   CTX_OFFSET (SYSCALL, syscall);
@@ -46,4 +54,7 @@ declare (void)
 
   CTX_OFFSET (RET, ret);
   CTX_OFFSET (TOP, top);
+
+  CTX_OFFSET (READS, reads);
+  CTX_OFFSET (WRITES, writes);
 }

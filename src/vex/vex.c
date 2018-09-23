@@ -94,11 +94,12 @@ vex_dump_inst (eri_file_t log, unsigned long rip, const xed_decoded_inst_t *xd)
 
   xed_uint_t length = xed_decoded_inst_get_length (xd);
   xed_uint32_t eow = xed_operand_values_get_effective_operand_width (xd);
+  xed_uint32_t eaw = xed_operand_values_get_effective_address_width (xd);
 
   const xed_inst_t *xi = xed_decoded_inst_inst (xd);
   int noperands = xed_inst_noperands (xi);
-  cprintf (log, "length: %u, eow: %u, noperands: %u\n",
-	   length, eow, noperands);
+  cprintf (log, "length: %u, eow: %u, eaw: %u, noperands: %u\n",
+	   length, eow, eaw, noperands);
 
   int i;
   for (i = 0; i < noperands; ++i)
@@ -201,6 +202,7 @@ struct vex
 {
   size_t pagesize;
   const char *path;
+  size_t stack_size;
   size_t file_buf_size;
 
   char detail;
@@ -232,6 +234,8 @@ ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_l
 static void
 cprintf (eri_file_t log, const char *fmt, ...)
 {
+  if (! log) return;
+
   va_list arg;
   va_start (arg, fmt);
   eri_assert (eri_vfprintf (log, fmt, arg) == 0);
@@ -241,8 +245,8 @@ cprintf (eri_file_t log, const char *fmt, ...)
 static struct context *
 alloc_context (struct vex *v)
 {
-  size_t size
-    = eri_round_up (sizeof (struct context) + 48, 16) + 2 * v->file_buf_size;
+  size_t esize = eri_round_up (sizeof (struct context) + 48, 16);
+  size_t size = esize + v->stack_size + 2 * v->file_buf_size;
 
   void *p;
   struct context *c = (struct context *) eri_round_up (
@@ -253,8 +257,8 @@ alloc_context (struct vex *v)
 
   c->ctx.syscall = (unsigned long) vex_syscall;
   c->ctx.back = (unsigned long) vex_back;
-  c->stack = eri_assert_mtcalloc (&v->pool, 2 * 1024 * 1024);
-  c->ctx.top = (unsigned long) c->stack + 2 * 1024 * 1024;
+  c->stack = (char *) c->mp + esize;
+  c->ctx.top = (unsigned long) c->stack + v->stack_size;
 
   c->vex = v;
   return c;
@@ -280,9 +284,12 @@ start_context (struct context *c)
 
   c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
   c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id,
-    (char *) c->mp + eri_round_up (sizeof *c + 48, 16), buf_size);
+    (char *) c->stack + v->stack_size, buf_size);
   c->rip_file = eri_open_path (v->path, "vex-rip-", ERI_OPEN_WITHID, c->id,
     (char *) c->log + buf_size, buf_size);
+
+  if (v->detail)
+  cprintf (c->log, "context: %lu, stack: %lx\n", c->id, c->stack);
 }
 
 static void
@@ -308,6 +315,38 @@ vex_start_child (struct context *c)
   vex_loop (c);
 }
 
+static void
+init_rw_ranges (struct eri_mtpool *p, struct vex_rw_ranges *rw, size_t n)
+{
+  rw->naddrs = rw->nsizes = 0;
+  rw->addrs = n ? eri_assert_mtmalloc (p, n * sizeof (unsigned long) * 2) : 0;
+  rw->sizes = rw->addrs ? rw->addrs + n : 0;
+}
+
+static void
+gather_rw (struct eri_mtpool *p, struct context *c)
+{
+  eri_assert (c->ctx.reads.naddrs == c->ctx.reads.nsizes);
+  eri_assert (c->ctx.writes.naddrs == c->ctx.writes.nsizes);
+
+  eri_assert (eri_fwrite (c->log, "gather\n", eri_strlen ("gather\n"), 0) == 0);
+
+#if 0
+  size_t i;
+  for (i = 0; i < c->ctx.reads.naddrs; ++i)
+    cprintf (c->log, "read %lx, %lu\n",
+	     c->ctx.reads.addrs[i], c->ctx.reads.sizes[i]);
+  for (i = 0; i < c->ctx.writes.naddrs; ++i)
+    cprintf (c->log, "write %lx, %lu\n",
+	     c->ctx.writes.addrs[i], c->ctx.writes.sizes[i]);
+#endif
+
+  if (c->ctx.reads.addrs)
+    eri_assert_mtfree (p, c->ctx.reads.addrs);
+  if (c->ctx.writes.addrs)
+    eri_assert_mtfree (p, c->ctx.writes.addrs);
+}
+
 #define VEX_EXIT_GROUP	0
 #define VEX_EXIT_WAIT	1
 #define VEX_EXIT_SELF	2
@@ -320,7 +359,6 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   struct vex *v = c->vex;
   eri_assert (eri_fclose (c->log) == 0);
   eri_assert (eri_fclose (c->rip_file) == 0);
-  eri_assert_mtfree (&v->pool, c->stack);
   eri_assert_mtfree (&v->pool, c->mp);
 
   __atomic_add_fetch (&v->ncontexts, -1, __ATOMIC_RELEASE);
@@ -400,6 +438,8 @@ static void __attribute__ ((used))
 vex_exit (unsigned long status, int nr, struct context *c)
 {
   struct vex *v = c->vex;
+
+  gather_rw (&v->pool, c);
 
   int type = VEX_EXIT_SELF;
   char grp = nr == __NR_exit_group || c->id == 0;
@@ -753,178 +793,13 @@ vex_encode (struct encode_buf *b, xed_encoder_request_t *xe)
 static void
 vex_concat (struct encode_buf *b1, const struct encode_buf *b2)
 {
-  while (b1->size - b1->off < b2->off)
+  /* Reserve one instruction length, so decoding (e.g. dumping generated
+     instructions) won't pass the end of the buffer.  */
+  while (b1->size - b1->off < b2->off + XED_MAX_INSTRUCTION_BYTES)
     inc_encode_buf (b1);
 
   eri_memcpy (b1->p + b1->off, b2->p, b2->off);
   b1->off += b2->off;
-}
-
-struct mem0
-{
-  xed_operand_enum_t op_name;
-
-  xed_reg_enum_t seg;
-  xed_reg_enum_t base;
-  xed_reg_enum_t index;
-  xed_uint_t scale;
-  xed_int64_t disp;
-  xed_uint_t disp_width;
-
-  xed_operand_visibility_enum_t vis;
-  xed_operand_action_enum_t rw;
-};
-
-static void
-vex_xed_set_mem0 (xed_encoder_request_t *xe, struct mem0 *m)
-{
-  if (m->op_name == XED_OPERAND_MEM0)
-    xed_encoder_request_set_mem0 (xe);
-  else if (m->op_name == XED_OPERAND_AGEN)
-    xed_encoder_request_set_agen (xe);
-  else eri_assert (0);
-
-  xed_encoder_request_set_seg0 (xe, m->seg);
-  xed_encoder_request_set_base0 (xe, m->base);
-  xed_encoder_request_set_index (xe, m->index);
-  xed_encoder_request_set_scale (xe, m->scale);
-  xed_encoder_request_set_memory_displacement (xe, m->disp, m->disp_width);
-}
-
-#define REG_DISP(r) (VEX_CTX_RAX + (r) * 8)
-
-static void
-vex_encode_mov_reg (struct encode_buf *b,
-		    xed_reg_enum_t reg, char save, long offset)
-{
-  xed_state_t state;
-  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
-
-  xed_encoder_request_t xe;
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, reg);
-  xed_encoder_request_set_operand_order (&xe, save, XED_OPERAND_REG0);
-
-  xed_encoder_request_set_memory_operand_length (&xe, 8);
-  xed_encoder_request_set_mem0 (&xe);
-  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
-  xed_encoder_request_set_memory_displacement (&xe, offset, 4);
-  xed_encoder_request_set_operand_order (&xe, ! save, XED_OPERAND_MEM0);
-
-  vex_encode (b, &xe);
-}
-
-static void
-vex_encode_save_gpr (struct encode_buf *b, xed_reg_enum_t reg)
-{
-  /* movq	%reg, %fs:REG */
-  vex_encode_mov_reg (b, reg, 1, REG_DISP (reg - XED_REG_RAX));
-}
-
-static void
-vex_encode_restore_gpr (struct encode_buf *b, xed_reg_enum_t reg)
-{
-  /* movq	%fs:REG, %reg */
-  vex_encode_mov_reg (b, reg, 0, REG_DISP (reg - XED_REG_RAX));
-}
-
-static void
-vex_encode_save_rip (struct encode_buf *b, xed_reg_enum_t reg)
-{
-  /* movq	%reg, %fs:RIP */
-  vex_encode_mov_reg (b, reg, 1, VEX_CTX_RIP);
-}
-
-static void
-vex_encode_switch_to_internal_stack (struct encode_buf *b)
-{
-  /*
-     movq	%rsp, %fs:RSP
-     movq	%fs:TOP, %rsp
-  */
-  vex_encode_save_gpr (b, XED_REG_RSP);
-  vex_encode_mov_reg (b, XED_REG_RSP, 0, VEX_CTX_TOP);
-}
-
-static void
-vex_encode_save_rflags (struct encode_buf *b)
-{
-  xed_state_t state;
-  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
-
-  /*
-     pushfq
-     popq	%fs:RFLAGS
-  */
-
-  xed_encoder_request_t xe;
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_PUSHFQ);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  vex_encode (b, &xe);
-
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_POP);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  xed_encoder_request_set_memory_operand_length (&xe, 8);
-  xed_encoder_request_set_mem0 (&xe);
-  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
-  xed_encoder_request_set_memory_displacement (&xe, VEX_CTX_RFLAGS, 4);
-  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
-
-  vex_encode (b, &xe);
-}
-
-static void
-vex_encode_push (struct encode_buf *b, long offset)
-{
-  xed_state_t state;
-  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
-
-  /* pushq	%fs:offset */
-  xed_encoder_request_t xe;
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_PUSH);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  xed_encoder_request_set_memory_operand_length (&xe, 8);
-  xed_encoder_request_set_mem0 (&xe);
-  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
-  xed_encoder_request_set_memory_displacement (&xe, offset, 4);
-  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
-
-  vex_encode (b, &xe);
-}
-
-static void
-vex_encode_restore_rflags (struct encode_buf *b)
-{
-  xed_state_t state;
-  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
-
-  /*
-     pushq	%fs:RFLAGS
-     popfq
-  */
-
-  vex_encode_push (b, VEX_CTX_RFLAGS);
-
-  xed_encoder_request_t xe;
-  xed_encoder_request_zero_set_mode (&xe, &state);
-
-  xed_encoder_request_set_iclass (&xe, XED_ICLASS_POPFQ);
-  xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-  vex_encode (b, &xe);
 }
 
 #define A_B	0x1
@@ -954,25 +829,196 @@ get_uimm_nbytes (unsigned long uimm, int acc)
   return 0;
 }
 
+struct mem
+{
+  xed_operand_enum_t op_name;
+
+  xed_reg_enum_t base;
+  xed_reg_enum_t index;
+  xed_uint_t scale;
+  xed_int64_t disp;
+  xed_uint_t disp_width;
+  xed_reg_enum_t seg;
+
+  unsigned int length;
+  xed_operand_visibility_enum_t vis;
+  xed_operand_action_enum_t rw;
+};
+
 static void
-vex_encode_set_rip_tmp (struct encode_buf *b, xed_reg_enum_t tmp,
-			unsigned long rip)
+vex_xed_set_mem0 (xed_encoder_request_t *xe, struct mem *m)
+{
+  if (m->op_name == XED_OPERAND_MEM0)
+    xed_encoder_request_set_mem0 (xe);
+  else if (m->op_name == XED_OPERAND_AGEN)
+    xed_encoder_request_set_agen (xe);
+  else eri_assert (0);
+
+  xed_encoder_request_set_seg0 (xe, m->seg);
+  xed_encoder_request_set_base0 (xe, m->base);
+  xed_encoder_request_set_index (xe, m->index);
+  xed_encoder_request_set_scale (xe, m->scale);
+  xed_encoder_request_set_memory_displacement (xe, m->disp, m->disp_width);
+}
+
+#define REG_DISP(r) (VEX_CTX_RAX + (r) * 8)
+
+static void
+ctx_encode_mov_reg (struct encode_buf *b,
+		    xed_reg_enum_t reg, char save, long offset)
 {
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  /* movq	$rip, %tmp */
   xed_encoder_request_t xe;
   xed_encoder_request_zero_set_mode (&xe, &state);
 
   xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
   xed_encoder_request_set_effective_operand_width (&xe, 64);
 
-  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmp);
+  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, reg);
+  xed_encoder_request_set_operand_order (&xe, save, XED_OPERAND_REG0);
+
+  xed_encoder_request_set_memory_operand_length (&xe, 8);
+  xed_encoder_request_set_mem0 (&xe);
+  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
+  xed_encoder_request_set_memory_displacement (&xe, offset, 4);
+  xed_encoder_request_set_operand_order (&xe, ! save, XED_OPERAND_MEM0);
+
+  vex_encode (b, &xe);
+}
+
+static void
+ctx_encode_save_gpr (struct encode_buf *b, xed_reg_enum_t reg)
+{
+  /* movq	%reg, %fs:REG */
+  ctx_encode_mov_reg (b, reg, 1, REG_DISP (reg - XED_REG_RAX));
+}
+
+static void
+ctx_encode_restore_gpr (struct encode_buf *b, xed_reg_enum_t reg)
+{
+  /* movq	%fs:REG, %reg */
+  ctx_encode_mov_reg (b, reg, 0, REG_DISP (reg - XED_REG_RAX));
+}
+
+static void
+ctx_encode_save_rip (struct encode_buf *b, xed_reg_enum_t reg)
+{
+  /* movq	%reg, %fs:RIP */
+  ctx_encode_mov_reg (b, reg, 1, VEX_CTX_RIP);
+}
+
+static void
+ctx_encode_switch_to_internal_stack (struct encode_buf *b)
+{
+  /*
+     movq	%rsp, %fs:RSP
+     movq	%fs:TOP, %rsp
+  */
+  ctx_encode_save_gpr (b, XED_REG_RSP);
+  ctx_encode_mov_reg (b, XED_REG_RSP, 0, VEX_CTX_TOP);
+}
+
+static void
+ctx_encode_save_rflags (struct encode_buf *b)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /*
+     pushfq
+     popq	%fs:RFLAGS
+  */
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_PUSHFQ);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  vex_encode (b, &xe);
+
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_POP);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  xed_encoder_request_set_memory_operand_length (&xe, 8);
+  xed_encoder_request_set_mem0 (&xe);
+  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
+  xed_encoder_request_set_memory_displacement (&xe, VEX_CTX_RFLAGS, 4);
+  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
+
+  vex_encode (b, &xe);
+}
+
+static void
+ctx_encode_push (struct encode_buf *b, long offset)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /* pushq	%fs:offset */
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_PUSH);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  xed_encoder_request_set_memory_operand_length (&xe, 8);
+  xed_encoder_request_set_mem0 (&xe);
+  xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
+  xed_encoder_request_set_memory_displacement (&xe, offset, 4);
+  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
+
+  vex_encode (b, &xe);
+}
+
+static void
+ctx_encode_restore_rflags (struct encode_buf *b)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /*
+     pushq	%fs:RFLAGS
+     popfq
+  */
+
+  ctx_encode_push (b, VEX_CTX_RFLAGS);
+
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_POPFQ);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  vex_encode (b, &xe);
+}
+
+static void
+vex_encode_set_reg_imm (struct encode_buf *b, xed_reg_enum_t reg,
+			unsigned long imm)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /* movq	$imm, %reg */
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, reg);
   xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
 
-  xed_encoder_request_set_uimm0 (&xe, rip,
-				 get_uimm_nbytes (rip, A_D | A_Q));
+  xed_encoder_request_set_uimm0 (&xe, imm,
+				 get_uimm_nbytes (imm, A_D | A_Q));
   xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_IMM0);
 
   vex_encode (b, &xe);
@@ -984,8 +1030,9 @@ vex_encode_push_reg (struct encode_buf *b, xed_reg_enum_t reg)
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  /* pushq	%reg */
   xed_encoder_request_t xe;
+
+  /* pushq	%reg */
   xed_encoder_request_zero_set_mode (&xe, &state);
 
   xed_encoder_request_set_iclass (&xe, XED_ICLASS_PUSH);
@@ -1004,8 +1051,9 @@ vex_encode_lea_disp (struct encode_buf *b, xed_reg_enum_t reg,
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  /* leaq	disp(%reg), %reg */
   xed_encoder_request_t xe;
+
+  /* leaq	disp(%reg), %reg */
   xed_encoder_request_zero_set_mode (&xe, &state);
 
   xed_encoder_request_set_iclass (&xe, XED_ICLASS_LEA);
@@ -1023,13 +1071,38 @@ vex_encode_lea_disp (struct encode_buf *b, xed_reg_enum_t reg,
 }
 
 static void
-vex_encode_jmp (struct encode_buf *b, long offset)
+vex_encode_lea_mem (struct encode_buf *b, struct mem *m,
+		    xed_reg_enum_t reg)
 {
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  /* jmp	*%fs:offset */
   xed_encoder_request_t xe;
+
+  /* leaq	m, %reg */
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_LEA);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, reg);
+  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+  vex_xed_set_mem0 (&xe, m);
+  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_AGEN);
+
+  vex_encode (b, &xe);
+}
+
+static void
+ctx_encode_jmp (struct encode_buf *b, size_t offset)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /* jmp	*%fs:offset */
   xed_encoder_request_zero_set_mode (&xe, &state);
 
   xed_encoder_request_set_iclass (&xe, XED_ICLASS_JMP);
@@ -1040,6 +1113,28 @@ vex_encode_jmp (struct encode_buf *b, long offset)
   xed_encoder_request_set_seg0 (&xe, XED_REG_FS);
   xed_encoder_request_set_memory_displacement (&xe, offset, 4);
   xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
+
+  vex_encode (b, &xe);
+}
+
+static void
+vex_encode_jmp_relbr (struct encode_buf *b, xed_iclass_enum_t iclass,
+		      xed_int64_t rel)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+
+  /* jmp	$rel */
+  xed_encoder_request_zero_set_mode (&xe, &state);
+
+  xed_encoder_request_set_iclass (&xe, iclass);
+  /* xed_encoder_request_set_effective_operand_width (&xe, 64); */
+
+  xed_encoder_request_set_relbr (&xe);
+  xed_encoder_request_set_branch_displacement (&xe, rel, get_disp_nbytes (rel, A_D | A_B));
+  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_RELBR);
 
   vex_encode (b, &xe);
 }
@@ -1094,15 +1189,13 @@ save_inst (const unsigned char *p, char *buf, int size, int *len)
 }
 
 static void
-save_translated (const char *path,
+save_translated (const char *path, unsigned long rip,
 		 unsigned long (*map)[2], int nmap,
 		 const struct encode_buf *b)
 {
-  if (nmap == 0) return;
-
   eri_file_buf_t file_buf[32 * 1024];
   eri_file_t file = eri_open_path (path, "vex-trans-", ERI_OPEN_WITHID,
-				   map[0][0], file_buf, sizeof file_buf);
+				   rip, file_buf, sizeof file_buf);
 
   int i = 0;
   size_t off = 0;
@@ -1165,58 +1258,294 @@ vex_get_tmp_reg (struct encode_buf *b, unsigned short *used)
   eri_assert (ffs >= 0);
   xed_reg_enum_t tmp = XED_REG_RAX + ffs;
   vex_mark_used_reg (*used, tmp);
-  vex_encode_save_gpr (b, tmp);
+  ctx_encode_save_gpr (b, tmp);
   return tmp;
 }
 
-#if 0
+#define REC_MEM_OP_NREGS	3
+
 static void
-vex_record_mem_operand (xed_decoded_inst_t *xd, int idx, unsigned short regs,
-			struct encode_buf *b, struct entry *e)
+vex_encode_mov_reg_mem (struct encode_buf *b, xed_reg_enum_t reg, struct mem *m,
+			char reg_to_mem)
 {
-  const xed_inst_t *xi = xed_decoded_inst_inst (xd);
-  const xed_operand_t *op = xed_inst_operand (xi, idx);
-  xed_operand_enum_t op_name = xed_operand_name (op);
-  eri_assert (op_name == XED_OPERAND_MEM0 || op_name == XED_OPERAND_MEM1);
-  char mem_idx = op_name != XED_OPERAND_MEM0;
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
 
-  xed_operand_action_enum_t rw = xed_decoded_inst_operand_action (xd, idx);
-  if (xed_operand_action_read (rw)) ++e->max_nreads;
-  if (xed_operand_action_write (rw)) ++e->max_nwrites;
+  xed_encoder_request_t xe;
+  xed_encoder_request_zero_set_mode (&xe, &state);
 
-  char rep = xed_operand_values_has_real_rep (xd);
+  xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
+  xed_encoder_request_set_effective_operand_width (&xe, 64);
 
-  xed_reg_enum_t tmp1 = vex_get_tmp_reg
-  if (xed_operand_action_read (rw))
-    vex_encode_record (b, 1, rep, idx, tmp1, tmp2, tmp3);
-  if (xed_operand_action_write (rw))
-    vex_encode_record (b, 0, rep, idx, tmp1, tmp2, tmp3);
+  xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, reg);
+  xed_encoder_request_set_operand_order (&xe, reg_to_mem, XED_OPERAND_REG0);
+
+  xed_encoder_request_set_memory_operand_length (&xe, 8);
+  vex_xed_set_mem0 (&xe, m);
+  xed_encoder_request_set_operand_order (&xe, ! reg_to_mem, XED_OPERAND_MEM0);
+
+  vex_encode (b, &xe);
+}
+
+static void
+vex_encode_mov_reg_to_mem (struct encode_buf *b, xed_reg_enum_t reg, struct mem *m)
+{
+  /* movq	%reg, mem */
+  vex_encode_mov_reg_mem (b, reg, m, 1);
+}
+
+static void
+vex_encode_mov_mem_to_reg (struct encode_buf *b, struct mem *m, xed_reg_enum_t reg)
+{
+  /* movq	mem, reg */
+  vex_encode_mov_reg_mem (b, reg, m, 0);
+}
+
+static void
+vex_encode_mov_reg_to_bis (struct encode_buf *b, xed_reg_enum_t reg,
+			   xed_reg_enum_t base, xed_reg_enum_t index, xed_uint_t scale)
+{
+  struct mem m = { XED_OPERAND_MEM0, base, index, scale };
+  vex_encode_mov_reg_to_mem (b, reg, &m);
+}
+
+static void
+vex_encode_mov_bis_to_reg (struct encode_buf *b, xed_reg_enum_t base,
+			   xed_reg_enum_t index, xed_uint_t scale, xed_reg_enum_t reg)
+{
+  struct mem m = { XED_OPERAND_MEM0, base, index, scale };
+  vex_encode_mov_mem_to_reg (b, &m, reg);
+}
+
+static void
+ctx_record_mem_operand_rw_addr (struct encode_buf *b, struct mem *m,
+				size_t off, xed_reg_enum_t *tmps)
+{
+  /*
+     movq	%fs:NADDRS, %tmp1
+     movq	%fs:ADDRS, %tmp2
+     leaq	mem, %tmp3
+     movq	%tmp3, (%tmp2, %tmp1, 8)
+     leaq	1(%tmp1), %tmp1
+     movq	%tmp1, %fs:NADDRS
+  */
+
+  xed_operand_enum_t op_name = m->op_name;
+  m->op_name = XED_OPERAND_AGEN;
+
+  ctx_encode_mov_reg (b, tmps[0], 0, off + VEX_RW_RANGES_NADDRS);
+  ctx_encode_mov_reg (b, tmps[1], 0, off + VEX_RW_RANGES_ADDRS);
+  vex_encode_lea_mem (b, m, tmps[2]);
+  vex_encode_mov_reg_to_bis (b, tmps[2], tmps[1], tmps[0], sizeof (unsigned long));
+  vex_encode_lea_disp (b, tmps[0], 1);
+  ctx_encode_mov_reg (b, tmps[0], 1, off + VEX_RW_RANGES_NADDRS);
+
+  m->op_name = op_name;
+}
+
+#define inst_size (eri_round_up (XED_MAX_INSTRUCTION_BYTES, 16))
+
+static void
+ctx_record_mem_operand_rw_size (struct encode_buf *b, struct mem *m,
+				char rep, size_t off, xed_reg_enum_t *tmps)
+{
+  xed_state_t state;
+  xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+
+  xed_encoder_request_t xe;
+  if (! rep)
     {
-      /* TODO
-	 rw_starts[nrx] = mem;
-         if (! rep) rw_sizes[nrx] = eosz;
-	 ++nrw;
-
-	 movq	%fs:NRW, %tmp1
-	 movq	%fs:RW_STARTS, %tmp2
-	 movq	mem, %tmp3
-	 movq	%tmp3, (%tmp2, %tmp1, 8)
-	if ! rep
-	 movq	%fs:RW_SIZES, %tmp2
-	 movq	$eosz, (%tmp2, %tmp1, 8)
+      /*
+	 movq	%fs:NSIZES, %tmp1
+	 movq	%fs:SIZES, %tmp2
+	 movq	$length, (%tmp2, %tmp1, 8)
 	 leaq	1(%tmp1), %tmp1
-	 movq	%tmp1, %fs:NRW
+	 movq	%tmp1, %fs:NSIZES
       */
+
+      ctx_encode_mov_reg (b, tmps[0], 0, off + VEX_RW_RANGES_NSIZES);
+      ctx_encode_mov_reg (b, tmps[1], 0, off + VEX_RW_RANGES_SIZES);
+
+      xed_encoder_request_zero_set_mode (&xe, &state);
+
+      xed_encoder_request_set_iclass (&xe, XED_ICLASS_MOV);
+      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+      xed_encoder_request_set_memory_operand_length (&xe, 8);
+      xed_encoder_request_set_mem0 (&xe);
+      xed_encoder_request_set_base0 (&xe, tmps[1]);
+      xed_encoder_request_set_index (&xe, tmps[0]);
+      xed_encoder_request_set_scale (&xe, sizeof (unsigned long));
+      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_MEM0);
+
+      xed_encoder_request_set_uimm0 (&xe, m->length, 4);
+      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_IMM0);
+
+      vex_encode (b, &xe);
+
+      vex_encode_lea_disp (b, tmps[0], 1);
+      ctx_encode_mov_reg (b, tmps[0], 1, off + VEX_RW_RANGES_NSIZES);
+    }
+  else
+    {
+      ctx_encode_switch_to_internal_stack (b);
+      ctx_encode_save_rflags (b);
+
+      /*
+	 sizes[nsizes] = mem - addrs[nsizes];
+	 if (sizes[nsizes] < 0)
+	   {
+	     sizes[nsizes] = -sizes[nsizes];
+	     addrs[nsizes] = mem + length;
+	   }
+	 ++nsizes;
+
+	    movq	%fs:NSIZES, %tmp1		; begin
+	    movq	%fs:ADDRS, %tmp2
+	    movq	(%tmp2, %tmp1, 8), %tmp3
+	    leaq	mem, %tmp2
+	    subq	%tmp3, %tmp2			; mem - addrs[nsizes]
+	    movq	%fs:SIZES, %tmp3
+	    jl	1f
+	    movq	%tmp2, (%tmp3, %tmp1, 8)	; bnd, direction flag not set
+	    jmp	2f
+	 1: negq	%tmp2				; bd, direction flag set
+	    movq	%tmp2, (%tmp3, %tmp1, 8)
+	    movq	%fs:ADDRS, %tmp2
+	    leaq	mem, %tmp3
+	    leaq	length(%tmp3), %tmp3
+	    movq	%tmp3, (%tmp2, %tmp1, 8)
+	 2: leaq	1(%tmp1), %tmp1			; inc size
+	    movq	%tmp1, %fs:NSIZES
+      */
+
+      xed_operand_enum_t op_name = m->op_name;
+      m->op_name = XED_OPERAND_AGEN;
+
+      xed_uint8_t bnd_buf[2 * inst_size];
+      struct encode_buf bnd = { b->log, 0, sizeof bnd_buf, bnd_buf };
+
+      xed_uint8_t bd_buf[6 * inst_size];
+      struct encode_buf bd = { b->log, 0, sizeof bd_buf, bd_buf };
+
+      /* bd */
+      xed_encoder_request_zero_set_mode (&xe, &state);
+
+      xed_encoder_request_set_iclass (&xe, XED_ICLASS_NEG);
+      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmps[1]);
+      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+      vex_encode (&bd, &xe);
+
+      vex_encode_mov_reg_to_bis (&bd, tmps[1], tmps[2], tmps[0], sizeof (unsigned long));
+      ctx_encode_mov_reg (&bd, tmps[1], 0, off + VEX_RW_RANGES_ADDRS);
+      vex_encode_lea_mem (&bd, m, tmps[2]);
+      vex_encode_lea_disp (&bd, tmps[2], m->length);
+      vex_encode_mov_reg_to_bis (&bd, tmps[2], tmps[1], tmps[0], sizeof (unsigned long));
+
+      /* bnd */
+      vex_encode_mov_reg_to_bis (&bnd, tmps[1], tmps[2], tmps[0], sizeof (unsigned long));
+      vex_encode_jmp_relbr (&bnd, XED_ICLASS_JMP, bd.off);
+
+      /* begin */
+      ctx_encode_mov_reg (b, tmps[0], 0, off + VEX_RW_RANGES_NSIZES);
+      ctx_encode_mov_reg (b, tmps[1], 0, off + VEX_RW_RANGES_ADDRS);
+      vex_encode_mov_bis_to_reg (b, tmps[1], tmps[0], sizeof (unsigned long), tmps[2]);
+      vex_encode_lea_mem (b, m, tmps[1]);
+
+      xed_encoder_request_zero_set_mode (&xe, &state);
+
+      xed_encoder_request_set_iclass (&xe, XED_ICLASS_SUB);
+      xed_encoder_request_set_effective_operand_width (&xe, 64);
+
+      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, tmps[1]);
+      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
+
+      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG1, tmps[2]);
+      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_REG1);
+
+      vex_encode (b, &xe);
+
+      ctx_encode_mov_reg (b, tmps[2], 0, off + VEX_RW_RANGES_SIZES);
+      vex_encode_jmp_relbr (b, XED_ICLASS_JL, bnd.off);
+
+      vex_concat (b, &bnd);
+      vex_concat (b, &bd);
+
+      /* inc size */
+      vex_encode_lea_disp (b, tmps[0], 1);
+      ctx_encode_mov_reg (b, tmps[0], 1, off + VEX_RW_RANGES_NSIZES);
+
+      m->op_name = op_name;
+
+      ctx_encode_restore_rflags (b);
+      ctx_encode_restore_gpr (b, XED_REG_RSP);
     }
 }
-#endif
+
+static void
+ctx_record_mem_operand_addr (struct encode_buf *b, struct mem *m,
+			     xed_reg_enum_t *tmps, struct entry *e)
+{
+  if (xed_operand_action_read (m->rw))
+    {
+      ++e->max_nreads;
+      ctx_record_mem_operand_rw_addr (b, m, VEX_CTX_READS, tmps);
+    }
+
+  if (xed_operand_action_written (m->rw))
+    {
+      ++e->max_nwrites;
+      ctx_record_mem_operand_rw_addr (b, m, VEX_CTX_WRITES, tmps);
+    }
+}
+
+static void
+ctx_record_mem_operand_size (struct encode_buf *b, struct mem *m,
+			     char rep, xed_reg_enum_t *tmps)
+{
+  if (xed_operand_action_read (m->rw))
+    ctx_record_mem_operand_rw_size (b, m, rep, VEX_CTX_READS, tmps);
+  if (xed_operand_action_written (m->rw))
+    ctx_record_mem_operand_rw_size (b, m, rep, VEX_CTX_WRITES, tmps);
+}
+
+static void
+ctx_record_mem_operands_addr (struct encode_buf *b, struct mem *m, size_t n,
+			      unsigned short *used, xed_reg_enum_t *tmps,
+			      struct entry *e)
+{
+  vex_mark_used_reg (*used, XED_REG_RSP);
+
+  size_t i;
+  for (i = 0; i < REC_MEM_OP_NREGS; ++i)
+    tmps[i] = vex_get_tmp_reg (b, used);
+
+  for (i = 0; i < n; ++i)
+    if (m->op_name != XED_OPERAND_INVALID && m->op_name != XED_OPERAND_AGEN)
+      ctx_record_mem_operand_addr (b, m + i, tmps, e);
+}
+
+static void
+ctx_record_mem_operands_size (struct encode_buf *b, struct mem *m, size_t n,
+			      char rep, xed_reg_enum_t *tmps)
+{
+  size_t i;
+  for (i = 0; i < n; ++i)
+    if (m->op_name != XED_OPERAND_INVALID && m->op_name != XED_OPERAND_AGEN)
+      ctx_record_mem_operand_size (b, m + i, rep, tmps);
+
+  for (i = 0; i < REC_MEM_OP_NREGS; ++i)
+    ctx_encode_restore_gpr (b, tmps[i]);
+}
 
 static void *
 vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 {
   unsigned long map[v->max_inst_count][2];
 
-  size_t inst_size = eri_round_up (XED_MAX_INSTRUCTION_BYTES, 16);
   size_t size = eri_min (32, v->max_inst_count) * inst_size;
   struct encode_buf b = {
     log, &v->epool, size, eri_assert_mtmalloc (&v->epool, size)
@@ -1257,9 +1586,9 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
       xed_iform_enum_t iform = xed_decoded_inst_get_iform_enum (&xd);
       xed_iclass_enum_t iclass = xed_iform_to_iclass (iform);
 
-      if (v->detail
-	  && (iclass == XED_ICLASS_SYSCALL || vex_is_transfer (iclass)))
-        vex_dump_inst (log, rip, &xd);
+      char dmp = v->detail
+		 && (iclass == XED_ICLASS_SYSCALL || vex_is_transfer (iclass));
+      vex_dump_inst (dmp ? log : 0, rip, &xd);
 
       eri_assert (iclass != XED_ICLASS_BOUND);
       eri_assert (iclass != XED_ICLASS_INT);
@@ -1276,7 +1605,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
       xed_uint8_t noperands = xed_inst_noperands (xi);
       unsigned short regs = 0;
       char relbr = 0;
-      struct mem0 mem0 = { XED_OPERAND_INVALID };
+      struct mem m[] = { { XED_OPERAND_INVALID }, { XED_OPERAND_INVALID } };
 
       int j;
       for (j = 0; j < noperands; ++j)
@@ -1300,31 +1629,38 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	    }
 	  else if (op_name == XED_OPERAND_MEM0 || op_name == XED_OPERAND_AGEN)
 	    {
-	      eri_assert (mem0.op_name == XED_OPERAND_INVALID);
-	      mem0.op_name = op_name;
+	      eri_assert (m[0].op_name == XED_OPERAND_INVALID);
+	      m[0].op_name = op_name;
 
-	      mem0.base = xed_decoded_inst_get_base_reg (&xd, 0);
-	      mem0.seg = xed_decoded_inst_get_seg_reg (&xd, 0);
-	      mem0.index = xed_decoded_inst_get_index_reg (&xd, 0);
+	      m[0].base = xed_decoded_inst_get_base_reg (&xd, 0);
+	      m[0].seg = xed_decoded_inst_get_seg_reg (&xd, 0);
+	      m[0].index = xed_decoded_inst_get_index_reg (&xd, 0);
 
-	      mem0.scale = xed_decoded_inst_get_scale (&xd, 0);
-	      mem0.disp = xed_decoded_inst_get_memory_displacement (&xd, 0);
-	      mem0.disp_width = xed_decoded_inst_get_memory_displacement_width (&xd, 0);
+	      m[0].scale = xed_decoded_inst_get_scale (&xd, 0);
+	      m[0].disp = xed_decoded_inst_get_memory_displacement (&xd, 0);
+	      m[0].disp_width = xed_decoded_inst_get_memory_displacement_width (&xd, 0);
 
-	      mem0.vis = xed_operand_operand_visibility (op);
-	      mem0.rw = xed_decoded_inst_operand_action (&xd, j);
+	      m[0].length = xed_decoded_inst_get_memory_operand_length (&xd, 0);
+	      m[0].vis = xed_operand_operand_visibility (op);
+	      m[0].rw = xed_decoded_inst_operand_action (&xd, j);
 
-	      vex_mark_used_reg (regs, mem0.base);
-	      vex_mark_used_reg (regs, mem0.index);
+	      vex_mark_used_reg (regs, m[0].base);
+	      vex_mark_used_reg (regs, m[0].index);
 	    }
 	  else if (op_name == XED_OPERAND_MEM1)
 	    {
-	      xed_reg_enum_t base = xed_decoded_inst_get_base_reg (&xd, 1);
-	      xed_reg_enum_t seg = xed_decoded_inst_get_seg_reg (&xd, 1);
-	      vex_assert_common_regs (base);
-	      eri_assert (base != XED_REG_RIP);
-	      eri_assert (seg == XED_REG_INVALID
-			  || (seg >= XED_REG_CS && seg <= XED_REG_SS));
+	      eri_assert (m[1].op_name == XED_OPERAND_INVALID);
+	      m[1].op_name = op_name;
+
+	      m[1].base = xed_decoded_inst_get_base_reg (&xd, 1);
+	      m[1].seg = xed_decoded_inst_get_seg_reg (&xd, 1);
+
+	      m[1].length = xed_decoded_inst_get_memory_operand_length (&xd, 0);
+
+	      vex_assert_common_regs (m[1].base);
+	      eri_assert (m[1].base != XED_REG_RIP);
+	      eri_assert (m[1].seg == XED_REG_INVALID
+			  || (m[1].seg >= XED_REG_CS && m[1].seg <= XED_REG_SS));
 	    }
 	  else if (op_name == XED_OPERAND_RELBR)
 	    relbr = 1;
@@ -1335,52 +1671,46 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	}
 
       xed_reg_enum_t mem0_tmp = XED_REG_INVALID;
-      if (mem0.op_name != XED_OPERAND_INVALID)
+      if (m[0].op_name != XED_OPERAND_INVALID)
 	{
-	  vex_assert_common_regs (mem0.base);
-	  eri_assert (mem0.seg == XED_REG_INVALID
-		      || (mem0.seg >= XED_REG_CS && mem0.seg <= XED_REG_FS));
-	  vex_assert_common_regs (mem0.index);
-	  eri_assert (mem0.index != XED_REG_RIP);
+	  vex_assert_common_regs (m[0].base);
+	  eri_assert (m[0].seg == XED_REG_INVALID
+		      || (m[0].seg >= XED_REG_CS && m[0].seg <= XED_REG_FS));
+	  vex_assert_common_regs (m[0].index);
+	  eri_assert (m[0].index != XED_REG_RIP);
 
-	  char ref_rip = mem0.base == XED_REG_RIP;
-	  char ref_fs = mem0.seg == XED_REG_FS && mem0.op_name == XED_OPERAND_MEM0;
+	  char ref_rip = m[0].base == XED_REG_RIP;
+	  char ref_fs = m[0].seg == XED_REG_FS && m[0].op_name == XED_OPERAND_MEM0;
 
-	  if (ref_rip || ref_fs) mem0_tmp = vex_get_tmp_reg (&b, &regs);
+	  if (ref_rip || ref_fs)
+	    {
+	      eri_assert (m[0].vis != XED_OPVIS_SUPPRESSED);
+	      eri_assert (m[0].vis != XED_OPVIS_IMPLICIT);
+	      mem0_tmp = vex_get_tmp_reg (&b, &regs);
+	    }
 
 	  if (ref_rip)
 	    {
-	      vex_encode_set_rip_tmp (&b, mem0_tmp, rip);
-	      mem0.base = mem0_tmp;
+	      vex_encode_set_reg_imm (&b, mem0_tmp, rip);
+	      m[0].base = mem0_tmp;
 	    }
 
 	  if (ref_fs)
 	    {
 	      eri_assert (! rep);
 
-	      vex_encode_switch_to_internal_stack (&b);
-	      vex_encode_save_rflags (&b);
+	      ctx_encode_switch_to_internal_stack (&b);
+	      ctx_encode_save_rflags (&b);
 
 	      /*
 		 leaq	mem0, %mem0_tmp
 		 addq	%fs:FSBASE, %mem0_tmp
 	      */
 
-	      mem0.op_name = XED_OPERAND_AGEN;
-	      mem0.seg = XED_REG_INVALID;
+	      m[0].op_name = XED_OPERAND_AGEN;
+	      m[0].seg = XED_REG_INVALID;
 
-	      xed_encoder_request_zero_set_mode (&xe, &state);
-
-	      xed_encoder_request_set_iclass (&xe, XED_ICLASS_LEA);
-	      xed_encoder_request_set_effective_operand_width (&xe, 64);
-
-	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, mem0_tmp);
-	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
-
-	      vex_xed_set_mem0 (&xe, &mem0);
-	      xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_AGEN);
-
-	      vex_encode (&b, &xe);
+	      vex_encode_lea_mem (&b, m, mem0_tmp);
 
 	      xed_encoder_request_zero_set_mode (&xe, &state);
 
@@ -1398,37 +1728,44 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 
 	      vex_encode (&b, &xe);
 
-	      vex_encode_restore_rflags (&b);
-	      vex_encode_restore_gpr (&b, XED_REG_RSP);
+	      ctx_encode_restore_rflags (&b);
+	      ctx_encode_restore_gpr (&b, XED_REG_RSP);
 
-	      mem0.op_name = XED_OPERAND_MEM0;
-	      mem0.seg = XED_REG_INVALID;
-	      mem0.base = mem0_tmp;
-	      mem0.index = XED_REG_INVALID;
-	      mem0.scale = 0;
-	      mem0.disp = 0;
-	      mem0.disp_width = 0;
+	      m[0].op_name = XED_OPERAND_MEM0;
+	      m[0].seg = XED_REG_INVALID;
+	      m[0].base = mem0_tmp;
+	      m[0].index = XED_REG_INVALID;
+	      m[0].scale = 0;
+	      m[0].disp = 0;
+	      m[0].disp_width = 0;
 	    }
 	}
 
-#if 0
-      if (mem0_idx != -1) vex_record_mem_operand (&xd, mem0_idx, regs, &b, e);
-      if (mem1_idx != -1) vex_record_mem_operand (&xd, mem1_idx, regs, &b, e);
-#endif
+      xed_reg_enum_t rec_mem_tmps[REC_MEM_OP_NREGS];
+      if (m[0].op_name == XED_OPERAND_MEM0 || m[1].op_name == XED_OPERAND_MEM1)
+	{
+	  ctx_record_mem_operands_addr (&b, m, 2, &regs, rec_mem_tmps, e);
+
+	  if (! rep)
+	    ctx_record_mem_operands_size (&b, m, 2, rep, rec_mem_tmps);
+	}
 
       ++i;
       if (iclass == XED_ICLASS_SYSCALL)
 	{
+	  eri_assert (! rep);
 	  eri_assert (mem0_tmp == XED_REG_INVALID);
 
-	  vex_encode_set_rip_tmp (&b, XED_REG_R11, rip);
-	  vex_encode_save_rip (&b, XED_REG_R11);
+	  vex_encode_set_reg_imm (&b, XED_REG_R11, rip);
+	  ctx_encode_save_rip (&b, XED_REG_R11);
 
-	  vex_encode_jmp (&b, VEX_CTX_SYSCALL);
+	  ctx_encode_jmp (&b, VEX_CTX_SYSCALL);
 	  break;
 	}
       else if (vex_is_transfer (iclass))
 	{
+	  eri_assert (! rep);
+
 	  xed_reg_enum_t rip_tmp = vex_get_tmp_reg (&b, &regs);
 	  if (iclass == XED_ICLASS_RET_NEAR)
 	    {
@@ -1461,20 +1798,20 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 
 	      if (iclass == XED_ICLASS_CALL_NEAR)
 		{
-		  vex_encode_set_rip_tmp (&b, rip_tmp, rip);
+		  vex_encode_set_reg_imm (&b, rip_tmp, rip);
 		  vex_encode_push_reg (&b, rip_tmp);
 
 		  vex_encode_lea_disp (&b, rip_tmp, disp);
 		}
 	      else if (iclass == XED_ICLASS_JMP)
-		vex_encode_set_rip_tmp (&b, rip_tmp, rip + disp);
+		vex_encode_set_reg_imm (&b, rip_tmp, rip + disp);
 	      else
 		{
 		  /*
 			e.g. ja	1f
-			movq	$rip, %rip_tmp		; bnj
+			movq	$rip, %rip_tmp		; bnj, no conditional jump
 			jmp	2f
-		     1: movq	$rip + disp, %rip_tmp	; bj
+		     1: movq	$rip + disp, %rip_tmp	; bj, conditional jump
 		     2:
 		  */
 		  xed_uint8_t bnj_buf[2 * inst_size];
@@ -1484,23 +1821,11 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 		  struct encode_buf bj = { log, 0, sizeof bj_buf, bj_buf };
 
 		  /* bj */
-		  vex_encode_set_rip_tmp (&bj, rip_tmp, rip + disp);
+		  vex_encode_set_reg_imm (&bj, rip_tmp, rip + disp);
 
 		  /* bnj */
-		  vex_encode_set_rip_tmp (&bnj, rip_tmp, rip);
-
-		  xed_encoder_request_t xe;
-		  xed_encoder_request_zero_set_mode (&xe, &state);
-
-		  xed_encoder_request_set_iclass (&xe, XED_ICLASS_JMP);
-		  /* xed_encoder_request_set_effective_operand_width (&xe, 64); */
-
-		  xed_encoder_request_set_relbr (&xe);
-		  xed_encoder_request_set_branch_displacement (
-		    &xe, bj.off, get_disp_nbytes (bj.off, A_D | A_B));
-		  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_RELBR);
-
-		  vex_encode (&bnj, &xe);
+		  vex_encode_set_reg_imm (&bnj, rip_tmp, rip);
+		  vex_encode_jmp_relbr (&bnj, XED_ICLASS_JMP, bj.off);
 
 		  /* e.g. ja	1f */
 		  xed_encoder_request_zero_set_mode (&xe, &state);
@@ -1523,7 +1848,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 
 	      if (iclass == XED_ICLASS_CALL_NEAR)
 		{
-		  vex_encode_set_rip_tmp (&b, rip_tmp, rip);
+		  vex_encode_set_reg_imm (&b, rip_tmp, rip);
 		  vex_encode_push_reg (&b, rip_tmp);
 		}
 
@@ -1536,10 +1861,13 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	      xed_encoder_request_set_reg (&xe, XED_OPERAND_REG0, rip_tmp);
 	      xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_REG0);
 
-	      if (mem0.op_name == XED_OPERAND_MEM0 && mem0.vis == XED_OPVIS_EXPLICIT)
+	      if (m[0].op_name == XED_OPERAND_MEM0
+		  && (m[0].vis == XED_OPVIS_EXPLICIT || m[0].vis == XED_OPVIS_IMPLICIT))
 		{
+		  eri_assert (m[0].vis != XED_OPVIS_IMPLICIT);
+
 		  xed_encoder_request_set_memory_operand_length (&xe, 8);
-		  vex_xed_set_mem0 (&xe, &mem0);
+		  vex_xed_set_mem0 (&xe, m);
 		  xed_encoder_request_set_operand_order (&xe, 1, XED_OPERAND_MEM0);
 		}
 	      else
@@ -1552,38 +1880,42 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	      vex_encode (&b, &xe);
 	    }
 
-	  vex_encode_save_rip (&b, rip_tmp);
-	  vex_encode_restore_gpr (&b, rip_tmp);
+	  ctx_encode_save_rip (&b, rip_tmp);
+	  ctx_encode_restore_gpr (&b, rip_tmp);
 
-	  if (mem0_tmp != XED_REG_INVALID) vex_encode_restore_gpr (&b, mem0_tmp);
+	  if (mem0_tmp != XED_REG_INVALID) ctx_encode_restore_gpr (&b, mem0_tmp);
 
-	  vex_encode_jmp (&b, VEX_CTX_BACK);
+	  ctx_encode_jmp (&b, VEX_CTX_BACK);
 	  break;
 	}
       else
 	{
 	  xed_encoder_request_init_from_decode (&xd);
-	  if (mem0.op_name != XED_OPERAND_INVALID) vex_xed_set_mem0 (&xd, &mem0);
+	  if (m[0].op_name != XED_OPERAND_INVALID) vex_xed_set_mem0 (&xd, m);
 	  vex_encode (&b, &xd);
+
+	  if ((m[0].op_name == XED_OPERAND_MEM0 || m[1].op_name == XED_OPERAND_MEM1)
+	      && rep)
+	    ctx_record_mem_operands_size (&b, m, 2, rep, rec_mem_tmps);
 
 	  if (i == v->max_inst_count)
 	    {
 	      xed_reg_enum_t rip_tmp = mem0_tmp != XED_REG_INVALID
 				       ? mem0_tmp : vex_get_tmp_reg (&b, 0);
-	      vex_encode_set_rip_tmp (&b, rip_tmp, rip);
-	      vex_encode_save_rip (&b, rip_tmp);
-	      vex_encode_restore_gpr (&b, rip_tmp);
-	      vex_encode_jmp (&b, VEX_CTX_BACK);
+	      vex_encode_set_reg_imm (&b, rip_tmp, rip);
+	      ctx_encode_save_rip (&b, rip_tmp);
+	      ctx_encode_restore_gpr (&b, rip_tmp);
+	      ctx_encode_jmp (&b, VEX_CTX_BACK);
 	      break;
 	    }
 
 	  if (mem0_tmp != XED_REG_INVALID)
-	    vex_encode_restore_gpr (&b, mem0_tmp);
+	    ctx_encode_restore_gpr (&b, mem0_tmp);
 	}
     }
 
   if (i != v->max_inst_count) e->inst_rips[i].rip = 0;
-  if (v->detail) save_translated (v->path, map, i, &b);
+  if (v->detail) save_translated (v->path, e->rip, map, i, &b);
   return b.p;
 }
 
@@ -1657,9 +1989,7 @@ vex_loop (struct context *c)
 	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
 
       /* ERI_ASSERT_SYSCALL (exit, 0); */
-      int i;
       if (v->detail)
-	{
 	  cprintf (c->log, "execute rip: %lx "
 			   "rax: %lx, rcx: %lx, rdx: %lx, rbx: %lx "
 			   "rsp: %lx, rbp: %lx, rsi: %lx, rdi: %lx "
@@ -1674,19 +2004,33 @@ vex_loop (struct context *c)
 			   c->ctx.comm.r10, c->ctx.comm.r11,
 			   c->ctx.comm.r12, c->ctx.comm.r13,
 			   c->ctx.comm.r14, c->ctx.comm.r15);
-	  for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+      int i;
+      if (v->detail)
+	for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+	  {
 	    cprintf (c->log,
 		     e->inst_rips[i].rep ? ">>>> 0x%lx...\n" : ">>>> 0x%lx\n",
 		     e->inst_rips[i].rip);
-	}
+	    cprintf (c->rip_file,
+		     e->inst_rips[i].rep ? "0x%lx...\n" : "0x%lx\n",
+		     e->inst_rips[i].rip);
+	  }
+      else
+	for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+	  {
+	    struct inst_rip *ir = e->inst_rips + i;
+	    eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rip, sizeof ir->rip, 0) == 0);
+	    eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rep, sizeof ir->rep, 0) == 0);
+	  }
 
-      for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
-        {
-	  struct inst_rip *ir = e->inst_rips + i;
-	  eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rip, sizeof ir->rip, 0) == 0);
-	  eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rep, sizeof ir->rep, 0) == 0);
-        }
+      /* XXX record read instructions */
+
+      init_rw_ranges (&v->pool, &c->ctx.reads, e->max_nreads);
+      init_rw_ranges (&v->pool, &c->ctx.writes, e->max_nwrites);
+
       vex_execute ();
+
+      gather_rw (&v->pool, c);
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
     }
@@ -1733,7 +2077,8 @@ eri_vex_enter (char *buf, size_t size,
   eri_memset (v, 0, sizeof *v);
   v->pagesize = page;
   v->path = path;
-  v->file_buf_size = 64 * 1024;
+  v->stack_size = 2 * 1024 * 1024;
+  v->file_buf_size = 32 * 1024;
   v->detail = 0;
 
   if (mmap)

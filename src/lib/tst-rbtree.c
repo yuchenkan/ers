@@ -27,7 +27,7 @@ int main()
 
   struct node n[6];
   int i;
-  for (i = 0; i < sizeof n / sizeof n[0]; ++i)
+  for (i = 0; i < eri_length_of (n); ++i)
     {
       n[i].k = 2 * i;
       n[i].v = (char) i;

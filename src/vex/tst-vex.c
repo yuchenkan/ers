@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <asm/prctl.h>
@@ -14,8 +15,9 @@ char __attribute__ ((aligned (16))) stack[8 * 1024 * 1024];
 static void
 tst (void)
 {
-  fprintf (stderr, "%s %d\n", "123", 123);
-  free (malloc (4 * 1024 * 1024));
+  void *p = malloc (4 * 1024 * 1024);
+  fprintf (stderr, "%p %s %d\n", p, "123", 123);
+  free (p);
   exit (0);
 }
 
