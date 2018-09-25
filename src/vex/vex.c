@@ -207,6 +207,8 @@ struct vex
 
   char detail;
 
+  eri_vex_break_cb_t brk;
+
   void *mmap;
   size_t mmap_size;
   char group_exiting;
@@ -324,12 +326,23 @@ init_rw_ranges (struct eri_mtpool *p, struct vex_rw_ranges *rw, size_t n)
 }
 
 static void
-gather_rw (struct eri_mtpool *p, struct context *c)
+vex_break (struct vex *v, struct context *c)
 {
   eri_assert (c->ctx.reads.naddrs == c->ctx.reads.nsizes);
   eri_assert (c->ctx.writes.naddrs == c->ctx.writes.nsizes);
 
-  eri_assert (eri_fwrite (c->log, "gather\n", eri_strlen ("gather\n"), 0) == 0);
+  if (v->brk)
+    {
+      struct eri_vex_rw_ranges r = {
+	c->ctx.reads.naddrs, c->ctx.reads.addrs, c->ctx.reads.sizes
+      };
+
+      struct eri_vex_rw_ranges w = {
+	c->ctx.writes.naddrs, c->ctx.writes.addrs, c->ctx.writes.sizes
+      };
+
+      v->brk (&c->ctx.comm, &r, &w);
+    }
 
 #if 0
   size_t i;
@@ -342,9 +355,9 @@ gather_rw (struct eri_mtpool *p, struct context *c)
 #endif
 
   if (c->ctx.reads.addrs)
-    eri_assert_mtfree (p, c->ctx.reads.addrs);
+    eri_assert_mtfree (&v->pool, c->ctx.reads.addrs);
   if (c->ctx.writes.addrs)
-    eri_assert_mtfree (p, c->ctx.writes.addrs);
+    eri_assert_mtfree (&v->pool, c->ctx.writes.addrs);
 }
 
 #define VEX_EXIT_GROUP	0
@@ -439,7 +452,7 @@ vex_exit (unsigned long status, int nr, struct context *c)
 {
   struct vex *v = c->vex;
 
-  gather_rw (&v->pool, c);
+  vex_break (v, c);
 
   int type = VEX_EXIT_SELF;
   char grp = nr == __NR_exit_group || c->id == 0;
@@ -1741,8 +1754,11 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	    }
 	}
 
+      char rec = v->brk
+		 && (m[0].op_name == XED_OPERAND_MEM0
+		     || m[1].op_name == XED_OPERAND_MEM1);
       xed_reg_enum_t rec_mem_tmps[REC_MEM_OP_NREGS];
-      if (m[0].op_name == XED_OPERAND_MEM0 || m[1].op_name == XED_OPERAND_MEM1)
+      if (rec)
 	{
 	  ctx_record_mem_operands_addr (&b, m, 2, &regs, rec_mem_tmps, e);
 
@@ -1894,8 +1910,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 	  if (m[0].op_name != XED_OPERAND_INVALID) vex_xed_set_mem0 (&xd, m);
 	  vex_encode (&b, &xd);
 
-	  if ((m[0].op_name == XED_OPERAND_MEM0 || m[1].op_name == XED_OPERAND_MEM1)
-	      && rep)
+	  if (rec && rep)
 	    ctx_record_mem_operands_size (&b, m, 2, rep, rec_mem_tmps);
 
 	  if (i == v->max_inst_count)
@@ -2025,12 +2040,15 @@ vex_loop (struct context *c)
 
       /* XXX record read instructions */
 
-      init_rw_ranges (&v->pool, &c->ctx.reads, e->max_nreads);
-      init_rw_ranges (&v->pool, &c->ctx.writes, e->max_nwrites);
+      if (v->brk)
+	{
+	  init_rw_ranges (&v->pool, &c->ctx.reads, e->max_nreads);
+	  init_rw_ranges (&v->pool, &c->ctx.writes, e->max_nwrites);
+	}
 
       vex_execute ();
 
-      gather_rw (&v->pool, c);
+      if (v->brk) vex_break (v, c);
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
     }
@@ -2067,21 +2085,24 @@ setup_pool_monitor (struct eri_pool *pool, const char *name)
 }
 
 void
-eri_vex_enter (char *buf, size_t size,
-	       const struct eri_vex_context *ctx,
-	       const char *path, char mmap)
+eri_vex_enter (const struct eri_vex_desc *desc)
 {
-  size_t page = ctx->pagesize;
+  char *buf = desc->buf;
+  size_t size = desc->size;
+
+  size_t page = desc->pagesize;
   eri_assert (size >= 8 * 1024);
   struct vex *v = (struct vex *) buf;
   eri_memset (v, 0, sizeof *v);
   v->pagesize = page;
-  v->path = path;
+  v->path = desc->path;
   v->stack_size = 2 * 1024 * 1024;
   v->file_buf_size = 32 * 1024;
   v->detail = 0;
 
-  if (mmap)
+  v->brk = desc->brk;
+
+  if (desc->mmap)
     {
       v->mmap = buf;
       v->mmap_size = size;
@@ -2106,7 +2127,7 @@ eri_vex_enter (char *buf, size_t size,
   v->max_inst_count = 32;
 
   struct context *c = alloc_context (v);
-  eri_memcpy (&c->ctx.comm, &ctx->comm, sizeof c->ctx.comm);
+  eri_memcpy (&c->ctx.comm, &desc->comm, sizeof c->ctx.comm);
 
   __atomic_add_fetch (&v->ncontexts, 1, __ATOMIC_ACQUIRE);
   start_context (c);

@@ -3,8 +3,6 @@
 
 #include "vex-pub.h"
 
-struct context;
-
 struct vex_rw_ranges
 {
   unsigned long naddrs;
@@ -15,7 +13,7 @@ struct vex_rw_ranges
 
 struct vex_context
 {
-  struct context *ctx;
+  void *ctx;
 
   unsigned long syscall;
   unsigned long back;

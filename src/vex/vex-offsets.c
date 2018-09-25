@@ -1,17 +1,11 @@
 #include "vex.h"
-
-#define DECLARE_I(sym, val) \
-  asm ("__AS_DEFINE__ " #sym "\t%c0" :: "n" ((unsigned long) (val)))
-#define DECLARE(sym, val) DECLARE_I (sym, val)
-
-#define STR_CAT_I(x, y) x##y
-#define STR_CAT(x, y) STR_CAT_I (x, y)
+#include "lib/offset.h"
 
 #define RW_RANGES_OFFSET(name, member) \
-  DECLARE (STR_CAT (VEX_RW_RANGES_, name), __builtin_offsetof (struct vex_rw_ranges, member))
+  ERI_DECLARE_OFFSET (VEX_RW_RANGES_, name, struct vex_rw_ranges, member)
 
 #define CTX_OFFSET(name, member) \
-  DECLARE (STR_CAT (VEX_CTX_, name), __builtin_offsetof (struct vex_context, member))
+  ERI_DECLARE_OFFSET (VEX_CTX_, name, struct vex_context, member)
 
 void
 declare (void)

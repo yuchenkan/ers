@@ -1455,13 +1455,15 @@ analysis (struct internal *internal,
 {
   eri_assert (internal->mode == ERS_ANALYSIS);
 
-  struct eri_vex_context ctx = { 4096 };
-  ctx.comm.rip = entry;
-  ctx.comm.rsi = arg;
-  ctx.comm.rsp = stack;
+  struct eri_vex_desc desc = {
+    internal->analysis.buf, internal->analysis.buf_size, 1,
+    4096, internal->path, 0
+  };
+  desc.comm.rip = entry;
+  desc.comm.rsi = arg;
+  desc.comm.rsp = stack;
 
-  eri_vex_enter (internal->analysis.buf, internal->analysis.buf_size,
-		 &ctx, internal->path, 1);
+  eri_vex_enter (&desc);
   eri_assert (0);
 }
 

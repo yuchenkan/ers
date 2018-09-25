@@ -37,15 +37,32 @@ struct eri_vex_common_context
   struct eri_vex_xsave xsave;
 };
 
-struct eri_vex_context
+struct eri_vex_rw_ranges
 {
+  size_t n;
+  unsigned long *addrs;
+  unsigned long *sizes;
+};
+
+typedef void (*eri_vex_break_cb_t) (struct eri_vex_common_context *ctx,
+				    struct eri_vex_rw_ranges *reads,
+				    struct eri_vex_rw_ranges *writes);
+
+struct eri_vex_desc
+{
+  char *buf;
+  size_t size;
+  char mmap;
+
   size_t pagesize;
+
+  const char *path;
+
+  eri_vex_break_cb_t brk;
 
   struct eri_vex_common_context comm;
 };
 
-void eri_vex_enter (char *buf, size_t size,
-		    const struct eri_vex_context *ctx,
-		    const char *path, char mmap);
+void eri_vex_enter (const struct eri_vex_desc *desc);
 
 #endif

@@ -21,7 +21,7 @@ LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 TRACER := tracer.c common.c lib/printf.c lib/util.c
 
-CFLAGS := $O -I. -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := $O -I. -I$(BUILD) -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
 VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj
@@ -34,10 +34,11 @@ LIB_TST_VEX := vex/tst-vex-entry.c vex/vex.c common.c $(LIB)
 BUILD_VEX_TSTS := $(BUILD)/vex/tst-vex $(BUILD)/vex/tst-vex-simple
 
 all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer $(BUILD)/tracee \
-	$(BUILD_VEX_TSTS)
+     $(BUILD_VEX_TSTS)
 	cp vex/*.sh $(BUILD)/vex
 
-$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(LIB_RECORDER:.c=.o)) $(XED)
+$(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(LIB_RECORDER:.c=.o)) $(XED) \
+			 $(BUILD)/recorder-offsets.h
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) $(VEX_LDFLAGS) $(LIB_LDFLAGS) -Wl,-e,entry -o $@ $^
 	objdump -W $@ >$(@:.so=.dwarf)

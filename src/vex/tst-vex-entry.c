@@ -90,6 +90,12 @@ tst:			\n\
 
 void *tst (void *);
 
+void brk (struct eri_vex_common_context *ctx,
+	  struct eri_vex_rw_ranges *reads,
+	  struct eri_vex_rw_ranges *writes)
+{
+}
+
 void __attribute__ ((visibility ("default")))
 entry (void *rip, void *rsp, unsigned long fsbase)
 {
@@ -101,26 +107,26 @@ entry (void *rip, void *rsp, unsigned long fsbase)
   char *buf = (char *) ERI_ASSERT_SYSCALL_RES (
 		mmap, 0, buf_size, ERI_PROT_READ | ERI_PROT_WRITE,
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+  const char *path = "vex_data";
 
-  struct eri_vex_context ctx = { 4096 };
+  struct eri_vex_desc desc = { buf, buf_size, 1, 4096, path, brk };
   if (rip == 0)
     {
-      ctx.comm.rip = (unsigned long) tst;
-      ctx.comm.rdi = (unsigned long) &p;
-      ctx.comm.rsp = (unsigned long) (stack + sizeof stack);
+      desc.comm.rip = (unsigned long) tst;
+      desc.comm.rdi = (unsigned long) &p;
+      desc.comm.rsp = (unsigned long) (stack + sizeof stack);
     }
   else
     {
-      ctx.comm.rip = (unsigned long) rip;
-      ctx.comm.rsp = (unsigned long) rsp;
-      ctx.comm.fsbase = fsbase;
+      desc.comm.rip = (unsigned long) rip;
+      desc.comm.rsp = (unsigned long) rsp;
+      desc.comm.fsbase = fsbase;
     }
 
   /* eri_printf ("%lx %lx %lx\n", p, &p, tst (&p)); */
 
-  const char *path = "vex_data";
   if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, ERI_S_IRWXU)))
     eri_assert (eri_fprintf (ERI_STDERR, "failed to create %s\n", path) == 0);
-  eri_vex_enter (buf, buf_size, &ctx, path, 1);
+  eri_vex_enter (&desc);
   eri_assert (0);
 }
