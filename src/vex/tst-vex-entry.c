@@ -1,7 +1,7 @@
 #include <asm/unistd.h>
 
 #include "vex-pub.h"
-#include "recorder.h"
+#include "recorder-common.h"
 #include "common.h"
 
 #include "lib/syscall.h"

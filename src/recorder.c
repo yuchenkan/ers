@@ -3,6 +3,9 @@
 #include <asm/unistd.h>
 
 #include "recorder.h"
+#include "recorder-offsets.h"
+#include "recorder-common.h"
+#include "recorder-common-offsets.h"
 #include "common.h"
 
 #include "lib/util.h"
@@ -31,7 +34,7 @@ struct sigset
   unsigned long val[16];
 };
 
-struct ers_thread
+struct thread
 {
   unsigned long id;
   int *clear_tid;
@@ -112,16 +115,13 @@ struct internal
   const char *path;
   size_t file_buf_size;
 
-  struct ers_thread *main;
-
-  struct ers_thread *(*get_thread) (void *);
-  void (*set_thread) (struct ers_thread *, void *);
-  void *get_set_thread_arg;
-
   char printf;
   int printf_lock;
 
   char mode;
+
+  struct thread *main;
+  long thread_offset;
 
   ATOMIC_TYPE (long) active_lock;
 
@@ -280,7 +280,7 @@ lunlock (struct internal *internal, struct lock *lock)
 ERI_DEFINE_RBTREE (static, atomic, struct internal, struct atomic_lock, void *, eri_less_than)
 ERI_DEFINE_RBTREE (static, sigact, struct internal, struct sigact_wrap, int, eri_less_than)
 
-ERI_DEFINE_LIST (static, thread, struct internal, struct ers_thread)
+ERI_DEFINE_LIST (static, thread, struct internal, struct thread)
 
 static void *
 imalloc (struct internal *internal, unsigned long tid, size_t size)
@@ -309,23 +309,6 @@ ifree (struct internal *internal, unsigned long tid, void *p)
   lunlock (internal, &internal->pool_lock);
 }
 
-static inline struct ers_thread *
-get_thread (struct internal *internal)
-{
-  return internal->get_thread
-	 ? internal->get_thread (internal->get_set_thread_arg)
-	 : internal->main;
-}
-
-static inline void
-set_thread (struct internal *internal, struct ers_thread *th)
-{
-  if (internal->set_thread)
-    internal->set_thread (th, internal->get_set_thread_arg);
-  else
-    internal->main = th;
-}
-
 static void
 iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 {
@@ -347,20 +330,31 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
     }
 }
 
-static struct ers_thread *
-init_thread (struct internal *internal, unsigned long tid, int *ctid)
+static struct thread *
+alloc_thread (struct internal *internal, unsigned long tid,
+	      int *ctid, void *tp)
 {
-  size_t thread_size = eri_round_up (sizeof (struct ers_thread), 16);
+  size_t thread_size = eri_size_of (struct thread, 16);
+  size_t buf_size = internal->file_buf_size;
+
+  struct thread *th = icalloc (internal, tid, thread_size + buf_size * 2);
+
+  th->id = ATOMIC_FETCH_ADD (internal, tid, &internal->thread_id, 1);
+  th->clear_tid = ctid;
+
+  return th;
+}
+
+static void
+start_thread (struct internal *internal, struct thread *th)
+{
+  size_t thread_size = eri_size_of (struct thread, 16);
   size_t buf_size = internal->file_buf_size;
 
   char mode = internal->mode;
-  struct ers_thread *th = icalloc (internal, tid, thread_size + buf_size * 2);
-
   const char *path = internal->path;
 
-  th->id = tid;
-  th->clear_tid = ctid;
-
+  unsigned long tid = th->id;
   th->file = eri_open_path (path, "thread-",
     ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ,
     tid, (char *) th + thread_size, buf_size);
@@ -373,11 +367,10 @@ init_thread (struct internal *internal, unsigned long tid, int *ctid)
   llock (internal, tid, &internal->threads_lock);
   thread_lst_append (internal, th);
   lunlock (internal, &internal->threads_lock);
-  return th;
 }
 
 static void
-fini_thread (struct internal *internal, struct ers_thread *th)
+fini_thread (struct internal *internal, struct thread *th)
 {
   llock (internal, th->id, &internal->threads_lock);
   thread_lst_remove (th);
@@ -432,8 +425,6 @@ init_context (eri_file_t init, unsigned long start, unsigned long end)
 {
   asm ("");
   struct eri_context ctx;
-  /* unsigned long fs;
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_GET_FS, &fs); */
   eri_save_mark (init, ERI_MARK_INIT_STACK);
   eri_save_init_map_data (init, (const char *) start, end - start);
   char mode = set_context (&ctx);
@@ -447,7 +438,6 @@ init_context (eri_file_t init, unsigned long start, unsigned long end)
       eri_assert (eri_fprintf (ERI_STDERR, "replay!!!\n") == 0);
       eri_dump_maps (ERI_STDERR);
       ERI_ASSERT_SYSCALL (munmap, ctx.unmap_start, ctx.unmap_size);
-      /* ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, fs); */
     }
   return mode;
 }
@@ -502,7 +492,9 @@ proc_map_entry (const struct eri_map_entry *ent, void *data)
 static char
 init_process (struct internal *internal, const char *path)
 {
-  /* internal->printf = 1; */
+#ifdef DEBUG
+  internal->printf = 1;
+#endif
 
   eri_assert (eri_fprintf (ERI_STDERR, "init_process %lx\n", internal) == 0);
 
@@ -510,7 +502,11 @@ init_process (struct internal *internal, const char *path)
   if (ERI_SYSCALL_ERROR_P (ERI_SYSCALL (mkdir, path, ERI_S_IRWXU)))
     eri_assert (eri_fprintf (ERI_STDERR, "failed to create %s\n", path) == 0);
 
+#ifdef DEBUG
+  size_t file_buf_size = internal->file_buf_size = 0;
+#else
   size_t file_buf_size = internal->file_buf_size = 64 * 1024;
+#endif
   struct lock *locks[] = INTERNAL_LOCKS (internal);
   size_t nlocks = eri_length_of (locks);
   size_t pool_size = 64 * 1024 * 1024;
@@ -569,22 +565,32 @@ init_process (struct internal *internal, const char *path)
       init_lock (internal, locks[i], lfile);
     }
 
-  set_thread (internal,
-	      init_thread (internal, internal->thread_id.val++, 0));
+  internal->main = alloc_thread (internal, 0, 0, 0);
+  start_thread (internal, internal->main);
   return mode;
 }
 
+static struct thread *
+get_thread (struct internal *internal)
+{
+  if (internal->main) return internal->main;
+  struct thread *thread;
+  asm ("movq	%%fs:(%1), %0" : "=r" (thread) : "r" (internal->thread_offset));
+  return thread;
+}
+
 static void
-setup_tls (struct internal *internal,
-	   struct ers_thread *(*get) (void *),
-	   void (*set) (struct ers_thread *, void *),
-	   void *arg)
+set_thread (struct internal *internal, struct thread *thread)
+{
+  asm ("movq	%0, %%fs:(%1)" : : "r" (thread), "r" (internal->thread_offset));
+}
+
+static void
+setup_tls (struct internal *internal, long offset)
 {
   eri_assert (internal->main);
 
-  internal->get_thread = get;
-  internal->set_thread = set;
-  internal->get_set_thread_arg = arg;
+  internal->thread_offset = offset;
   set_thread (internal, internal->main);
   internal->main = 0;
 
@@ -656,7 +662,7 @@ acquire_active_lock (struct internal *internal, long v, char mk)
       eri_lock (&lock->lock, 1);
       if ((internal->active_lock.val += v) > 0)
 	{
-	  struct ers_thread *th = get_thread (internal);
+	  struct thread *th = get_thread (internal);
 	  eri_save_mark (th->file, mk);
 	  save_lock (lock->file, th->id);
 	  eri_memcpy (&th->old_set, &old_set, sizeof old_set);
@@ -671,7 +677,7 @@ acquire_active_lock (struct internal *internal, long v, char mk)
     {
     retry:
       eri_lock (&internal->replay.active_lock, 1);
-      struct ers_thread *th = get_thread (internal);
+      struct thread *th = get_thread (internal);
       unsigned long tid = th->id;
 
       char trigger_signal = 0;
@@ -860,14 +866,14 @@ ent_sigaction (int sig, struct siginfo *info, void *ucontext);
 #define SA_SIGINFO	4
 
 static struct atomic_lock *
-get_atomic_lock (struct internal *internal, struct ers_thread * th,
+get_atomic_lock (struct internal *internal, struct thread * th,
 		 void *mem, char create)
 {
   llock (internal, th->id, &internal->atomics_lock);
   struct atomic_lock *lock = atomic_rbt_get (internal, &mem, ERI_RBT_EQ);
   if (create && ! lock)
     {
-      size_t lock_size = eri_round_up (sizeof *lock, 16);
+      size_t lock_size = eri_size_of (*lock, 16);
       size_t buf_size = internal->file_buf_size;
       lock = icalloc (internal, th->id, lock_size + buf_size);
       lock->mem = mem;
@@ -898,7 +904,7 @@ syscall (struct internal *internal, int nr,
     return 0;
 
   char mode = internal->mode;
-  struct ers_thread *th = get_thread (internal);
+  struct thread *th = get_thread (internal);
   unsigned long tid = th->id;
   iprintf (internal, th->log, "syscall %lu %u\n", tid, nr);
 
@@ -937,7 +943,7 @@ syscall (struct internal *internal, int nr,
 	      ifree (internal, tid, w);
 	    }
 
-	  struct ers_thread *t, *nt;
+	  struct thread *t, *nt;
 	  ERI_LST_FOREACH_SAFE (thread, internal, t, nt) fini_thread (internal, t);
 
 	  struct atomic_lock *l, *nl;
@@ -1239,6 +1245,15 @@ syscall (struct internal *internal, int nr,
     CSYSCALL_REC_RES (mode, th->file, res, nr, a1, a2, a3);
   else if (nr == __NR_time)
     CSYSCALL_REC_RES_OUT (mode, th->file, res, (long *) a1, nr, a1);
+  else if (nr == __NR_arch_prctl)
+    {
+      CHECK_SYSCALL (mode, th->file, nr, a1, a2);
+      if (a1 != ERI_ARCH_GET_FS && a1 != ERI_ARCH_GET_GS)
+	SYSCALL_REC_RES (mode, th->file, res, nr, a1, a2);
+      else
+	SYSCALL_REC_RES_OUT (mode, th->file, res,
+			     (unsigned long *) a2, nr, a1, a2);
+    }
   else
     {
       iprintf (internal, th->log, "not support %u\n", nr);
@@ -1250,53 +1265,43 @@ syscall (struct internal *internal, int nr,
   return 1;
 }
 
-struct clone
-{
-  unsigned long child_id;
-  struct sigset old_set;
-  int *ctid;
-
-  long res; /* replay */
-};
-
 #define CLONE_FLAGS \
   (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
    | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
    | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
 
 static char __attribute__ ((used))
-pre_clone (struct internal *internal, struct clone **clone,
-	   long *flags, void *cstack, int *ptid, int *ctid, void *tp)
+pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 {
   if (! acquire_active_lock (internal, 2, MARK_THREAD_ACTIVE))
     return 0;
 
-  eri_assert (*flags == CLONE_FLAGS);
+  eri_assert (internal->main == 0);
+  eri_assert (desc->flags == CLONE_FLAGS);
 
   char mode = internal->mode;
-  struct ers_thread *th = get_thread (internal);
+  struct thread *th = get_thread (internal);
 
   iprintf (internal, th->log, "pre_clone %lu\n", th->id);
-  CHECK_SYSCALL (mode, th->file, __NR_clone, flags, cstack, ptid, ctid, tp);
+  CHECK_SYSCALL (mode, th->file, __NR_clone, desc->flags, desc->cstack,
+		 desc->ptid, desc->ctid, desc->tp);
 
-  *clone = imalloc (internal, th->id, sizeof **clone);
-  (*clone)->child_id = ATOMIC_FETCH_ADD (internal, th->id, &internal->thread_id, 1);
-  eri_memcpy (&(*clone)->old_set, &th->old_set, sizeof th->old_set);
-
-  (*clone)->ctid = ctid;
+  struct thread *c = alloc_thread (internal, th->id, desc->ctid, desc->tp);
+  desc->child = c;
+  eri_memcpy (&c->old_set, &th->old_set, sizeof th->old_set);
 
   if (mode != ERS_LIVE)
     {
-      (*clone)->res = load_result (th->file);
-      eri_assert ((*clone)->res);
-      if (ERI_SYSCALL_ERROR_P ((*clone)->res))
+      desc->replay_result = load_result (th->file);
+      eri_assert (desc->replay_result);
+      if (ERI_SYSCALL_ERROR_P (desc->replay_result))
 	{
 	  iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
 	  return 2;
 	}
 
-      *flags &= ~(ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID);
-      *ptid = (*clone)->res;
+      desc->flags &= ~(ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID);
+      *desc->ptid = desc->replay_result;
     }
   iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
   llock (internal, th->id, &internal->clone_lock);
@@ -1304,57 +1309,49 @@ pre_clone (struct internal *internal, struct clone **clone,
 }
 
 static long __attribute__ ((used))
-post_clone (struct internal *internal, struct clone *clone, long res)
+post_clone (struct internal *internal, struct thread *child, long res, long replay)
 {
-  char mode = internal->mode;
-  struct ers_thread *th = res == 0 ? 0 : get_thread (internal);
-  if (res != 0)
-    iprintf (internal, th->log,
-	     "post_clone %lu %lu\n", th->id, mode == ERS_LIVE ? res : clone->res);
-
-  if (mode == ERS_LIVE)
+  if (internal->mode == ERS_LIVE)
     {
       if (res != 0)
-	save_result (th->file, res);
+	save_result (get_thread (internal)->file, res);
     }
   else
     {
-      if (ERI_SYSCALL_ERROR_P (clone->res)) /* clone shall fail, no syscall */
-	res = clone->res;
+      if (ERI_SYSCALL_ERROR_P (replay)) /* clone shall fail, no syscall */
+	res = replay;
       else if (ERI_SYSCALL_ERROR_P (res)) /* clone should not fail */
 	{
 	  eri_assert (eri_fprintf (ERI_STDERR, "failed to clone thread\n") == 0);
 	  eri_assert (0);
 	}
       else if (res != 0) /* clone succeeded and we are the parent, replace the result */
-	{
-	  res = clone->res;
-	  __atomic_store_n (&clone->res, 0, __ATOMIC_RELEASE);
-	}
+	res = replay;
     }
 
-  if (res != 0) /* the parent release the lock */
-    lunlock (internal, &internal->clone_lock);
+  struct thread *th;
 
   long rel = 1;
-  if (ERI_SYSCALL_ERROR_P (res))
+  if (res != 0)
     {
-      ifree (internal, th->id, clone);
-      rel = 2;
-    }
-  else if (res == 0)
-    {
-      eri_assert (! internal->main); /* tls setup */
-      th = init_thread (internal, clone->child_id, clone->ctid);
-      iprintf (internal, th->log,
-	       "post_clone %lu %lu\n", th->id, 0);
-      set_thread (internal, th);
-      eri_memcpy (&th->old_set, &clone->old_set, sizeof th->old_set);
+      /* the parent release the lock */
+      lunlock (internal, &internal->clone_lock);
 
-      if (mode != ERS_LIVE)
-	while (__atomic_load_n (&clone->res, __ATOMIC_ACQUIRE) != 0)
-	  continue;
-      ifree (internal, th->id, clone);
+      th = get_thread (internal);
+      iprintf (internal, th->log, "post_clone %lu %lu\n", th->id, res);
+
+      if (ERI_SYSCALL_ERROR_P (res))
+	{
+	  ifree (internal, th->id, child);
+	  rel = 2;
+	}
+    }
+  else
+    {
+      th = child;
+      start_thread (internal, th);
+      set_thread (internal, th);
+      iprintf (internal, th->log, "post_clone %lu %lu\n", th->id, res);
     }
 
   iprintf (internal, th->log, "post_clone done %lu\n", th->id);
@@ -1371,7 +1368,7 @@ sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucont
   int flags;
   if (acquire_active_lock (internal, 1, MARK_THREAD_SIGNAL))
     {
-      struct ers_thread *th = get_thread (internal);
+      struct thread *th = get_thread (internal);
       iprintf (internal, th->log, "sigaction %lu %u\n", th->id, sig);
 
       if (mode == ERS_LIVE) save_signal (th->file, sig, info, ucontext);
@@ -1413,7 +1410,7 @@ atomic_lock (struct internal *internal, void *mem)
 {
   if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE)) return 0;
 
-  struct ers_thread *th = get_thread (internal);
+  struct thread *th = get_thread (internal);
   iprintf (internal, th->log, "atomic_lock %lu %lx\n", th->id, mem);
 
   struct atomic_lock *lock = get_atomic_lock (internal, th, mem, 1);
@@ -1425,7 +1422,7 @@ atomic_lock (struct internal *internal, void *mem)
 static void
 atomic_unlock (struct internal *internal, void *mem, int mo)
 {
-  struct ers_thread *th = get_thread (internal);
+  struct thread *th = get_thread (internal);
   iprintf (internal, th->log, "atomic_unlock %lu %lx %u\n", th->id, mem, mo);
 
   struct atomic_lock *lock = get_atomic_lock (internal, th, mem, 0);
@@ -1479,15 +1476,25 @@ ent_init_process (const char *path)
 }
 
 static void
-ent_setup_tls (struct ers_thread *(*get) (void *),
-	       void (*set) (struct ers_thread *, void *),
-	       void *arg)
+ent_setup_tls (long offset)
 {
-  if (initialized) setup_tls (&internal, get, set, arg);
+  setup_tls (&internal, offset);
 }
 
 /* static */ char ent_syscall (int nr, long a1, long a2, long a3, long a4,
 			       long a5, long a6, long *res);
+
+#define NR_CLONE	_ERS_STR (__NR_clone)
+
+#define CLONE_DESC_SIZE16		_ERS_STR (ERI_CLONE_DESC_SIZE16)
+
+#define CLONE_DESC_CHILD		_ERS_STR (ERI_CLONE_DESC_CHILD)
+#define CLONE_DESC_FLAGS		_ERS_STR (ERI_CLONE_DESC_FLAGS)
+#define CLONE_DESC_CSTACK		_ERS_STR (ERI_CLONE_DESC_CSTACK)
+#define CLONE_DESC_PTID			_ERS_STR (ERI_CLONE_DESC_PTID)
+#define CLONE_DESC_CTID			_ERS_STR (ERI_CLONE_DESC_CTID)
+#define CLONE_DESC_TP			_ERS_STR (ERI_CLONE_DESC_TP)
+#define CLONE_DESC_REPLAY_RESULT	_ERS_STR (ERI_CLONE_DESC_REPLAY_RESULT)
 
 asm ("  .text							\n\
   .align 16							\n\
@@ -1499,7 +1506,7 @@ ent_syscall:							\n\
   movb	$0, %al							\n\
   je	.return1						\n\
 								\n\
-  cmpl	$" _ERS_STR (__NR_clone) ", %edi			\n\
+  cmpl	$" NR_CLONE ", %edi					\n\
   je	.call_clone						\n\
 								\n\
   pushq	16(%rsp)		/* res */			\n\
@@ -1527,24 +1534,15 @@ ent_syscall:							\n\
 								\n\
 .clone:								\n\
   .cfi_startproc						\n\
-  subq	$8, %rsp		/* alignment, clone */		\n\
-  .cfi_adjust_cfa_offset 8					\n\
-  pushq	%rsi			/* flags */			\n\
-  .cfi_adjust_cfa_offset 8					\n\
-  pushq	%rdx			/* cstack */			\n\
-  .cfi_adjust_cfa_offset 8					\n\
-  pushq	%rcx			/* ptid */			\n\
-  .cfi_adjust_cfa_offset 8					\n\
-  pushq	%r8			/* ctid */			\n\
-  .cfi_adjust_cfa_offset 8					\n\
-  pushq	%r9			/* tp */			\n\
-  .cfi_adjust_cfa_offset 8					\n\
+  subq	$" CLONE_DESC_SIZE16 ", %rsp				\n\
+  .cfi_adjust_cfa_offset " CLONE_DESC_SIZE16 "			\n\
+  movq	%rsi, " CLONE_DESC_FLAGS "(%rsp)			\n\
+  movq	%rdx, " CLONE_DESC_CSTACK "(%rsp)			\n\
+  movq	%rcx, " CLONE_DESC_PTID "(%rsp)				\n\
+  movq	%r8, " CLONE_DESC_CTID "(%rsp)				\n\
+  movq	%r9, " CLONE_DESC_TP "(%rsp)				\n\
 								\n\
-  movq	%r8, %r9		/* ctid */			\n\
-  movq	%rcx, %r8		/* ptid */			\n\
-  movq	%rdx, %rcx		/* cstack */			\n\
-  leaq	32(%rsp), %rdx		/* &flags */			\n\
-  leaq	40(%rsp), %rsi		/* &clone */			\n\
+  movq	%rsp, %rsi		/* desc */			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	pre_clone						\n\
   testb	 %al, %al						\n\
@@ -1553,19 +1551,21 @@ ent_syscall:							\n\
   cmpb	$2, %al			/* replay & no syscall */	\n\
   je	.post							\n\
 								\n\
-  movq	(%rsp), %r8		/* tp */			\n\
-  movq	8(%rsp), %r10		/* ctid */			\n\
-  movq	16(%rsp), %rdx		/* ptid */			\n\
-  movq	24(%rsp), %rsi		/* cstack */			\n\
-  movq	32(%rsp), %rdi		/* flags */			\n\
+  movq	" CLONE_DESC_TP "(%rsp), %r8				\n\
+  movq	" CLONE_DESC_CTID "(%rsp), %r10				\n\
+  movq	" CLONE_DESC_PTID "(%rsp), %rdx				\n\
+  movq	" CLONE_DESC_CSTACK "(%rsp), %rsi			\n\
+  movq	" CLONE_DESC_FLAGS "(%rsp), %rdi			\n\
 								\n\
-  subq	$16, %rsi						\n\
-  movq	56(%rsp), %rax						\n\
-  movq	%rax, 8(%rsi)		/* return address */		\n\
-  movq	40(%rsp), %rax						\n\
-  movq	%rax, (%rsi)		/* clone */			\n\
+  subq	$32, %rsi						\n\
+  movq	" CLONE_DESC_SIZE16 " + 8(%rsp), %rax			\n\
+  movq	%rax, 24(%rsi)		/* return address */		\n\
+  movq	" CLONE_DESC_CHILD "(%rsp), %rax			\n\
+  movq	%rax, (%rsi)		/* child */			\n\
+  movq	" CLONE_DESC_REPLAY_RESULT "(%rsp), %rax		\n\
+  movq	%rax, 8(%rsi)		/* replay */			\n\
 								\n\
-  movl	$" _ERS_STR (__NR_clone) ", %eax	/* nr_clone */	\n\
+  movl	$" NR_CLONE ", %eax	/* nr_clone */			\n\
   syscall							\n\
   .cfi_undefined %rip						\n\
 								\n\
@@ -1575,26 +1575,27 @@ ent_syscall:							\n\
 								\n\
 .post:								\n\
   movq	%rax, %rdx		/* *res */			\n\
-  movq	40(%rsp), %rsi		/* clone */			\n\
+  movq	" CLONE_DESC_REPLAY_RESULT "(%rsp), %rcx		\n\
+  movq	" CLONE_DESC_CHILD "(%rsp), %rsi			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	post_clone						\n\
-  movq	72(%rsp), %rdi		/* res */			\n\
-  movq	%rax, (%rdi)						\n\
+  movq	%rax, " CLONE_DESC_SIZE16 " + 24(%rsp)			\n\
 								\n\
 .return2:							\n\
   movb	$1, %al							\n\
-  addq	$56, %rsp						\n\
-  .cfi_adjust_cfa_offset -56					\n\
+  addq	$" CLONE_DESC_SIZE16 " + 8, %rsp			\n\
+  .cfi_adjust_cfa_offset -" CLONE_DESC_SIZE16 "			\n\
   .cfi_rel_offset %rip, 0					\n\
   ret								\n\
 								\n\
 .child:								\n\
   .cfi_undefined %rip						\n\
+  movq	8(%rsp), %rcx		/* replay */			\n\
   movq	$0, %rdx		/* *res */			\n\
-  movq	(%rsp), %rsi		/* clone */			\n\
+  movq	(%rsp), %rsi		/* child */			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	post_clone						\n\
-  addq	$8, %rsp						\n\
+  addq	$24, %rsp						\n\
   movb	$2, %al							\n\
   ret								\n\
   .cfi_endproc							\n\

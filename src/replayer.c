@@ -1,5 +1,5 @@
 #include "common.h"
-#include "recorder.h"
+#include "recorder-common.h"
 
 #include "lib/util.h"
 #include "lib/rbtree.h"
@@ -276,7 +276,7 @@ start (void **arg)
   size_t data_size = eri_round_up (
 	6 * sizeof (unsigned long) /* init, stack[2], text[2], map_size */
 	+ map_rbt_get_size (&maps) * sizeof (unsigned long) * 5 /* map_size * (start, size, prot, flags, offset) */
-	+ eri_round_up (sizeof ctx.env, sizeof (unsigned long))
+	+ eri_size_of (ctx.env, sizeof (unsigned long))
 	+ 2 * sizeof (unsigned long), /* unmap */
 	4096);
   extern const char restore_end[];
@@ -321,7 +321,7 @@ mapped:
       *(unsigned long *) (data += sizeof (unsigned long)) = m->offset;
     }
   eri_memcpy (data += sizeof (unsigned long), &ctx.env, sizeof ctx.env);
-  *(unsigned long *) (data += eri_round_up (sizeof ctx.env, sizeof (unsigned long))) = addr;
+  *(unsigned long *) (data += eri_size_of (ctx.env, sizeof (unsigned long))) = addr;
   *(unsigned long *) (data += sizeof (unsigned long)) = size;
 
   struct map *nm;

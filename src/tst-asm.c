@@ -5,7 +5,7 @@
 #include <asm/unistd.h>
 #include <sys/syscall.h>
 
-#include "recorder.h"
+#include "recorder-pub.h"
 
 static struct ers_recorder *recorder;
 
@@ -645,9 +645,9 @@ struct ers_recorder *eri_get_recorder (void);
 
 int main ()
 {
-  struct ers_recorder clone1 = { 0, 0, syscall_clone1 };
-  struct ers_recorder clone2 = { 0, 0, syscall_clone2 };
-  struct ers_recorder clone3 = { 0, 0, syscall_clone3 };
+  struct ers_recorder clone1 = { .syscall = syscall_clone1 };
+  struct ers_recorder clone2 = { .syscall = syscall_clone2 };
+  struct ers_recorder clone3 = { .syscall = syscall_clone3 };
 
   assert (tst_clone () == 7);
 

@@ -45,4 +45,6 @@ const char *eri_strstr (const char *s, const char *d);
 
 #define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
 
+#define eri_size_of(x, r) (eri_round_up (sizeof (x), r))
+
 #endif

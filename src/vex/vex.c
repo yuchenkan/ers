@@ -6,7 +6,7 @@
 #include "vex.h"
 #include "vex-offsets.h"
 
-#include "recorder.h"
+#include "recorder-common.h"
 #include "common.h"
 
 #include "lib/util.h"
@@ -38,15 +38,13 @@ struct context
   eri_file_t rip_file;
 };
 
-#define CTX	_ERS_STR (VEX_CTX_CTX)
-
 static void cprintf (eri_file_t log, const char *fmt, ...);
 
 static void
 vex_xed_abort (const char *msg, const char *file, int line, void *other)
 {
   struct context *c;
-  asm ("movq	%%fs:" CTX ", %0" : "=r" (c));
+  asm ("movq	%%fs:%c1, %0" : "=r" (c) : "i" (VEX_CTX_CTX));
   cprintf (c->log, "xed_abort[%s:%u]: %s\n", file, line, msg);
   eri_assert (0);
 }
@@ -247,6 +245,7 @@ cprintf (eri_file_t log, const char *fmt, ...)
 static struct context *
 alloc_context (struct vex *v)
 {
+  __atomic_add_fetch (&v->ncontexts, 1, __ATOMIC_ACQUIRE);
   size_t esize = eri_round_up (sizeof (struct context) + 48, 16);
   size_t size = esize + v->stack_size + 2 * v->file_buf_size;
 
@@ -256,6 +255,7 @@ alloc_context (struct vex *v)
       64);
   c->mp = p;
   c->ctx.ctx = c;
+  c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
 
   c->ctx.syscall = (unsigned long) vex_syscall;
   c->ctx.back = (unsigned long) vex_back;
@@ -284,7 +284,6 @@ start_context (struct context *c)
   struct vex *v = c->vex;
   size_t buf_size = v->file_buf_size;
 
-  c->id = __atomic_fetch_add (&v->context_id, 1, __ATOMIC_RELAXED);
   c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id,
     (char *) c->stack + v->stack_size, buf_size);
   c->rip_file = eri_open_path (v->path, "vex-rip-", ERI_OPEN_WITHID, c->id,
@@ -297,8 +296,9 @@ start_context (struct context *c)
 static void
 free_context (struct context *c)
 {
-  eri_assert_mtfree (&c->vex->pool, c->stack);
+  struct vex *v = c->vex;
   eri_assert_mtfree (&c->vex->pool, c->mp);
+  __atomic_add_fetch (&v->ncontexts, -1, __ATOMIC_RELEASE);
 }
 
 static void __attribute__ ((used))
@@ -312,7 +312,6 @@ static void vex_loop (struct context *c);
 static void __attribute__ ((used))
 vex_start_child (struct context *c)
 {
-  __atomic_add_fetch (&c->vex->ncontexts, 1, __ATOMIC_ACQUIRE);
   start_context (c);
   vex_loop (c);
 }
@@ -372,9 +371,8 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   struct vex *v = c->vex;
   eri_assert (eri_fclose (c->log) == 0);
   eri_assert (eri_fclose (c->rip_file) == 0);
-  eri_assert_mtfree (&v->pool, c->mp);
+  free_context (c);
 
-  __atomic_add_fetch (&v->ncontexts, -1, __ATOMIC_RELEASE);
   if (type == VEX_EXIT_GROUP)
     {
       eri_assert (eri_printf ("vex pool used: %lu\n", v->pool.pool.used) == 0);
@@ -483,6 +481,8 @@ vex_exit (unsigned long status, int nr, struct context *c)
 
   VEX_EXIT_ALT_STACK (c, type, status, nr);
 }
+
+#define CTX	_ERS_STR (VEX_CTX_CTX)
 
 #define RAX	_ERS_STR (VEX_CTX_RAX)
 #define RCX	_ERS_STR (VEX_CTX_RCX)
@@ -1941,7 +1941,7 @@ vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
   struct entry *e = entry_rbt_get (v, &rip, ERI_RBT_EQ);
   if (! e)
     {
-      size_t esz = eri_round_up (sizeof *e, 16);
+      size_t esz = eri_size_of (*e, 16);
       size_t ripsz = sizeof e->inst_rips[0] * v->max_inst_count;
       e = eri_assert_mtcalloc (&v->pool,
 	esz + ripsz + XED_MAX_INSTRUCTION_BYTES * v->max_inst_count);
@@ -2129,7 +2129,6 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   struct context *c = alloc_context (v);
   eri_memcpy (&c->ctx.comm, &desc->comm, sizeof c->ctx.comm);
 
-  __atomic_add_fetch (&v->ncontexts, 1, __ATOMIC_ACQUIRE);
   start_context (c);
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, c);

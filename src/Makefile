@@ -15,30 +15,32 @@ endef
 
 O := -O3
 $(eval $(call DEPENDABLE_VAR,O))
+$(eval $(call DEPENDABLE_VAR,D))
 
 LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c
 LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c
 TRACER := tracer.c common.c lib/printf.c lib/util.c
 
-CFLAGS := $O -I. -I$(BUILD) -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := $O $D -I. -I$(BUILD) -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
 VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj
 VEX_LDFLAGS := -Wl,--exclude-libs,ALL
 
-MAKEFILES := ../my-glibc.mk Makefile $(BUILD)/O
+MAKEFILES := ../my-glibc.mk Makefile $(BUILD)/O $(BUILD)/D
 XED := ../3rd/xed/obj/libxed.a
 
 LIB_TST_VEX := vex/tst-vex-entry.c vex/vex.c common.c $(LIB)
 BUILD_VEX_TSTS := $(BUILD)/vex/tst-vex $(BUILD)/vex/tst-vex-simple
 
-all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer $(BUILD)/tracee \
-     $(BUILD_VEX_TSTS)
+all: $(BUILD)/librecorder.so $(BUILD)/replayer $(BUILD)/tracer $(BUILD)/tracee vex
+
+vex: $(BUILD_VEX_TSTS)
 	cp vex/*.sh $(BUILD)/vex
 
 $(BUILD)/librecorder.so: $(patsubst %,$(BUILD)/%,$(LIB_RECORDER:.c=.o)) $(XED) \
-			 $(BUILD)/recorder-offsets.h
+			 $(BUILD)/recorder-common-offsets.h
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) $(VEX_LDFLAGS) $(LIB_LDFLAGS) -Wl,-e,entry -o $@ $^
 	objdump -W $@ >$(@:.so=.dwarf)
@@ -58,6 +60,8 @@ $(BUILD)/tracer: $(patsubst %,$(BUILD)/%,$(TRACER:.c=.o))
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -o $@ $^
 
+$(BUILD)/recorder.o: $(BUILD)/recorder-offsets.h
+
 $(XED):
 	cd ../3rd/xed && ./mfile.py --extra-flags='-fPIC -g -mgeneral-regs-only'
 
@@ -68,7 +72,7 @@ $(BUILD)/vex/vex.o: $(BUILD)/vex/vex-offsets.h
 $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 	mkdir -p $(dir $@)
 	gcc $(CFLAGS) -MM -MQ $(@:.h=.s) -MP -MF $(@:.h=.d) $<
-	gcc $(CFLAGS) -S -o $(@:.h=.s) $<
+	gcc $(CFLAGS) -O3 -S -o $(@:.h=.s) $<
 	grep __AS_DEFINE__ $(@:.h=.s) | sed 's/__AS_DEFINE__/#define/g' >$@
 
 $(BUILD)/tracer.o: CFLAGS := -g -I. -O3 -Wall
@@ -123,4 +127,4 @@ $(BUILD)/%.o: %.c $(MAKEFILES)
 SOURCES := $(shell find $(SOURCEDIR) -name '*.c')
 -include $(patsubst %,$(BUILD)/%,$(SOURCES:.c=.d))
 
-.PHONY: all check
+.PHONY: all vex check

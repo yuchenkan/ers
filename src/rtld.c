@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-#include "recorder.h"
+#include "recorder-common.h"
 #include "common.h"
 #include "lib/util.h"
 #include "lib/syscall.h"
