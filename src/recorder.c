@@ -39,6 +39,9 @@ struct thread
   unsigned long id;
   int *clear_tid;
 
+  long sys_tid;
+  ATOMIC_TYPE (char) exit;
+
   eri_file_t file;
   eri_file_t log;
 
@@ -55,14 +58,12 @@ struct atomic_lock
   ERI_RBT_NODE_FIELDS (atomic, struct atomic_lock)
 };
 
-struct siginfo;
 struct sigact_wrap
 {
-  int sig;
+  struct lock lock;
+
   void *act;
   int flags;
-
-  ERI_RBT_NODE_FIELDS (sigact, struct sigact_wrap)
 };
 
 struct replay_thread
@@ -75,7 +76,6 @@ struct replay_thread
 
 struct replay
 {
-  int active_lock;
   int mmap_lock;
 
   char *pool_buf;
@@ -123,6 +123,9 @@ struct internal
   struct thread *main;
   long thread_offset;
 
+  long sys_pid;
+  ATOMIC_TYPE (char) exit;
+
   ATOMIC_TYPE (long) active_lock;
 
   ATOMIC_TYPE (unsigned long) lock_id;
@@ -141,8 +144,7 @@ struct internal
   struct lock threads_lock;
   ERI_LST_LIST_FIELDS (thread)
 
-  struct lock sigacts_lock;
-  ERI_RBT_TREE_FIELDS (sigact, struct sigact_wrap)
+  struct sigact_wrap sigacts[ERI_NSIG];
 
   struct lock mmap_lock; /* ensure the mmap syscall order */
   struct lock brk_lock; /* make the brk syscall thread safe */
@@ -155,11 +157,12 @@ struct internal
 
 #define INTERNAL_LOCKS(internal) \
 {								\
+  &(internal)->exit.lock,					\
   &(internal)->active_lock.lock, &(internal)->lock_id.lock,	\
   &(internal)->pool_lock, &(internal)->atomics_lock,		\
   &(internal)->thread_id.lock, &(internal)->threads_lock,	\
-  &(internal)->sigacts_lock, &(internal)->mmap_lock,		\
-  &(internal)->brk_lock, &(internal)->clone_lock		\
+  &(internal)->mmap_lock, &(internal)->brk_lock,		\
+  &(internal)->clone_lock					\
 }
 
 static void
@@ -233,15 +236,36 @@ lunlock (struct internal *internal, struct lock *lock)
   else
     {
       __atomic_store_n (&lock->tid, load_lock (lock->file), __ATOMIC_RELEASE);
-      if (lock->tid != (unsigned long) -1)
+      if (lock->tid != -1)
 	{
 	  struct replay_thread *rt = replay_get_thread (&internal->replay, lock->tid);
 	  __atomic_add_fetch (&rt->lock_version, 1, __ATOMIC_RELAXED);
-	  ERI_ASSERT_SYSCALL (futex, &rt->lock_version,
-			      ERI_FUTEX_WAKE_PRIVATE, 1);
+	  ERI_ASSERT_SYSCALL (futex, &rt->lock_version, ERI_FUTEX_WAKE_PRIVATE, 1);
 	}
     }
 }
+
+#define ATOMIC_LOAD(i, t, m) \
+  ({							\
+    struct internal *__i = i;				\
+    unsigned long __t = t;				\
+    typeof (m) __m = m;					\
+    llock (__i, __t, &__m->lock);			\
+    typeof (__m->val) __v = __m->val;			\
+    lunlock (__i, &__m->lock);				\
+    __v;						\
+  })
+
+#define ATOMIC_STORE(i, t, m, v) \
+  do {							\
+    struct internal *__i = i;				\
+    unsigned long __t = t;				\
+    typeof (m) __m = m;					\
+    typeof (v) __v = v;					\
+    llock (__i, __t, &__m->lock);			\
+    __m->val = __v;					\
+    lunlock (__i, &__m->lock);				\
+  } while (0)
 
 #define ATOMIC_FETCH_ADD(i, t, m, v) \
   ({							\
@@ -278,7 +302,6 @@ lunlock (struct internal *internal, struct lock *lock)
   })
 
 ERI_DEFINE_RBTREE (static, atomic, struct internal, struct atomic_lock, void *, eri_less_than)
-ERI_DEFINE_RBTREE (static, sigact, struct internal, struct sigact_wrap, int, eri_less_than)
 
 ERI_DEFINE_LIST (static, thread, struct internal, struct thread)
 
@@ -330,6 +353,91 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
     }
 }
 
+/* 0 for MARK_NONE */
+#define MARK_THREAD_ACTIVE	1
+#define MARK_THREAD_SIGNAL	2
+#define MARK_THREAD_SYSCALL	3
+
+static void
+check_syscall (char mode, eri_file_t file, int nr, int n, ...)
+{
+  long a[6];
+
+  va_list arg;
+  va_start (arg, n);
+  short i = 0;
+  for (i = 0; i < n; ++i)
+    a[i] = (long) va_arg (arg, long);
+  va_end (arg);
+
+  if (mode == ERS_LIVE)
+    {
+      eri_save_mark (file, MARK_THREAD_SYSCALL);
+      eri_assert (eri_fwrite (file, (const char *) &nr, sizeof nr, 0) == 0);
+      eri_assert (eri_fwrite (file, (const char *) a, n * sizeof a[0], 0) == 0);
+    }
+  else
+    {
+      eri_assert (eri_load_mark (file) == MARK_THREAD_SYSCALL);
+      int t;
+      eri_assert (eri_fread (file, (char *) &t, sizeof t, 0) == 0);
+      eri_assert (nr == t);
+      long b[6];
+      eri_assert (eri_fread (file, (char *) b, n * sizeof a[0], 0) == 0);
+      eri_assert (eri_strncmp ((const char *) a, (const char *) b, n * sizeof a[0]) == 0);
+    }
+}
+
+static void
+save_result (eri_file_t file, long res)
+{
+  eri_assert (eri_fwrite (file, (const char *) &res, sizeof res, 0) == 0);
+}
+
+static long
+load_result (eri_file_t file)
+{
+  long res;
+  eri_assert (eri_fread (file, (char *) &res, sizeof res, 0) == 0);
+  return res;
+}
+
+#define CHECK_SYSCALL(mode, file, nr, ...) \
+  check_syscall (mode, file, nr, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
+
+#define SYSCALL_REC_RES(mode, file, nr, ...) \
+  ({									\
+    long __res;								\
+    if (mode == ERS_LIVE)						\
+      {									\
+	__res = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+	save_result (file, __res);					\
+      }									\
+    else __res = load_result (file);					\
+    __res;								\
+  })
+
+#define CSYSCALL_REC_RES(mode, file, nr, ...) \
+  ({									\
+    CHECK_SYSCALL (mode, file, nr, ##__VA_ARGS__);			\
+    SYSCALL_REC_RES (mode, file, nr, ##__VA_ARGS__);			\
+  })
+
+#define SYSCALL_CHECK_RES(mode, file, nr, ...) \
+  ({									\
+    long __res;								\
+    __res = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+    if (mode == ERS_LIVE) save_result (file, __res);			\
+    else eri_assert (__res == load_result (file));			\
+    __res;								\
+  })
+
+#define CSYSCALL_CHECK_RES(mode, file, nr, ...) \
+  ({									\
+    CHECK_SYSCALL (mode, file, nr, ##__VA_ARGS__);			\
+    SYSCALL_CHECK_RES (mode, file, nr, ##__VA_ARGS__);			\
+  })
+
 static struct thread *
 alloc_thread (struct internal *internal, unsigned long tid,
 	      int *ctid, void *tp)
@@ -337,12 +445,33 @@ alloc_thread (struct internal *internal, unsigned long tid,
   size_t thread_size = eri_size_of (struct thread, 16);
   size_t buf_size = internal->file_buf_size;
 
-  struct thread *th = icalloc (internal, tid, thread_size + buf_size * 2);
+  struct thread *th = icalloc (internal, tid, thread_size + buf_size * 3);
 
   th->id = ATOMIC_FETCH_ADD (internal, tid, &internal->thread_id, 1);
   th->clear_tid = ctid;
 
   return th;
+}
+
+struct siginfo { char buf[128]; };
+struct ucontext { char buf[168]; };
+
+static void
+save_signal (eri_file_t file, int sig, const struct siginfo *info,
+	     const struct ucontext *ucontext)
+{
+  eri_assert (eri_fwrite (file, (const char *) &sig, sizeof sig, 0) == 0);
+  eri_assert (eri_fwrite (file, (const char *) info, sizeof *info, 0) == 0);
+  eri_assert (eri_fwrite (file, (const char *) ucontext, sizeof *ucontext, 0) == 0);
+}
+
+static void
+load_signal (eri_file_t file, int *sig, struct siginfo *info,
+	     struct ucontext *ucontext)
+{
+  eri_assert (eri_fread (file, (char *) sig, sizeof *sig, 0) == 0);
+  eri_assert (eri_fread (file, (char *) info, sizeof *info, 0) == 0);
+  eri_assert (eri_fread (file, (char *) ucontext, sizeof *ucontext, 0) == 0);
 }
 
 static void
@@ -355,12 +484,22 @@ start_thread (struct internal *internal, struct thread *th)
   const char *path = internal->path;
 
   unsigned long tid = th->id;
-  th->file = eri_open_path (path, "thread-",
+
+  eri_file_t lfile = eri_open_path (path, "thread-lock-",
     ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ,
     tid, (char *) th + thread_size, buf_size);
 
-  th->log = eri_open_path (path, mode == ERS_LIVE ? "record-log-" : "replay-log-",
-   ERI_OPEN_WITHID, tid, (char *) th->file + buf_size, buf_size);
+  th->file = eri_open_path (path, "thread-",
+    ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ,
+    tid, (char *) th + thread_size + buf_size, buf_size);
+  init_lock (internal, &th->exit.lock, lfile);
+
+  th->log = eri_open_path (path,
+    mode == ERS_LIVE ? "record-log-" : "replay-log-", ERI_OPEN_WITHID,
+    tid, (char *) th + thread_size + 2 * buf_size, buf_size);
+
+  th->sys_tid = CSYSCALL_REC_RES (mode, th->file, __NR_gettid);
+  eri_assert (! ERI_SYSCALL_ERROR_P (th->sys_tid));
 
   iprintf (internal, th->log, "init_thread %lu %lx\n", tid, th);
 
@@ -379,8 +518,127 @@ fini_thread (struct internal *internal, struct thread *th)
   iprintf (internal, th->log, "fini_thread %lx\n", th);
   eri_assert (eri_fclose (th->log) == 0);
   eri_assert (eri_fclose (th->file) == 0);
+  eri_assert (eri_fclose (th->exit.lock.file) == 0);
   ifree (internal, th->id, th);
 }
+
+#define SIG_SETMASK	2
+#define SIG_SETSIZE	((ERI_NSIG + 1) / 8)
+
+static void
+block_signals (struct sigset *old_set)
+{
+  struct sigset set;
+  eri_memset (&set, 0xff, sizeof set);
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, SIG_SETMASK, &set, old_set, SIG_SETSIZE);
+}
+
+static void
+restore_signals (const struct sigset *old_set)
+{
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, SIG_SETMASK, old_set, 0, SIG_SETSIZE);
+}
+
+#define ACQUIRE_NORMAL	0
+#define ACQUIRE_CLONE	1
+#define ACQUIRE_EXIT	2
+#define ACQUIRE_ASYNC	3
+#define ACQUIRE_INIT	4
+
+static void
+acquire_thread (struct internal *internal, struct thread *th, char type, ...)
+{
+  char mode = internal->mode;
+
+  if (mode == ERS_LIVE)
+    {
+      block_signals (&th->old_set);
+      eri_save_mark (th->file, type == ACQUIRE_ASYNC
+			       ? MARK_THREAD_SIGNAL : MARK_THREAD_ACTIVE);
+    }
+
+  if (type == ACQUIRE_CLONE || type == ACQUIRE_EXIT)
+    {
+      int v = 1;
+      if (type == ACQUIRE_CLONE)
+	{
+	  va_list arg;
+	  va_start (arg, type);
+	  v = (int) va_arg (arg, int);
+	  va_end (arg);
+	}
+
+      if (ATOMIC_ADD_FETCH (internal, th->id, &internal->active_lock, v) <= 0)
+	{
+	  if (mode == ERS_LIVE) restore_signals (&th->old_set);
+	  while (1) continue;
+	}
+    }
+}
+
+static void sigaction (struct internal *internal, int sig,
+		       struct siginfo *info, void *ucontext);
+
+static void
+release_thread (struct internal *internal, unsigned long th_arg, char type, ...)
+{
+  unsigned long tid = type == ACQUIRE_EXIT ? th_arg : ((struct thread *) th_arg)->id;
+  if (type == ACQUIRE_CLONE || type == ACQUIRE_EXIT)
+    {
+      int v = 1;
+      if (type == ACQUIRE_CLONE)
+	{
+	  va_list arg;
+	  va_start (arg, type);
+	  v = (int) va_arg (arg, int);
+	  va_end (arg);
+	}
+
+      eri_assert (ATOMIC_SUB_FETCH (internal, tid, &internal->active_lock, v) >= 0);
+    }
+
+  if (type == ACQUIRE_EXIT) return;
+
+  struct thread *th = (struct thread *) th_arg;
+
+  if (type != ACQUIRE_INIT && internal->mode == ERS_LIVE)
+    restore_signals (&th->old_set);
+
+  if (internal->mode != ERS_LIVE)
+    {
+      char mk = eri_load_mark (th->file);
+      eri_assert (mk == MARK_THREAD_SIGNAL || mk == MARK_THREAD_ACTIVE);
+      if (mk == MARK_THREAD_SIGNAL)
+	{
+	  int sig;
+	  struct siginfo info;
+	  struct ucontext ucontext;
+	  load_signal (th->file, &sig, &info, &ucontext);
+	  sigaction (internal, sig, &info, &ucontext);
+	}
+    }
+}
+
+#define SYSCALL_REC_IRES(internal, th, nr, ...) \
+  ({									\
+    long __res = 0;							\
+    release_thread (internal, (unsigned long) th, ACQUIRE_NORMAL);	\
+									\
+    if ((internal)->mode == ERS_LIVE)					\
+      __res = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
+									\
+    acquire_thread (internal, th, ACQUIRE_NORMAL);			\
+    if ((internal)->mode == ERS_LIVE)					\
+      save_result ((th)->file, __res);					\
+    else __res = load_result ((th)->file);				\
+    __res;								\
+  })
+
+#define CSYSCALL_REC_IRES(internal, th, nr, ...) \
+  ({									\
+    CHECK_SYSCALL (mode, (th)->file, nr, ##__VA_ARGS__);		\
+    SYSCALL_REC_IRES (internal, th, nr, ##__VA_ARGS__);			\
+  })
 
 asm ("  .text						\n\
   .align 16						\n\
@@ -489,6 +747,29 @@ proc_map_entry (const struct eri_map_entry *ent, void *data)
     eri_save_init_map_data (d->init, (const char *) start, end - start);
 }
 
+struct sigaction
+{
+  void *act;
+  int flags;
+  void (*restorer) (void);
+  struct sigset mask;
+};
+
+asm ("  .text			\n\
+  .align 16			\n\
+  .type sigreturn, @function	\n\
+sigreturn:			\n\
+  movl	$" _ERS_STR (__NR_rt_sigreturn)", %eax	\n\
+  syscall			\n\
+  .size sigreturn, .-sigreturn	\n\
+  .previous			\n"
+);
+
+/* static */ void sigreturn (void);
+static void ent_sigaction (int sig, struct siginfo *info, void *ucontext);
+
+#define SIGEXIT ERI_SIGCHLD
+
 static char
 init_process (struct internal *internal, const char *path)
 {
@@ -510,11 +791,11 @@ init_process (struct internal *internal, const char *path)
   struct lock *locks[] = INTERNAL_LOCKS (internal);
   size_t nlocks = eri_length_of (locks);
   size_t pool_size = 64 * 1024 * 1024;
-  eri_assert (pool_size >= nlocks * file_buf_size);
+  eri_assert (pool_size >= (nlocks + ERI_NSIG) * file_buf_size);
   internal->pool_buf = (char *) ERI_ASSERT_SYSCALL_RES (
 		mmap, 0, pool_size, ERI_PROT_READ | ERI_PROT_WRITE,
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
-  internal->pool_buf_size = pool_size - nlocks * file_buf_size;
+  internal->pool_buf_size = pool_size - (nlocks + ERI_NSIG) * file_buf_size;
   internal->ilock_file_buf = internal->pool_buf + internal->pool_buf_size;
 
   size_t replay_pool_size = 32 * 1024 * 1024;
@@ -557,16 +838,34 @@ init_process (struct internal *internal, const char *path)
   int i;
   for (i = 0; i < nlocks; ++i)
     {
-      eri_file_t lfile = eri_open_path (path, "atomic-",
-        ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ,
-	internal->lock_id.val++,
+      eri_file_t lfile = eri_open_path (path, "lock-",
+        ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ, i,
         internal->ilock_file_buf + i * file_buf_size, file_buf_size);
 
       init_lock (internal, locks[i], lfile);
     }
 
-  internal->main = alloc_thread (internal, 0, 0, 0);
-  start_thread (internal, internal->main);
+  struct thread *th = internal->main = alloc_thread (internal, 0, 0, 0);
+  start_thread (internal, th);
+
+  internal->sys_pid = CSYSCALL_REC_RES (mode, th->file, __NR_getpid);
+  eri_assert (! ERI_SYSCALL_ERROR_P (internal->sys_pid));
+
+  for (i = 1; i < ERI_NSIG; ++i)
+    if (i != ERI_SIGKILL && i != ERI_SIGSTOP)
+      {
+	eri_file_t lfile = eri_open_path (path, "sigact-",
+	  ERI_OPEN_WITHID  | (mode != ERS_LIVE) * ERI_OPEN_READ, i,
+	  internal->ilock_file_buf + (nlocks + i) * file_buf_size, file_buf_size);
+
+	init_lock (internal, &internal->sigacts[i].lock, lfile);
+      }
+
+  struct sigaction a = { ent_sigaction, ERI_SA_RESTORER | ERI_SA_SIGINFO, sigreturn };
+  eri_assert (! ERI_SYSCALL_ERROR_P (
+    CSYSCALL_REC_RES (mode, th->file, __NR_rt_sigaction, SIGEXIT, &a, 0, SIG_SETSIZE)));
+
+  release_thread (internal, (unsigned long) th, ACQUIRE_INIT);
   return mode;
 }
 
@@ -604,229 +903,6 @@ setup_tls (struct internal *internal, long offset)
     }
 }
 
-#define SIG_SETMASK	2
-#define SIG_SETSIZE	8
-
-static void
-block_signals (struct sigset *old_set)
-{
-  struct sigset set;
-  eri_memset (&set, 0xff, sizeof set);
-  ERI_ASSERT_SYSCALL (rt_sigprocmask, SIG_SETMASK, &set, old_set, SIG_SETSIZE);
-}
-
-static void
-restore_signals (const struct sigset *old_set)
-{
-  ERI_ASSERT_SYSCALL (rt_sigprocmask, SIG_SETMASK, old_set, 0, SIG_SETSIZE);
-}
-
-struct siginfo { char buf[128]; };
-struct ucontext { char buf[168]; };
-
-static void
-save_signal (eri_file_t file, int sig, const struct siginfo *info,
-	     const struct ucontext *ucontext)
-{
-  eri_assert (eri_fwrite (file, (const char *) &sig, sizeof sig, 0) == 0);
-  eri_assert (eri_fwrite (file, (const char *) info, sizeof *info, 0) == 0);
-  eri_assert (eri_fwrite (file, (const char *) ucontext, sizeof *ucontext, 0) == 0);
-}
-
-static void
-load_signal (eri_file_t file, int *sig, struct siginfo *info,
-	     struct ucontext *ucontext)
-{
-  eri_assert (eri_fread (file, (char *) sig, sizeof *sig, 0) == 0);
-  eri_assert (eri_fread (file, (char *) info, sizeof *info, 0) == 0);
-  eri_assert (eri_fread (file, (char *) ucontext, sizeof *ucontext, 0) == 0);
-}
-
-
-/* 0 for MARK_NONE */
-#define MARK_THREAD_ACTIVE 1
-#define MARK_THREAD_SIGNAL 2
-#define MARK_THREAD_SYSCALL 3
-
-static void sigaction (struct internal *internal, int sig,
-		       struct siginfo *info, void *ucontext);
-
-static char
-acquire_active_lock (struct internal *internal, long v, char mk)
-{
-  struct lock *lock = &internal->active_lock.lock;
-  if (internal->mode == ERS_LIVE)
-    {
-      struct sigset old_set;
-      block_signals (&old_set);
-      eri_lock (&lock->lock, 1);
-      if ((internal->active_lock.val += v) > 0)
-	{
-	  struct thread *th = get_thread (internal);
-	  eri_save_mark (th->file, mk);
-	  save_lock (lock->file, th->id);
-	  eri_memcpy (&th->old_set, &old_set, sizeof old_set);
-	  eri_unlock (&lock->lock, 1);
-	  return 1;
-	}
-      eri_unlock (&lock->lock, 1);
-      restore_signals (&old_set);
-      return 0;
-    }
-  else
-    {
-    retry:
-      eri_lock (&internal->replay.active_lock, 1);
-      struct thread *th = get_thread (internal);
-      unsigned long tid = th->id;
-
-      char trigger_signal = 0;
-      int sig;
-      struct siginfo info;
-      struct ucontext ucontext;
-
-      if (mk == MARK_THREAD_ACTIVE)
-	{
-	  char m = eri_load_mark (th->file);
-	  eri_assert (m == ERI_MARK_NONE
-		      || m == MARK_THREAD_SIGNAL
-		      || m == MARK_THREAD_ACTIVE);
-	  if (m == MARK_THREAD_SIGNAL)
-	    {
-	      trigger_signal = 1;
-	      load_signal (th->file, &sig, &info, &ucontext);
-	    }
-	}
-      eri_unlock (&internal->replay.active_lock, 1);
-
-      if (trigger_signal)
-	{
-	  sigaction (internal, sig, &info, &ucontext);
-	  goto retry;
-	}
-
-      llock (internal, tid, lock);
-      eri_assert ((internal->active_lock.val += v) > 0);
-      lunlock (internal, lock);
-      return 1;
-    }
-}
-
-static void
-release_active_lock (struct internal *internal, unsigned long tid,
-		     long v, char exit)
-{
-  eri_assert (ATOMIC_SUB_FETCH (internal, tid, &internal->active_lock, v) >= 0);
-  if (internal->mode == ERS_LIVE && ! exit)
-    restore_signals (&get_thread (internal)->old_set);
-}
-
-static void
-check_syscall (char mode, eri_file_t file, int nr, int n, ...)
-{
-  long a[6];
-
-  va_list arg;
-  va_start (arg, n);
-  short i = 0;
-  for (i = 0; i < n; ++i)
-    a[i] = (long) va_arg (arg, long);
-  va_end (arg);
-
-  if (mode == ERS_LIVE)
-    {
-      eri_save_mark (file, MARK_THREAD_SYSCALL);
-      eri_assert (eri_fwrite (file, (const char *) &nr, sizeof nr, 0) == 0);
-      eri_assert (eri_fwrite (file, (const char *) a, n * sizeof a[0], 0) == 0);
-    }
-  else
-    {
-      eri_assert (eri_load_mark (file) == MARK_THREAD_SYSCALL);
-      int t;
-      eri_assert (eri_fread (file, (char *) &t, sizeof t, 0) == 0);
-      eri_assert (nr == t);
-      long b[6];
-      eri_assert (eri_fread (file, (char *) b, n * sizeof a[0], 0) == 0);
-      eri_assert (eri_strncmp ((const char *) a, (const char *) b, n * sizeof a[0]) == 0);
-    }
-}
-
-static void
-save_result (eri_file_t file, long res)
-{
-  eri_assert (eri_fwrite (file, (const char *) &res, sizeof res, 0) == 0);
-}
-
-static long
-load_result (eri_file_t file)
-{
-  long res;
-  eri_assert (eri_fread (file, (char *) &res, sizeof res, 0) == 0);
-  return res;
-}
-
-#define CHECK_SYSCALL(mode, file, nr, ...) \
-  check_syscall (mode, file, nr, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
-
-#define SYSCALL_REC_RES(mode, file, res, nr, ...) \
-  do {									\
-    if (mode == ERS_LIVE)						\
-      {									\
-	*(res) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
-	save_result (file, *(res));					\
-      }									\
-    else *(res) = load_result (file);					\
-  } while (0)
-
-#define SYSCALL_REC_IRES(internal, th, res, nr, ...) \
-  ({									\
-    char __acq = 1;							\
-    release_active_lock (internal, (th)->id, 1, 0);			\
-									\
-    if ((internal)->mode == ERS_LIVE)					\
-      *res = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
-									\
-    if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))	\
-      __acq = 0;							\
-    else if ((internal)->mode == ERS_LIVE)				\
-      save_result ((th)->file, *res);					\
-    else *res = load_result ((th)->file);					\
-    __acq;								\
-  })
-
-#define CSYSCALL_REC_RES(mode, file, res, nr, ...) \
-  do {									\
-    CHECK_SYSCALL (mode, file, nr, ##__VA_ARGS__);			\
-    SYSCALL_REC_RES (mode, file, res, nr, ##__VA_ARGS__);			\
-  } while (0)
-
-#define CSYSCALL_REC_IRES(internal, th, res, nr, ...) \
-  ({									\
-    CHECK_SYSCALL (mode, (th)->file, nr, ##__VA_ARGS__);			\
-    SYSCALL_REC_IRES (internal, th, res, nr, ##__VA_ARGS__);		\
-  })
-
-#define SYSCALL_CHECK_RES(mode, file, res, nr, ...) \
-  do {									\
-    *(res) = ERI_SYSCALL_NCS (nr, ##__VA_ARGS__);			\
-    if (mode == ERS_LIVE) save_result (file, *(res));			\
-    else eri_assert (*(res) == load_result (file));			\
-  } while (0)
-
-#define CSYSCALL_CHECK_RES(mode, file, res, nr, ...) \
-  do {									\
-    CHECK_SYSCALL (mode, file, nr, ##__VA_ARGS__);			\
-    SYSCALL_CHECK_RES (mode, file, res, nr, ##__VA_ARGS__);		\
-  } while (0)
-
-struct sigaction
-{
-  void *act;
-  struct sigset mask;
-  int flags;
-  void (*restorer) (void);
-};
-
 static void
 save_result_out (eri_file_t file, long res, const void *out, size_t size)
 {
@@ -835,35 +911,36 @@ save_result_out (eri_file_t file, long res, const void *out, size_t size)
     eri_assert (eri_fwrite (file, out, size, 0) == 0);
 }
 
-static void
-load_result_out (eri_file_t file, long *res, void *out, size_t size)
+static long
+load_result_out (eri_file_t file, void *out, size_t size)
 {
-  *res = load_result (file);
-  if (size == -1) size = *res;
-  if (! ERI_SYSCALL_ERROR_P (*res) && out && size)
+  long res = load_result (file);
+  if (size == -1) size = res;
+  if (! ERI_SYSCALL_ERROR_P (res) && out && size)
     eri_assert (eri_fread (file, out, size, 0) == 0);
+  return res;
 }
 
-#define SYSCALL_REC_RES_OUT(mode, file, res, out, nr, ...) \
-  do {									\
+#define SYSCALL_REC_RES_OUT(mode, file, out, nr, ...) \
+  ({									\
+    long __res;								\
     if (mode == ERS_LIVE)						\
       {									\
-	*(res) = ERI_SYSCALL_NCS (nr, __VA_ARGS__);			\
-	save_result_out (file, *(res), out, sizeof *out);			\
+	__res = ERI_SYSCALL_NCS (nr, __VA_ARGS__);			\
+	save_result_out (file, __res, out, sizeof *out);		\
       }									\
-    else load_result_out (file, res, out, sizeof *out);			\
-  } while (0)
+    else __res = load_result_out (file, out, sizeof *out);		\
+    __res;								\
+  })
 
-#define CSYSCALL_REC_RES_OUT(mode, file, res, out, nr, ...) \
-  do {									\
-    CHECK_SYSCALL (mode, file, nr, __VA_ARGS__);				\
-    SYSCALL_REC_RES_OUT (mode, file, res, out, nr, __VA_ARGS__);		\
-  } while (0)
+#define CSYSCALL_REC_RES_OUT(mode, file, out, nr, ...) \
+  ({									\
+    CHECK_SYSCALL (mode, file, nr, __VA_ARGS__);			\
+    SYSCALL_REC_RES_OUT (mode, file, out, nr, __VA_ARGS__);		\
+  })
 
 static void
 ent_sigaction (int sig, struct siginfo *info, void *ucontext);
-
-#define SA_SIGINFO	4
 
 static struct atomic_lock *
 get_atomic_lock (struct internal *internal, struct thread * th,
@@ -878,6 +955,8 @@ get_atomic_lock (struct internal *internal, struct thread * th,
       lock = icalloc (internal, th->id, lock_size + buf_size);
       lock->mem = mem;
       unsigned long lid = ATOMIC_FETCH_ADD (internal, th->id, &internal->lock_id, 1);
+      iprintf (internal, th->log, "get_atomic_lock %lu %lu\n", th->id, lid);
+
       eri_file_t lfile = eri_open_path (internal->path, "atomic-",
 	ERI_OPEN_WITHID | (internal->mode != ERS_LIVE) * ERI_OPEN_READ, lid,
 	(char *) lock + lock_size, buf_size);
@@ -892,192 +971,182 @@ struct rlimit { char buf[16]; };
 struct timespec { char buf[16]; };
 struct stat { char buf[144]; };
 
-#define SIG_DFL	((void *) 0)
-#define SIG_IGN	((void *) 1)
-
-static char __attribute__ ((used))
-syscall (struct internal *internal, int nr,
-	 long a1, long a2, long a3, long a4, long a5, long a6, long *res)
+static void
+sysexit (struct internal *internal, int nr, long status)
 {
-  eri_assert (nr != __NR_clone);
-  if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
-    return 0;
+  struct thread *th = get_thread (internal);
+  acquire_thread (internal, th, ACQUIRE_EXIT);
 
   char mode = internal->mode;
-  struct thread *th = get_thread (internal);
   unsigned long tid = th->id;
-  iprintf (internal, th->log, "syscall %lu %u\n", tid, nr);
 
-  char acq = 1;
-  if (nr == __NR_exit || nr == __NR_exit_group)
+  iprintf (internal, th->log, "sysexit %lu %u\n", tid, nr);
+
+  eri_assert (nr == __NR_exit || nr == __NR_exit_group);
+  CHECK_SYSCALL (mode, th->file, nr, status);
+
+  char grp = tid == 0 /* main thread */
+	     || nr == __NR_exit_group;
+  if (grp)
     {
-      CHECK_SYSCALL (mode, th->file, nr, a1);
+      release_thread (internal, tid, ACQUIRE_EXIT);
+      while (! ATOMIC_COMPARE_EXCHANGE (internal, tid, &internal->active_lock, 0,
+					LONG_MIN))
+	ERI_ASSERT_SYSCALL (sched_yield);
 
-      char grp = tid == 0 /* main thread */
-		 || nr == __NR_exit_group;
-      if (grp)
-	{
-	  release_active_lock (internal, tid, 1, 1);
-	  while (! ATOMIC_COMPARE_EXCHANGE (internal, tid, &internal->active_lock, 0,
-					    LONG_MIN))
+      ATOMIC_STORE (internal, tid, &internal->exit, 1);
+
+      struct thread *t;
+      ERI_LST_FOREACH (thread, internal, t)
+	if (t != th)
+	  eri_assert (! ERI_SYSCALL_ERROR_P (
+	    CSYSCALL_REC_RES (mode, th->file, __NR_tgkill,
+			      internal->sys_pid, t->sys_tid, SIGEXIT)));
+      ERI_LST_FOREACH (thread, internal, t)
+	if (t != th)
+	  while (! ATOMIC_LOAD (internal, tid, &t->exit))
 	    ERI_ASSERT_SYSCALL (sched_yield);
 
-	  if (mode != ERS_LIVE) eri_lock (&internal->replay.active_lock, 1);
-	  iprintf (internal, th->log, "group exiting\n");
+      iprintf (internal, th->log, "group exiting\n");
 
-	  struct sigact_wrap *w, *nw;
-	  ERI_RBT_FOREACH_SAFE (sigact, internal, w, nw)
-	    {
-	      if (mode == ERS_LIVE)
-		{
-		  struct sigaction act;
-		  ERI_ASSERT_SYSCALL (rt_sigaction, w->sig, 0, &act);
-		  eri_assert (act.act == ent_sigaction);
-		  act.act = w->act;
-		  act.flags = w->flags;
-		  ERI_ASSERT_SYSCALL (rt_sigaction, w->sig, &act, 0);
-		}
+      int i;
+      for (i = 1; i < ERI_NSIG; ++i)
+	if (i != ERI_SIGKILL && i != ERI_SIGSTOP)
+	  {
+	    struct sigact_wrap *w = internal->sigacts + i;
+	    if (mode == ERS_LIVE) eri_assert (w->lock.lock == 0);
+	    else eri_assert (w->lock.tid == -1);
+	    eri_assert (eri_fclose (w->lock.file) == 0);
+	  }
 
-	      iprintf (internal, th->log, "remove sigact wrap %lx\n", w);
-	      sigact_rbt_remove (internal, w);
-	      ifree (internal, tid, w);
-	    }
+      struct thread *nt;
+      ERI_LST_FOREACH_SAFE (thread, internal, t, nt) fini_thread (internal, t);
 
-	  struct thread *t, *nt;
-	  ERI_LST_FOREACH_SAFE (thread, internal, t, nt) fini_thread (internal, t);
+      struct atomic_lock *l, *nl;
+      ERI_RBT_FOREACH_SAFE (atomic, internal, l, nl)
+	{
+	  iprintf (internal, 0, "remove atomic lock %lx\n", l);
 
-	  struct atomic_lock *l, *nl;
-	  ERI_RBT_FOREACH_SAFE (atomic, internal, l, nl)
-	    {
-	      iprintf (internal, 0, "remove atomic lock %lx\n", l);
+	  /* Possibly locked because of thread still existing.  */
+	  if (mode == ERS_LIVE)
+	    while (__atomic_load_n (&l->lock.lock, __ATOMIC_ACQUIRE)) continue;
+	  else eri_assert (l->lock.tid == -1);
 
-	      /* Possibly locked because of thread still existing.  */
-	      if (mode == ERS_LIVE)
-		while (__atomic_load_n (&l->lock.lock, __ATOMIC_ACQUIRE)) continue;
-	      else
-		while (__atomic_load_n (&l->lock.tid, __ATOMIC_ACQUIRE) != -1) continue;
-
-	      eri_assert (eri_fclose (l->lock.file) == 0);
-	      atomic_rbt_remove (internal, l);
-	      ifree (internal, tid, l);
-	    }
-
-	  int i;
-	  struct lock *locks[] = INTERNAL_LOCKS (internal);
-	  for (i = 0; i < eri_length_of (locks); ++i)
-	    {
-	      eri_assert (locks[i]->lock == 0);
-	      eri_assert (eri_fclose (locks[i]->file) == 0);
-	    }
-
-	  iprintf (internal, 0, "used %lu\n", internal->pool.used);
-	  eri_assert (eri_fini_pool (&internal->pool) == 0);
-	  ERI_ASSERT_SYSCALL (munmap, internal->pool_buf, internal->pool_buf_size);
-
-	  if (mode != ERS_LIVE) replay_exit (&internal->replay);
-	  ERI_ASSERT_SYSCALL (munmap, internal->replay.pool_buf,
-			      internal->replay.pool_buf_size);
-	  if (mode != ERS_ANALYSIS)
-	    ERI_ASSERT_SYSCALL (munmap, internal->analysis.buf,
-				internal->analysis.buf_size);
+	  eri_assert (eri_fclose (l->lock.file) == 0);
+	  atomic_rbt_remove (internal, l);
+	  ifree (internal, tid, l);
 	}
+
+      struct lock *locks[] = INTERNAL_LOCKS (internal);
+      for (i = 0; i < eri_length_of (locks); ++i)
+	{
+	  eri_assert (locks[i]->lock == 0);
+	  eri_assert (eri_fclose (locks[i]->file) == 0);
+	}
+
+      iprintf (internal, 0, "used %lu\n", internal->pool.used);
+      eri_assert (eri_fini_pool (&internal->pool) == 0);
+      ERI_ASSERT_SYSCALL (munmap, internal->pool_buf, internal->pool_buf_size);
+
+      if (mode != ERS_LIVE) replay_exit (&internal->replay);
+      ERI_ASSERT_SYSCALL (munmap, internal->replay.pool_buf,
+			  internal->replay.pool_buf_size);
+      if (mode != ERS_ANALYSIS)
+	ERI_ASSERT_SYSCALL (munmap, internal->analysis.buf,
+			    internal->analysis.buf_size);
+    }
+  else
+    {
+      struct lock *ctid_lock = 0;
+      if (th->clear_tid)
+	{
+	  iprintf (internal, th->log, "clear_tid %lx\n", th->clear_tid);
+	  ctid_lock = &get_atomic_lock (internal, th, th->clear_tid, 1)->lock;
+	  llock (internal, tid, ctid_lock);
+	  *th->clear_tid = 0;
+
+	  if (mode == ERS_LIVE)
+	    {
+	      ERI_ASSERT_SYSCALL (futex, th->clear_tid, ERI_FUTEX_WAKE, 1, 0, 0, 0);
+
+	      /* So it's locked until real clear_tid happens.  */
+	      ERI_ASSERT_SYSCALL (set_tid_address, &ctid_lock->lock);
+	    }
+	}
+      fini_thread (internal, th);
+      release_thread (internal, tid, ACQUIRE_EXIT);
+
+      if (mode != ERS_LIVE && ctid_lock)
+	{
+	  /* So memory maps used by this thread won't be freed
+	     due to the notification.  */
+	  eri_lock (&internal->replay.mmap_lock, 0);
+	  ERI_ASSERT_SYSCALL (set_tid_address, &internal->replay.mmap_lock);
+	  lunlock (internal, ctid_lock);
+	}
+    }
+  ERI_SYSCALL_NCS (nr, mode == ERS_LIVE ? status : 0);
+  eri_assert (0);
+}
+
+static long
+syscomm (struct internal *internal, int nr,
+	 long a1, long a2, long a3, long a4, long a5, long a6)
+{
+  eri_assert (nr != __NR_clone);
+  eri_assert (nr != __NR_exit && nr != __NR_exit_group);
+
+  struct thread *th = get_thread (internal);
+  acquire_thread (internal, th, ACQUIRE_NORMAL);
+
+  char mode = internal->mode;
+  unsigned long tid = th->id;
+
+  iprintf (internal, th->log, "syscall %lu %u\n", tid, nr);
+
+  long res;
+  if (nr == __NR_rt_sigaction)
+    {
+      CHECK_SYSCALL (mode, th->file, nr, a1, a2, a3, a4);
+
+      if (a1 <= 0 || a1 >= ERI_NSIG
+	  || a1 == ERI_SIGKILL || a1 == ERI_SIGSTOP
+	  || (a2 == 0 && a3 == 0))
+	res = SYSCALL_REC_RES (mode, th->file, nr, a1, a2, a3, a4);
       else
 	{
-	  struct lock *ctid_lock = 0;
-	  if (th->clear_tid)
+	  struct sigact_wrap *w = internal->sigacts + a1;
+
+	  llock (internal, tid, &w->lock);
+	  void *oact = w->act;
+	  int oflags = w->flags;
+
+	  struct sigaction *act = (struct sigaction *) a2;
+	  if (act)
 	    {
-	      iprintf (internal, th->log, "clear_tid %lx\n", th->clear_tid);
-	      ctid_lock = &get_atomic_lock (internal, th, th->clear_tid, 1)->lock;
-	      llock (internal, tid, ctid_lock);
-	      *th->clear_tid = 0;
-
-	      if (mode == ERS_LIVE)
-		{
-		  ERI_ASSERT_SYSCALL (futex, th->clear_tid, ERI_FUTEX_WAKE, 1, 0, 0, 0);
-
-		  /* So it's locked until real clear_tid happens.  */
-		  ERI_ASSERT_SYSCALL (set_tid_address, &ctid_lock->lock);
-		}
+	      w->act = act->act;
+	      w->flags = act->flags;
 	    }
-	  fini_thread (internal, th);
-	  release_active_lock (internal, tid, 1, 1);
 
-	  if (mode != ERS_LIVE && ctid_lock)
+	  if (act
+	      && ((act->act != ERI_SIG_DFL && act->act != ERI_SIG_IGN) || a1 == SIGEXIT))
 	    {
-	      /* So memory maps used by this thread won't be freed
-		 due to the notification.  */
-	      eri_lock (&internal->replay.mmap_lock, 0);
-	      ERI_ASSERT_SYSCALL (set_tid_address, &internal->replay.mmap_lock);
-	      lunlock (internal, ctid_lock);
+	      struct sigaction a = {
+		ent_sigaction, act->flags | ERI_SA_SIGINFO, act->restorer, act->mask
+	      };
+	      res = SYSCALL_REC_RES (mode, th->file, nr, a1, &a, a3, a4);
 	    }
-	}
-      ERI_SYSCALL_NCS (nr, mode ? a1 : 0);
-      eri_assert (0);
-    }
-  else if (nr == __NR_rt_sigaction)
-    {
-      CHECK_SYSCALL (mode, th->file, nr, a1, a2, a3);
+	  else
+	    res = SYSCALL_REC_RES (mode, th->file, nr, a1, act, a3, a4);
 
-      int sig = (int) a1;
-
-      struct sigact_wrap *wrap = 0;
-      void *old_act = 0;
-      int old_flags = 0;
-      struct sigaction newact;
-
-      const struct sigaction *act = (const struct sigaction *) a2;
-      struct sigaction *old = (struct sigaction *) a3;
-
-      llock (internal, tid, &internal->sigacts_lock);
-      wrap = sigact_rbt_get (internal, &sig, ERI_RBT_EQ);
-
-      if (old && wrap)
-	{
-	  old_act = wrap->act;
-	  old_flags = wrap->flags;
-	}
-
-      char replace = act
-		     && ((act->flags & SA_SIGINFO)
-			 || (act->act != SIG_DFL && act->act != SIG_IGN));
-      if (replace)
-	{
-	  newact.act = ent_sigaction;
-	  eri_memcpy (&newact.mask, &act->mask, sizeof act->mask);
-	  newact.flags = act->flags | SA_SIGINFO;
-	  newact.restorer = act->restorer;
-	}
-
-      SYSCALL_REC_RES_OUT (mode, th->file, res, old,
-			   nr, sig, replace ? &newact : act, old);
-
-      if (! ERI_SYSCALL_ERROR_P (*res))
-	{
-	  if (act && ! replace && wrap)
+	  struct sigaction *old = (struct sigaction *) a3;
+	  if (old)
 	    {
-	      sigact_rbt_remove (internal, wrap);
-	      ifree (internal, tid, wrap);
+	      old->act = oact;
+	      old->flags = oflags;
 	    }
-	  else if (act && replace)
-	    {
-	      if (! wrap)
-		{
-		  wrap = imalloc (internal, tid, sizeof *wrap);
-		  wrap->sig = sig;
-		  sigact_rbt_insert (internal, wrap);
-		}
 
-	      wrap->act = act->act;
-	      wrap->flags = act->flags;
-	    }
-	}
-
-      lunlock (internal, &internal->sigacts_lock);
-
-      if (old && wrap && ! ERI_SYSCALL_ERROR_P (*res))
-	{
-	  old->act = old_act;
-	  old->flags = old_flags;
+	  lunlock (internal, &w->lock);
 	}
     }
   else if (nr == __NR_set_tid_address)
@@ -1085,49 +1154,48 @@ syscall (struct internal *internal, int nr,
       CHECK_SYSCALL (mode, th->file, nr, a1);
 
       th->clear_tid = (int *) a1;
-      SYSCALL_REC_RES (mode, th->file, res, nr, a1);
+      res = SYSCALL_REC_RES (mode, th->file, nr, a1);
     }
   else if (nr == __NR_set_robust_list)
-    CSYSCALL_REC_RES (mode, th->file, res, nr, a1, a2);
+    res = CSYSCALL_REC_RES (mode, th->file, nr, a1, a2);
   else if (nr == __NR_rt_sigprocmask)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (struct sigset *) a3,
-			  nr, a1, a2, a3);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (struct sigset *) a3,
+				nr, a1, a2, a3);
   else if (nr == __NR_prlimit64)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (struct rlimit *) a4,
-			  nr, a1, a2, a3, a4);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (struct rlimit *) a4,
+				nr, a1, a2, a3, a4);
   else if (nr == __NR_clock_gettime)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (struct timespec *) a2,
-			  nr, a1, a2);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (struct timespec *) a2,
+				nr, a1, a2);
   else if (nr == __NR_read)
     {
       CHECK_SYSCALL (mode, th->file, nr, a1, a2, a3);
-      release_active_lock (internal, tid, 1, 0);
+      release_thread (internal, (unsigned long) th, ACQUIRE_NORMAL);
 
       if (mode == ERS_LIVE)
-	*res = ERI_SYSCALL_NCS (nr, a1, a2, a3);
+	res = ERI_SYSCALL_NCS (nr, a1, a2, a3);
 
-      if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
-	acq = 0;
-      else if (mode == ERS_LIVE)
-	save_result_out (th->file, *res, (void *) a2, *res);
-      else load_result_out (th->file, res, (void *) a2, -1);
+      acquire_thread (internal, th, ACQUIRE_NORMAL);
+      if (mode == ERS_LIVE)
+	save_result_out (th->file, res, (void *) a2, res);
+      else res = load_result_out (th->file, (void *) a2, -1);
     }
   else if (nr == __NR_write)
-    acq = CSYSCALL_REC_IRES (internal, th, res, nr, a1, a2, a3);
+    res = CSYSCALL_REC_IRES (internal, th, nr, a1, a2, a3);
   else if (nr == __NR_stat)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (struct stat *) a2,
-			  nr, a1, a2);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (struct stat *) a2,
+				nr, a1, a2);
   else if (nr == __NR_fstat)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (struct stat *) a2,
-			  nr, a1, a2);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (struct stat *) a2,
+				nr, a1, a2);
   else if (nr == __NR_openat)
-    CSYSCALL_REC_RES (mode, th->file, res, nr, a1, a2, a3, a4);
+    res = CSYSCALL_REC_RES (mode, th->file, nr, a1, a2, a3, a4);
   else if (nr == __NR_close)
-    acq = CSYSCALL_REC_IRES (internal, th, res, nr, a1);
+    res = CSYSCALL_REC_IRES (internal, th, nr, a1);
   else if (nr == __NR_writev)
-    acq = CSYSCALL_REC_IRES (internal, th, res, nr, a1, a2, a3);
+    res = CSYSCALL_REC_IRES (internal, th, nr, a1, a2, a3);
   else if (nr == __NR_access)
-    CSYSCALL_REC_RES (mode, th->file, res, nr, a1, a2);
+    res = CSYSCALL_REC_RES (mode, th->file, nr, a1, a2);
   else if (nr == __NR_mmap)
     {
       CHECK_SYSCALL (mode, th->file, nr, a1, a2, a3, a4, a5, a6);
@@ -1136,54 +1204,54 @@ syscall (struct internal *internal, int nr,
       llock (internal, tid, &internal->mmap_lock);
       if (mode == ERS_LIVE)
 	{
-	  *res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
-	  save_result_out (th->file, *res, (void *) *res, anony ? 0 : (size_t) a2);
+	  res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
+	  save_result_out (th->file, res, (void *) res, anony ? 0 : (size_t) a2);
 	}
       else
 	{
-	  *res = load_result (th->file);
-	  if (! ERI_SYSCALL_ERROR_P (*res))
+	  res = load_result (th->file);
+	  if (! ERI_SYSCALL_ERROR_P (res))
 	    {
 	      eri_lock (&internal->replay.mmap_lock, 0);
-	      ERI_ASSERT_SYSCALL (mmap, *res, a2, anony ? a3 : a3 | ERI_PROT_WRITE,
+	      ERI_ASSERT_SYSCALL (mmap, res, a2, anony ? a3 : a3 | ERI_PROT_WRITE,
 				  ERI_MAP_FIXED | ERI_MAP_ANONYMOUS | ERI_MAP_PRIVATE,
 				  -1, 0);
 	      eri_unlock (&internal->replay.mmap_lock, 0);
 
 	      if (! anony)
 		{
-		  eri_assert (eri_fread (th->file, (void *) *res, (size_t) a2, 0) == 0);
+		  eri_assert (eri_fread (th->file, (void *) res, (size_t) a2, 0) == 0);
 		  if ((a3 & ERI_PROT_WRITE) == 0)
-		    ERI_ASSERT_SYSCALL (mprotect, *res, a2, a3);
+		    ERI_ASSERT_SYSCALL (mprotect, res, a2, a3);
 		}
 	    }
 	}
       lunlock (internal, &internal->mmap_lock);
     }
   else if (nr == __NR_mprotect)
-    CSYSCALL_CHECK_RES (mode, th->file, res, nr, a1, a2, a3);
+    res = CSYSCALL_CHECK_RES (mode, th->file, nr, a1, a2, a3);
   else if (nr == __NR_brk)
     {
       CHECK_SYSCALL (mode, th->file, nr, a1);
       llock (internal, tid, &internal->brk_lock);
 
       if (! internal->cur_brk && a1)
-	CSYSCALL_REC_RES (mode, th->file, (long *) &internal->cur_brk, nr, 0);
+	internal->cur_brk = CSYSCALL_REC_RES (mode, th->file, nr, 0);
 
-      SYSCALL_REC_RES (mode, th->file, res, nr, a1);
-      eri_assert (! ERI_SYSCALL_ERROR_P (*res));
+      res = SYSCALL_REC_RES (mode, th->file, nr, a1);
+      eri_assert (! ERI_SYSCALL_ERROR_P (res));
 
       if (a1 == 0)
 	{
-	  if (! internal->cur_brk) internal->cur_brk = (unsigned long) *res;
-	  else eri_assert (internal->cur_brk == (unsigned long) *res);
+	  if (! internal->cur_brk) internal->cur_brk = (unsigned long) res;
+	  else eri_assert (internal->cur_brk == (unsigned long) res);
 	}
-      else if (*res == a1)
+      else if (res == a1)
 	{
 	  if (mode != ERS_LIVE)
 	    {
 	      unsigned long c = eri_round_up (internal->cur_brk, 4096);
-	      unsigned long n = eri_round_up ((unsigned long) *res, 4096);
+	      unsigned long n = eri_round_up ((unsigned long) res, 4096);
 	      if (n > c)
 		ERI_ASSERT_SYSCALL (mmap, c, n - c,
 				    ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
@@ -1192,7 +1260,7 @@ syscall (struct internal *internal, int nr,
 	      else if (c > n)
 		ERI_ASSERT_SYSCALL (munmap, n, c - n);
 	    }
-	  internal->cur_brk = (unsigned long) *res;
+	  internal->cur_brk = (unsigned long) res;
 	}
 
       eri_assert (internal->cur_brk);
@@ -1205,15 +1273,15 @@ syscall (struct internal *internal, int nr,
 
       if (mode == ERS_LIVE)
 	{
-	  *res = ERI_SYSCALL_NCS (nr, a1, a2);
-	  save_result (th->file, *(res));
+	  res = ERI_SYSCALL_NCS (nr, a1, a2);
+	  save_result (th->file, res);
 	}
       else
 	{
 	  eri_lock (&internal->replay.mmap_lock, 0);
-	  *res = ERI_SYSCALL_NCS (nr, a1, a2);
+	  res = ERI_SYSCALL_NCS (nr, a1, a2);
 	  eri_unlock (&internal->replay.mmap_lock, 0);
-	  eri_assert (*res == load_result (th->file));
+	  eri_assert (res == load_result (th->file));
 	}
 
       lunlock (internal, &internal->mmap_lock);
@@ -1224,35 +1292,34 @@ syscall (struct internal *internal, int nr,
       eri_assert (op != ERI_FUTEX_WAKE_OP); /* XXX */
       CHECK_SYSCALL (mode, th->file, nr, a1, a2, a3, a4, a5, a6);
       if (op == ERI_FUTEX_WAIT || op == ERI_FUTEX_WAIT_BITSET)
-	release_active_lock (internal, tid, 1, 0);
+	release_thread (internal, (unsigned long) th, ACQUIRE_NORMAL);
 
       if (mode == ERS_LIVE)
-	*res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
+	res = ERI_SYSCALL_NCS (nr, a1, a2, a3, a4, a5, a6);
 
-      if ((op == ERI_FUTEX_WAIT || op == ERI_FUTEX_WAIT_BITSET)
-	  && ! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE))
-	return 1;
+      if (op == ERI_FUTEX_WAIT || op == ERI_FUTEX_WAIT_BITSET)
+	acquire_thread (internal, th, ACQUIRE_NORMAL);
 
-      if (mode == ERS_LIVE) save_result (th->file, *res);
-      else *res = load_result (th->file);
+      if (mode == ERS_LIVE) save_result (th->file, res);
+      else res = load_result (th->file);
     }
   else if (nr == __NR_getpid)
-    CSYSCALL_REC_RES (mode, th->file, res, nr);
+    res = CSYSCALL_REC_RES (mode, th->file, nr);
   else if (nr == __NR_gettid)
-    CSYSCALL_REC_RES (mode, th->file, res, nr);
+    res = CSYSCALL_REC_RES (mode, th->file, nr);
   else if (nr == __NR_madvise)
     /* XXX check advice */
-    CSYSCALL_REC_RES (mode, th->file, res, nr, a1, a2, a3);
+    res = CSYSCALL_REC_RES (mode, th->file, nr, a1, a2, a3);
   else if (nr == __NR_time)
-    CSYSCALL_REC_RES_OUT (mode, th->file, res, (long *) a1, nr, a1);
+    res = CSYSCALL_REC_RES_OUT (mode, th->file, (long *) a1, nr, a1);
   else if (nr == __NR_arch_prctl)
     {
       CHECK_SYSCALL (mode, th->file, nr, a1, a2);
       if (a1 != ERI_ARCH_GET_FS && a1 != ERI_ARCH_GET_GS)
-	SYSCALL_REC_RES (mode, th->file, res, nr, a1, a2);
+	res = SYSCALL_REC_RES (mode, th->file, nr, a1, a2);
       else
-	SYSCALL_REC_RES_OUT (mode, th->file, res,
-			     (unsigned long *) a2, nr, a1, a2);
+	res = SYSCALL_REC_RES_OUT (mode, th->file,
+				   (unsigned long *) a2, nr, a1, a2);
     }
   else
     {
@@ -1261,8 +1328,23 @@ syscall (struct internal *internal, int nr,
     }
 
   iprintf (internal, th->log, "syscall done %lu %u\n", tid, nr);
-  if (acq) release_active_lock (internal, tid, 1, 0);
-  return 1;
+  release_thread (internal, (unsigned long) th, ACQUIRE_NORMAL);
+  return res;
+}
+
+static long __attribute__ ((used))
+syscall (struct internal *internal, int nr,
+	 long a1, long a2, long a3, long a4, long a5, long a6)
+{
+  eri_assert (nr != __NR_clone);
+  if (nr == __NR_exit || nr == __NR_exit_group)
+    {
+      sysexit (internal, nr, a1);
+      eri_assert (0);
+      __builtin_unreachable ();
+    }
+
+  return syscomm (internal, nr, a1, a2, a3, a4, a5, a6);
 }
 
 #define CLONE_FLAGS \
@@ -1273,14 +1355,13 @@ syscall (struct internal *internal, int nr,
 static char __attribute__ ((used))
 pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 {
-  if (! acquire_active_lock (internal, 2, MARK_THREAD_ACTIVE))
-    return 0;
+  struct thread *th = get_thread (internal);
+  acquire_thread (internal, th, ACQUIRE_CLONE, 2);
 
   eri_assert (internal->main == 0);
   eri_assert (desc->flags == CLONE_FLAGS);
 
   char mode = internal->mode;
-  struct thread *th = get_thread (internal);
 
   iprintf (internal, th->log, "pre_clone %lu\n", th->id);
   CHECK_SYSCALL (mode, th->file, __NR_clone, desc->flags, desc->cstack,
@@ -1296,14 +1377,14 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
       eri_assert (desc->replay_result);
       if (ERI_SYSCALL_ERROR_P (desc->replay_result))
 	{
-	  iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
-	  return 2;
+	  iprintf (internal, th->log, "pre_clone done %lu\n", th->id);
+	  return 0;
 	}
 
       desc->flags &= ~(ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID);
       *desc->ptid = desc->replay_result;
     }
-  iprintf (internal, th->log, "pre_clone down %lu\n", th->id);
+  iprintf (internal, th->log, "pre_clone done %lu\n", th->id);
   llock (internal, th->id, &internal->clone_lock);
   return 1;
 }
@@ -1311,7 +1392,8 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 static long __attribute__ ((used))
 post_clone (struct internal *internal, struct thread *child, long res, long replay)
 {
-  if (internal->mode == ERS_LIVE)
+  char mode = internal->mode;
+  if (mode == ERS_LIVE)
     {
       if (res != 0)
 	save_result (get_thread (internal)->file, res);
@@ -1355,68 +1437,63 @@ post_clone (struct internal *internal, struct thread *child, long res, long repl
     }
 
   iprintf (internal, th->log, "post_clone done %lu\n", th->id);
-  release_active_lock (internal, th->id, rel, 0);
+  release_thread (internal, (unsigned long) th, ACQUIRE_CLONE, rel);
   return res;
 }
 
 static void
 sigaction (struct internal *internal, int sig, struct siginfo *info, void *ucontext)
 {
-  char mode = internal->mode;
-
   void *act;
   int flags;
-  if (acquire_active_lock (internal, 1, MARK_THREAD_SIGNAL))
-    {
-      struct thread *th = get_thread (internal);
-      iprintf (internal, th->log, "sigaction %lu %u\n", th->id, sig);
-
-      if (mode == ERS_LIVE) save_signal (th->file, sig, info, ucontext);
-
-      llock (internal, th->id, &internal->sigacts_lock);
-
-      struct sigact_wrap *wrap = sigact_rbt_get (internal, &sig, ERI_RBT_EQ);
-      eri_assert (wrap);
-      act = wrap->act;
-      flags = wrap->flags;
-
-      lunlock (internal, &internal->sigacts_lock);
-      iprintf (internal, th->log, "sigaction done %lu %u\n", th->id, sig);
-      release_active_lock (internal, th->id, 1, 0);
-    }
-  else
-    {
-      /* Dead loop inside acquire_active_lock if replay */
-      eri_assert (mode == ERS_LIVE);
-
-      struct sigaction a;
-      while (1)
-	{
-	  ERI_ASSERT_SYSCALL (rt_sigaction, sig, 0, &a);
-	  if (a.act != ent_sigaction) break;
-	}
-      act = a.act;
-      flags = a.flags;
-    }
-
-    if (flags & SA_SIGINFO)
-      ((void (*) (int, struct siginfo *, void *)) act) (sig, info, ucontext);
-    else
-      ((void (*) (int)) act) (sig);
-}
-
-static char
-atomic_lock (struct internal *internal, void *mem)
-{
-  if (! acquire_active_lock (internal, 1, MARK_THREAD_ACTIVE)) return 0;
 
   struct thread *th = get_thread (internal);
+  acquire_thread (internal, th, ACQUIRE_ASYNC);
+
+  unsigned long tid = th->id;
+  iprintf (internal, th->log, "sigaction %lu %u\n", tid, sig);
+
+  if (internal->mode == ERS_LIVE)
+    save_signal (th->file, sig, info, ucontext);
+
+  if (sig == SIGEXIT && ATOMIC_LOAD (internal, tid, &internal->exit))
+    {
+      ATOMIC_STORE (internal, tid, &th->exit, 1);
+      while (1) continue;
+    }
+
+  struct sigact_wrap *w = internal->sigacts + sig;
+  llock (internal, tid, &w->lock);
+
+  eri_assert (sig == SIGEXIT
+	      || (w->act != ERI_SIG_DFL && w->act != ERI_SIG_IGN));
+  act = w->act;
+  flags = w->flags;
+
+  lunlock (internal, &w->lock);
+
+  iprintf (internal, th->log, "sigaction done %lu %u\n", tid, sig);
+  release_thread (internal, (unsigned long) th, ACQUIRE_ASYNC);
+
+  if (act == ERI_SIG_DFL || act == ERI_SIG_IGN) return;
+
+  if (flags & ERI_SA_SIGINFO)
+    ((void (*) (int, struct siginfo *, void *)) act) (sig, info, ucontext);
+  else
+    ((void (*) (int)) act) (sig);
+}
+
+static void
+atomic_lock (struct internal *internal, void *mem)
+{
+  struct thread *th = get_thread (internal);
+  acquire_thread (internal, th, ACQUIRE_NORMAL);
+
   iprintf (internal, th->log, "atomic_lock %lu %lx\n", th->id, mem);
 
   struct atomic_lock *lock = get_atomic_lock (internal, th, mem, 1);
   llock (internal, th->id, &lock->lock);
   iprintf (internal, th->log, "atomic_lock done %lu %lx\n", th->id, mem);
-  return 1;
 }
 
 static void
@@ -1429,10 +1506,11 @@ atomic_unlock (struct internal *internal, void *mem, int mo)
   eri_assert (lock);
   lunlock (internal, &lock->lock);
   iprintf (internal, th->log, "atomic_unlock done %lu %lx %u\n", th->id, mem, mo);
-  release_active_lock (internal, th->id, 1, 0);
+
+  release_thread (internal, (unsigned long) th, ACQUIRE_NORMAL);
 }
 
-static char
+static void
 atomic_barrier (struct internal *internal, int mo)
 {
 #if 0
@@ -1443,7 +1521,6 @@ atomic_barrier (struct internal *internal, int mo)
   release_active_lock (internal, th->id, 1, 0);
   return 1;
 #endif
-  return 0;
 }
 
 static void
@@ -1465,14 +1542,11 @@ analysis (struct internal *internal,
 }
 
 static struct internal internal;
-static char initialized;
 
 static char
 ent_init_process (const char *path)
 {
-  char mode = init_process (&internal, path);
-  initialized = 1;
-  return mode;
+  return init_process (&internal, path);
 }
 
 static void
@@ -1481,8 +1555,8 @@ ent_setup_tls (long offset)
   setup_tls (&internal, offset);
 }
 
-/* static */ char ent_syscall (int nr, long a1, long a2, long a3, long a4,
-			       long a5, long a6, long *res);
+/* static */ long ent_syscall (int nr, long a1, long a2, long a3, long a4,
+			       long a5, long a6);
 
 #define NR_CLONE	_ERS_STR (__NR_clone)
 
@@ -1502,14 +1576,10 @@ asm ("  .text							\n\
 ent_syscall:							\n\
   .cfi_startproc						\n\
 								\n\
-  cmpb	$0, initialized(%rip)					\n\
-  movb	$0, %al							\n\
-  je	.return1						\n\
-								\n\
   cmpl	$" NR_CLONE ", %edi					\n\
   je	.call_clone						\n\
 								\n\
-  pushq	16(%rsp)		/* res */			\n\
+  subq	$8, %rsp		/* alignment */			\n\
   .cfi_adjust_cfa_offset 8					\n\
   pushq	16(%rsp)		/* a6 */			\n\
   .cfi_adjust_cfa_offset 8					\n\
@@ -1524,8 +1594,6 @@ ent_syscall:							\n\
   call	syscall							\n\
   addq	$24,  %rsp						\n\
   .cfi_adjust_cfa_offset -24					\n\
-								\n\
-.return1:							\n\
   ret								\n\
 								\n\
 .call_clone:							\n\
@@ -1545,11 +1613,8 @@ ent_syscall:							\n\
   movq	%rsp, %rsi		/* desc */			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	pre_clone						\n\
-  testb	 %al, %al						\n\
-  jz	.return2						\n\
-								\n\
-  cmpb	$2, %al			/* replay & no syscall */	\n\
-  je	.post							\n\
+  testb	 %al, %al 		/* replay & no syscall */	\n\
+  jz	.post							\n\
 								\n\
   movq	" CLONE_DESC_TP "(%rsp), %r8				\n\
   movq	" CLONE_DESC_CTID "(%rsp), %r10				\n\
@@ -1574,15 +1639,11 @@ ent_syscall:							\n\
   .cfi_restore %rip						\n\
 								\n\
 .post:								\n\
-  movq	%rax, %rdx		/* *res */			\n\
+  movq	%rax, %rdx		/* res */			\n\
   movq	" CLONE_DESC_REPLAY_RESULT "(%rsp), %rcx		\n\
   movq	" CLONE_DESC_CHILD "(%rsp), %rsi			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	post_clone						\n\
-  movq	%rax, " CLONE_DESC_SIZE16 " + 24(%rsp)			\n\
-								\n\
-.return2:							\n\
-  movb	$1, %al							\n\
   addq	$" CLONE_DESC_SIZE16 " + 8, %rsp			\n\
   .cfi_adjust_cfa_offset -" CLONE_DESC_SIZE16 "			\n\
   .cfi_rel_offset %rip, 0					\n\
@@ -1591,22 +1652,22 @@ ent_syscall:							\n\
 .child:								\n\
   .cfi_undefined %rip						\n\
   movq	8(%rsp), %rcx		/* replay */			\n\
-  movq	$0, %rdx		/* *res */			\n\
+  movq	$0, %rdx		/* res */			\n\
   movq	(%rsp), %rsi		/* child */			\n\
   leaq	internal(%rip), %rdi	/* internal */			\n\
   call	post_clone						\n\
   addq	$24, %rsp						\n\
-  movb	$2, %al							\n\
+  xorq	%rax, %rax						\n\
   ret								\n\
   .cfi_endproc							\n\
   .size ent_syscall, .-ent_syscall				\n\
   .previous							\n"
 );
 
-static char
+static void
 ent_atomic_lock (void *mem)
 {
-  return initialized && atomic_lock (&internal, mem);
+  return atomic_lock (&internal, mem);
 }
 
 static void
@@ -1615,10 +1676,10 @@ ent_atomic_unlock (void *mem, int mo)
   atomic_unlock (&internal, mem, mo);
 }
 
-static char
+static void
 ent_atomic_barrier (int mo)
 {
-  return initialized && atomic_barrier (&internal, mo);
+  return atomic_barrier (&internal, mo);
 }
 
 static void

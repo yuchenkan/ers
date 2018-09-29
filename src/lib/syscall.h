@@ -146,4 +146,16 @@
 #define ERI_SEEK_SET	0
 #define ERI_SEEK_CUR	1
 
+#define ERI_SA_SIGINFO	4
+#define ERI_SA_RESTORER	0x04000000
+
+#define ERI_SIG_DFL	((void *) 0)
+#define ERI_SIG_IGN	((void *) 1)
+
+#define ERI_SIGKILL	9
+#define ERI_SIGCHLD	17
+#define ERI_SIGSTOP	19
+#define ERI_SIGURG	23
+#define ERI_NSIG	65
+
 #endif

@@ -287,7 +287,7 @@ start_context (struct context *c)
   c->log = eri_open_path (v->path, "vex-log-", ERI_OPEN_WITHID, c->id,
     (char *) c->stack + v->stack_size, buf_size);
   c->rip_file = eri_open_path (v->path, "vex-rip-", ERI_OPEN_WITHID, c->id,
-    (char *) c->log + buf_size, buf_size);
+    (char *) c->stack + v->stack_size + buf_size, buf_size);
 
   if (v->detail)
   cprintf (c->log, "context: %lu, stack: %lx\n", c->id, c->stack);

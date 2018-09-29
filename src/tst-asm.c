@@ -604,20 +604,11 @@ long tst_clone ();
   assert (nr == __NR_clone && a1 == 1 && a3 == 3	\
 	  && a4 == 4 && a5 == 5 && a6 == 6)
 
-static char
-syscall_clone1 (int nr, long a1, long a2, long a3,
-		long a4, long a5, long a6, long *res)
-{
-  CHECK_CLONE;
-  return 0;
-}
-
-static char
+static long
 syscall_clone2 (int nr, long a1, long a2, long a3,
-		long a4, long a5, long a6, long *res)
+		long a4, long a5, long a6)
 {
   CHECK_CLONE;
-  *res = 1;
   return 1;
 }
 
@@ -630,28 +621,24 @@ syscall_clone3:					\n\
   movq	(%rsp), %rax				\n\
   movq	%rax, (%rdx)				\n\
   movq	%rdx, %rsp				\n\
-  movb	$2, %al					\n\
+  xorq	%rax, %rax				\n\
   ret						\n\
   .cfi_endproc					\n\
   .size syscall_clone3, .-syscall_clone3	\n\
   .previous					\n"
 );
 
-char
+long
 syscall_clone3 (int nr, long a1, long a2, long a3,
-		long a4, long a5, long a6, long *res);
+		long a4, long a5, long a6);
 
 struct ers_recorder *eri_get_recorder (void);
 
 int main ()
 {
-  struct ers_recorder clone1 = { .syscall = syscall_clone1 };
   struct ers_recorder clone2 = { .syscall = syscall_clone2 };
   struct ers_recorder clone3 = { .syscall = syscall_clone3 };
 
-  assert (tst_clone () == 7);
-
-  recorder = &clone1;
   assert (tst_clone () == 7);
 
   recorder = &clone2;
@@ -664,13 +651,10 @@ int main ()
   tst ();
 
   recorder = eri_get_recorder ();
-
-  tst ();
-
   recorder->init_process ("ers_data");
 
   tst ();
 
-  recorder->syscall (__NR_exit, 0, 0, 0, 0, 0, 0, NULL);
+  recorder->syscall (__NR_exit, 0, 0, 0, 0, 0, 0);
   __builtin_unreachable ();
 }

@@ -32,13 +32,12 @@ struct ers_recorder
      change this value for now.  */
   void (*setup_tls) (long offset);
 
-  /* 0 not replaced, 1 replaced, 2 replaced and child return */
-  char (*syscall) (int nr, long a1, long a2, long a3,
-		   long a4, long a5, long a6, long *res);
+  long (*syscall) (int nr, long a1, long a2, long a3,
+		   long a4, long a5, long a6);
 
-  char (*atomic_lock) (void *mem);
+  void (*atomic_lock) (void *mem);
   void (*atomic_unlock) (void *mem, int mo);
-  char (*atomic_barrier) (int mo);
+  void (*atomic_barrier) (int mo);
 
   void (*analysis) (unsigned long entry, unsigned long info,
 		    unsigned long stack);

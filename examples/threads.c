@@ -8,7 +8,6 @@
 # define EXIT_GROUP
 #endif
 
-
 #if 0
 # define SIGNAL
 #endif

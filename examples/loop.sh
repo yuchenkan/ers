@@ -2,5 +2,6 @@ set -ex
 
 for i in {1..50}
 do
-  bash test.sh "$@"
+  echo $i
+  bash -e test.sh "$@"
 done
