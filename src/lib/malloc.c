@@ -118,7 +118,7 @@ eri_calloc (struct eri_pool *pool, size_t size, void **p)
 static void
 guard (void *b, size_t s)
 {
-#ifndef NOCHECK
+#ifndef NO_CHECK
   eri_memset (b, 0xfc, s);
 #endif
 }
