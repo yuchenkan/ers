@@ -90,9 +90,8 @@ tst:			\n\
 
 void *tst (void *);
 
-void brk (struct eri_vex_common_context *ctx,
-	  struct eri_vex_rw_ranges *reads,
-	  struct eri_vex_rw_ranges *writes)
+void
+brk (struct eri_vex_brk_desc *desc)
 {
 }
 

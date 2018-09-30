@@ -20,6 +20,7 @@
 #include "xed/xed-interface.h"
 
 struct vex;
+struct entry;
 
 struct context
 {
@@ -29,6 +30,7 @@ struct context
   unsigned long id;
 
   struct vex *vex;
+  struct entry *entry;
 
   void *stack;
 
@@ -206,6 +208,7 @@ struct vex
   char detail;
 
   eri_vex_break_cb_t brk;
+  void *brk_data;
 
   void *mmap;
   size_t mmap_size;
@@ -340,7 +343,11 @@ vex_break (struct vex *v, struct context *c)
 	c->ctx.writes.naddrs, c->ctx.writes.addrs, c->ctx.writes.sizes
       };
 
-      v->brk (&c->ctx.comm, &r, &w);
+      struct eri_vex_brk_desc d = {
+	&c->ctx.comm, c->entry->rip, c->entry->length, &r, &w, v->brk_data
+      };
+
+      v->brk (&d);
     }
 
 #if 0
@@ -1997,7 +2004,7 @@ vex_loop (struct context *c)
   while (1)
     {
       if (v->detail) cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
-      struct entry *e = vex_get_entry (c->log, v, c->ctx.comm.rip);
+      struct entry *e = c->entry = vex_get_entry (c->log, v, c->ctx.comm.rip);
       c->ctx.insts = (unsigned long) e->decoded_insts;
 
       if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
@@ -2037,8 +2044,6 @@ vex_loop (struct context *c)
 	    eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rip, sizeof ir->rip, 0) == 0);
 	    eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rep, sizeof ir->rep, 0) == 0);
 	  }
-
-      /* XXX record read instructions */
 
       if (v->brk)
 	{
@@ -2101,6 +2106,7 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   v->detail = 0;
 
   v->brk = desc->brk;
+  v->brk_data = desc->brk_data;
 
   if (desc->mmap)
     {

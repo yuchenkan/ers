@@ -316,10 +316,10 @@ imalloc (struct internal *internal, unsigned long tid, size_t size)
 }
 
 static void *
-icalloc (struct internal *internal, unsigned long tid, size_t size)
+icalloc (struct internal *internal, unsigned long tid, size_t size, size_t csize)
 {
   void *p = imalloc (internal, tid, size);
-  eri_memset (p, 0, size);
+  eri_memset (p, 0, csize ? : size);
   return p;
 }
 
@@ -453,7 +453,8 @@ alloc_thread (struct internal *internal, unsigned long tid,
   size_t thread_size = eri_size_of (struct thread, 16);
   size_t buf_size = internal->file_buf_size;
 
-  struct thread *th = icalloc (internal, tid, thread_size + buf_size * 3);
+  struct thread *th = icalloc (internal, tid,
+			       thread_size + buf_size * 3, sizeof *th);
 
   th->id = ATOMIC_FETCH_ADD (internal, tid, &internal->thread_id, 1);
   th->clear_tid = ctid;
@@ -881,15 +882,15 @@ static struct thread *
 get_thread (struct internal *internal)
 {
   if (internal->main) return internal->main;
-  struct thread *thread;
-  asm ("movq	%%fs:(%1), %0" : "=r" (thread) : "r" (internal->thread_offset));
-  return thread;
+  struct thread *th;
+  asm ("movq	%%fs:(%1), %0" : "=r" (th) : "r" (internal->thread_offset));
+  return th;
 }
 
 static void
-set_thread (struct internal *internal, struct thread *thread)
+set_thread (struct internal *internal, struct thread *th)
 {
-  asm ("movq	%0, %%fs:(%1)" : : "r" (thread), "r" (internal->thread_offset));
+  asm ("movq	%0, %%fs:(%1)" : : "r" (th), "r" (internal->thread_offset));
 }
 
 static void
@@ -897,6 +898,7 @@ setup_tls (struct internal *internal, long offset)
 {
   eri_assert (internal->main);
 
+  /* Call set_thread first to avoid possible gap in analysis.  */
   internal->thread_offset = offset;
   set_thread (internal, internal->main);
   internal->main = 0;
@@ -960,7 +962,7 @@ get_atomic_lock (struct internal *internal, struct thread * th,
     {
       size_t lock_size = eri_size_of (*lock, 16);
       size_t buf_size = internal->file_buf_size;
-      lock = icalloc (internal, th->id, lock_size + buf_size);
+      lock = icalloc (internal, th->id, lock_size + buf_size, sizeof *lock);
       lock->mem = mem;
       unsigned long lid = ATOMIC_FETCH_ADD (internal, th->id, &internal->lock_id, 1);
       iprintf (internal, th->log, "get_atomic_lock %lu %lu\n", th->id, lid);
@@ -1376,6 +1378,7 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 		 desc->ptid, desc->ctid, desc->tp);
 
   struct thread *c = alloc_thread (internal, th->id, desc->ctid, desc->tp);
+  *(struct thread **) ((char *) desc->tp + internal->thread_offset) = c;
   desc->child = c;
   eri_memcpy (&c->old_set, &th->old_set, sizeof th->old_set);
 
@@ -1400,11 +1403,13 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 static long __attribute__ ((used))
 post_clone (struct internal *internal, struct thread *child, long res, long replay)
 {
+  struct thread *th = get_thread (internal);
   char mode = internal->mode;
+
   if (mode == ERS_LIVE)
     {
       if (res != 0)
-	save_result (get_thread (internal)->file, res);
+	save_result (th->file, res);
     }
   else
     {
@@ -1419,15 +1424,12 @@ post_clone (struct internal *internal, struct thread *child, long res, long repl
 	res = replay;
     }
 
-  struct thread *th;
-
   long rel = 1;
   if (res != 0)
     {
       /* the parent release the lock */
       lunlock (internal, &internal->clone_lock);
 
-      th = get_thread (internal);
       iprintf (internal, th->log, "post_clone %lu %lu\n", th->id, res);
 
       if (ERI_SYSCALL_ERROR_P (res))
@@ -1438,9 +1440,8 @@ post_clone (struct internal *internal, struct thread *child, long res, long repl
     }
   else
     {
-      th = child;
+      eri_assert (th == child);
       start_thread (internal, th);
-      set_thread (internal, th);
       iprintf (internal, th->log, "post_clone %lu %lu\n", th->id, res);
     }
 
@@ -1532,6 +1533,17 @@ atomic_barrier (struct internal *internal, int mo)
 }
 
 static void
+analysis_break (struct eri_vex_brk_desc *desc)
+{
+  struct internal *internal = desc->data;
+  /* Ensure that internal->main = 0 is atomic.  */
+  struct thread *th = internal->main
+    ? internal->main : *(struct thread **) (desc->ctx->fsbase + internal->thread_offset);
+  if (th->id != 0)
+    eri_printf ("%lx, %lu\n", th, th->id);
+}
+
+static void
 analysis (struct internal *internal,
 	  unsigned long entry, unsigned long arg, unsigned long stack)
 {
@@ -1539,7 +1551,7 @@ analysis (struct internal *internal,
 
   struct eri_vex_desc desc = {
     internal->analysis.buf, internal->analysis.buf_size, 1,
-    4096, internal->path, 0
+    4096, internal->path, analysis_break, internal
   };
   desc.comm.rip = entry;
   desc.comm.rsi = arg;

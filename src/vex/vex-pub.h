@@ -44,9 +44,18 @@ struct eri_vex_rw_ranges
   unsigned long *sizes;
 };
 
-typedef void (*eri_vex_break_cb_t) (struct eri_vex_common_context *ctx,
-				    struct eri_vex_rw_ranges *reads,
-				    struct eri_vex_rw_ranges *writes);
+struct eri_vex_brk_desc
+{
+  struct eri_vex_common_context *ctx;
+  unsigned long rip;
+  size_t length;
+  struct eri_vex_rw_ranges *reads;
+  struct eri_vex_rw_ranges *writes;
+
+  void *data;
+};
+
+typedef void (*eri_vex_break_cb_t) (struct eri_vex_brk_desc *);
 
 struct eri_vex_desc
 {
@@ -59,6 +68,7 @@ struct eri_vex_desc
   const char *path;
 
   eri_vex_break_cb_t brk;
+  void *brk_data;
 
   struct eri_vex_common_context comm;
 };
