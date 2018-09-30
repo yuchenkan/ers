@@ -37,9 +37,9 @@ struct eri_mtpool
   ({								\
     struct eri_mtpool *__mtp1 = mtp;				\
     void *__p1;							\
-    eri_lock (&__mtp1->lock, 1);				\
+    eri_lock (&__mtp1->lock);					\
     eri_assert (eri_malloc (&__mtp1->pool, s, &__p1) == 0);	\
-    eri_unlock (&__mtp1->lock, 1);				\
+    eri_unlock (&__mtp1->lock);					\
     __p1;							\
   })
 
@@ -54,9 +54,9 @@ struct eri_mtpool
 #define eri_assert_mtfree(mtp, p) \
   do {								\
       struct eri_mtpool *__mtp = mtp;				\
-      eri_lock (&__mtp->lock, 1);				\
+      eri_lock (&__mtp->lock);					\
       eri_assert (eri_free (&__mtp->pool, p) == 0);		\
-      eri_unlock (&__mtp->lock, 1);				\
+      eri_unlock (&__mtp->lock);				\
   } while (0)
 
 #endif

@@ -328,7 +328,7 @@ init_rw_ranges (struct eri_mtpool *p, struct vex_rw_ranges *rw, size_t n)
 }
 
 static void
-vex_break (struct vex *v, struct context *c)
+vex_break (struct vex *v, struct context *c, char exit)
 {
   eri_assert (c->ctx.reads.naddrs == c->ctx.reads.nsizes);
   eri_assert (c->ctx.writes.naddrs == c->ctx.writes.nsizes);
@@ -344,7 +344,8 @@ vex_break (struct vex *v, struct context *c)
       };
 
       struct eri_vex_brk_desc d = {
-	&c->ctx.comm, c->entry->rip, c->entry->length, &r, &w, v->brk_data
+	&c->ctx.comm, c->entry->rip, c->entry->length, &r, &w, exit,
+	&v->pool, v->brk_data
       };
 
       v->brk (&d);
@@ -441,7 +442,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   do {											\
     struct context *__c = c;								\
     struct vex *__v = c->vex;								\
-    eri_lock (&__v->exit_stack_lock, 1);						\
+    eri_lock (&__v->exit_stack_lock);							\
     asm ("movq	%q0, %%rsp\n\t"								\
 	 "movl	%1, %%edi\n\t"								\
 	 "movq	%q2, %%rsi\n\t"								\
@@ -457,16 +458,17 @@ vex_exit (unsigned long status, int nr, struct context *c)
 {
   struct vex *v = c->vex;
 
-  vex_break (v, c);
-
-  int type = VEX_EXIT_SELF;
+  int type;
   char grp = nr == __NR_exit_group || c->id == 0;
+
   if (grp)
     {
       if (__atomic_exchange_n (&v->group_exiting, 1, __ATOMIC_ACQ_REL) == 0)
 	{
 	  while (__atomic_load_n (&v->ncontexts, __ATOMIC_ACQUIRE) != 1)
 	    continue;
+
+	  vex_break (v, c, ERI_VEX_EXIT_GROUP);
 
 	  struct entry *e, *ne;
 	  ERI_RBT_FOREACH_SAFE (entry, v, e, ne)
@@ -482,8 +484,17 @@ vex_exit (unsigned long status, int nr, struct context *c)
 	  type = VEX_EXIT_GROUP;
 	}
       else
-	/* Exiting is already started by another context.  */
-	type = VEX_EXIT_WAIT;
+	{
+	  vex_break (v, c, ERI_VEX_EXIT_WAIT);
+
+	  /* Exiting is already started by another context.  */
+	  type = VEX_EXIT_WAIT;
+	}
+    }
+  else
+    {
+      vex_break (v, c, ERI_VEX_EXIT);
+      type = VEX_EXIT_SELF;
     }
 
   VEX_EXIT_ALT_STACK (c, type, status, nr);
@@ -1944,7 +1955,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 static struct entry *
 vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
 {
-  eri_lock (&v->entrys_lock, 1);
+  eri_lock (&v->entrys_lock);
   struct entry *e = entry_rbt_get (v, &rip, ERI_RBT_EQ);
   if (! e)
     {
@@ -1959,7 +1970,7 @@ vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
     }
   ++e->refs;
   /* TODO release lru  */
-  eri_unlock (&v->entrys_lock, 1);
+  eri_unlock (&v->entrys_lock);
 
 #if 0
   if (e->length
@@ -1973,11 +1984,11 @@ vex_get_entry (eri_file_t log, struct vex *v, unsigned long rip)
 #endif
   if (! __atomic_load_n (&e->decoded_insts, __ATOMIC_ACQUIRE))
     {
-      eri_lock (&e->trans_lock, 1);
+      eri_lock (&e->trans_lock);
       if (! e->decoded_insts)
 	__atomic_store_n (&e->decoded_insts, vex_translate (log, v, e),
 			  __ATOMIC_RELEASE);
-      eri_unlock (&e->trans_lock, 1);
+      eri_unlock (&e->trans_lock);
     }
   return e;
 }
@@ -2053,7 +2064,7 @@ vex_loop (struct context *c)
 
       vex_execute ();
 
-      if (v->brk) vex_break (v, c);
+      if (v->brk) vex_break (v, c, 0);
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
     }

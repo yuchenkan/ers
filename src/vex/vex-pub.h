@@ -44,6 +44,10 @@ struct eri_vex_rw_ranges
   unsigned long *sizes;
 };
 
+#define ERI_VEX_EXIT		1
+#define ERI_VEX_EXIT_WAIT	2
+#define ERI_VEX_EXIT_GROUP	3
+
 struct eri_vex_brk_desc
 {
   struct eri_vex_common_context *ctx;
@@ -51,6 +55,10 @@ struct eri_vex_brk_desc
   size_t length;
   struct eri_vex_rw_ranges *reads;
   struct eri_vex_rw_ranges *writes;
+
+  char exit;
+
+  struct eri_mtpool *pool;
 
   void *data;
 };
