@@ -116,12 +116,20 @@ eri_calloc (struct eri_pool *pool, size_t size, void **p)
 }
 
 static void
+guard (void *b, size_t s)
+{
+#ifndef NOCHECK
+  eri_memset (b, 0xfc, s);
+#endif
+}
+
+static void
 merge (struct block *b)
 {
   struct block *n = b->next;
   b->next = n->next;
   if (b->next) b->next->prev = b;
-  eri_memset (n, 0xfc, sizeof *n); /* XXX safety check */
+  guard (n, sizeof *n);
 }
 
 int
@@ -130,7 +138,7 @@ eri_free (struct eri_pool *pool, void *p)
   eri_assert ((char *) p >= pool->buf && (char *) p < pool->buf + pool->size);
 
   struct block *b = (struct block *) ((char *) p - ALLOC_OFFSET);
-  eri_memset ((char *) b + sizeof *b, 0xfc, block_size (pool, b) - sizeof *b); /* XXX safety check */
+  guard ((char *) b + sizeof *b, block_size (pool, b) - sizeof *b);
 
   eri_assert (pool->used >= block_size (pool, b));
   pool->used -= block_size (pool, b);

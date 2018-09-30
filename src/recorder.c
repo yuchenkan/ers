@@ -335,6 +335,7 @@ ifree (struct internal *internal, unsigned long tid, void *p)
 static void
 iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 {
+#ifndef NOCHECK
   va_list arg;
   if (tlog)
     {
@@ -351,6 +352,7 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
       va_end (arg);
       eri_unlock (&internal->printf_lock, 1);
     }
+#endif
 }
 
 /* 0 for MARK_NONE */
@@ -361,6 +363,7 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 static void
 check_syscall (char mode, eri_file_t file, int nr, int n, ...)
 {
+#ifndef NOCHECK
   long a[6];
 
   va_list arg;
@@ -369,12 +372,15 @@ check_syscall (char mode, eri_file_t file, int nr, int n, ...)
   for (i = 0; i < n; ++i)
     a[i] = (long) va_arg (arg, long);
   va_end (arg);
+#endif
 
   if (mode == ERS_LIVE)
     {
       eri_save_mark (file, MARK_THREAD_SYSCALL);
       eri_assert (eri_fwrite (file, (const char *) &nr, sizeof nr, 0) == 0);
+#ifndef NOCHECK
       eri_assert (eri_fwrite (file, (const char *) a, n * sizeof a[0], 0) == 0);
+#endif
     }
   else
     {
@@ -382,9 +388,11 @@ check_syscall (char mode, eri_file_t file, int nr, int n, ...)
       int t;
       eri_assert (eri_fread (file, (char *) &t, sizeof t, 0) == 0);
       eri_assert (nr == t);
+#ifndef NOCHECK
       long b[6];
       eri_assert (eri_fread (file, (char *) b, n * sizeof a[0], 0) == 0);
       eri_assert (eri_strncmp ((const char *) a, (const char *) b, n * sizeof a[0]) == 0);
+#endif
     }
 }
 
