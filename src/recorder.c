@@ -66,10 +66,10 @@ struct sigact_wrap
   int flags;
 };
 
-struct replay_thread
+struct replay_waker
 {
-  unsigned long id;
-  ERI_RBT_NODE_FIELDS (replay_thread, struct replay_thread)
+  unsigned long tid;
+  ERI_RBT_NODE_FIELDS (replay_waker, struct replay_waker)
 
   unsigned long lock_version;
 };
@@ -82,22 +82,22 @@ struct replay
   size_t pool_buf_size;
   struct eri_mtpool pool;
 
-  int threads_lock;
-  ERI_RBT_TREE_FIELDS (replay_thread, struct replay_thread)
+  int wakers_lock;
+  ERI_RBT_TREE_FIELDS (replay_waker, struct replay_waker)
 };
 
-ERI_DEFINE_RBTREE (static, replay_thread, struct replay, struct replay_thread, unsigned long, eri_less_than)
+ERI_DEFINE_RBTREE (static, replay_waker, struct replay, struct replay_waker, unsigned long, eri_less_than)
 
 static void
 replay_exit (struct replay *replay)
 {
-  eri_assert (replay->threads_lock == 0);
-  struct replay_thread *rt, *nrt;
-  ERI_RBT_FOREACH_SAFE (replay_thread, replay, rt, nrt)
+  eri_assert (replay->wakers_lock == 0);
+  struct replay_waker *rw, *nrw;
+  ERI_RBT_FOREACH_SAFE (replay_waker, replay, rw, nrw)
     {
-      eri_assert (eri_fprintf (ERI_STDERR, "remove replay thread %lx\n", rt) == 0);
-      replay_thread_rbt_remove (replay, rt);
-      eri_assert_mtfree (&replay->pool, rt);
+      eri_assert (eri_fprintf (ERI_STDERR, "remove replay thread %lx\n", rw) == 0);
+      replay_waker_rbt_remove (replay, rw);
+      eri_assert_mtfree (&replay->pool, rw);
     }
 
   eri_assert (eri_fprintf (ERI_STDERR, "replay used %lu\n", replay->pool.pool.used) == 0);
@@ -191,19 +191,19 @@ init_lock (struct internal *internal, struct lock *lock, eri_file_t file)
     lock->tid = load_lock (lock->file);
 }
 
-static struct replay_thread *
-replay_get_thread (struct replay *replay, unsigned long tid)
+static struct replay_waker *
+replay_get_waker (struct replay *replay, unsigned long tid)
 {
-  eri_lock (&replay->threads_lock, 1);
-  struct replay_thread *rt = replay_thread_rbt_get (replay, &tid, ERI_RBT_EQ);
-  if (! rt)
+  eri_lock (&replay->wakers_lock, 1);
+  struct replay_waker *rw = replay_waker_rbt_get (replay, &tid, ERI_RBT_EQ);
+  if (! rw)
     {
-      rt = eri_assert_mtcalloc (&replay->pool, sizeof *rt);
-      rt->id = tid;
-      replay_thread_rbt_insert (replay, rt);
+      rw = eri_assert_mtcalloc (&replay->pool, sizeof *rw);
+      rw->tid = tid;
+      replay_waker_rbt_insert (replay, rw);
     }
-  eri_unlock (&replay->threads_lock, 1);
-  return rt;
+  eri_unlock (&replay->wakers_lock, 1);
+  return rw;
 }
 
 static void
@@ -216,14 +216,14 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
     }
   else
     {
-      struct replay_thread *rt = replay_get_thread (&internal->replay, tid);
-      unsigned long version = __atomic_load_n (&rt->lock_version, __ATOMIC_RELAXED);
+      struct replay_waker *rw = replay_get_waker (&internal->replay, tid);
+      unsigned long version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
       while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
 	{
-	  long res = ERI_SYSCALL (futex, &rt->lock_version,
+	  long res = ERI_SYSCALL (futex, &rw->lock_version,
 				  ERI_FUTEX_WAIT_PRIVATE, version, 0);
 	  eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
-          version = __atomic_load_n (&rt->lock_version, __ATOMIC_RELAXED);
+          version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
 	}
     }
 }
@@ -238,9 +238,9 @@ lunlock (struct internal *internal, struct lock *lock)
       __atomic_store_n (&lock->tid, load_lock (lock->file), __ATOMIC_RELEASE);
       if (lock->tid != -1)
 	{
-	  struct replay_thread *rt = replay_get_thread (&internal->replay, lock->tid);
-	  __atomic_add_fetch (&rt->lock_version, 1, __ATOMIC_RELAXED);
-	  ERI_ASSERT_SYSCALL (futex, &rt->lock_version, ERI_FUTEX_WAKE_PRIVATE, 1);
+	  struct replay_waker *rw = replay_get_waker (&internal->replay, lock->tid);
+	  __atomic_add_fetch (&rw->lock_version, 1, __ATOMIC_RELAXED);
+	  ERI_ASSERT_SYSCALL (futex, &rw->lock_version, ERI_FUTEX_WAKE_PRIVATE, 1);
 	}
     }
 }
