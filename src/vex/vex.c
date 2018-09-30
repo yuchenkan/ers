@@ -207,7 +207,7 @@ struct vex
 
   char detail;
 
-  eri_vex_break_cb_t brk;
+  eri_vex_proc_break_t brk;
   void *brk_data;
 
   void *mmap;

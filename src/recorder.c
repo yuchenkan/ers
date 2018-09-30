@@ -211,10 +211,45 @@ replay_get_waker (struct replay *replay, unsigned long tid)
   return rw;
 }
 
+#define ANALYSIS_ENTER_SILENCE	0
+#define ANALYSIS_LEAVE_SILENCE	1
+
+#define ANALYSIS_LLOCK		2
+#define ANALYSIS_LUNLOCK	3
+
+asm ("  .text					\n\
+  .align 16					\n\
+  .type analysis_break, @function		\n\
+analysis_break:					\n\
+  ret						\n\
+  .size analysis_break, .-analysis_break	\n\
+  .previous					\n"
+);
+
+void
+analysis_break (unsigned long type, ...);
+
+static void
+analysis_enter_silence (struct internal *internal)
+{
+  if (internal->mode == ERS_ANALYSIS)
+    analysis_break (ANALYSIS_ENTER_SILENCE);
+}
+
+static void
+analysis_leave_silence (struct internal *internal)
+{
+  if (internal->mode == ERS_ANALYSIS)
+    analysis_break (ANALYSIS_LEAVE_SILENCE);
+}
+
 static void
 llock (struct internal *internal, unsigned long tid, struct lock *lock)
 {
-  if (internal->mode != ERS_LIVE)
+  analysis_enter_silence (internal);
+
+  char mode = internal->mode;
+  if (mode != ERS_LIVE)
     {
       struct replay_waker *rw = replay_get_waker (&internal->replay, tid);
       unsigned long version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
@@ -229,16 +264,26 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
 
   eri_lock (&lock->lock);
 
-  if (internal->mode == ERS_LIVE)
-    save_lock (lock->file, tid);
+  if (mode == ERS_LIVE) save_lock (lock->file, tid);
+
+  if (mode == ERS_ANALYSIS)
+    analysis_break (ANALYSIS_LLOCK, &lock->lock);
+
+  analysis_leave_silence (internal);
 }
 
 static void
 lunlock (struct internal *internal, struct lock *lock, char delay)
 {
+  analysis_enter_silence (internal);
+
+  char mode = internal->mode;
+  if (mode == ERS_ANALYSIS)
+    analysis_break (ANALYSIS_LUNLOCK, &lock->lock);
+
   if (! delay) eri_unlock (&lock->lock);
 
-  if (internal->mode != ERS_LIVE)
+  if (mode != ERS_LIVE)
     {
       __atomic_store_n (&lock->tid, load_lock (lock->file), __ATOMIC_RELEASE);
       if (lock->tid != -1)
@@ -248,6 +293,8 @@ lunlock (struct internal *internal, struct lock *lock, char delay)
 	  ERI_ASSERT_SYSCALL (futex, &rw->lock_version, ERI_FUTEX_WAKE_PRIVATE, 1);
 	}
     }
+
+  analysis_leave_silence (internal);
 }
 
 #define ATOMIC_LOAD(i, t, m) \
@@ -338,6 +385,23 @@ ifree (struct internal *internal, unsigned long tid, void *p)
 }
 
 static void
+vlprintf (struct internal *internal, const char *fmt, va_list arg)
+{
+  eri_lock (&internal->printf_lock);
+  eri_assert (eri_vprintf (fmt, arg) == 0);
+  eri_unlock (&internal->printf_lock);
+}
+
+static void
+lprintf (struct internal *internal, const char *fmt, ...)
+{
+  va_list arg;
+  va_start (arg, fmt);
+  vlprintf (internal, fmt, arg);
+  va_end (arg);
+}
+
+static void
 iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 {
 #ifndef NOCHECK
@@ -351,11 +415,13 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 
   if (internal->printf)
     {
-      eri_lock (&internal->printf_lock);
+      analysis_enter_silence (internal);
+
       va_start (arg, fmt);
-      eri_assert (eri_vprintf (fmt, arg) == 0);
+      vlprintf (internal, fmt, arg);
       va_end (arg);
-      eri_unlock (&internal->printf_lock);
+
+      analysis_leave_silence (internal);
     }
 #endif
 }
@@ -1100,6 +1166,8 @@ sysexit (struct internal *internal, int nr, long status)
 	  /* So it's locked until real clear_tid happens.  */
 	  ERI_ASSERT_SYSCALL (set_tid_address, &lock->lock);
 	  lunlock (internal, lock, 1);
+
+	  analysis_enter_silence (internal);
 	}
 
       if (mode != ERS_ANALYSIS) do_exit (internal, th);
@@ -1527,7 +1595,7 @@ atomic_barrier (struct internal *internal, int mo)
 }
 
 static void
-analysis_break (struct eri_vex_brk_desc *desc)
+analysis_proc_break (struct eri_vex_brk_desc *desc)
 {
   struct internal *internal = desc->data;
   /* Ensure internal->main = 0 atomic.  */
@@ -1536,7 +1604,19 @@ analysis_break (struct eri_vex_brk_desc *desc)
 
   // TODO
 
-  if (desc->exit) eri_printf ("%lu %u\n", th->id, desc->exit);
+  if (desc->ctx->rip == (unsigned long) analysis_break)
+    {
+      unsigned long type = desc->ctx->rdi;
+      eri_assert (type == ANALYSIS_ENTER_SILENCE
+		  || type == ANALYSIS_LEAVE_SILENCE
+		  || type == ANALYSIS_LLOCK
+		  || type == ANALYSIS_LUNLOCK);
+      if (type == ANALYSIS_LLOCK || type == ANALYSIS_LUNLOCK)
+	lprintf (internal, "analysis break %lu %lu %lx\n",
+		 th->id, type, desc->ctx->rsi);
+    }
+
+  if (desc->exit) eri_printf ("analysis exit %lu %u\n", th->id, desc->exit);
 
   /* Group exit is already synced by us.  */
   eri_assert (desc->exit != ERI_VEX_EXIT_WAIT);
@@ -1554,7 +1634,7 @@ analysis (struct internal *internal,
 
   struct eri_vex_desc desc = {
     internal->analysis.buf, internal->analysis.buf_size, 1,
-    4096, internal->path, analysis_break, internal
+    4096, internal->path, analysis_proc_break, internal
   };
   desc.comm.rip = entry;
   desc.comm.rsi = arg;

@@ -59,11 +59,10 @@ struct eri_vex_brk_desc
   char exit;
 
   struct eri_mtpool *pool;
-
   void *data;
 };
 
-typedef void (*eri_vex_break_cb_t) (struct eri_vex_brk_desc *);
+typedef void (*eri_vex_proc_break_t) (struct eri_vex_brk_desc *);
 
 struct eri_vex_desc
 {
@@ -75,7 +74,7 @@ struct eri_vex_desc
 
   const char *path;
 
-  eri_vex_break_cb_t brk;
+  eri_vex_proc_break_t brk;
   void *brk_data;
 
   struct eri_vex_common_context comm;
