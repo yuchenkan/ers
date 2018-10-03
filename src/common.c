@@ -24,7 +24,9 @@ eri_dump_maps (eri_file_t file)
 static void
 process_map_entry (char *buf, struct eri_map_entry *ent)
 {
-  /* eri_assert (eri_printf ("%s\n", buf) == 0); */
+#ifdef DEBUG
+  eri_assert (eri_printf ("%s\n", buf) == 0);
+#endif
 
   ent->start = ent->end = 0;
   ent->perms = 0;
@@ -70,57 +72,60 @@ process_map_entry (char *buf, struct eri_map_entry *ent)
   eri_assert (*d);
 }
 
+struct proc_smaps_line_data
+{
+  void (*proc) (const struct eri_map_entry *, void *);
+  void *data;
+
+  int ln;
+  size_t size;
+  char *buf;
+  size_t off;
+};
+
+static void
+proc_smaps_line (const void *ln, size_t size, void *data)
+{
+  struct proc_smaps_line_data *p = data;
+  if (p->buf)
+    {
+      eri_memcpy (p->buf + p->off, ln, size);
+      p->buf[p->off + size] = '\n';
+    }
+
+  p->off += size + 1;
+  if (++p->ln % 16 == 0)
+    {
+      if (p->buf)
+	{
+	  p->buf[p->off] = '\0';
+
+	  struct eri_map_entry ent;
+	  process_map_entry (p->buf, &ent);
+	  p->proc (&ent, p->data);
+	}
+      else
+	p->size = eri_max (p->size, p->off);
+      p->off = 0;
+    }
+}
+
 void
 eri_process_maps (void (*proc) (const struct eri_map_entry *, void *),
 		  void *data)
 {
-  eri_file_t maps;
+  struct proc_smaps_line_data p = { proc, data };
+
   char buf[1024];
-  eri_assert (eri_fopen ("/proc/self/smaps", 1, &maps, 0, 0) == 0);
+  struct eri_buf b;
+  eri_buf_static_init (&b, buf, sizeof buf);
 
-  size_t last = 0;
-  size_t count = 0;
-  size_t ln = 0;
-  while (1)
-    {
-      char reset = 0;
+  eri_assert (eri_file_foreach_line ("/proc/self/smaps", &b, proc_smaps_line, &p) == 0);
 
-      size_t l;
-      eri_assert (eri_fread (maps, buf, sizeof buf, &l) == 0);
-      const char *d = buf;
-      while ((d = eri_strntok (d, '\n', l - (d - buf))))
-	{
-	  ++d;
-	  if (++ln == 16)
-	    {
-	      size_t nl = sizeof buf * count + (d - buf);
+  char ebuf[p.size];
+  p.buf = ebuf;
 
-	      char *e = __builtin_alloca (nl - last);
-	      eri_assert (eri_fseek (maps, last, ERI_SEEK_SET, 0) == 0);
-	      eri_assert (eri_fread (maps, e, nl - last, 0) == 0);
-	      e[nl - last] = '\0';
-
-	      struct eri_map_entry ent;
-	      process_map_entry (e, &ent);
-	      proc (&ent, data);
-
-	      reset = 1;
-	      last = sizeof buf * count + (d - buf);
-	      ln = 0;
-	    }
-	}
-
-      if (l != sizeof buf)
-	{
-	  eri_assert (last == sizeof buf * count + l);
-	  break;
-	}
-
-      ++count;
-      if (reset)
-	eri_assert (eri_fseek (maps, count * sizeof buf, ERI_SEEK_SET, 0) == 0);
-    }
-  eri_assert (eri_fclose (maps) == 0);
+  eri_assert (eri_file_foreach_line ("/proc/self/smaps", &b, proc_smaps_line, &p) == 0);
 }
 
 static void
@@ -146,7 +151,7 @@ eri_open_path (const char *path, const char *name, int flags,
 
   size_t s = npath + 1 + nname + 1; /* path/name\0 */
   if (flags & ERI_OPEN_WITHID) s += 2 * sizeof id; /* path/name$id\0 */
-  char *p = __builtin_alloca (s);
+  char p[s];
 
   eri_strcpy (p, path);
 

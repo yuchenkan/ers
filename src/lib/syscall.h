@@ -147,15 +147,58 @@
 #define ERI_SEEK_CUR	1
 
 #define ERI_SA_SIGINFO	4
+#define ERI_SA_RESTART	0x10000000
 #define ERI_SA_RESTORER	0x04000000
 
 #define ERI_SIG_DFL	((void *) 0)
 #define ERI_SIG_IGN	((void *) 1)
 
+#define ERI_SIGINT	2
 #define ERI_SIGKILL	9
 #define ERI_SIGCHLD	17
 #define ERI_SIGSTOP	19
 #define ERI_SIGURG	23
 #define ERI_NSIG	65
+
+struct eri_sigset
+{
+  unsigned long val[16];
+};
+
+struct eri_sigaction
+{
+  void *act;
+  int flags;
+  void (*restorer) (void);
+  struct eri_sigset mask;
+};
+
+struct eri_siginfo { char buf[128]; };
+struct eri_ucontext { char buf[936]; };
+#define ERI_UCONTEXT_RIP	168
+
+#define ERI_SIG_SETMASK	2
+#define ERI_SIG_SETSIZE	(ERI_NSIG / 8)
+
+void eri_sigreturn (void);
+
+#define eri_sigfillset(set) eri_memset (set, 0xff, sizeof (struct eri_sigset))
+#define eri_sigemptyset(set) eri_memset (set, 0, sizeof (struct eri_sigset))
+
+#define _eri_sigword(sig) (((sig) - 1) / (8 * sizeof (unsigned long)))
+#define _eri_sigmask(sig) (((unsigned long) 1) << ((sig) - 1) % (8 * sizeof (unsigned long)))
+
+#define eri_sigaddset(set, sig) \
+  do {								\
+    int __s = sig;						\
+    (set)->val[_eri_sigword (__s)] |= _eri_sigmask (__s);	\
+  } while (0)
+#define eri_sigdelset(set, sig) \
+  do {								\
+    int __s = sig;						\
+    (set)->val[_eri_sigword (__s)] &= ~_eri_sigmask (__s);	\
+  } while (0)
+#define eri_sigset_p(set, sig) \
+  ({ int __s = sig; (set)->val[_eri_sigword (__s)] & _eri_sigmask (__s); })
 
 #endif

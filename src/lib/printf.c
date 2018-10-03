@@ -452,3 +452,55 @@ eri_printf (const char *fmt, ...)
   va_end (arg);
   return res;
 }
+
+int
+eri_file_foreach_line (const char *path, struct eri_buf *buf,
+		       void (*proc) (const void *, size_t, void *), void *data)
+{
+  int res;
+
+  eri_file_t f;
+  if ((res = eri_fopen (path, 1, &f, 0, 0)) != 0)
+    return res;
+
+  eri_assert (buf->off == 0 && buf->size != 0);
+  while (1)
+    {
+      const char *d = 0;
+      while (1)
+	{
+	  size_t l;
+	  if ((res = eri_fread (f, (char *) buf->buf + buf->off, buf->size - buf->off, &l)) != 0)
+	    return res;
+	  buf->off += l;
+
+	  if ((d = eri_strntok (buf->buf, '\n', buf->off)) || buf->off != buf->size)
+	    break;
+
+	  eri_buf_reserve (buf, buf->size);
+	}
+
+      const char *s = buf->buf;
+      if (d != 0)
+	{
+	  do
+	    {
+	      proc (s, d - s, data);
+	      s = d + 1;
+	    }
+	  while ((d = eri_strntok (s, '\n', (char *) buf->buf + buf->off - s)));
+	}
+
+      if (buf->off != buf->size)
+	{
+	  if (s < (char *) buf->buf + buf->off)
+	    proc (s, (char *) buf->buf + buf->off - s, data);
+	  buf->off = 0;
+	  break;
+	}
+
+      buf->off = (char *) buf->buf + buf->off - s;
+      eri_memmove (buf->buf, s, buf->off);
+    }
+  return eri_fclose (f);
+}

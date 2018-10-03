@@ -6,10 +6,11 @@
 #include "vex.h"
 #include "vex-offsets.h"
 
-#include "recorder-common.h"
 #include "common.h"
 
+#include "lib/buf.h"
 #include "lib/util.h"
+#include "lib/util-common.h"
 #include "lib/printf.h"
 #include "lib/malloc.h"
 #include "lib/rbtree.h"
@@ -34,10 +35,14 @@ struct context
 
   void *stack;
 
+  long sys_tid;
+
   struct context *child;
 
   eri_file_t log;
   eri_file_t rip_file;
+
+  ERI_LST_NODE_FIELDS (context);
 };
 
 static void cprintf (eri_file_t log, const char *fmt, ...);
@@ -208,6 +213,7 @@ struct vex
   char detail;
 
   eri_vex_proc_break_t brk;
+  unsigned long brk_mask;
   void *brk_data;
 
   void *mmap;
@@ -222,14 +228,19 @@ struct vex
 
   unsigned long context_id;
   unsigned ncontexts;
+  int contexts_lock;
+  ERI_LST_LIST_FIELDS (context);
 
   struct eri_mtpool pool;
   struct eri_mtpool epool;
 
   int max_inst_count;
+
+  long sys_pid;
 };
 
 ERI_DEFINE_RBTREE (static, entry, struct vex, struct entry, unsigned long, eri_less_than)
+ERI_DEFINE_LIST (static, context, struct vex, struct context)
 
 /* static */ void vex_syscall (void);
 /* static */ void vex_back (void);
@@ -292,8 +303,14 @@ start_context (struct context *c)
   c->rip_file = eri_open_path (v->path, "vex-rip-", ERI_OPEN_WITHID, c->id,
     (char *) c->stack + v->stack_size + buf_size, buf_size);
 
+  c->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
+
+  eri_lock (&v->contexts_lock);
+  context_lst_append (v, c);
+  eri_unlock (&v->contexts_lock);
+
   if (v->detail)
-  cprintf (c->log, "context: %lu, stack: %lx\n", c->id, c->stack);
+    cprintf (c->log, "context: %lu, stack: %lx\n", c->id, c->stack);
 }
 
 static void
@@ -328,12 +345,22 @@ init_rw_ranges (struct eri_mtpool *p, struct vex_rw_ranges *rw, size_t n)
 }
 
 static void
-vex_break (struct vex *v, struct context *c, char exit)
+vex_break (struct vex *v, struct context *c, unsigned long type)
 {
   eri_assert (c->ctx.reads.naddrs == c->ctx.reads.nsizes);
   eri_assert (c->ctx.writes.naddrs == c->ctx.writes.nsizes);
 
-  if (v->brk)
+  if (! v->brk || ! (v->brk_mask & type)) return;
+
+  char post = type == ERI_VEX_BRK_POST_EXEC
+	      || type & ERI_VEX_BRK_EXIT_MASK;
+
+  struct eri_vex_brk_desc d = {
+    &c->ctx.comm, c->entry->rip, c->entry->length, 0, 0, type,
+    &v->pool, v->brk_data
+  };
+
+  if (post)
     {
       struct eri_vex_rw_ranges r = {
 	c->ctx.reads.naddrs, c->ctx.reads.addrs, c->ctx.reads.sizes
@@ -343,13 +370,17 @@ vex_break (struct vex *v, struct context *c, char exit)
 	c->ctx.writes.naddrs, c->ctx.writes.addrs, c->ctx.writes.sizes
       };
 
-      struct eri_vex_brk_desc d = {
-	&c->ctx.comm, c->entry->rip, c->entry->length, &r, &w, exit,
-	&v->pool, v->brk_data
-      };
+      d.reads = &r;
+      d.writes = &w;
 
       v->brk (&d);
+
+      if (c->ctx.reads.addrs)
+	eri_assert_mtfree (&v->pool, c->ctx.reads.addrs);
+      if (c->ctx.writes.addrs)
+	eri_assert_mtfree (&v->pool, c->ctx.writes.addrs);
     }
+  else v->brk (&d);
 
 #if 0
   size_t i;
@@ -360,11 +391,6 @@ vex_break (struct vex *v, struct context *c, char exit)
     cprintf (c->log, "write %lx, %lu\n",
 	     c->ctx.writes.addrs[i], c->ctx.writes.sizes[i]);
 #endif
-
-  if (c->ctx.reads.addrs)
-    eri_assert_mtfree (&v->pool, c->ctx.reads.addrs);
-  if (c->ctx.writes.addrs)
-    eri_assert_mtfree (&v->pool, c->ctx.writes.addrs);
 }
 
 #define VEX_EXIT_GROUP	0
@@ -377,8 +403,14 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   cprintf (c->log, "exit %u\n", type);
 
   struct vex *v = c->vex;
+
+  eri_lock (&v->contexts_lock);
+  context_lst_remove (c);
+  eri_unlock (&v->contexts_lock);
+
   eri_assert (eri_fclose (c->log) == 0);
   eri_assert (eri_fclose (c->rip_file) == 0);
+  /* The thread stack can now be freed.  */
   free_context (c);
 
   if (type == VEX_EXIT_GROUP)
@@ -453,22 +485,31 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
 	 : "rsp", "rdi", "rsi", "rdx", "rcx");						\
   } while (0)
 
+#define SIGINTR ERI_SIGURG
+
 static void __attribute__ ((used))
-vex_exit (unsigned long status, int nr, struct context *c)
+vex_exit (unsigned long status, int nr, struct context *ctx)
 {
-  struct vex *v = c->vex;
+  struct vex *v = ctx->vex;
 
   int type;
-  char grp = nr == __NR_exit_group || c->id == 0;
+  char grp = nr == __NR_exit_group || ctx->id == 0;
 
   if (grp)
     {
       if (__atomic_exchange_n (&v->group_exiting, 1, __ATOMIC_ACQ_REL) == 0)
 	{
+	  eri_lock (&v->contexts_lock);
+	  struct context *c;
+	  ERI_LST_FOREACH (context, v, c)
+	    if (c != ctx)
+	      ERI_ASSERT_SYSCALL (tgkill, v->sys_pid, c->sys_tid, SIGINTR);
+	  eri_unlock (&v->contexts_lock);
+
 	  while (__atomic_load_n (&v->ncontexts, __ATOMIC_ACQUIRE) != 1)
 	    continue;
 
-	  vex_break (v, c, ERI_VEX_EXIT_GROUP);
+	  vex_break (v, ctx, ERI_VEX_BRK_EXIT_GROUP);
 
 	  struct entry *e, *ne;
 	  ERI_RBT_FOREACH_SAFE (entry, v, e, ne)
@@ -485,7 +526,7 @@ vex_exit (unsigned long status, int nr, struct context *c)
 	}
       else
 	{
-	  vex_break (v, c, ERI_VEX_EXIT_WAIT);
+	  vex_break (v, ctx, ERI_VEX_BRK_EXIT_WAIT);
 
 	  /* Exiting is already started by another context.  */
 	  type = VEX_EXIT_WAIT;
@@ -493,11 +534,11 @@ vex_exit (unsigned long status, int nr, struct context *c)
     }
   else
     {
-      vex_break (v, c, ERI_VEX_EXIT);
+      vex_break (v, ctx, ERI_VEX_BRK_EXIT);
       type = VEX_EXIT_SELF;
     }
 
-  VEX_EXIT_ALT_STACK (c, type, status, nr);
+  VEX_EXIT_ALT_STACK (ctx, type, status, nr);
 }
 
 #define CTX	_ERS_STR (VEX_CTX_CTX)
@@ -527,6 +568,9 @@ vex_exit (unsigned long status, int nr, struct context *c)
 #define INSTS	_ERS_STR (VEX_CTX_INSTS)
 #define RET	_ERS_STR (VEX_CTX_RET)
 #define TOP	_ERS_STR (VEX_CTX_TOP)
+
+#define INTR	_ERS_STR (VEX_CTX_INTR)
+#define ISKIP	_ERS_STR (VEX_CTX_ISKIP)
 
 asm ("  .text						\n\
   .align 16						\n\
@@ -588,6 +632,9 @@ vex_execute:						\n\
   (MIN_CLONE_FLAGS | ERI_CLONE_SETTLS					\
    | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
 
+static struct eri_sigset sig_block;
+static struct eri_sigset sig_unblock __attribute__ ((used));
+
 asm ("  .text						\n\
   .align 16						\n\
   .type vex_syscall, @function				\n\
@@ -600,6 +647,10 @@ vex_syscall:						\n\
   je	.exit						\n\
   cmpl	$" _ERS_STR (__NR_arch_prctl) ", %eax		\n\
   je	.arch_prctl					\n\
+  cmpl	$" _ERS_STR (__NR_futex) ", %eax		\n\
+  je	.futex						\n\
+  cmpl	$" _ERS_STR (__NR_rt_sigaction) ", %eax		\n\
+  je	.assert_failed					\n\
   jmp	.syscall					\n\
 							\n\
 .clone:							\n\
@@ -661,8 +712,11 @@ vex_syscall:						\n\
   jmp	.assert_failed					\n\
 							\n\
 .exit:							\n\
-  movq	%fs:" TOP ", %rsp				\n\
-  movl	%eax, %esi					\n\
+  leaq	1f(%rip), %r11					\n\
+  movq	%r11, %fs:" RET "				\n\
+  jmp	vex_back					\n\
+1:							\n\
+  movl	%fs:" RAX ", %esi				\n\
   movq	%fs:" CTX ", %rdx				\n\
   call	vex_exit					\n\
   jmp	.assert_failed					\n\
@@ -682,6 +736,61 @@ vex_syscall:						\n\
   movq	%rax, (%rsi)					\n\
   xorq	%rax, %rax					\n\
   jmp	vex_back					\n\
+							\n\
+.futex:							\n\
+  movq	%rsi, %fs:" RSI "				\n\
+  andq	$" _ERS_STR (ERI_FUTEX_CMD_MASK) ", %rsi	\n\
+  cmpq	$" _ERS_STR (ERI_FUTEX_WAIT) ", %rsi		\n\
+  je	1f						\n\
+  cmpq	$" _ERS_STR (ERI_FUTEX_WAIT_BITSET) ", %rsi	\n\
+1:							\n\
+  movq	%fs:" RSI ", %rsi				\n\
+  je	.intr						\n\
+  jmp	.syscall					\n\
+							\n\
+.intr:							\n\
+  movq	%rax, %fs:" RAX "				\n\
+  leaq	1f(%rip), %rax					\n\
+  xchg	%fs:" RET ", %rax				\n\
+  movq	%rax, %fs:" INTR "				\n\
+  movq	%fs:" RAX", %rax				\n\
+  jmp	vex_back					\n\
+1:							\n\
+  movq	%fs:" INTR ", %rax				\n\
+  movq	%rax, %fs:" RET "				\n\
+  leaq	1f(%rip), %rax					\n\
+  movq	%rax, %fs:" INTR "				\n\
+  leaq	2f(%rip), %rax					\n\
+  movq	%rax, %fs:" ISKIP "				\n\
+							\n\
+  movl	$" _ERS_STR (__NR_rt_sigprocmask) ", %eax	\n\
+  movq	$" _ERS_STR (ERI_SIG_SETMASK) ", %rdi		\n\
+  leaq	sig_unblock(%rip), %rsi				\n\
+  movq	$0, %rdx					\n\
+  movq	$" _ERS_STR (ERI_SIG_SETSIZE)", %r10		\n\
+  syscall						\n\
+  cmpq	$-4095, %rax					\n\
+  jae	.assert_failed					\n\
+							\n\
+  movq	%fs:" RAX ", %rax				\n\
+  movq	%fs:" RDI ", %rdi				\n\
+  movq	%fs:" RSI ", %rsi				\n\
+  movq	%fs:" RDX ", %rdx				\n\
+  movq	%fs:" R10 ", %r10				\n\
+  syscall						\n\
+1:							\n\
+  movq	%rax, %fs:" RAX "				\n\
+2:							\n\
+							\n\
+  movl	$" _ERS_STR (__NR_rt_sigprocmask) ", %eax	\n\
+  movq	$" _ERS_STR (ERI_SIG_SETMASK) ", %rdi		\n\
+  leaq	sig_block(%rip), %rsi				\n\
+  movq	$0, %rdx					\n\
+  movq	$" _ERS_STR (ERI_SIG_SETSIZE)", %r10		\n\
+  syscall						\n\
+  cmpq	$-4095, %rax					\n\
+  jae	.assert_failed					\n\
+  jmp	*%fs:" RET "					\n\
 							\n\
 .syscall:						\n\
   syscall						\n\
@@ -782,43 +891,27 @@ vex_is_transfer (xed_iclass_enum_t iclass)
 struct encode_buf
 {
   eri_file_t log;
-  struct eri_mtpool *pool;
 
-  size_t size;
-  xed_uint8_t *p;
-  size_t off;
+  struct eri_buf buf;
 };
 
 static void
-inc_encode_buf (struct encode_buf *b)
+vex_encode (struct encode_buf *buf, xed_encoder_request_t *xe)
 {
-  eri_assert (b->pool);
-
-  b->size *= 2;
-
-  xed_uint8_t *t = b->p;
-  b->p = eri_assert_mtmalloc (b->pool, b->size);
-  eri_memcpy (b->p, t, b->off);
-
-  eri_assert_mtfree (b->pool, t);
-}
-
-static void
-vex_encode (struct encode_buf *b, xed_encoder_request_t *xe)
-{
-  while (b->size - b->off < XED_MAX_INSTRUCTION_BYTES)
-    inc_encode_buf (b);
-
+  xed_uint8_t b[XED_MAX_INSTRUCTION_BYTES];
   unsigned int l;
-  xed_error_enum_t error = xed_encode (xe, b->p + b->off,
+  xed_error_enum_t error = xed_encode (xe, b,
 				       XED_MAX_INSTRUCTION_BYTES, &l);
   if (error != XED_ERROR_NONE)
     {
-      cprintf (b->log, "encode error: %s\n", xed_error_enum_t2str (error));
+      cprintf (buf->log, "encode error: %s\n", xed_error_enum_t2str (error));
       eri_assert (0);
     }
 
-  b->off += l;
+  /* Reserve one instruction length, so decoding (e.g. dumping generated
+     instructions) won't pass the end of the buffer.  */
+  eri_buf_reserve (&buf->buf, XED_MAX_INSTRUCTION_BYTES);
+  eri_buf_append (&buf->buf, b, l);
 }
 
 static void
@@ -826,11 +919,8 @@ vex_concat (struct encode_buf *b1, const struct encode_buf *b2)
 {
   /* Reserve one instruction length, so decoding (e.g. dumping generated
      instructions) won't pass the end of the buffer.  */
-  while (b1->size - b1->off < b2->off + XED_MAX_INSTRUCTION_BYTES)
-    inc_encode_buf (b1);
-
-  eri_memcpy (b1->p + b1->off, b2->p, b2->off);
-  b1->off += b2->off;
+  eri_buf_reserve (&b1->buf, b2->buf.off + XED_MAX_INSTRUCTION_BYTES);
+  eri_buf_concat (&b1->buf, &b2->buf);
 }
 
 #define A_B	0x1
@@ -1232,12 +1322,12 @@ save_translated (const char *path, unsigned long rip,
   size_t off = 0;
   int l;
   char buf[256];
-  while (off != b->off)
+  while (off != b->buf.off)
     {
       if (i < nmap && off == map[i][1])
 	{
 	  buf[0] = ' ';
-	  save_inst ((const unsigned char *) map[i][0],
+	  save_inst ((const unsigned char *) (rip + map[i][0] - map[0][0]),
 		     buf + 1, sizeof buf - 1, &l);
 	  eri_assert (l < sizeof buf - 1);
 	  buf[l + 1] = '\n';
@@ -1246,7 +1336,7 @@ save_translated (const char *path, unsigned long rip,
 	}
 
       buf[0] = buf[1] = buf[2] = ' ';
-      unsigned len = save_inst ((const unsigned char *) b->p + off,
+      unsigned len = save_inst ((const unsigned char *) b->buf.buf + off,
 				buf + 3, sizeof buf - 3, &l);
       eri_assert (l < sizeof buf - 3);
       buf[l + 3] = '\n';
@@ -1454,10 +1544,12 @@ ctx_record_mem_operand_rw_size (struct encode_buf *b, struct mem *m,
       m->op_name = XED_OPERAND_AGEN;
 
       xed_uint8_t bnd_buf[2 * inst_size];
-      struct encode_buf bnd = { b->log, 0, sizeof bnd_buf, bnd_buf };
+      struct encode_buf bnd = { b->log };
+      eri_buf_static_init (&bnd.buf, bnd_buf, sizeof bnd_buf);
 
       xed_uint8_t bd_buf[6 * inst_size];
-      struct encode_buf bd = { b->log, 0, sizeof bd_buf, bd_buf };
+      struct encode_buf bd = { b->log };
+      eri_buf_static_init (&bd.buf, bd_buf, sizeof bd_buf);
 
       /* bd */
       xed_encoder_request_zero_set_mode (&xe, &state);
@@ -1478,7 +1570,7 @@ ctx_record_mem_operand_rw_size (struct encode_buf *b, struct mem *m,
 
       /* bnd */
       vex_encode_mov_reg_to_bis (&bnd, tmps[1], tmps[2], tmps[0], sizeof (unsigned long));
-      vex_encode_jmp_relbr (&bnd, XED_ICLASS_JMP, bd.off);
+      vex_encode_jmp_relbr (&bnd, XED_ICLASS_JMP, bd.buf.off);
 
       /* begin */
       ctx_encode_mov_reg (b, tmps[0], 0, off + VEX_RW_RANGES_NSIZES);
@@ -1500,7 +1592,7 @@ ctx_record_mem_operand_rw_size (struct encode_buf *b, struct mem *m,
       vex_encode (b, &xe);
 
       ctx_encode_mov_reg (b, tmps[2], 0, off + VEX_RW_RANGES_SIZES);
-      vex_encode_jmp_relbr (b, XED_ICLASS_JL, bnd.off);
+      vex_encode_jmp_relbr (b, XED_ICLASS_JL, bnd.buf.off);
 
       vex_concat (b, &bnd);
       vex_concat (b, &bd);
@@ -1578,9 +1670,8 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
   unsigned long map[v->max_inst_count][2];
 
   size_t size = eri_min (32, v->max_inst_count) * inst_size;
-  struct encode_buf b = {
-    log, &v->epool, size, eri_assert_mtmalloc (&v->epool, size)
-  };
+  struct encode_buf b = { log };
+  eri_buf_mtpool_init (&b.buf, &v->epool, size);
 
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
@@ -1603,7 +1694,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
       vex_decode (rip, v->pagesize, dec_buf, &xd);
 
       map[i][0] = (unsigned long) dec_buf;
-      map[i][1] = b.off;
+      map[i][1] = b.buf.off;
 
       e->inst_rips[i].rip = rip;
       e->inst_rips[i].rep = xed_operand_values_has_real_rep (&xd);
@@ -1849,17 +1940,19 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 		     2:
 		  */
 		  xed_uint8_t bnj_buf[2 * inst_size];
-		  struct encode_buf bnj = { log, 0, sizeof bnj_buf, bnj_buf };
+		  struct encode_buf bnj = { log };
+		  eri_buf_static_init (&bnj.buf, bnj_buf, sizeof bnj_buf);
 
 		  xed_uint8_t bj_buf[inst_size];
-		  struct encode_buf bj = { log, 0, sizeof bj_buf, bj_buf };
+		  struct encode_buf bj = { log };
+		  eri_buf_static_init (&bj.buf, bj_buf, sizeof bj_buf);
 
 		  /* bj */
 		  vex_encode_set_reg_imm (&bj, rip_tmp, rip + disp);
 
 		  /* bnj */
 		  vex_encode_set_reg_imm (&bnj, rip_tmp, rip);
-		  vex_encode_jmp_relbr (&bnj, XED_ICLASS_JMP, bj.off);
+		  vex_encode_jmp_relbr (&bnj, XED_ICLASS_JMP, bj.buf.off);
 
 		  /* e.g. ja	1f */
 		  xed_encoder_request_zero_set_mode (&xe, &state);
@@ -1867,7 +1960,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 		  xed_encoder_request_set_iclass (&xe, iclass);
 
 		  xed_encoder_request_set_relbr (&xe);
-		  xed_encoder_request_set_branch_displacement (&xe, bnj.off, 1);
+		  xed_encoder_request_set_branch_displacement (&xe, bnj.buf.off, 1);
 		  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_RELBR);
 
 		  vex_encode (&b, &xe);
@@ -1949,7 +2042,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
 
   if (i != v->max_inst_count) e->inst_rips[i].rip = 0;
   if (v->detail) save_translated (v->path, e->rip, map, i, &b);
-  return b.p;
+  return b.buf.buf;
 }
 
 static struct entry *
@@ -2014,12 +2107,12 @@ vex_loop (struct context *c)
   struct vex *v = c->vex;
   while (1)
     {
+      if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
+	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
+
       if (v->detail) cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
       struct entry *e = c->entry = vex_get_entry (c->log, v, c->ctx.comm.rip);
       c->ctx.insts = (unsigned long) e->decoded_insts;
-
-      if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
-	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
 
       /* ERI_ASSERT_SYSCALL (exit, 0); */
       if (v->detail)
@@ -2062,9 +2155,11 @@ vex_loop (struct context *c)
 	  init_rw_ranges (&v->pool, &c->ctx.writes, e->max_nwrites);
 	}
 
+      vex_break (v, c, ERI_VEX_BRK_PRE_EXEC);
+
       vex_execute ();
 
-      if (v->brk) vex_break (v, c, 0);
+      vex_break (v, c, ERI_VEX_BRK_POST_EXEC);
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
     }
@@ -2100,6 +2195,24 @@ setup_pool_monitor (struct eri_pool *pool, const char *name)
   pool->cb_data = (void *) name;
 }
 
+asm ("  .text						\n\
+  .align 16						\n\
+  .type sigact, @function				\n\
+sigact:							\n\
+  movq	%fs:" INTR ", %rax				\n\
+  cmpq	%rax, " _ERS_STR (ERI_UCONTEXT_RIP) "(%rdx)	\n\
+  jb	1f						\n\
+  ret							\n\
+1:							\n\
+  movq	%fs:" TOP ", %rsp				\n\
+  movq	$-" _ERS_STR (ERI_EINTR) ", %fs:" RAX "		\n\
+  jmp	*%fs:" ISKIP "					\n\
+  .size sigact, .-sigact				\n\
+  .previous						\n"
+);
+
+/* static */ void sigact (int signum, struct eri_siginfo *info, void *ucontext);
+
 void
 eri_vex_enter (const struct eri_vex_desc *desc)
 {
@@ -2113,10 +2226,14 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   v->pagesize = page;
   v->path = desc->path;
   v->stack_size = 2 * 1024 * 1024;
+#ifdef DEBUG
+  v->detail = 1;
+#else
   v->file_buf_size = 32 * 1024;
-  v->detail = 0;
+#endif
 
   v->brk = desc->brk;
+  v->brk_mask = desc->brk_mask;
   v->brk_data = desc->brk_data;
 
   if (desc->mmap)
@@ -2143,12 +2260,22 @@ eri_vex_enter (const struct eri_vex_desc *desc)
 
   v->max_inst_count = 32;
 
+  v->sys_pid = ERI_ASSERT_SYSCALL_RES (getpid);
+
+  ERI_LST_INIT_LIST (context, v);
+
   struct context *c = alloc_context (v);
   eri_memcpy (&c->ctx.comm, &desc->comm, sizeof c->ctx.comm);
 
   start_context (c);
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, c);
+
+  eri_sigaddset (&sig_block, SIGINTR);
+
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &sig_block, 0, ERI_SIG_SETSIZE);
+  struct eri_sigaction a = { sigact, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn };
+  ERI_ASSERT_SYSCALL (rt_sigaction, SIGINTR, &a, 0, ERI_SIG_SETSIZE);
 
   xed_register_abort_function (vex_xed_abort, 0);
   xed_tables_init ();

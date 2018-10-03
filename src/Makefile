@@ -17,12 +17,12 @@ O := -O3
 $(eval $(call DEPENDABLE_VAR,O))
 $(eval $(call DEPENDABLE_VAR,D))
 
-LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c
+LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c lib/syscall.c lib/buf.c
 LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
-REPLAYER := replayer.c common.c lib/printf.c lib/util.c
-TRACER := tracer.c common.c lib/printf.c lib/util.c
+REPLAYER := replayer.c common.c lib/printf.c lib/util.c lib/buf.c
+TRACER := tracer.c common.c lib/printf.c lib/util.c lib/buf.c
 
-CFLAGS := $O $D -I. -I$(BUILD) -g -Wall -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
+CFLAGS := $O $D -I. -I$(BUILD) -g -Wall -Werror -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared
 
 VEX_CFLAGS := -I$(BUILD)/vex -I../3rd/xed/include/public -I../3rd/xed/include/public/xed -I../3rd/xed/obj
@@ -67,7 +67,7 @@ $(XED):
 
 $(BUILD)/vex/%: CFLAGS += $(VEX_CFLAGS)
 
-$(BUILD)/vex/vex.o: $(BUILD)/vex/vex-offsets.h
+$(BUILD)/vex/vex.o $(BUILD)/vex/tst-vex-entry.o: $(BUILD)/vex/vex-offsets.h
 
 $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 	mkdir -p $(dir $@)
@@ -78,7 +78,7 @@ $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 $(BUILD)/tracer.o: CFLAGS := -g -I. -O3 -Wall
 
 LIB_TSTS := malloc printf list rbtree
-BUILD_TSTS := $(BUILD)/tst-asm $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
+BUILD_TSTS := $(BUILD)/tst-asm $(BUILD)/tst-common $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
 BUILD_TSTS_OUT := $(patsubst %,%.out,$(BUILD_TSTS))
 
 check: $(BUILD_TSTS) $(BUILD_TSTS_OUT)

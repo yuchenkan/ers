@@ -58,7 +58,8 @@ eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
 int
 eri_fini_pool (struct eri_pool *pool)
 {
-  eri_assert (pool->used == 0);
+  if (pool->used != 0) return 1;
+
   if (pool->size >= MIN_BLOCK_SIZE)
     {
       struct block *b = (struct block *) pool->buf;
@@ -161,4 +162,24 @@ eri_free (struct eri_pool *pool, void *p)
   if (pool->cb_free)
     pool->cb_free (pool, p, 0, pool->cb_data);
   return 0;
+}
+
+int
+eri_mtmalloc (struct eri_mtpool *pool, size_t size, void **p)
+{
+  int res;
+  eri_lock (&pool->lock);
+  res = eri_malloc (&pool->pool, size, p);
+  eri_unlock (&pool->lock);
+  return res;
+}
+
+int
+eri_mtfree (struct eri_mtpool *pool, void *p)
+{
+  int res;
+  eri_lock (&pool->lock);
+  res = eri_free (&pool->pool, p);
+  eri_unlock (&pool->lock);
+  return res;
 }

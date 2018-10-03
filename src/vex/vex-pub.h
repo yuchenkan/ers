@@ -44,9 +44,14 @@ struct eri_vex_rw_ranges
   unsigned long *sizes;
 };
 
-#define ERI_VEX_EXIT		1
-#define ERI_VEX_EXIT_WAIT	2
-#define ERI_VEX_EXIT_GROUP	3
+#define ERI_VEX_BRK_PRE_EXEC	0x1
+#define ERI_VEX_BRK_POST_EXEC	0x2
+#define ERI_VEX_BRK_EXIT	0x4
+#define ERI_VEX_BRK_EXIT_WAIT	0x8
+#define ERI_VEX_BRK_EXIT_GROUP	0x10
+
+#define ERI_VEX_BRK_EXIT_MASK \
+  (ERI_VEX_BRK_EXIT | ERI_VEX_BRK_EXIT_WAIT | ERI_VEX_BRK_EXIT_GROUP)
 
 struct eri_vex_brk_desc
 {
@@ -56,7 +61,7 @@ struct eri_vex_brk_desc
   struct eri_vex_rw_ranges *reads;
   struct eri_vex_rw_ranges *writes;
 
-  char exit;
+  unsigned long type;
 
   struct eri_mtpool *pool;
   void *data;
@@ -75,6 +80,7 @@ struct eri_vex_desc
   const char *path;
 
   eri_vex_proc_break_t brk;
+  unsigned long brk_mask;
   void *brk_data;
 
   struct eri_vex_common_context comm;

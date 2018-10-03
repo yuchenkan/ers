@@ -1,5 +1,5 @@
-#ifndef ERI_ASSERT_H
-#define ERI_ASSERT_H
+#ifndef ERI_UTIL_H
+#define ERI_UTIL_H
 
 #include <stddef.h>
 
@@ -31,6 +31,7 @@ char eri_strncmp (const char *s1, const char *s2, size_t n);
 const char *eri_strtok (const char *s, char d);
 const char *eri_strntok (const char *s, char d, size_t n);
 const char *eri_strstr (const char *s, const char *d);
+const char *eri_strnstr (const char *s, const char *d, size_t n);
 
 #define eri_round_up_mask(x, mask) \
   ({						\

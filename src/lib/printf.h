@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "util.h"
+#include "buf.h"
 
 typedef unsigned long eri_file_t;
 #define eri_file_buf_t char __attribute__ ((aligned (16)))
@@ -35,5 +36,8 @@ int eri_fprintf (eri_file_t file, const char *fmd, ...);
 
 int eri_vprintf (const char *fmt, va_list arg);
 int eri_printf (const char *fmt, ...);
+
+int eri_file_foreach_line (const char *path, struct eri_buf *buf,
+			   void (*proc) (const void *, size_t, void *), void *data);
 
 #endif

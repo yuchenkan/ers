@@ -110,8 +110,8 @@
 # define _ERS_CFI_ESCAPE(...) cfi_escape (__VA_ARGS__)
 #endif
 
-#ifndef ERS_RECORDER_PUB_H
-#define ERS_RECORDER_PUB_H
+#ifndef _ERS_RECORDER_PUB_H
+#define _ERS_RECORDER_PUB_H
 
 #include "recorder-common.h"
 #include "recorder-common-offsets.h"
@@ -934,6 +934,9 @@ l:					\
   _ERS_ASM_CMPXCHGL (ERS_NONE, lock, r, m)
 
 #ifndef __ASSEMBLER__
+
+#define ERS_ASM_SSYSCALL \
+  _ERS_STR (_ERS_ASM_SYSCALL (ERS_NONE, 0))
 
 #define ERS_ASM_SCMPL(ir, m) \
   _ERS_STR (_ERS_ASM_CMPL (ERS_NONE, ir, m))

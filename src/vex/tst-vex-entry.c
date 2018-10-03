@@ -1,11 +1,12 @@
 #include <asm/unistd.h>
 
 #include "vex-pub.h"
-#include "recorder-common.h"
+#include "vex-offsets.h"
 #include "common.h"
 
 #include "lib/syscall.h"
 #include "lib/util.h"
+#include "lib/util-common.h"
 #include "lib/printf.h"
 
 char __attribute__ ((aligned (16))) stack[8 * 1024 * 1024];
@@ -51,6 +52,11 @@ tst:			\n\
 
 #else
 
+static long sys_child_tid __attribute__ ((used));
+
+static void (*parent) (unsigned long arg) __attribute__ ((used));
+static void (*child) (unsigned long arg) __attribute__ ((used));
+
 #define CLONE_FLAGS \
   (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
    | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS)
@@ -70,6 +76,12 @@ tst:			\n\
   jl	1f		\n\
   jz	2f		\n\
 3:			\n\
+  movq	%rax, sys_child_tid(%rip)	\n\
+  cmpq	$0, parent(%rip)		\n\
+  je	5f		\n\
+  mov	(%r8), %rdi	\n\
+  call	*parent(%rip)	\n\
+5:			\n\
   cmpq	$123, (%r8)	\n\
   jne	3b		\n\
   jmp	4f		\n\
@@ -77,6 +89,11 @@ tst:			\n\
   movq	$0, %r15	\n\
   movq	$0, (%r15)	\n\
 2:			\n\
+  cmpq	$0, child(%rip)			\n\
+  je	6f		\n\
+  mov	%fs:0, %rdi	\n\
+  call	*child(%rip)	\n\
+6:			\n\
   movq	$123, %fs:0	\n\
 4:			\n\
   movq	$0, %rdi				\n\
@@ -85,6 +102,179 @@ tst:			\n\
   .size tst, .-tst	\n\
   .previous		\n"
 );
+
+static void
+tst_sigact_parent (unsigned long arg)
+{
+  int *p = (int *) arg;
+  while (__atomic_load_n (p, __ATOMIC_ACQUIRE) != 1) continue;
+  ERI_ASSERT_SYSCALL (exit_group, 0);
+}
+
+static int z;
+
+asm ("  .text					\n\
+  .align 16					\n\
+  .type tst_sigact_child, @function		\n\
+tst_sigact_child:				\n\
+  jmp	tst_sigact_child_start			\n\
+tst_sigact_child_start:				\n\
+  movl	$" _ERS_STR (__NR_futex) ", %eax	\n\
+  leaq	z(%rip), %rdi				\n\
+  movq	$" _ERS_STR (ERI_FUTEX_WAIT) ", %rsi	\n\
+  movq	$0, %rdx				\n\
+  movq	$0, %r10				\n\
+  syscall					\n\
+tst_sigact_child_end:				\n\
+  movq	$0, %r15				\n\
+  movq	$0, (%r15)				\n\
+  .size tst_sigact_child, .-tst_sigact_child	\n\
+  .previous					\n"
+);
+
+/* static */ void tst_sigact_child (unsigned long arg);
+
+#define SIGINTR ERI_SIGURG
+
+static void
+tst_sigact_brk (struct eri_vex_brk_desc *desc)
+{
+  int *i = *(int **) desc->data;
+
+  extern char tst_sigact_child_start[];
+  extern char tst_sigact_child_end[];
+
+  if (desc->ctx->fsbase == (unsigned long) desc->data)
+    {
+      eri_assert (! (desc->type & ERI_VEX_BRK_EXIT_MASK));
+
+      if (desc->type == ERI_VEX_BRK_PRE_EXEC
+	  && desc->ctx->rip == (unsigned long) tst_sigact_child_start)
+	{
+	  __atomic_store_n (i, 1, __ATOMIC_RELEASE);
+
+	  struct eri_sigset set;
+	  eri_sigemptyset (&set);
+	  while (! eri_sigset_p (&set, SIGINTR))
+	    ERI_ASSERT_SYSCALL (rt_sigpending, &set, ERI_SIG_SETSIZE);
+	}
+      else if (desc->type == ERI_VEX_BRK_POST_EXEC
+	       && desc->ctx->rip == (unsigned long) tst_sigact_child_end)
+	{
+	  eri_assert (desc->ctx->rsp == (unsigned long) (child_stack + CHILD_STACK_SIZE - sizeof (unsigned long)));
+	  eri_assert (desc->ctx->rax == (unsigned long) -ERI_EINTR);
+	  eri_assert (desc->ctx->rdi == (unsigned long) &z);
+	  eri_assert (desc->ctx->rsi == ERI_FUTEX_WAIT);
+	  eri_assert (desc->ctx->rdx == 0);
+	  eri_assert (desc->ctx->r10 == 0);
+	  *i = 2;
+	}
+    }
+  else if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+    {
+      eri_assert (desc->ctx->rax == __NR_exit_group);
+      eri_assert (desc->ctx->rdi == 0);
+      eri_assert (*i == 2);
+    }
+}
+
+asm ("  .text						\n\
+  .align 16						\n\
+  .type tst_sigact1_parent, @function			\n\
+tst_sigact1_parent:					\n\
+  jmp	tst_sigact1_parent_start			\n\
+tst_sigact1_parent_start:				\n\
+  movl	$" _ERS_STR (__NR_exit_group) ", %eax		\n\
+  movq	$0, %rdi					\n\
+  syscall						\n\
+  .size tst_sigact1_parent, .-tst_sigact1_parent	\n\
+  .previous						\n"
+);
+
+asm ("  .text					\n\
+  .align 16					\n\
+  .type tst_sigact1_child, @function		\n\
+tst_sigact1_child:				\n\
+  movl	$" _ERS_STR (__NR_futex) ", %eax	\n\
+  leaq	z(%rip), %rdi				\n\
+  movq	$" _ERS_STR (ERI_FUTEX_WAIT) ", %rsi	\n\
+  movq	$0, %rdx				\n\
+  movq	$0, %r10				\n\
+  syscall					\n\
+tst_sigact1_child_end:				\n\
+  movq	$0, %r15				\n\
+  movq	$0, (%r15)				\n\
+  .size tst_sigact1_child, .-tst_sigact1_child	\n\
+  .previous					\n"
+);
+
+/* static */ void tst_sigact1_parent (unsigned long arg);
+/* static */ void tst_sigact1_child (unsigned long arg);
+
+static void
+tst_sigact1_proc_status_line (const void *ln, size_t sz, void *d)
+{
+  if (eri_strncmp (ln, "State:", eri_min (sz, eri_strlen ("State:"))) == 0
+      && eri_strnstr (ln, "S (sleeping)", sz))
+    *(char *) d = 1;
+}
+
+static void
+tst_sigact1_brk (struct eri_vex_brk_desc *desc)
+{
+  int *i = *(int **) desc->data;
+
+  extern char tst_sigact1_parent_start[];
+  extern char tst_sigact1_child_end[];
+
+  if (desc->ctx->fsbase == (unsigned long) desc->data)
+    {
+      eri_assert (! (desc->type & ERI_VEX_BRK_EXIT_MASK));
+
+      if (desc->type == ERI_VEX_BRK_POST_EXEC
+	  && desc->ctx->rip == (unsigned long) tst_sigact1_child_end)
+	{
+	  eri_assert (desc->ctx->rsp == (unsigned long) (child_stack + CHILD_STACK_SIZE - sizeof (unsigned long)));
+	  eri_assert (desc->ctx->rax == (unsigned long) -ERI_EINTR);
+	  eri_assert (desc->ctx->rdi == (unsigned long) &z);
+	  eri_assert (desc->ctx->rsi == ERI_FUTEX_WAIT);
+	  eri_assert (desc->ctx->rdx == 0);
+	  eri_assert (desc->ctx->r10 == 0);
+	  *i = 2;
+	}
+    }
+  else if (desc->type == ERI_VEX_BRK_PRE_EXEC
+	   && desc->ctx->rip == (unsigned long) tst_sigact1_parent_start)
+    {
+      size_t s = eri_strlen ("/proc/self/task/xxxxx/status") + 1;
+      char path[s];
+      eri_strcpy (path, "/proc/self/task/");
+      s = eri_strlen ("/proc/self/task/");
+      int j, k = 0;
+      for (j = 10000; j > 0; j /= 10)
+	if (sys_child_tid >= j || k != 0) path[s + k++] = '0' + (sys_child_tid / j) % 10;
+      eri_assert (k <= 5);
+      eri_strcpy (path + s + k, "/status");
+
+      eri_assert (eri_printf ("status: %s\n", path) == 0);
+
+      char buf[1024];
+      struct eri_buf b;
+      eri_buf_static_init (&b, buf, sizeof buf);
+
+      char sleep = 0;
+      while (! sleep)
+	eri_file_foreach_line (path, &b, tst_sigact1_proc_status_line, &sleep);
+
+      eri_assert (eri_printf ("sleep\n") == 0);
+    }
+  else if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+    {
+      eri_assert (desc->ctx->rax == __NR_exit_group);
+      eri_assert (desc->ctx->rdi == 0);
+      eri_assert (*i == 2);
+    }
+}
 
 #endif
 
@@ -108,11 +298,30 @@ entry (void *rip, void *rsp, unsigned long fsbase)
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
   const char *path = "vex_data";
 
-  struct eri_vex_desc desc = { buf, buf_size, 1, 4096, path, brk };
+  int i = 0;
+  struct eri_vex_desc desc = { buf, buf_size, 1, 4096, path, 0, ~0 };
   if (rip == 0)
     {
       desc.comm.rip = (unsigned long) tst;
       desc.comm.rdi = (unsigned long) &p;
+      if ((unsigned long) rsp == 0)
+	desc.brk = brk;
+      else if ((unsigned long) rsp == 1)
+	{
+	  parent = tst_sigact_parent;
+	  child = tst_sigact_child;
+	  p = (unsigned long) &i;
+	  desc.brk = tst_sigact_brk;
+	  desc.brk_data = &p;
+	}
+      else
+	{
+	  parent = tst_sigact1_parent;
+	  child = tst_sigact1_child;
+	  p = (unsigned long) &i;
+	  desc.brk = tst_sigact1_brk;
+	  desc.brk_data = &p;
+	}
       desc.comm.rsp = (unsigned long) (stack + sizeof stack);
     }
   else

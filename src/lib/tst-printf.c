@@ -1,7 +1,32 @@
 #include "util.h"
 #include "printf.h"
+#include "buf.h"
+#include "malloc.h"
 
-int main ()
+static void
+proc_line (const void *ln, size_t sz, void *d)
+{
+  eri_assert (d == 0);
+  ((char *) ln)[sz] = '\0';
+  eri_assert (eri_printf ("%s ...%lu\n", ln, sz) == 0);
+}
+
+static char pool_buf[1024 * 1024];
+
+static void
+tst_foreach_line (size_t size)
+{
+  struct eri_pool pool;
+  eri_assert (eri_init_pool (&pool, pool_buf, sizeof pool_buf) == 0);
+  struct eri_buf buf;
+  eri_assert (eri_buf_pool_init (&buf, &pool, size) == 0);
+  eri_assert (eri_file_foreach_line ("/proc/self/smaps", &buf, proc_line, 0) == 0);
+  eri_assert (eri_buf_fini (&buf) == 0);
+  eri_assert (eri_fini_pool (&pool) == 0);
+}
+
+int
+main (void)
 {
   eri_assert (eri_printf ("") == 0);
   eri_assert (eri_printf ("%%\n") == 0);
@@ -28,5 +53,8 @@ int main ()
   eri_assert (eri_fread (file, buf, 4, &l) == 0);
   eri_assert (l == 2 && buf[0] == '5' && buf[1] == '\n');
   eri_assert (eri_fclose (file) == 0);
+
+  tst_foreach_line (1024);
+  tst_foreach_line (32);
   return 0;
 }

@@ -107,10 +107,15 @@ eri_strntok (const char *s, char d, size_t n)
 const char *
 eri_strstr (const char *s, const char *d)
 {
-  size_t sl = eri_strlen (s);
+  return eri_strnstr (s, d, eri_strlen (s));
+}
+
+const char *
+eri_strnstr (const char *s, const char *d, size_t n)
+{
   size_t dl = eri_strlen (d);
   size_t i;
-  for (i = 0; i <= sl - dl; ++i)
+  for (i = 0; i <= n - dl; ++i)
     if (eri_strncmp (s + i, d, dl) == 0)
       return s + i;
   return 0;

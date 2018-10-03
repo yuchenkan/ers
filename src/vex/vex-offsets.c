@@ -51,4 +51,7 @@ declare (void)
 
   CTX_OFFSET (READS, reads);
   CTX_OFFSET (WRITES, writes);
+
+  CTX_OFFSET (INTR, intr);
+  CTX_OFFSET (ISKIP, iskip);
 }

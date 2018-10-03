@@ -223,7 +223,8 @@ load_interp (const char *interp, uint64_t *entry, uint64_t pagesize)
   eri_assert (ehdr.phentsize == sizeof (struct elf64_phdr));
 
   size_t sz = ehdr.phentsize * ehdr.phnum;
-  struct elf64_phdr *phdr = __builtin_alloca (sz);
+  char phdr_buf[sz];
+  struct elf64_phdr *phdr = (struct elf64_phdr *) phdr_buf;
 
   eri_assert (eri_fseek (file, ehdr.phoff, 0, 0) == 0);
   eri_assert (eri_fread (file, (char *) phdr, sz, 0) == 0);

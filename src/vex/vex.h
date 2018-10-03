@@ -27,6 +27,9 @@ struct vex_context
 
   struct vex_rw_ranges reads;
   struct vex_rw_ranges writes;
+
+  unsigned long intr;
+  unsigned long iskip;
 };
 
 #endif

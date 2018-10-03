@@ -33,13 +33,13 @@ struct eri_mtpool
   struct eri_pool pool;
 };
 
+int eri_mtmalloc (struct eri_mtpool *pool, size_t size, void **p);
+int eri_mtfree (struct eri_mtpool *pool, void *p);
+
 #define eri_assert_mtmalloc(mtp, s) \
   ({								\
-    struct eri_mtpool *__mtp1 = mtp;				\
     void *__p1;							\
-    eri_lock (&__mtp1->lock);					\
-    eri_assert (eri_malloc (&__mtp1->pool, s, &__p1) == 0);	\
-    eri_unlock (&__mtp1->lock);					\
+    eri_assert (eri_mtmalloc (mtp, s, &__p1) == 0);		\
     __p1;							\
   })
 
@@ -52,11 +52,6 @@ struct eri_mtpool
   })
 
 #define eri_assert_mtfree(mtp, p) \
-  do {								\
-      struct eri_mtpool *__mtp = mtp;				\
-      eri_lock (&__mtp->lock);					\
-      eri_assert (eri_free (&__mtp->pool, p) == 0);		\
-      eri_unlock (&__mtp->lock);				\
-  } while (0)
+  do { eri_assert (eri_mtfree (mtp, p) == 0); } while (0)
 
 #endif

@@ -1,5 +1,5 @@
-#ifndef ERI_CLONE_H
-#define ERI_CLONE_H
+#ifndef ERI_RECORDER_H
+#define ERI_RECORDER_H
 
 struct eri_clone_desc
 {
