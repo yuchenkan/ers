@@ -18,7 +18,7 @@ $(eval $(call DEPENDABLE_VAR,O))
 $(eval $(call DEPENDABLE_VAR,D))
 
 LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c lib/syscall.c lib/buf.c
-LIB_RECORDER := rtld.c recorder.c common.c vex/vex.c $(LIB)
+LIB_RECORDER := rtld.c recorder.c analysis.c common.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c lib/printf.c lib/util.c lib/buf.c
 TRACER := tracer.c common.c lib/printf.c lib/util.c lib/buf.c
 

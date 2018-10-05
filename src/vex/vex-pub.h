@@ -84,6 +84,8 @@ struct eri_vex_desc
   void *brk_data;
 
   struct eri_vex_common_context comm;
+
+  struct eri_mtpool **pool;
 };
 
 void eri_vex_enter (const struct eri_vex_desc *desc);

@@ -15,12 +15,12 @@ static void *f (void *p)
   unsigned r = (unsigned) (long) p;
   void *o = NULL;
   int i;
-  for (i = 0; i < 1024; ++i)
+  for (i = 0; i < 128; ++i)
     {
       r = ran (r);
       if (o) free (o);
       size_t s = r % (64 * 1024 * 1024) + 1;
-      fprintf (stderr, "malloc %u\n", s);
+      // fprintf (stderr, "malloc %u\n", s);
       o = malloc (s);
     }
   free (o);

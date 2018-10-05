@@ -8,8 +8,8 @@
 #define ERI_LST_NODE_FIELDS(pfx) void *pfx##_lst[2];
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
-attr __attribute__ ((used)) void pfx##_lst_append (list_type *list, node_type *node);	\
-attr __attribute__ ((used)) void pfx##_lst_remove (node_type *node);
+attr __attribute__ ((unused)) void pfx##_lst_append (list_type *list, node_type *node);	\
+attr __attribute__ ((unused)) void pfx##_lst_remove (node_type *node);
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
 static void									\
@@ -21,13 +21,13 @@ pfx##_lst_insert_after (void **n, void **nn)					\
   n[1] = nn;			/* n->next = nn; */				\
 }										\
 										\
-attr __attribute__ ((used)) void						\
+attr __attribute__ ((unused)) void						\
 pfx##_lst_append (list_type *list, node_type *node)				\
 {										\
   pfx##_lst_insert_after ((void **) list->pfx##_lst[0], node->pfx##_lst);	\
 }										\
 										\
-attr __attribute__ ((used)) void						\
+attr __attribute__ ((unused)) void						\
 pfx##_lst_remove (node_type *node)						\
 {										\
   void **n = node->pfx##_lst;							\

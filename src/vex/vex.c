@@ -203,6 +203,12 @@ struct entry
   unsigned refs;
 };
 
+struct pool_monitor
+{
+  const char *name;
+  size_t peek;
+};
+
 struct vex
 {
   size_t pagesize;
@@ -230,6 +236,9 @@ struct vex
   unsigned ncontexts;
   int contexts_lock;
   ERI_LST_LIST_FIELDS (context);
+
+  struct pool_monitor pool_monitor;
+  struct pool_monitor epool_monitor;
 
   struct eri_mtpool pool;
   struct eri_mtpool epool;
@@ -347,6 +356,7 @@ init_rw_ranges (struct eri_mtpool *p, struct vex_rw_ranges *rw, size_t n)
 static void
 vex_break (struct vex *v, struct context *c, unsigned long type)
 {
+  eri_assert (v);
   eri_assert (c->ctx.reads.naddrs == c->ctx.reads.nsizes);
   eri_assert (c->ctx.writes.naddrs == c->ctx.writes.nsizes);
 
@@ -2168,31 +2178,25 @@ vex_loop (struct context *c)
 
 static void
 monitor_pool_malloc (struct eri_pool *pool, size_t size,
-		     int res, void *p, void *name)
+		     int res, void *p, void *data)
 {
-#if 0
-  if (res == 0)
-    eri_assert (eri_printf ("malloc %s: %lx %lu %lu\n", name, p, size, pool->used) == 0);
-#endif
+  struct pool_monitor *monitor = data;
+  if (res == 0 && pool->used > 2 * monitor->peek)
+    {
+      while (pool->used > 2 * monitor->peek) monitor->peek *= 2;
+      eri_assert (eri_printf ("malloc %s: %lum\n",
+			      monitor->name, pool->used / 1024 / 1024) == 0);
+    }
 }
 
 static void
-monitor_pool_free (struct eri_pool *pool,
-		   void *p, int res, void *name)
+setup_pool_monitor (struct eri_pool *pool, struct pool_monitor *monitor, const char *name)
 {
-#if 0
-  if (res == 0)
-    eri_assert (eri_printf ("free %s: %lx %lu\n", name, p, pool->used) == 0);
-#endif
-}
+  monitor->name = name;
+  monitor->peek = 1024 * 1024;
 
-
-static void
-setup_pool_monitor (struct eri_pool *pool, const char *name)
-{
   pool->cb_malloc = monitor_pool_malloc;
-  pool->cb_free = monitor_pool_free;
-  pool->cb_data = (void *) name;
+  pool->cb_data = monitor;
 }
 
 asm ("  .text						\n\
@@ -2247,14 +2251,16 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   v->exit_stack_top = buf;
 
   eri_assert ((unsigned long) buf % page == 0 && size % page == 0);
-  size_t psize = size / page / 2 * page;
+  size_t psize = size - size / page / 8 * page;
   eri_assert (eri_init_pool (&v->pool.pool, buf, psize) == 0);
-  setup_pool_monitor (&v->pool.pool, "pool");
+  setup_pool_monitor (&v->pool.pool, &v->pool_monitor, "pool");
+
+  if (desc->pool) *desc->pool = &v->pool;
 
   char *ebuf = buf + psize;
   size_t esize = size - psize;
   eri_assert (eri_init_pool (&v->epool.pool, ebuf, esize) == 0);
-  setup_pool_monitor (&v->epool.pool, "epool");
+  setup_pool_monitor (&v->epool.pool, &v->epool_monitor, "epool");
 
   ERI_ASSERT_SYSCALL (mprotect, ebuf, esize, 0x7);
 
