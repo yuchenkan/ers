@@ -20,7 +20,7 @@
     __tree->pfx##_rbt_root = 0;			\
     __tree->pfx##_rbt_size = 0;			\
    } while (0)
-#define ERI_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_rbt_root; size_t pfx##_rbt_size;
+#define ERI_RBT_TREE_FIELDS(pfx, node_type) node_type *pfx##_rbt_root; unsigned long pfx##_rbt_size;
 #define ERI_RBT_NODE_FIELDS(pfx, node_type) \
   unsigned char pfx##_rbt_color : 1; node_type *pfx##_rbt_parent, *pfx##_rbt_left, *pfx##_rbt_right;
 
@@ -34,7 +34,7 @@ attr __attribute__ ((unused)) void pfx##_rbt_remove (tree_type *tree, node_type 
 attr __attribute__ ((unused)) node_type *pfx##_rbt_get (tree_type *tree, key_type *key, int flags);	\
 attr __attribute__ ((unused)) node_type *pfx##_rbt_get_first (tree_type *tree);		\
 attr __attribute__ ((unused)) node_type *pfx##_rbt_get_next (node_type *node);		\
-attr __attribute__ ((unused)) size_t pfx##_rbt_get_size (tree_type *tree);
+attr __attribute__ ((unused)) unsigned long pfx##_rbt_get_size (tree_type *tree);
 
 #define ERI_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERI_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
@@ -400,7 +400,7 @@ pfx##_rbt_get_next (node_type *node)						\
   return pfx##_rbt_parent (n);							\
 }										\
 										\
-attr __attribute__ ((unused)) size_t						\
+attr __attribute__ ((unused)) unsigned long					\
 pfx##_rbt_get_size (tree_type *tree)						\
 {										\
   return tree->pfx##_rbt_size;							\

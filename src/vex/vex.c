@@ -415,7 +415,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
   struct vex *v = c->vex;
 
   eri_lock (&v->contexts_lock);
-  context_lst_remove (c);
+  context_lst_remove (v, c);
   eri_unlock (&v->contexts_lock);
 
   eri_assert (eri_fclose (c->log) == 0);

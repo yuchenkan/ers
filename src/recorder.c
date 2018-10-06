@@ -238,11 +238,12 @@ replay_get_waker (struct replay *replay, unsigned long tid)
 }
 
 #define ANALYSIS_NONE		0
-#define ANALYSIS_ENTER_SILENCE	1
-#define ANALYSIS_LEAVE_SILENCE	2
-#define ANALYSIS_LLOCK		3
-#define ANALYSIS_LUNLOCK	4
-#define ANALYSIS_ERROR		5
+#define ANALYSIS_ERROR		1
+#define ANALYSIS_CLONE		2
+#define ANALYSIS_ENTER_SILENCE	3
+#define ANALYSIS_LEAVE_SILENCE	4
+#define ANALYSIS_LLOCK		5
+#define ANALYSIS_LUNLOCK	6
 
 asm ("  .text					\n\
   .align 16					\n\
@@ -621,7 +622,7 @@ static void
 fini_thread (struct internal *internal, struct thread *th)
 {
   ilock (internal, th->id, &internal->threads_lock);
-  thread_lst_remove (th);
+  thread_lst_remove (internal, th);
   iunlock (internal, &internal->threads_lock, 0);
 
   iprintf (internal, th->log, "fini_thread %lu\n", th->id);
@@ -1438,6 +1439,9 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
     save_result (th->file, c->id);
   else
     {
+      if (mode == ERS_ANALYSIS)
+	analysis_break (ANALYSIS_ENTER_SILENCE); /* XXX remove silence */
+
       c->id = (unsigned long) load_result (th->file);
 
       desc->replay_result = load_result (th->file);
@@ -1450,6 +1454,9 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
 	  iprintf (internal, th->log, "pre_clone done %lu\n", th->id);
 	  return 0;
 	}
+
+      if (mode == ERS_ANALYSIS)
+	analysis_break (ANALYSIS_CLONE, c);
 
       desc->flags &= ~(ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID);
       *desc->ptid = desc->replay_result;
@@ -1483,6 +1490,9 @@ post_clone (struct internal *internal, struct thread *child, long res, long repl
 	}
       else if (res != 0) /* clone succeeded and we are the parent, replace the result */
 	res = replay;
+
+      if (mode == ERS_ANALYSIS)
+	analysis_break (ANALYSIS_LEAVE_SILENCE);
     }
 
   long rel = 1;
@@ -1603,37 +1613,35 @@ analysis_proc_break (struct eri_vex_brk_desc *desc)
   eri_assert (desc->type != ERI_VEX_BRK_PRE_EXEC);
 
   struct internal *internal = desc->data;
-
-  struct analysis *al = &internal->analysis;
-  if (! al->analysis)
-    al->analysis = eri_analysis_create (al->pool);
-
   /* Ensure internal->main = 0 atomic.  */
   struct thread *th = internal->main
     ? : *(struct thread **) (desc->ctx->fsbase + internal->thread_offset);
 
-  if (! th->analysis)
-    th->analysis = eri_analysis_create_thread (al->analysis, th->id);
+  struct analysis *al = &internal->analysis;
+  if (! al->analysis)
+    {
+      al->analysis = eri_analysis_create (al->pool);
+      th->analysis = eri_analysis_create_thread (al->analysis, NULL);
+    }
 
   eri_analysis_record (th->analysis, desc);
 
   if (desc->ctx->rip == (unsigned long) analysis_break)
     {
       unsigned long type = desc->ctx->rdi;
-      eri_assert (type == ANALYSIS_NONE
-		  || type == ANALYSIS_ENTER_SILENCE
-		  || type == ANALYSIS_LEAVE_SILENCE
-		  || type == ANALYSIS_LLOCK
-		  || type == ANALYSIS_LUNLOCK
-		  || type == ANALYSIS_ERROR);
-
       if (type == ANALYSIS_ERROR)
 	__atomic_store_n (&al->error, 1, __ATOMIC_RELEASE);
+      else if (type == ANALYSIS_CLONE)
+	{
+	  struct thread *child = (struct thread *) desc->ctx->rsi;
+	  child->analysis = eri_analysis_create_thread (al->analysis, th->analysis);
+	}
       else if (type == ANALYSIS_ENTER_SILENCE || type == ANALYSIS_LEAVE_SILENCE)
 	eri_analysis_silence (th->analysis, type == ANALYSIS_ENTER_SILENCE);
       else if (type == ANALYSIS_LLOCK || type == ANALYSIS_LUNLOCK)
 	eri_analysis_sync (th->analysis, type == ANALYSIS_LLOCK,
 			   desc->ctx->rsi, desc->ctx->rdx);
+      else eri_assert (type == ANALYSIS_NONE);
     }
 
   if (! (desc->type & ERI_VEX_BRK_EXIT_MASK)) return;

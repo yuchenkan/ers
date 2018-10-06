@@ -1,6 +1,7 @@
 #include "analysis.h"
 
 #include "lib/util.h"
+#include "lib/printf.h"
 #include "lib/lock.h"
 #include "lib/list.h"
 #include "lib/rbtree.h"
@@ -20,38 +21,31 @@ struct addrs
 
 ERI_DEFINE_RBTREE (static, addr, struct addrs, struct addr, unsigned long, eri_less_than)
 
+#define BLOCK_ACQ	0
+#define BLOCK_REL	1
+#define BLOCK_FORK	2
+
 struct block
 {
-  char sync_acq;
-  unsigned long sync_var;
-  unsigned long sync_ver;
+  char type;
+
+  struct block *prev;
+  struct block *next;
+  struct block *child;
+
+  unsigned long var;
+  unsigned long ver;
 
   struct addrs reads;
   struct addrs writes;
-
-  ERI_LST_NODE_FIELDS (block)
 };
-
-struct thread_blocks
-{
-  unsigned long id;
-  ERI_RBT_NODE_FIELDS (thread_blocks, struct thread_blocks)
-
-  ERI_LST_LIST_FIELDS (block)
-};
-
-ERI_DEFINE_LIST (static, block, struct thread_blocks, struct block)
 
 struct eri_analysis
 {
   struct eri_mtpool *pool;
 
-  int thread_blocks_lock;
-  ERI_RBT_TREE_FIELDS (thread_blocks, struct thread_blocks)
+  struct block *root;
 };
-
-ERI_DEFINE_RBTREE (static, thread_blocks, struct eri_analysis,
-		   struct thread_blocks, unsigned long, eri_less_than)
 
 struct eri_analysis_thread
 {
@@ -60,7 +54,6 @@ struct eri_analysis_thread
   char silence;
 
   struct block *cur;
-  struct thread_blocks *blocks;
 };
 
 struct eri_analysis *
@@ -71,6 +64,29 @@ eri_analysis_create (struct eri_mtpool *pool)
   return al;
 }
 
+static void
+free_addrs (struct eri_mtpool *pool, struct addrs *addrs)
+{
+  struct addr *a, *na;
+  ERI_RBT_FOREACH_SAFE (addr, addrs, a, na)
+    {
+      addr_rbt_remove (addrs, a);
+      eri_assert_mtfree (pool, a);
+    }
+}
+
+static void
+delete_block_recurse (struct eri_mtpool *pool, struct block *block)
+{
+  if (block->next) delete_block_recurse (pool, block->next);
+  if (block->child) delete_block_recurse (pool, block->child);
+
+  free_addrs (pool, &block->reads);
+  free_addrs (pool, &block->writes);
+
+  eri_assert_mtfree (pool, block);
+}
+
 void
 eri_analysis_delete (struct eri_analysis *analysis)
 {
@@ -78,51 +94,39 @@ eri_analysis_delete (struct eri_analysis *analysis)
 
   struct eri_mtpool *pool = analysis->pool;
 
-  struct thread_blocks *t, *nt;
-  ERI_RBT_FOREACH_SAFE (thread_blocks, analysis, t, nt)
-    {
-      thread_blocks_rbt_remove (analysis, t);
-
-      struct block *b, *nb;
-      ERI_LST_FOREACH_SAFE (block, t, b, nb)
-	{
-	  struct addr *a, *na;
-	  ERI_RBT_FOREACH_SAFE (addr, &b->reads, a, na)
-	    {
-	      addr_rbt_remove (&b->reads, a);
-	      eri_assert_mtfree (pool, a);
-	    }
-	  ERI_RBT_FOREACH_SAFE (addr, &b->writes, a, na)
-	    {
-	      addr_rbt_remove (&b->writes, a);
-	      eri_assert_mtfree (pool, a);
-	    }
-
-	  eri_assert_mtfree (pool, b);
-	}
-
-      eri_assert_mtfree (pool, t);
-    }
+  if (analysis->root)
+    delete_block_recurse (pool, analysis->root);
 
   eri_assert_mtfree (pool, analysis);
 }
 
+static void
+create_block (struct eri_analysis_thread *th, char type,
+	      struct block *parent)
+{
+  if (parent) eri_assert (! th->cur);
+
+  struct block *b = eri_assert_mtcalloc (th->analysis->pool, sizeof *b);
+  b->type = type;
+
+  b->prev = parent ? : th->cur;
+  if (parent) parent->child = b;
+  else if (th->cur) th->cur->next = b;
+  else th->analysis->root = b;
+
+  th->cur = b;
+}
+
 struct eri_analysis_thread *
-eri_analysis_create_thread (struct eri_analysis *analysis, unsigned long id)
+eri_analysis_create_thread (struct eri_analysis *analysis,
+			    struct eri_analysis_thread *parent)
 {
   struct eri_analysis_thread *th = eri_assert_mtcalloc (analysis->pool, sizeof *th);
   th->analysis = analysis;
+  th->silence = parent ? parent->silence : 0;
 
-  th->blocks = eri_assert_mtmalloc (analysis->pool, sizeof *th->blocks);
-  th->blocks->id = id;
-  ERI_LST_INIT_LIST (block, th->blocks);
-
-  eri_lock (&analysis->thread_blocks_lock);
-  thread_blocks_rbt_insert (analysis, th->blocks);
-  eri_unlock (&analysis->thread_blocks_lock);
-
-  th->cur = eri_assert_mtcalloc (analysis->pool, sizeof *th->cur);
-  block_lst_append (th->blocks, th->cur);
+  if (parent) create_block (parent, BLOCK_FORK, 0);
+  create_block (th, BLOCK_FORK, parent ? parent->cur : 0);
 
   return th;
 }
@@ -202,10 +206,7 @@ void
 eri_analysis_sync (struct eri_analysis_thread *th, char acq,
 		   unsigned long var, unsigned long ver)
 {
-  th->cur = eri_assert_mtcalloc (th->analysis->pool, sizeof *th->cur);
-  block_lst_append (th->blocks, th->cur);
-
-  th->cur->sync_acq = acq;
-  th->cur->sync_var = var;
-  th->cur->sync_ver = ver;
+  create_block (th, acq ? BLOCK_ACQ : BLOCK_REL, 0);
+  th->cur->var = var;
+  th->cur->ver = ver;
 }
