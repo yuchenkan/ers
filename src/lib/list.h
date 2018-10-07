@@ -10,8 +10,8 @@
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
 attr __attribute__ ((unused)) void pfx##_lst_append (list_type *list, node_type *node);	\
-attr __attribute__ ((unused)) void pfx##_lst_remove (node_type *node);		\
-attr __attribute__ ((unused)) void pfx##_lst_get_size (list_type *list);
+attr __attribute__ ((unused)) void pfx##_lst_remove (list_type *list, node_type *node);	\
+attr __attribute__ ((unused)) unsigned long pfx##_lst_get_size (list_type *list);
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
 static void									\
@@ -57,6 +57,5 @@ pfx##_lst_get_size (list_type *list)						\
        && (iter = (typeof (iter)) ((char *) iter - __builtin_offsetof (typeof (*iter), pfx##_lst)))	\
        && ({ next = (typeof (iter)) iter->pfx##_lst[1]; 1; });			\
        iter = next)
-
 
 #endif

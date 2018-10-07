@@ -25,7 +25,7 @@ static void
 process_map_entry (char *buf, struct eri_map_entry *ent)
 {
 #ifdef DEBUG
-  eri_assert (eri_printf ("%s\n", buf) == 0);
+  eri_assert_printf ("%s\n", buf);
 #endif
 
   ent->start = ent->end = 0;
@@ -67,7 +67,7 @@ process_map_entry (char *buf, struct eri_map_entry *ent)
 	{
 	  ent->perms |= 16;
 	  break;
-        }
+	}
     }
   eri_assert (*d);
 }

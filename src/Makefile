@@ -19,8 +19,8 @@ $(eval $(call DEPENDABLE_VAR,D))
 
 LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c lib/syscall.c lib/buf.c
 LIB_RECORDER := rtld.c recorder.c analysis.c common.c vex/vex.c $(LIB)
-REPLAYER := replayer.c common.c lib/printf.c lib/util.c lib/buf.c
-TRACER := tracer.c common.c lib/printf.c lib/util.c lib/buf.c
+REPLAYER := replayer.c common.c $(LIB)
+TRACER := tracer.c common.c $(LIB)
 
 CFLAGS := $O $D -I. -I$(BUILD) -g -Wall -Werror -fno-tree-loop-distribute-patterns -save-temps=obj -fPIC -fvisibility=hidden -mgeneral-regs-only
 LIB_LDFLAGS := -nostdlib -Wl,--no-undefined -shared

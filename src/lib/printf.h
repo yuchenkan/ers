@@ -37,6 +37,18 @@ int eri_fprintf (eri_file_t file, const char *fmd, ...);
 int eri_vprintf (const char *fmt, va_list arg);
 int eri_printf (const char *fmt, ...);
 
+#define eri_assert_printf(fmt, ...) \
+  eri_assert (eri_printf (fmt, ##__VA_ARGS__) == 0)
+
+int eri_vlfprintf (eri_file_t file, int *lock, const char *fmt, va_list arg);
+int eri_lfprintf (eri_file_t file, int *lock, const char *fmt, ...);
+
+int eri_vlprintf (int *lock, const char *fmt, va_list arg);
+int eri_lprintf (int *lock, const char *fmt, ...);
+
+#define eri_assert_lprintf(fmt, ...) \
+  eri_assert (eri_lprintf (fmt, ##__VA_ARGS__) == 0)
+
 int eri_file_foreach_line (const char *path, struct eri_buf *buf,
 			   void (*proc) (const void *, size_t, void *), void *data);
 

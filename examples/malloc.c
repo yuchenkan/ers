@@ -15,7 +15,7 @@ static void *f (void *p)
   unsigned r = (unsigned) (long) p;
   void *o = NULL;
   int i;
-  for (i = 0; i < 64; ++i)
+  for (i = 0; i < 32; ++i)
     {
       r = ran (r);
       if (o) free (o);

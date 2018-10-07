@@ -42,8 +42,8 @@ int main()
 
   struct node *it;
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
 
   int k;
   eri_assert (x_rbt_get (&t, (k = 0, &k), ERI_RBT_EQ) == n + 0);
@@ -62,32 +62,32 @@ int main()
   x_rbt_remove (&t, n + 3);
   eri_assert (x_rbt_get_first (&t) == n + 0);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   x_rbt_remove (&t, n + 2);
   eri_assert (x_rbt_get_first (&t) == n + 0);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   x_rbt_remove (&t, n + 1);
   eri_assert (x_rbt_get_first (&t) == n + 0);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   x_rbt_remove (&t, n + 0);
   eri_assert (x_rbt_get_first (&t) == n + 4);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   x_rbt_remove (&t, n + 4);
   eri_assert (x_rbt_get_first (&t) == n + 5);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   x_rbt_remove (&t, n + 5);
   eri_assert (x_rbt_get_first (&t) == NULL);
   ERI_RBT_FOREACH (x, &t, it)
-    eri_assert (eri_printf ("%u %u\n", it->k, it->v) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->k, it->v);
+  eri_assert_printf ("\n");
   return 0;
 }

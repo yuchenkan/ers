@@ -192,6 +192,7 @@ struct entry
   ERI_RBT_NODE_FIELDS (entry, struct entry)
 
   int trans_lock;
+  size_t ninsts;
   struct inst_rip *inst_rips;
   size_t length;
   void *insts;
@@ -366,7 +367,7 @@ vex_break (struct vex *v, struct context *c, unsigned long type)
 	      || type & ERI_VEX_BRK_EXIT_MASK;
 
   struct eri_vex_brk_desc d = {
-    &c->ctx.comm, c->entry->rip, c->entry->length, 0, 0, type,
+    &c->ctx.comm, c->entry->ninsts, c->entry->rip, c->entry->length, 0, 0, type,
     &v->pool, v->brk_data
   };
 
@@ -425,7 +426,7 @@ vex_exit_alt_stack (int type, unsigned long status, int nr, struct context *c)
 
   if (type == VEX_EXIT_GROUP)
     {
-      eri_assert (eri_printf ("vex pool used: %lu\n", v->pool.pool.used) == 0);
+      eri_assert_printf ("vex pool used: %lu\n", v->pool.pool.used);
       eri_assert (eri_fini_pool (&v->pool.pool) == 0);
       if (v->mmap)
 	asm ("  movq	%q0, %%rdi\n\t"
@@ -519,7 +520,7 @@ vex_exit (unsigned long status, int nr, struct context *ctx)
 	  while (__atomic_load_n (&v->ncontexts, __ATOMIC_ACQUIRE) != 1)
 	    continue;
 
-	  vex_break (v, ctx, ERI_VEX_BRK_EXIT_GROUP);
+	  vex_break (v, ctx, ERI_VEX_BRK_POST_EXEC | ERI_VEX_BRK_EXIT_GROUP);
 
 	  struct entry *e, *ne;
 	  ERI_RBT_FOREACH_SAFE (entry, v, e, ne)
@@ -529,14 +530,14 @@ vex_exit (unsigned long status, int nr, struct context *ctx)
 	      eri_assert (eri_free (&v->pool.pool, e) == 0);
 	    }
 
-	  eri_assert (eri_printf ("vex epool used: %lu\n", v->epool.pool.used) == 0);
+	  eri_assert_printf ("vex epool used: %lu\n", v->epool.pool.used);
 	  eri_assert (eri_fini_pool (&v->epool.pool) == 0);
 
 	  type = VEX_EXIT_GROUP;
 	}
       else
 	{
-	  vex_break (v, ctx, ERI_VEX_BRK_EXIT_WAIT);
+	  vex_break (v, ctx, ERI_VEX_BRK_POST_EXEC | ERI_VEX_BRK_EXIT_WAIT);
 
 	  /* Exiting is already started by another context.  */
 	  type = VEX_EXIT_WAIT;
@@ -544,7 +545,7 @@ vex_exit (unsigned long status, int nr, struct context *ctx)
     }
   else
     {
-      vex_break (v, ctx, ERI_VEX_BRK_EXIT);
+      vex_break (v, ctx, ERI_VEX_BRK_POST_EXEC | ERI_VEX_BRK_EXIT);
       type = VEX_EXIT_SELF;
     }
 
@@ -1689,6 +1690,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
   xed_encoder_request_t xe;
 
   unsigned long rip = e->rip;
+  eri_assert (e->ninsts == 0);
   eri_assert (e->length == 0);
   eri_assert (e->max_nreads == 0);
   eri_assert (e->max_nwrites == 0);
@@ -1706,6 +1708,7 @@ vex_translate (eri_file_t log, struct vex *v, struct entry *e)
       map[i][0] = (unsigned long) dec_buf;
       map[i][1] = b.buf.off;
 
+      ++e->ninsts;
       e->inst_rips[i].rip = rip;
       e->inst_rips[i].rep = xed_operand_values_has_real_rep (&xd);
 
@@ -2115,14 +2118,14 @@ static void __attribute__ ((used))
 vex_loop (struct context *c)
 {
   struct vex *v = c->vex;
-  while (1)
+  char exit = __atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED);
+  while (! exit)
     {
-      if (__atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED))
-	VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
-
       if (v->detail) cprintf (c->log, "get_entry %lx\n", c->ctx.comm.rip);
       struct entry *e = c->entry = vex_get_entry (c->log, v, c->ctx.comm.rip);
       c->ctx.insts = (unsigned long) e->decoded_insts;
+
+      vex_break (v, c, ERI_VEX_BRK_PRE_EXEC);
 
       /* ERI_ASSERT_SYSCALL (exit, 0); */
       if (v->detail)
@@ -2142,7 +2145,7 @@ vex_loop (struct context *c)
 			   c->ctx.comm.r14, c->ctx.comm.r15);
       int i;
       if (v->detail)
-	for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+	for (i = 0; i < e->ninsts; ++i)
 	  {
 	    cprintf (c->log,
 		     e->inst_rips[i].rep ? ">>>> 0x%lx...\n" : ">>>> 0x%lx\n",
@@ -2152,7 +2155,7 @@ vex_loop (struct context *c)
 		     e->inst_rips[i].rip);
 	  }
       else
-	for (i = 0; i < v->max_inst_count && e->inst_rips[i].rip; ++i)
+	for (i = 0; i < e->ninsts; ++i)
 	  {
 	    struct inst_rip *ir = e->inst_rips + i;
 	    eri_assert (eri_fwrite (c->rip_file, (const char *) &ir->rip, sizeof ir->rip, 0) == 0);
@@ -2165,14 +2168,15 @@ vex_loop (struct context *c)
 	  init_rw_ranges (&v->pool, &c->ctx.writes, e->max_nwrites);
 	}
 
-      vex_break (v, c, ERI_VEX_BRK_PRE_EXEC);
-
       vex_execute ();
 
-      vex_break (v, c, ERI_VEX_BRK_POST_EXEC);
+      exit = __atomic_load_n (&v->group_exiting, __ATOMIC_RELAXED);
+      vex_break (v, c, ERI_VEX_BRK_POST_EXEC | (exit ? ERI_VEX_BRK_EXIT_WAIT : 0));
 
       __atomic_sub_fetch (&e->refs, 1, __ATOMIC_RELEASE);
     }
+
+  VEX_EXIT_ALT_STACK (c, VEX_EXIT_WAIT, 0, 0);
   eri_assert (0);
 }
 
@@ -2184,8 +2188,8 @@ monitor_pool_malloc (struct eri_pool *pool, size_t size,
   if (res == 0 && pool->used > 2 * monitor->peek)
     {
       while (pool->used > 2 * monitor->peek) monitor->peek *= 2;
-      eri_assert (eri_printf ("malloc %s: %lum\n",
-			      monitor->name, pool->used / 1024 / 1024) == 0);
+      eri_assert_printf ("malloc %s: %lum\n",
+			 monitor->name, pool->used / 1024 / 1024);
     }
 }
 

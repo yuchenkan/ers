@@ -146,9 +146,7 @@ tst_sigact_brk (struct eri_vex_brk_desc *desc)
 
   if (desc->ctx->fsbase == (unsigned long) desc->data)
     {
-      eri_assert (! (desc->type & ERI_VEX_BRK_EXIT_MASK));
-
-      if (desc->type == ERI_VEX_BRK_PRE_EXEC
+      if (desc->type & ERI_VEX_BRK_PRE_EXEC
 	  && desc->ctx->rip == (unsigned long) tst_sigact_child_start)
 	{
 	  __atomic_store_n (i, 1, __ATOMIC_RELEASE);
@@ -158,7 +156,7 @@ tst_sigact_brk (struct eri_vex_brk_desc *desc)
 	  while (! eri_sigset_p (&set, SIGINTR))
 	    ERI_ASSERT_SYSCALL (rt_sigpending, &set, ERI_SIG_SETSIZE);
 	}
-      else if (desc->type == ERI_VEX_BRK_POST_EXEC
+      else if (desc->type & ERI_VEX_BRK_POST_EXEC
 	       && desc->ctx->rip == (unsigned long) tst_sigact_child_end)
 	{
 	  eri_assert (desc->ctx->rsp == (unsigned long) (child_stack + CHILD_STACK_SIZE - sizeof (unsigned long)));
@@ -170,7 +168,7 @@ tst_sigact_brk (struct eri_vex_brk_desc *desc)
 	  *i = 2;
 	}
     }
-  else if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+  else if (desc->type & ERI_VEX_BRK_EXIT_GROUP)
     {
       eri_assert (desc->ctx->rax == __NR_exit_group);
       eri_assert (desc->ctx->rdi == 0);
@@ -229,9 +227,7 @@ tst_sigact1_brk (struct eri_vex_brk_desc *desc)
 
   if (desc->ctx->fsbase == (unsigned long) desc->data)
     {
-      eri_assert (! (desc->type & ERI_VEX_BRK_EXIT_MASK));
-
-      if (desc->type == ERI_VEX_BRK_POST_EXEC
+      if (desc->type & ERI_VEX_BRK_POST_EXEC
 	  && desc->ctx->rip == (unsigned long) tst_sigact1_child_end)
 	{
 	  eri_assert (desc->ctx->rsp == (unsigned long) (child_stack + CHILD_STACK_SIZE - sizeof (unsigned long)));
@@ -243,7 +239,7 @@ tst_sigact1_brk (struct eri_vex_brk_desc *desc)
 	  *i = 2;
 	}
     }
-  else if (desc->type == ERI_VEX_BRK_PRE_EXEC
+  else if (desc->type & ERI_VEX_BRK_PRE_EXEC
 	   && desc->ctx->rip == (unsigned long) tst_sigact1_parent_start)
     {
       size_t s = eri_strlen ("/proc/self/task/xxxxx/status") + 1;
@@ -256,7 +252,7 @@ tst_sigact1_brk (struct eri_vex_brk_desc *desc)
       eri_assert (k <= 5);
       eri_strcpy (path + s + k, "/status");
 
-      eri_assert (eri_printf ("status: %s\n", path) == 0);
+      eri_assert_printf ("status: %s\n", path);
 
       char buf[1024];
       struct eri_buf b;
@@ -266,9 +262,9 @@ tst_sigact1_brk (struct eri_vex_brk_desc *desc)
       while (! sleep)
 	eri_file_foreach_line (path, &b, tst_sigact1_proc_status_line, &sleep);
 
-      eri_assert (eri_printf ("sleep\n") == 0);
+      eri_assert_printf ("sleep\n");
     }
-  else if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+  else if (desc->type & ERI_VEX_BRK_EXIT_GROUP)
     {
       eri_assert (desc->ctx->rax == __NR_exit_group);
       eri_assert (desc->ctx->rdi == 0);

@@ -201,4 +201,10 @@ void eri_sigreturn (void);
 #define eri_sigset_p(set, sig) \
   ({ int __s = sig; (set)->val[_eri_sigword (__s)] & _eri_sigmask (__s); })
 
+struct eri_timespec
+{
+  unsigned long tv_sec;
+  unsigned long tv_nsec;
+};
+
 #endif

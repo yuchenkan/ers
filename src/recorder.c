@@ -271,11 +271,20 @@ analysis_leave_silence (struct internal *internal)
     analysis_break (ANALYSIS_LEAVE_SILENCE);
 }
 
+#define replay_assert(internal, exp) \
+  do {							\
+    struct internal *__i = internal;			\
+    if (exp) break;					\
+    eri_assert_lprintf (&__i->printf_lock,		\
+      "replay assert failed %u " #exp "\n", __LINE__);	\
+    eri_assert (__i->mode != ERS_REPLAY);		\
+    analysis_break (ANALYSIS_ERROR);			\
+    ERI_ASSERT_SYSCALL (exit_group, 1);			\
+  } while (0)
+
 static void
 llock (struct internal *internal, unsigned long tid, struct lock *lock)
 {
-  analysis_enter_silence (internal);
-
   char mode = internal->mode;
   if (mode != ERS_LIVE)
     {
@@ -283,10 +292,11 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
       unsigned long version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
       while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
 	{
+	  struct eri_timespec to = { mode == ERS_REPLAY ? 2 : 4 };
 	  long res = ERI_SYSCALL (futex, &rw->lock_version,
-				  ERI_FUTEX_WAIT_PRIVATE, version, 0);
-	  eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
-          version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
+				  ERI_FUTEX_WAIT_PRIVATE, version, &to);
+	  replay_assert (internal, ! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
+	  version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
 	}
     }
 
@@ -296,24 +306,20 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
 
   if (mode == ERS_ANALYSIS)
     analysis_break (ANALYSIS_LLOCK, &lock->lock, lock->ver);
-
-  analysis_leave_silence (internal);
 }
 
 static void
-lunlock (struct internal *internal, struct lock *lock, char delay)
+lunlock (struct internal *internal, struct lock *lock, char exit)
 {
-  analysis_enter_silence (internal);
-
   char mode = internal->mode;
 
-  if (! delay) eri_unlock (&lock->lock);
+  if (! exit) eri_unlock (&lock->lock);
 
   if (mode != ERS_LIVE)
     {
       ++lock->ver;
       if (mode == ERS_ANALYSIS)
-	analysis_break (ANALYSIS_LUNLOCK, &lock->lock, lock->ver);
+	analysis_break (ANALYSIS_LUNLOCK, &lock->lock, lock->ver, exit);
 
       __atomic_store_n (&lock->tid, load_lock (lock->file), __ATOMIC_RELEASE);
       if (lock->tid != -1)
@@ -323,8 +329,6 @@ lunlock (struct internal *internal, struct lock *lock, char delay)
 	  ERI_ASSERT_SYSCALL (futex, &rw->lock_version, ERI_FUTEX_WAKE_PRIVATE, 1);
 	}
     }
-
-  analysis_leave_silence (internal);
 }
 
 #ifndef NO_CHECK
@@ -442,23 +446,6 @@ ifree (struct internal *internal, unsigned long tid, void *p)
   iunlock (internal, &internal->pool_lock, 0);
 }
 
-static void __attribute__ ((unused))
-vlprintf (struct internal *internal, const char *fmt, va_list arg)
-{
-  eri_lock (&internal->printf_lock);
-  eri_assert (eri_vprintf (fmt, arg) == 0);
-  eri_unlock (&internal->printf_lock);
-}
-
-static void __attribute__ ((unused))
-lprintf (struct internal *internal, const char *fmt, ...)
-{
-  va_list arg;
-  va_start (arg, fmt);
-  vlprintf (internal, fmt, arg);
-  va_end (arg);
-}
-
 static void
 iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 {
@@ -473,13 +460,9 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 
   if (internal->printf)
     {
-      analysis_enter_silence (internal);
-
       va_start (arg, fmt);
-      vlprintf (internal, fmt, arg);
+      eri_assert (eri_vlprintf (&internal->printf_lock, fmt, arg) == 0);
       va_end (arg);
-
-      analysis_leave_silence (internal);
     }
 #endif
 }
@@ -492,7 +475,6 @@ iprintf (struct internal *internal, eri_file_t tlog, const char *fmt, ...)
 static void
 check_syscall (struct internal *internal, eri_file_t file, int nr)
 {
-  char mode = internal->mode;
   if (internal->mode == ERS_LIVE)
     {
       eri_save_mark (file, MARK_THREAD_SYSCALL);
@@ -500,15 +482,10 @@ check_syscall (struct internal *internal, eri_file_t file, int nr)
     }
   else
     {
-      eri_assert (eri_load_mark (file) == MARK_THREAD_SYSCALL);
+      replay_assert (internal, eri_load_mark (file) == MARK_THREAD_SYSCALL);
       int t;
       eri_assert (eri_fread (file, (char *) &t, sizeof t, 0) == 0);
-      if (nr == t) return;
-
-      if (mode == ERS_REPLAY) eri_assert (0); /* XXX */
-
-      analysis_break (ANALYSIS_ERROR);
-      ERI_ASSERT_SYSCALL (exit_group, 1);
+      replay_assert (internal, nr == t);
     }
 }
 
@@ -659,6 +636,8 @@ acquire_thread (struct internal *internal, struct thread *th, char type, ...)
 {
   char mode = internal->mode;
 
+  analysis_enter_silence (internal);
+
   if (mode == ERS_LIVE)
     {
       block_signals (&th->old_set);
@@ -673,7 +652,7 @@ acquire_thread (struct internal *internal, struct thread *th, char type, ...)
 	{
 	  va_list arg;
 	  va_start (arg, type);
-	  v = (int) va_arg (arg, int);
+	  v = va_arg (arg, int);
 	  va_end (arg);
 	}
 
@@ -691,6 +670,8 @@ static void sigaction (struct internal *internal, int sig,
 static void
 release_thread (struct internal *internal, unsigned long th_arg, char type, ...)
 {
+  char mode = internal->mode;
+
   if (type == ACQUIRE_CLONE || type == ACQUIRE_EXIT)
     {
       int v = 1;
@@ -698,7 +679,7 @@ release_thread (struct internal *internal, unsigned long th_arg, char type, ...)
 	{
 	  va_list arg;
 	  va_start (arg, type);
-	  v = (int) va_arg (arg, int);
+	  v = va_arg (arg, int);
 	  va_end (arg);
 	}
 
@@ -711,13 +692,13 @@ release_thread (struct internal *internal, unsigned long th_arg, char type, ...)
 
   struct thread *th = (struct thread *) th_arg;
 
-  if (type != ACQUIRE_INIT && internal->mode == ERS_LIVE)
-    restore_signals (&th->old_set);
-
-  if (internal->mode != ERS_LIVE)
+  if (mode != ERS_LIVE)
     {
       char mk = eri_load_mark (th->file);
-      eri_assert (mk == MARK_THREAD_SIGNAL || mk == MARK_THREAD_ACTIVE);
+
+      replay_assert (internal,
+		     mk == MARK_THREAD_SIGNAL || mk == MARK_THREAD_ACTIVE);
+
       if (mk == MARK_THREAD_SIGNAL)
 	{
 	  int sig;
@@ -727,6 +708,13 @@ release_thread (struct internal *internal, unsigned long th_arg, char type, ...)
 	  sigaction (internal, sig, &info, &ucontext);
 	}
     }
+
+  if (type == ACQUIRE_INIT) return;
+
+  if (mode == ERS_LIVE)
+    restore_signals (&th->old_set);
+
+  analysis_leave_silence (internal);
 }
 
 #define SYSCALL_REC_IRES(internal, th, nr, ...) \
@@ -924,8 +912,8 @@ init_process (struct internal *internal, const char *path)
   for (i = 0; i < nlocks; ++i)
     {
       eri_file_t lfile = eri_open_path (path, "lock-",
-        ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ, i,
-        internal->ilock_file_buf + i * file_buf_size, file_buf_size);
+	ERI_OPEN_WITHID | (mode != ERS_LIVE) * ERI_OPEN_READ, i,
+	internal->ilock_file_buf + i * file_buf_size, file_buf_size);
 
       init_lock (internal, locks[i], lfile);
     }
@@ -1050,7 +1038,6 @@ get_atomic_lock (struct internal *internal, struct thread * th,
 }
 
 struct rlimit { char buf[16]; };
-struct timespec { char buf[16]; };
 struct stat { char buf[144]; };
 
 static void
@@ -1167,8 +1154,6 @@ sysexit (struct internal *internal, int nr, long status)
 	  /* So it's locked until real clear_tid happens.  */
 	  ERI_ASSERT_SYSCALL (set_tid_address, &lock->lock);
 	  lunlock (internal, lock, 1);
-
-	  analysis_enter_silence (internal);
 	}
 
       if (mode != ERS_ANALYSIS) do_exit (internal, th);
@@ -1251,7 +1236,7 @@ syscomm (struct internal *internal, int nr,
     res = SYSCALL_REC_RES_OUT (mode, th->file, (struct rlimit *) a4,
 			       nr, a1, a2, a3, a4);
   else if (nr == __NR_clock_gettime)
-    res = SYSCALL_REC_RES_OUT (mode, th->file, (struct timespec *) a2,
+    res = SYSCALL_REC_RES_OUT (mode, th->file, (struct eri_timespec *) a2,
 			       nr, a1, a2);
   else if (nr == __NR_read)
     {
@@ -1439,9 +1424,6 @@ pre_clone (struct internal *internal, struct eri_clone_desc *desc)
     save_result (th->file, c->id);
   else
     {
-      if (mode == ERS_ANALYSIS)
-	analysis_break (ANALYSIS_ENTER_SILENCE); /* XXX remove silence */
-
       c->id = (unsigned long) load_result (th->file);
 
       desc->replay_result = load_result (th->file);
@@ -1490,9 +1472,6 @@ post_clone (struct internal *internal, struct thread *child, long res, long repl
 	}
       else if (res != 0) /* clone succeeded and we are the parent, replace the result */
 	res = replay;
-
-      if (mode == ERS_ANALYSIS)
-	analysis_break (ANALYSIS_LEAVE_SILENCE);
     }
 
   long rel = 1;
@@ -1577,11 +1556,15 @@ atomic_lock (struct internal *internal, void *mem)
   struct atomic_lock *lock = get_atomic_lock (internal, th, mem, 1);
   llock (internal, th->id, &lock->lock);
   iprintf (internal, th->log, "atomic_lock done %lu %lx\n", th->id, mem);
+
+  analysis_leave_silence (internal);
 }
 
 static void
 atomic_unlock (struct internal *internal, void *mem, int mo)
 {
+  analysis_enter_silence (internal);
+
   struct thread *th = get_thread (internal);
   iprintf (internal, th->log, "atomic_unlock %lu %lx %u\n", th->id, mem, mo);
 
@@ -1610,7 +1593,7 @@ static void
 analysis_proc_break (struct eri_vex_brk_desc *desc)
 {
   eri_assert (desc->ctx->rip != 0);
-  eri_assert (desc->type != ERI_VEX_BRK_PRE_EXEC);
+  eri_assert (! (desc->type & ERI_VEX_BRK_PRE_EXEC));
 
   struct internal *internal = desc->data;
   /* Ensure internal->main = 0 atomic.  */
@@ -1621,7 +1604,7 @@ analysis_proc_break (struct eri_vex_brk_desc *desc)
   if (! al->analysis)
     {
       al->analysis = eri_analysis_create (al->pool);
-      th->analysis = eri_analysis_create_thread (al->analysis, NULL);
+      th->analysis = eri_analysis_create_thread (al->analysis, NULL, th->id);
     }
 
   eri_analysis_record (th->analysis, desc);
@@ -1634,33 +1617,34 @@ analysis_proc_break (struct eri_vex_brk_desc *desc)
       else if (type == ANALYSIS_CLONE)
 	{
 	  struct thread *child = (struct thread *) desc->ctx->rsi;
-	  child->analysis = eri_analysis_create_thread (al->analysis, th->analysis);
+	  child->analysis = eri_analysis_create_thread (al->analysis, th->analysis, child->id);
 	}
       else if (type == ANALYSIS_ENTER_SILENCE || type == ANALYSIS_LEAVE_SILENCE)
 	eri_analysis_silence (th->analysis, type == ANALYSIS_ENTER_SILENCE);
-      else if (type == ANALYSIS_LLOCK || type == ANALYSIS_LUNLOCK)
-	eri_analysis_sync (th->analysis, type == ANALYSIS_LLOCK,
-			   desc->ctx->rsi, desc->ctx->rdx);
+      else if (type == ANALYSIS_LLOCK)
+	eri_analysis_sync_acq (th->analysis, desc->ctx->rsi, desc->ctx->rdx);
+      else if (type == ANALYSIS_LUNLOCK)
+	eri_analysis_sync_rel (th->analysis, desc->ctx->rsi, desc->ctx->rdx, desc->ctx->rcx);
       else eri_assert (type == ANALYSIS_NONE);
     }
 
   if (! (desc->type & ERI_VEX_BRK_EXIT_MASK)) return;
 
-  eri_assert (eri_printf ("analysis exit %lu %u %lu\n",
-			  th->id, desc->type, desc->ctx->rdi) == 0);
+  eri_assert_lprintf (&internal->printf_lock, "analysis exit %lu %u %lu\n",
+		      th->id, desc->type, desc->ctx->rdi & ERI_VEX_BRK_EXIT_MASK);
 
   eri_analysis_delete_thread (th->analysis);
 
-  if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+  if (desc->type & ERI_VEX_BRK_EXIT_GROUP)
     eri_analysis_delete (al->analysis);
 
   if (__atomic_load_n (&internal->analysis.error, __ATOMIC_ACQUIRE)) return;
 
   /* Group exit is already synced by us.  */
-  eri_assert (desc->type != ERI_VEX_BRK_EXIT_WAIT);
-  if (desc->type == ERI_VEX_BRK_EXIT_GROUP)
+  eri_assert (! (desc->type & ERI_VEX_BRK_EXIT_WAIT));
+  if (desc->type & ERI_VEX_BRK_EXIT_GROUP)
     do_exit_group (internal);
-  else if (desc->type == ERI_VEX_BRK_EXIT)
+  else if (desc->type & ERI_VEX_BRK_EXIT)
     do_exit (internal, th);
 }
 

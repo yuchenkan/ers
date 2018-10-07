@@ -5,7 +5,7 @@ static void
 proc_map_entry (const struct eri_map_entry *e, void *d)
 {
   eri_assert (d == 0);
-  eri_assert (eri_printf ("%lx %lx %u %s\n", e->start, e->end, e->perms, e->path ? : "") == 0);
+  eri_assert_printf ("%lx %lx %u %s\n", e->start, e->end, e->perms, e->path ? : "");
 }
 
 int

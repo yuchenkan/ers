@@ -56,8 +56,12 @@ struct eri_vex_rw_ranges
 struct eri_vex_brk_desc
 {
   struct eri_vex_common_context *ctx;
+
+  unsigned long ninsts;
+
   unsigned long rip;
   size_t length;
+
   struct eri_vex_rw_ranges *reads;
   struct eri_vex_rw_ranges *writes;
 

@@ -15,16 +15,24 @@
 #ifdef SIGNAL
 #include <signal.h>
 pthread_spinlock_t caught;
-void handler (int sig)
+void
+handler (int sig)
 {
   fprintf (stderr, "signal\n");
   pthread_spin_unlock (&caught);
 }
 #endif
 
+static int async[2];
+
 pthread_spinlock_t lock;
-static void *f (void *p)
+static void
+*f (void *p)
 {
+  while (! async[0]) continue;
+  asm ("" : : : "memory");
+  async[0] = 0;
+
   int a = 123456789;
   int *i = (int *) malloc (sizeof *i);
   *i = 987654321;
@@ -33,22 +41,31 @@ static void *f (void *p)
     fprintf (stderr, "xxx %p %p %d\n", &a, i, getpid ());
   free (i);
   pthread_spin_unlock (&lock);
+
+  if (async[1]) async[1] = 0;
+
 #ifdef EXIT_GROUP
   syscall (231, 1);
 #endif
   return NULL;
 }
 
-int main ()
+int
+main (void)
 {
   struct timespec spec;
   clock_gettime (CLOCK_REALTIME, &spec);
   fprintf (stderr, "%ld\n", spec.tv_sec);
+  fprintf (stderr, "async %p\n", async);
   pthread_t thread;
   pthread_spin_init (&lock, PTHREAD_PROCESS_PRIVATE);
   pthread_spin_lock (&lock);
   pthread_spin_trylock (&lock);
   char ok = pthread_create (&thread, NULL, f, NULL) == 0;
+  async[0] = 1;
+  asm ("" : : : "memory");
+  while (async[0]) continue;
+
   free (malloc (1));
   fprintf (stderr, "yyy %d\n", ok);
 #ifdef EXIT_GROUP
@@ -56,6 +73,8 @@ int main ()
 #endif
   pthread_spin_lock (&lock);
   pthread_spin_destroy (&lock);
+
+  async[1] = 1;
 
   if (ok) assert (pthread_join (thread, NULL) == 0);
   fprintf (stderr, "zzz\n");

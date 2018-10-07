@@ -8,7 +8,7 @@ proc_line (const void *ln, size_t sz, void *d)
 {
   eri_assert (d == 0);
   ((char *) ln)[sz] = '\0';
-  eri_assert (eri_printf ("%s ...%lu\n", ln, sz) == 0);
+  eri_assert_printf ("%s ...%lu\n", ln, sz);
 }
 
 static char pool_buf[1024 * 1024];
@@ -28,11 +28,11 @@ tst_foreach_line (size_t size)
 int
 main (void)
 {
-  eri_assert (eri_printf ("") == 0);
-  eri_assert (eri_printf ("%%\n") == 0);
-  eri_assert (eri_printf ("%u%lx\n", 1, (unsigned long) 12345) == 0);
-  eri_assert (eri_printf ("%u%s%x\n", 1, "test", 12345) == 0);
-  eri_assert (eri_printf ("x%luy%s%sz%xa b c%%\n", (unsigned long) 1, "test", "", 12345) == 0);
+  eri_assert_printf ("");
+  eri_assert_printf ("%%\n");
+  eri_assert_printf ("%u%lx\n", 1, (unsigned long) 12345);
+  eri_assert_printf ("%u%s%x\n", 1, "test", 12345);
+  eri_assert_printf ("x%luy%s%sz%xa b c%%\n", (unsigned long) 1, "test", "", 12345);
 
   eri_file_t file;
   eri_assert (eri_fopen ("tst_printf.out", 0, &file, 0, 0) == 0);

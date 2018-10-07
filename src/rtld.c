@@ -70,8 +70,8 @@ relocate (uint64_t base, const struct elf64_rela *rel, const struct elf64_rela *
     uint32_t type = r->info & 0xffffffff;
 
 #if 0
-    eri_assert (eri_printf ("rel sym %lu %lu %s %u\n",
-			    r->info >> 32, sym->name, strtab + sym->name, type) == 0);
+    eri_assert_printf ("rel sym %lu %lu %s %u\n",
+		       r->info >> 32, sym->name, strtab + sym->name, type);
 #endif
 
     eri_assert ((sym->info & 0xf) != STT_GNU_IFUNC);
@@ -140,7 +140,7 @@ map_interp (struct elf64_phdr *phdr, uint16_t phnum, int fd, uint64_t pagesize)
 	last_idx = i;
       }
 
-  eri_assert (eri_printf ("start %lx end %lx\n", start, end) == 0);
+  eri_assert_printf ("start %lx end %lx\n", start, end);
 
   uint64_t base = 0;
   for (i = 0; i < phnum; ++i)
@@ -197,7 +197,7 @@ map_interp (struct elf64_phdr *phdr, uint16_t phnum, int fd, uint64_t pagesize)
 	  }
       }
 
-  eri_assert (eri_printf ("base %lx\n", base) == 0);
+  eri_assert_printf ("base %lx\n", base);
   return base;
 }
 
@@ -365,8 +365,8 @@ start (void **arg)
     }
   else *mode = ERS_LIVE;
 
-  eri_assert (eri_printf ("ers_info libname %s ers_recorder %lu\n",
-			  ip->libname, ip->recorder) == 0);
+  eri_assert_printf ("ers_info libname %s ers_recorder %lu\n",
+		     ip->libname, ip->recorder);
   return entry;
 }
 

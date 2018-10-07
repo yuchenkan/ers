@@ -33,15 +33,15 @@ int main ()
 
   struct node *it;
   ERI_LST_FOREACH (x, &l, it)
-    eri_assert (eri_printf ("%u %u\n", it->a, it->b) == 0);
-  eri_assert (eri_printf ("\n") == 0);
+    eri_assert_printf ("%u %u\n", it->a, it->b);
+  eri_assert_printf ("\n");
 
   for (i = 0; i < eri_length_of (n); ++i)
     {
-      x_lst_remove (n + (i % 2 == 0 ? i + 1 : i - 1));
+      x_lst_remove (&l, n + (i % 2 == 0 ? i + 1 : i - 1));
       ERI_LST_FOREACH (x, &l, it)
-        eri_assert (eri_printf ("%u %u\n", it->a, it->b) == 0);
-      eri_assert (eri_printf ("\n") == 0);
+	eri_assert_printf ("%u %u\n", it->a, it->b);
+      eri_assert_printf ("\n");
     }
 
   return 0;

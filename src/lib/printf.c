@@ -1,4 +1,5 @@
 #include "util.h"
+#include "lock.h"
 #include "printf.h"
 #include "syscall.h"
 
@@ -197,10 +198,10 @@ eri_fseek (eri_file_t file, long offset, int whence, unsigned long *res_offset)
   if (f->read)
     {
       if (new_offset < f->buf_offset || new_offset > f->buf_offset + f->buf_used)
-        {
+	{
 	  f->buf_offset = new_offset;
 	  f->buf_used = 0;
-        }
+	}
       f->read = READ_NORMAL;
     }
   else
@@ -354,7 +355,7 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 		{
 		  ++fmt;
 		  eri_assert (*fmt == 'u' || *fmt == 'x');
-		  num = (unsigned long) va_arg (arg, unsigned long);
+		  num = va_arg (arg, unsigned long);
 		}
 	      else num = (unsigned long) va_arg (arg, unsigned);
 
@@ -381,7 +382,7 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 	    }
 	  else if (*fmt == 's')
 	    {
-	      iov[niov].base = (void *) va_arg (arg, char *);
+	      iov[niov].base = va_arg (arg, char *);
 	      iov[niov].len = eri_strlen (iov[niov].base);
 	    }
 	  else eri_assert (0);
@@ -449,6 +450,41 @@ eri_printf (const char *fmt, ...)
   va_list arg;
   va_start (arg, fmt);
   int res = eri_vprintf (fmt, arg);
+  va_end (arg);
+  return res;
+}
+
+int
+eri_vlfprintf (eri_file_t file, int *lock, const char *fmt, va_list arg)
+{
+  eri_lock (lock);
+  int res = eri_vfprintf (file, fmt, arg);
+  eri_unlock (lock);
+  return res;
+}
+
+int
+eri_lfprintf (eri_file_t file, int *lock, const char *fmt, ...)
+{
+  va_list arg;
+  va_start (arg, fmt);
+  int res = eri_vlfprintf (file, lock, fmt, arg);
+  va_end (arg);
+  return res;
+}
+
+int
+eri_vlprintf (int *lock, const char *fmt, va_list arg)
+{
+  return eri_vlfprintf (ERI_STDOUT, lock, fmt, arg);
+}
+
+int
+eri_lprintf (int *lock, const char *fmt, ...)
+{
+  va_list arg;
+  va_start (arg, fmt);
+  int res = eri_vlprintf (lock, fmt, arg);
   va_end (arg);
   return res;
 }
