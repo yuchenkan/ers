@@ -49,11 +49,11 @@ struct block
 struct eri_analysis
 {
   struct eri_mtpool *pool;
+  int *printf_lock;
 
   int block_lock;
   struct block block_end;
 
-  int watch_lock;
   unsigned long watch;
 };
 
@@ -83,10 +83,11 @@ struct eri_analysis_thread
 ERI_DEFINE_LIST (static, async, struct eri_analysis_thread, struct async)
 
 struct eri_analysis *
-eri_analysis_create (struct eri_mtpool *pool)
+eri_analysis_create (struct eri_mtpool *pool, int *printf_lock)
 {
   struct eri_analysis *al = eri_assert_mtcalloc (pool, sizeof *al);
   al->pool = pool;
+  al->printf_lock = printf_lock;
   al->block_end.refs = 1;
   // al->watch = 0x7fffd1315920;
   return al;
@@ -115,6 +116,8 @@ free_addrs (struct eri_mtpool *pool, struct addrs *addrs)
 static void
 do_confirm (struct block *ab, struct addrs *as, struct block *bb, struct addrs *bs)
 {
+  struct eri_analysis *al = ab->thread->analysis;
+
   struct addr *a;
   ERI_RBT_FOREACH (addr, as, a)
     {
@@ -122,15 +125,15 @@ do_confirm (struct block *ab, struct addrs *as, struct block *bb, struct addrs *
       struct addr *bg = addr_rbt_get (bs, &a->addr, ERI_RBT_GT);
 
       if (ble && ble->addr + ble->size > a->addr)
-	eri_assert_printf ("conflict %s %lu %lu %lu with %s %lu %lu %lu: %lx %lu\n",
-			   &ab->reads == as ? "read" : "write", ab->thread_name, ab->insts_start, ab->insts_end,
-			   &bb->reads == bs ? "read" : "write", bb->thread_name, bb->insts_start, bb->insts_end,
-			   a->addr, eri_min (a->addr + a->size, ble->addr + ble->size) - a->addr);
+	eri_assert_lprintf (al->printf_lock, "conflict %s %lu %lu %lu with %s %lu %lu %lu: %lx %lu\n",
+			    &ab->reads == as ? "read" : "write", ab->thread_name, ab->insts_start, ab->insts_end,
+			    &bb->reads == bs ? "read" : "write", bb->thread_name, bb->insts_start, bb->insts_end,
+			    a->addr, eri_min (a->addr + a->size, ble->addr + ble->size) - a->addr);
       if (bg && a->addr + a->size > bg->addr)
-	eri_assert_printf ("conflict %s %lu %lu %lu with %s %lu %lu %lu: %lx %lu\n",
-			   &ab->reads == as ? "read" : "write", ab->thread_name, ab->insts_start, ab->insts_end,
-			   &bb->reads == bs ? "read" : "write", bb->thread_name, bb->insts_start, bb->insts_end,
-			   bg->addr, eri_min (a->addr + a->size, bg->addr + bg->size) - bg->addr);
+	eri_assert_lprintf (al->printf_lock, "conflict %s %lu %lu %lu with %s %lu %lu %lu: %lx %lu\n",
+			    &ab->reads == as ? "read" : "write", ab->thread_name, ab->insts_start, ab->insts_end,
+			    &bb->reads == bs ? "read" : "write", bb->thread_name, bb->insts_start, bb->insts_end,
+			    bg->addr, eri_min (a->addr + a->size, bg->addr + bg->size) - bg->addr);
     }
 }
 
@@ -140,16 +143,16 @@ confirm (struct block *a, struct block *b)
   struct eri_analysis *al = a->thread->analysis;
 
 #ifndef NO_CHECK
-  eri_assert_printf ("confirm %lu %lu %lu %lu\n",
-		     addr_rbt_get_size (&a->reads),
-		     addr_rbt_get_size (&a->writes),
-		     addr_rbt_get_size (&b->reads),
-		     addr_rbt_get_size (&b->writes));
+  eri_assert_lprintf (al->printf_lock, "confirm %lu %lu %lu %lu\n",
+		      addr_rbt_get_size (&a->reads),
+		      addr_rbt_get_size (&a->writes),
+		      addr_rbt_get_size (&b->reads),
+		      addr_rbt_get_size (&b->writes));
 #endif
 
   if ((a->reads.watch && b->writes.watch)
       || (a->writes.watch && b->reads.watch))
-    eri_assert_lprintf (&al->watch_lock, "watch block confirm %x %lx\n", a, b);
+    eri_assert_lprintf (al->printf_lock, "watch block confirm %x %lx\n", a, b);
 
   do_confirm (a, &a->reads, b, &b->writes);
   do_confirm (a, &a->writes, b, &b->reads);
@@ -176,7 +179,7 @@ block_dec (struct eri_analysis_thread *th, struct block *b)
   if (--b->refs == 0)
     {
       if (b->watch)
-	eri_assert_lprintf (&al->watch_lock, "watch block free %lu %lx\n", th->name, b);
+	eri_assert_lprintf (al->printf_lock, "watch block free %lu %lx\n", th->name, b);
 
       if (b->thread) b->thread->head = b->next;
       block_assign (th, b->next, 0);
@@ -208,7 +211,7 @@ asyncs_sync (struct eri_analysis_thread *th, unsigned long var, unsigned long ve
 	      block_assign (th, a->block, b->next);
 	      if (watch)
 		{
-		  eri_assert_lprintf (&al->watch_lock,
+		  eri_assert_lprintf (al->printf_lock,
 				      "watch block sync %lu %lx %lx %lu\n",
 				      th->name, watch, var, ver);
 		  watch = 0;
@@ -317,7 +320,7 @@ push_block (struct eri_analysis_thread *th, char type, ...)
   eri_lock (&al->block_lock);
 
 #ifndef NO_CHECK
-  eri_assert_printf ("push block %u\n", type);
+  eri_assert_lprintf (al->printf_lock, "push block %u\n", type);
 #endif
 
   if (type == PUSH_REL || type == PUSH_END_REL)
@@ -397,7 +400,7 @@ addrs_insert (struct eri_analysis_thread *th, struct block *b,
       && addr <= al->watch && addr + size > al->watch
       && ! addrs->watch)
     {
-      eri_assert_lprintf (&al->watch_lock, "watch block %lu %s %lx\n",
+      eri_assert_lprintf (al->printf_lock, "watch block %lu %s %lx\n",
 			  th->name, &b->reads == addrs ? "read" : "write", b);
       addrs->watch = al->watch;
       b->watch = 1;

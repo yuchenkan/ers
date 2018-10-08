@@ -295,7 +295,7 @@ entry (void *rip, void *rsp, unsigned long fsbase)
   const char *path = "vex_data";
 
   int i = 0;
-  struct eri_vex_desc desc = { buf, buf_size, 1, 4096, path, 0, ~0 };
+  struct eri_vex_desc desc = { buf, buf_size, 1, 4096, path, 0, 0, ~0 };
   if (rip == 0)
     {
       desc.comm.rip = (unsigned long) tst;

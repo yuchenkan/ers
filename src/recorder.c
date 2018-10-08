@@ -292,7 +292,7 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
       unsigned long version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
       while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
 	{
-	  struct eri_timespec to = { mode == ERS_REPLAY ? 2 : 4 };
+	  struct eri_timespec to = { mode == ERS_REPLAY ? 2 : 60 };
 	  long res = ERI_SYSCALL (futex, &rw->lock_version,
 				  ERI_FUTEX_WAIT_PRIVATE, version, &to);
 	  replay_assert (internal, ! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
@@ -1603,7 +1603,7 @@ analysis_proc_break (struct eri_vex_brk_desc *desc)
   struct analysis *al = &internal->analysis;
   if (! al->analysis)
     {
-      al->analysis = eri_analysis_create (al->pool);
+      al->analysis = eri_analysis_create (al->pool, &internal->printf_lock);
       th->analysis = eri_analysis_create_thread (al->analysis, NULL, th->id);
     }
 
@@ -1672,7 +1672,7 @@ analysis (struct internal *internal,
 
   struct eri_vex_desc desc = {
     internal->analysis.buf, internal->analysis.buf_size, 1,
-    4096, internal->path,
+    4096, internal->path, &internal->printf_lock,
     analysis_proc_break, ~ERI_VEX_BRK_PRE_EXEC, internal
   };
   /* Ensure analysis initialized before any new threads created.  */

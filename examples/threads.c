@@ -29,9 +29,7 @@ pthread_spinlock_t lock;
 static void
 *f (void *p)
 {
-  while (! async[0]) continue;
-  asm ("" : : : "memory");
-  async[0] = 0;
+  if (async[0]) async[0] = 0;
 
   int a = 123456789;
   int *i = (int *) malloc (sizeof *i);
@@ -63,8 +61,6 @@ main (void)
   pthread_spin_trylock (&lock);
   char ok = pthread_create (&thread, NULL, f, NULL) == 0;
   async[0] = 1;
-  asm ("" : : : "memory");
-  while (async[0]) continue;
 
   free (malloc (1));
   fprintf (stderr, "yyy %d\n", ok);

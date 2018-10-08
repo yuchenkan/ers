@@ -83,6 +83,8 @@ struct eri_vex_desc
 
   const char *path;
 
+  int *printf_lock;
+
   eri_vex_proc_break_t brk;
   unsigned long brk_mask;
   void *brk_data;

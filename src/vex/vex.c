@@ -206,6 +206,7 @@ struct entry
 
 struct pool_monitor
 {
+  int *printf_lock;
   const char *name;
   size_t peek;
 };
@@ -214,6 +215,9 @@ struct vex
 {
   size_t pagesize;
   const char *path;
+
+  int *printf_lock;
+
   size_t stack_size;
   size_t file_buf_size;
 
@@ -2188,14 +2192,16 @@ monitor_pool_malloc (struct eri_pool *pool, size_t size,
   if (res == 0 && pool->used > 2 * monitor->peek)
     {
       while (pool->used > 2 * monitor->peek) monitor->peek *= 2;
-      eri_assert_printf ("malloc %s: %lum\n",
-			 monitor->name, pool->used / 1024 / 1024);
+      eri_assert_lprintf (monitor->printf_lock, "malloc %s: %lum\n",
+			  monitor->name, pool->used / 1024 / 1024);
     }
 }
 
 static void
-setup_pool_monitor (struct eri_pool *pool, struct pool_monitor *monitor, const char *name)
+setup_pool_monitor (struct vex *v, struct eri_pool *pool,
+		    struct pool_monitor *monitor, const char *name)
 {
+  monitor->printf_lock = v->printf_lock;
   monitor->name = name;
   monitor->peek = 1024 * 1024;
 
@@ -2233,6 +2239,7 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   eri_memset (v, 0, sizeof *v);
   v->pagesize = page;
   v->path = desc->path;
+  v->printf_lock = desc->printf_lock;
   v->stack_size = 2 * 1024 * 1024;
 #ifdef DEBUG
   v->detail = 1;
@@ -2257,14 +2264,14 @@ eri_vex_enter (const struct eri_vex_desc *desc)
   eri_assert ((unsigned long) buf % page == 0 && size % page == 0);
   size_t psize = size - size / page / 8 * page;
   eri_assert (eri_init_pool (&v->pool.pool, buf, psize) == 0);
-  setup_pool_monitor (&v->pool.pool, &v->pool_monitor, "pool");
+  setup_pool_monitor (v, &v->pool.pool, &v->pool_monitor, "pool");
 
   if (desc->pool) *desc->pool = &v->pool;
 
   char *ebuf = buf + psize;
   size_t esize = size - psize;
   eri_assert (eri_init_pool (&v->epool.pool, ebuf, esize) == 0);
-  setup_pool_monitor (&v->epool.pool, &v->epool_monitor, "epool");
+  setup_pool_monitor (v, &v->epool.pool, &v->epool_monitor, "epool");
 
   ERI_ASSERT_SYSCALL (mprotect, ebuf, esize, 0x7);
 

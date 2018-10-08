@@ -7,7 +7,8 @@
 struct eri_analysis;
 struct eri_analysis_thread;
 
-struct eri_analysis *eri_analysis_create (struct eri_mtpool *pool);
+struct eri_analysis *eri_analysis_create (struct eri_mtpool *pool,
+					  int *printf_lock);
 void eri_analysis_delete (struct eri_analysis *analysis);
 
 struct eri_analysis_thread *eri_analysis_create_thread (struct eri_analysis *analysis,
