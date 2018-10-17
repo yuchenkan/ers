@@ -41,6 +41,8 @@ ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 int
 eri_init_pool (struct eri_pool *pool, char *buf, size_t size)
 {
+  eri_assert ((unsigned long) buf % 16 == 0);
+
   eri_memset (pool, 0, sizeof *pool);
 
   pool->buf = buf;
@@ -66,8 +68,6 @@ eri_fini_pool (struct eri_pool *pool)
       block_rbt_remove (pool, b);
     }
   eri_assert (! pool->block_rbt_root);
-  pool->size = 0;
-  pool->buf = 0;
   return 0;
 }
 

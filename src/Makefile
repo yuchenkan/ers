@@ -18,7 +18,7 @@ $(eval $(call DEPENDABLE_VAR,O))
 $(eval $(call DEPENDABLE_VAR,D))
 
 LIB := lib/printf.c lib/malloc.c lib/util.c lib/lock.c lib/syscall.c lib/buf.c
-LIB_RECORDER := rtld.c recorder.c analysis.c common.c vex/vex.c $(LIB)
+LIB_RECORDER := rtld.c recorder.c analysis.c common.c daemon.c vex/vex.c $(LIB)
 REPLAYER := replayer.c common.c $(LIB)
 TRACER := tracer.c common.c $(LIB)
 
@@ -78,7 +78,7 @@ $(BUILD)/%-offsets.h: %-offsets.c $(MAKEFILES)
 $(BUILD)/tracer.o: CFLAGS := -g -I. -O3 -Wall
 
 LIB_TSTS := malloc printf list rbtree
-BUILD_TSTS := $(BUILD)/tst-asm $(BUILD)/tst-common $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
+BUILD_TSTS := $(BUILD)/tst-asm $(BUILD)/tst-common $(BUILD)/tst-daemon $(patsubst %,$(BUILD)/lib/tst-%,$(LIB_TSTS))
 BUILD_TSTS_OUT := $(patsubst %,%.out,$(BUILD_TSTS))
 
 check: $(BUILD_TSTS) $(BUILD_TSTS_OUT)
@@ -86,6 +86,8 @@ check: $(BUILD_TSTS) $(BUILD_TSTS_OUT)
 
 $(BUILD)/%.out: $(BUILD)/%
 	cd $(dir $@) && ./$(notdir $<) && touch $(notdir $@)
+
+$(BUILD)/tst-daemon: CFLAGS += -lpthread
 
 $(BUILD)/tst-%: $(BUILD)/tst-%.o $(BUILD)/librecorder.a $(XED)
 	mkdir -p $(dir $@)

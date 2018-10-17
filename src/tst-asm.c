@@ -499,7 +499,8 @@ tst_syscall:					\n\
 
 void tst_syscall (long *t);
 
-void tst ()
+static void
+tst (void)
 {
   int i;
 
@@ -598,7 +599,7 @@ tst_clone:					\n\
 
 #undef syscall
 
-long tst_clone ();
+long tst_clone (void);
 
 #define CHECK_CLONE \
   assert (nr == __NR_clone && a1 == 1 && a3 == 3	\
@@ -634,7 +635,8 @@ syscall_clone3 (int nr, long a1, long a2, long a3,
 
 struct ers_recorder *eri_get_recorder (void);
 
-int main ()
+int
+main (void)
 {
   struct ers_recorder clone2 = { .syscall = syscall_clone2 };
   struct ers_recorder clone3 = { .syscall = syscall_clone3 };

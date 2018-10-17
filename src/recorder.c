@@ -8,6 +8,7 @@
 #include "recorder-common-offsets.h"
 #include "analysis.h"
 #include "common.h"
+#include "daemon.h"
 
 #include "lib/util.h"
 #include "lib/syscall.h"
@@ -30,6 +31,13 @@ struct lock
 
   unsigned long ver;
   unsigned long tid;
+};
+
+struct daemon
+{
+  void *p;
+  struct eri_loop *loop;
+  int ctid;
 };
 
 #ifndef NO_CHECK
@@ -78,7 +86,7 @@ struct replay_waker
   unsigned long tid;
   ERI_RBT_NODE_FIELDS (replay_waker, struct replay_waker)
 
-  unsigned long lock_version;
+  unsigned lock_version;
 };
 
 struct replay
@@ -151,6 +159,8 @@ struct internal
   char *pool_buf;
   size_t pool_buf_size;
   struct eri_pool pool;
+
+  struct daemon daemon;
 
   ilock_t atomics_lock;
   ERI_RBT_TREE_FIELDS (atomic, struct atomic_lock)
@@ -289,7 +299,7 @@ llock (struct internal *internal, unsigned long tid, struct lock *lock)
   if (mode != ERS_LIVE)
     {
       struct replay_waker *rw = replay_get_waker (&internal->replay, tid);
-      unsigned long version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
+      unsigned version = __atomic_load_n (&rw->lock_version, __ATOMIC_RELAXED);
       while (__atomic_load_n (&lock->tid, __ATOMIC_ACQUIRE) != tid)
 	{
 	  struct eri_timespec to = { mode == ERS_REPLAY ? 2 : 60 };
@@ -841,6 +851,78 @@ proc_map_entry (const struct eri_map_entry *ent, void *data)
 
 static void ent_sigaction (int sig, struct eri_siginfo *info, void *ucontext);
 
+static void __attribute__ ((used))
+run_daemon (struct internal *internal)
+{
+  eri_loop_loop (internal->daemon.loop);
+
+  eri_assert (eri_fprintf (ERI_STDERR, "exit daemon\n") == 0);
+  ERI_ASSERT_SYSCALL (exit, 0);
+}
+
+#define NR_CLONE	_ERS_STR (__NR_clone)
+
+#define DAEMON_FLAGS \
+  (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
+   | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
+   | ERI_CLONE_CHILD_CLEARTID)
+
+asm ("  .text					\n\
+  .align 16					\n\
+  .type clone_daemon, @function			\n\
+clone_daemon:					\n\
+  .cfi_startproc				\n\
+  .cfi_endproc					\n\
+  subq	$8, %rdi				\n\
+  movq	%rsi, (%rdi)				\n\
+  movl	$" NR_CLONE ", %eax			\n\
+  movq	%rdi, %rsi				\n\
+  movq	$" _ERS_STR (DAEMON_FLAGS) ", %rdi	\n\
+  movq	%rdx, %r10				\n\
+  xorq	%r8, %r8				\n\
+  syscall					\n\
+  testq	%rax, %rax				\n\
+  jl	.error					\n\
+  jz	.daemon					\n\
+  ret						\n\
+.daemon:					\n\
+  .cfi_startproc				\n\
+  .cfi_undefined %rip				\n\
+  xorq	%rbp, %rbp				\n\
+  popq	%rdi					\n\
+  call	run_daemon				\n\
+  .cfi_endproc					\n\
+.error:						\n\
+  movq	$0, %r15				\n\
+  movq	$0, (%r15)				\n\
+  .size clone_daemon, .-clone_daemon		\n\
+  .previous					\n"
+);
+
+/* static */ void clone_daemon (void *stack, struct internal *internal, void *ctid);
+
+static void
+start_daemon (struct internal *internal)
+{
+  size_t buf_size = 4 * 1024 * 1024;
+  eri_assert (eri_malloc (&internal->pool, buf_size, &internal->daemon.p) == 0);
+
+  size_t stack_size = 2 * 1024 * 1024;
+  struct eri_mtpool *p = internal->daemon.p;
+  size_t psize = eri_size_of (*p, 16);
+  eri_assert (buf_size >= psize + stack_size);
+
+  p->lock = 0;
+  char *stack = (char *) p + psize;
+  eri_assert (eri_init_pool (&p->pool, stack + stack_size,
+			     buf_size - psize - stack_size) == 0);
+
+  internal->daemon.loop = eri_loop_create (p);
+  internal->daemon.ctid = 1;
+
+  clone_daemon (stack + stack_size, internal, &internal->daemon.ctid);
+}
+
 #define SIGEXIT ERI_SIGURG
 
 static char
@@ -897,16 +979,18 @@ init_process (struct internal *internal, const char *path)
   char mode = internal->mode = init_context (init, pd.stack_start,
 					     pd.stack_end);
 
+  eri_assert (eri_init_pool (&internal->pool,
+			     internal->pool_buf,
+			     internal->pool_buf_size) == 0);
+
+  start_daemon (internal);
+
   if (mode != ERS_LIVE)
     eri_assert (eri_init_pool (&internal->replay.pool.pool,
 			       internal->replay.pool_buf,
 			       internal->replay.pool_buf_size) == 0);
 
   ERI_LST_INIT_LIST (thread, internal);
-
-  eri_assert (eri_init_pool (&internal->pool,
-			     internal->pool_buf,
-			     internal->pool_buf_size) == 0);
 
   int i;
   for (i = 0; i < nlocks; ++i)
@@ -1054,13 +1138,19 @@ do_exit_group (struct internal *internal)
       eri_assert (eri_fclose (locks[i]->file) == 0);
     }
 
-  eri_assert (eri_fprintf (ERI_STDERR, "used %lu\n", internal->pool.used) == 0);
-  eri_assert (eri_fini_pool (&internal->pool) == 0);
-  ERI_ASSERT_SYSCALL (munmap, internal->pool_buf, internal->pool_buf_size);
-
   if (internal->mode != ERS_LIVE) replay_exit (&internal->replay);
   ERI_ASSERT_SYSCALL (munmap, internal->replay.pool_buf,
 		      internal->replay.pool_buf_size);
+
+  eri_loop_exit (internal->daemon.loop, 0);
+  eri_lock (&internal->daemon.ctid);
+
+  eri_assert (eri_fini_pool (&((struct eri_mtpool *) internal->daemon.p)->pool) == 0);
+  eri_assert (eri_free (&internal->pool, internal->daemon.p) == 0);
+
+  eri_assert (eri_fprintf (ERI_STDERR, "used %lu\n", internal->pool.used) == 0);
+  eri_assert (eri_fini_pool (&internal->pool) == 0);
+  ERI_ASSERT_SYSCALL (munmap, internal->pool_buf, internal->pool_buf_size);
 }
 
 static void
@@ -1135,9 +1225,9 @@ sysexit (struct internal *internal, int nr, long status)
 
       if (mode != ERS_ANALYSIS)
 	{
-	  do_exit_group (internal);
 	  ERI_ASSERT_SYSCALL (munmap, internal->analysis.buf,
 			      internal->analysis.buf_size);
+	  do_exit_group (internal);
 	}
     }
   else
@@ -1149,7 +1239,7 @@ sysexit (struct internal *internal, int nr, long status)
 	  llock (internal, tid, lock);
 	  *th->clear_tid = 0;
 
-	  ERI_ASSERT_SYSCALL (futex, th->clear_tid, ERI_FUTEX_WAKE, 1, 0, 0, 0);
+	  ERI_ASSERT_SYSCALL (futex, th->clear_tid, ERI_FUTEX_WAKE, 1);
 
 	  /* So it's locked until real clear_tid happens.  */
 	  ERI_ASSERT_SYSCALL (set_tid_address, &lock->lock);
@@ -1703,8 +1793,6 @@ ent_setup_tls (long offset)
 
 /* static */ long ent_syscall (int nr, long a1, long a2, long a3, long a4,
 			       long a5, long a6);
-
-#define NR_CLONE	_ERS_STR (__NR_clone)
 
 #define CLONE_DESC_SIZE16		_ERS_STR (ERI_CLONE_DESC_SIZE16)
 
