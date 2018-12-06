@@ -1,24 +1,24 @@
-#include "tst-live-entry.h"
+#include "tst/tst-live-entry.h"
 
 #include "live.h"
 
 #include "lib/syscall.h"
+#include "lib/printf.h"
 #include "public/comm.h"
 
-#define EXL(l)	extern uint8_t _ERS_PASTE (T, l)[];
+#define EXTERN_LABEL(label)	extern uint8_t SUFFIX (label)[];
 
-#define T	r
-LS (EXL)
-#undef T
-#define T	x
-LS (EXL)
+#define SUF	_raw
+LABELS (EXTERN_LABEL)
+#undef SUF
+#define SUF
+LABELS (EXTERN_LABEL)
 
-uint64_t *vvv;
-void *uuu;
-
-const char *d = "!\n";
-const char *dd = "!!\n";
-const char *ddd = "!!!\n";
+uint64_t *xchg_mem_b;
+uint64_t *xchg_mem_w;
+uint64_t *xchg_mem_l;
+uint64_t *xchg_mem_q;
+void *jmp_mem;
 
 struct addr
 {
@@ -28,8 +28,8 @@ struct addr
   uint64_t steps;
 };
 
-#define ADDR(l)		{ _ERS_PASTE (r, l), _ERS_PASTE (x, l) },
-struct addr addrs[] = { LS (ADDR) };
+#define ADDR(label)		{ _ERS_PASTE (label, _raw), label },
+struct addr addrs[] = { LABELS (ADDR) };
 
 static void
 sig_raw_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
@@ -43,13 +43,16 @@ sig_raw_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
 static uint8_t stk[ERI_STACK_SIZE];
 
-static uint64_t val;
+static uint64_t val = 0x123456789abcdef0;
 
 void
 setup (void)
 {
-  vvv = &val;
-  uuu = _ERS_PASTE (r, L (IJMP));
+  xchg_mem_b = &val;
+  xchg_mem_w = &val;
+  xchg_mem_l = &val;
+  xchg_mem_q = &val;
+  jmp_mem = _ERS_PASTE (LABEL (IJMP), _raw);
 
   struct eri_sigaction sa = {
     sig_raw_step, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
@@ -73,8 +76,8 @@ setup (void)
   SET_TH_RELA (&TH (template), common.thread_entry, TT (entry));
 
   TH (template).top = (uint64_t) stk + ERI_STACK_SIZE;
-  TH (template).top16 = (uint64_t) stk + ERI_STACK_SIZE - 16;
-  TH (template).rsp = (uint64_t) stk + ERI_STACK_SIZE;
+  TH (template).top_saved = TH (template).top - ERI_LIVE_ENTRY_SAVED_REG_SIZE;
+  TH (template).rsp = TH (template).top;
 
   SET_TH_RELA (&TH (template), thread_internal_cont, TT (internal_cont));
   SET_TH_RELA (&TH (template), thread_external_cont, TT (external_cont));
@@ -122,19 +125,29 @@ assert_eq (struct eri_mcontext *c1, struct eri_mcontext *c2, uint8_t s)
 static uint16_t cinst;
 
 static void
+assert_thread (void)
+{
+  eri_assert (TH (template).common.mark == 0);
+  eri_assert (TH (template).common.dir == 0);
+  eri_assert (TH (template).rsp == (uint64_t) stk + ERI_STACK_SIZE);
+  eri_assert (TH (template).restart == 0);
+}
+
+static void
 sig_x_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   ++addrs[cinst].steps;
 
   if ((uint64_t) addrs[cinst].xl == ctx->mctx.rip)
     {
+      assert_thread ();
       uint8_t s = cinst < ISYS ? EQ_ORCX : 0;
       assert_eq (&addrs[cinst].ctx, &ctx->mctx, s);
       addrs[cinst].ctx = ctx->mctx;
       if (cinst > ISYS && cinst < IMJMP)
 	eri_assert (addrs[cinst].ctx.rcx == addrs[ISYS].ctx.rcx);
       else if (cinst >= IMJMP)
-	eri_assert (addrs[cinst].ctx.rcx == (uint64_t) uuu);
+	eri_assert (addrs[cinst].ctx.rcx == (uint64_t) jmp_mem);
       ++cinst;
     }
 }
@@ -151,13 +164,16 @@ next_sig_step_inst (void)
   ++cinst;
 
   retry = 0
-#ifdef TT_XCHG
-	|| cinst == IXCHG
+#ifdef TST_XCHG
+	|| cinst == IXCHGB
+	|| cinst == IXCHGL
+	|| cinst == IXCHGW
+	|| cinst == IXCHGQ
 #endif
-#ifdef TT_SYSCALL
+#ifdef TST_SYSCALL
 	|| cinst == ISYS
 #endif
-#ifdef TT_SYNC
+#ifdef TST_SYNC
 	|| cinst == IJMP
 #endif
 	;
@@ -166,22 +182,39 @@ next_sig_step_inst (void)
 int32_t
 sig_sig_step (int32_t signum, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  ERI_ASSERT_SYSCALL (write, 1, ddd, 4);
   ++sig_steps;
+  eri_assert_printf ("sig_sig_step %lu\n", sig_steps);
 
-#ifdef TT_XCHG
-  if (cinst == IXCHG
-      && ctx->mctx.rip == (uint64_t) eri_tst_live_thread_xchg_complete_start
+#ifdef TST_XCHG
+  if (cinst == IXCHGB
+      && ctx->mctx.rip
+	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, xchg)
+      && retry == 1)
+    retry = 0;
+  if (cinst == IXCHGW
+      && ctx->mctx.rip
+	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, xchg)
+      && retry == 1)
+    retry = 0;
+  if (cinst == IXCHGL
+      && ctx->mctx.rip
+	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, xchg)
+      && retry == 1)
+    retry = 0;
+  if (cinst == IXCHGQ
+      && ctx->mctx.rip
+	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, xchg)
       && retry == 1)
     retry = 0;
 #endif
-#ifdef TT_SYSCALL
+#ifdef TST_SYSCALL
   if (cinst == ISYS
-      && ctx->mctx.rip == (uint64_t) eri_tst_live_thread_syscall_complete_start
+      && ctx->mctx.rip
+	== (uint64_t) ERI_TST_LIVE_COMPLETE_START_NAME (syscall)
       && retry == 1)
     retry = 0;
 #endif
-#ifdef TT_SYNC
+#ifdef TST_SYNC
   if (cinst == IJMP
       && ctx->mctx.rip == (uint64_t) addrs[IJMP].xl
       && retry == 1)
@@ -206,24 +239,15 @@ sig_sig_step (int32_t signum, struct eri_siginfo *info, struct eri_ucontext *ctx
 
 void sig_x_sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx);
 
-static void
-assert_x (void)
-{
-  eri_assert (TH (template).common.mark == 0);
-  eri_assert (TH (template).common.dir == 0);
-  eri_assert (TH (template).rsp == (uint64_t) stk + ERI_STACK_SIZE);
-  eri_assert (TH (template).restart == 0);
-}
-
 static uint64_t sigact_sig_step_num;
 
 static void
 sigact_sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  ERI_ASSERT_SYSCALL (write, 1, d, 2);
+  eri_assert_printf ("sigact_sig_step\n");
   ++sigact_sig_step_num;
 
-  assert_x ();
+  assert_thread ();
   assert_eq (&addrs[cinst - !! retry].ctx, &ctx->mctx, EQ_ORCX | EQ_ORIP);
   if (! retry)
     next_sig_step_inst ();
@@ -232,7 +256,7 @@ sigact_sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx
 static void
 sigact_trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  assert_x ();
+  assert_thread ();
   assert_eq (&addrs[cinst].ctx, &ctx->mctx, EQ_ORCX | EQ_ORIP);
   ++cinst;
 }
@@ -242,7 +266,7 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (sig == ERI_SIGSEGV && cinst == 0)
     {
-      assert_x ();
+      assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
       assert_eq (&addrs[INOP].ctx, &ctx->mctx, EQ_ORIP);
@@ -254,7 +278,7 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
   else if (sig == ERI_SIGSEGV && cinst == 1)
     {
-      assert_x ();
+      assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
       assert_eq (&addrs[IMJMP].ctx, &ctx->mctx, 0);
@@ -263,8 +287,8 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       eri_assert (ctx->mctx.rip == 0);
 
       ++cinst;
-      ctx->mctx.rcx = (uint64_t) _ERS_PASTE (x, L (IJMP));
-      ctx->mctx.rip = (uint64_t) _ERS_PASTE (x, L (IMJMP));
+      ctx->mctx.rcx = (uint64_t) LABEL (IJMP);
+      ctx->mctx.rip = (uint64_t) LABEL (IMJMP);
     }
   else eri_assert (sig == ERI_SIGTRAP);
 }
@@ -272,7 +296,7 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 void *sigact;
 
 static void
-regx (void *a)
+reg_sigaction (void *a)
 {
   static uint8_t ss[ERI_SIG_STACK_SIZE];
   *(struct eri_live_thread **) ss = &TH (template);
@@ -287,35 +311,37 @@ regx (void *a)
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 }
 
-static uint16_t xx;
+static uint16_t proc;
+
 uint8_t
 process (void)
 {
-#define XX_RAW		0
-#define XX_STEP		1
-#define XX_SIG_STEP	2
-#define XX_TRAP		3
-#define XX_SEGV		4
+#define PROC_RAW		0
+#define PROC_STEP		1
+#define PROC_SIG_STEP		2
+#define PROC_TRAP		3
+#define PROC_SEGV		4
 
+  eri_assert_printf ("process: %u\n", proc);
   static uint64_t max_steps;
-  if (xx == XX_RAW)
+  if (proc == PROC_RAW)
     {
       struct eri_sigaction sa = {
 	sig_x_step, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
       };
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-      uuu = _ERS_PASTE (x, L (IJMP));
+      jmp_mem = LABEL (IJMP);
 
-      ERI_ASSERT_SYSCALL (write, 1, dd, 3);
-      ++xx;
+      val = 0x123456789abcdef0;
+      ++proc;
       return 1;
     }
-  else if (xx == XX_STEP)
+  else if (proc == PROC_STEP)
     {
       cinst = 0;
 
-      regx (sig_x_sig_step);
+      reg_sigaction (sig_x_sig_step);
 
       uint8_t c;
       for (c = 0; c < eri_length_of (addrs); ++c)
@@ -323,14 +349,12 @@ process (void)
 
       sigact = sigact_sig_step;
 
-      ERI_ASSERT_SYSCALL (write, 1, dd, 3);
-      ++xx;
+      val = 0x123456789abcdef0;
+      ++proc;
       return 1;
     }
-  else if (xx == XX_SIG_STEP)
+  else if (proc == PROC_SIG_STEP)
     {
-      ERI_ASSERT_SYSCALL (write, 1, dd, 3);
-
       cinst = 0;
       sig_steps = 0;
 
@@ -342,26 +366,28 @@ process (void)
       ++ignore_steps;
       sigact_sig_step_num = 0;
 
+      val = 0x123456789abcdef0;
       if (ignore_steps > max_steps)
 	{
 	  TH (template).tst_skip_ctf = 0;
-	  regx (eri_live_sigaction);
+	  reg_sigaction (eri_live_sigaction);
 	  sigact = sigact_trap;
-	  ++xx;
+	  ++proc;
 	}
       return 1;
     }
-  else if (xx == XX_TRAP)
+  else if (proc == PROC_TRAP)
     {
       eri_assert (cinst == eri_length_of (addrs));
 
-      regx (eri_live_sigaction);
+      reg_sigaction (eri_live_sigaction);
 
-      vvv = 0;
-      uuu = 0;
+      val = 0x123456789abcdef0;
+      xchg_mem_b = 0;
+      jmp_mem = 0;
       cinst = 0;
       sigact = sigact_segv;
-      ++xx;
+      ++proc;
       return 1;
     }
   return 0;

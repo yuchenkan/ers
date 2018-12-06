@@ -1,47 +1,53 @@
-#include "tst-live-entry.h"
+#include "tst/tst-live-entry.h"
 
 #include "public/impl.h"
 
 #include <asm/unistd.h>
 
-#define TL(l)	_ERS_PASTE (T, l)
-#define TLL(i)	TL (L (i))
-#define GTL(l)	.global TL (l);
+#define SUFFIX_LABEL(i)		SUFFIX (LABEL (i))
+#define GLOBAL_SUFFIX(label)	.global SUFFIX (label);
 
-#define TP \
-  LS (GTL)			\
+#define PROCESS \
+  LABELS (GLOBAL_SUFFIX)	\
 				\
-  movq	$0, %rax;		\
-  movq	vvv, %rcx;		\
-  movq	$3, %rdx;		\
-  movq	$4, %rdi;		\
-  movq	$5, %rsi;		\
+  movq	$1, %rax;		\
+  movq	xchg_mem_b, %rcx;	\
+  movq	xchg_mem_w, %rdx;	\
+  movq	xchg_mem_l, %rbx;	\
+  movq	$5, %rdi;		\
+  movq	$6, %rsi;		\
   movq	$7, %r8;		\
   movq	$8, %r9;		\
   movq	$9, %r10;		\
-  movq	$10, %r11;		\
+  movq	xchg_mem_q, %r11;	\
   pushfq;			\
   movq	$0x150, (%rsp);		\
   popfq;			\
   nop;				\
-TLL (INOP):			\
-  _ERS_PASTE (XCHG, T) (%rax, (%rcx));	\
-TLL (IXCHG):			\
+SUFFIX_LABEL (INOP):		\
+  XCHG (b, %al, (%rcx));	\
+SUFFIX_LABEL (IXCHGB):		\
+  XCHG (w, %ax, (%rdx));	\
+SUFFIX_LABEL (IXCHGW):		\
+  XCHG (l, %eax, (%rbx));	\
+SUFFIX_LABEL (IXCHGL):		\
+  XCHG (q, %rax, (%r11));	\
+SUFFIX_LABEL (IXCHGQ):		\
   movl	$__NR_getpid, %eax;	\
-TLL (ISNR):			\
-  _ERS_PASTE (SYSCALL, T);	\
-TLL (ISYS):			\
-  movq	uuu, %rcx;		\
-TLL (IMJMP):			\
-  _ERS_PASTE (SYNC, T) (jmp	*%rcx;)	\
+SUFFIX_LABEL (ISNR):		\
+  SYSCALL;			\
+SUFFIX_LABEL (ISYS):		\
+  movq	jmp_mem, %rcx;		\
+SUFFIX_LABEL (IMJMP):		\
+  SYNC (jmp	*%rcx;)		\
   nop;				\
-TLL (IJMP):			\
+SUFFIX_LABEL (IJMP):		\
   pushfq;			\
-TLL (IPUFQ):			\
+SUFFIX_LABEL (IPUFQ):		\
   movq	$0, (%rsp);		\
-TLL (ISTF):			\
+SUFFIX_LABEL (ISTF):		\
   popfq;			\
-TLL (IPOFQ):			\
+SUFFIX_LABEL (IPOFQ):		\
   nop
 
   .text
@@ -58,35 +64,46 @@ main:
   movq	$13, %r14
   movq	$14, %r15
 
-#define XCHGr(a, b)	xchg	a, b
-#define SYSCALLr	syscall
-#define SYNCr(i)	i
-#define T		r
-  TP;
+#define RAW_XCHG(sz, reg, mem)	_ERS_PASTE (xchg, sz)	reg, mem
+#define RAW_SYSCALL		syscall
+#define RAW_SYNC(inst)		inst
+
+#define XCHG			RAW_XCHG
+#define SYSCALL			RAW_SYSCALL
+#define SYNC			RAW_SYNC
+
+#define SUF			_raw
+  PROCESS
   call	process
 1:
 
-#ifdef TT_XCHG
-# define XCHGx(a, b)	_ERS_XCHG (a, b)
+#undef XCHG
+#undef SYSCALL
+#undef SYNC
+#undef SUF
+
+#ifdef TST_XCHG
+# define XCHG(sz, reg, mem)	_ERS_ATOMIC_XCHG (sz, reg, mem)
 #else
-# define XCHGx(a, b)	XCHGr (a, b)
+# define XCHG			RAW_XCHG
 #endif
 
-#ifdef TT_SYSCALL
-# define SYSCALLx	_ERS_SYSCALL
+#ifdef TST_SYSCALL
+# define SYSCALL		_ERS_SYSCALL
 #else
-# define SYSCALLx	SYSCALLr
+# define SYSCALL		RAW_SYSCALL
 #endif
 
-#ifdef TT_SYNC
-# define SYNCx(i)	_ERS_SYNC (i)
+#ifdef TST_SYNC
+# define SYNC			_ERS_SYNC_ASYNC
 #else
-# define SYNCx(i)	SYNCr (i)
+# define SYNC			RAW_SYNC
 #endif
 
-#undef T
-#define T		x
-  TP;
+#define SUF
+
+  PROCESS
+
   call	process
   testb	%al, %al
   jnz	1b

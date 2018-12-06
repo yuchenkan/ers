@@ -1,8 +1,8 @@
 #include "buf.h"
 
-int
+int32_t
 eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,
-	      void *data, size_t size)
+	      void *data, uint64_t size)
 {
   buf->alloc = alloc;
   buf->free = free;
@@ -15,16 +15,16 @@ eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,
   return alloc ? alloc (data, size, &buf->buf) : 0;
 }
 
-int
+int32_t
 eri_buf_fini (struct eri_buf *buf)
 {
   return buf->free ? buf->free (buf->data, buf->buf) : 0;
 }
 
-int
-eri_buf_reserve (struct eri_buf *buf, size_t size)
+int32_t
+eri_buf_reserve (struct eri_buf *buf, uint64_t size)
 {
-  size_t s = buf->size;
+  uint64_t s = buf->size;
   while (buf->size - buf->off < size) buf->size *= 2;
 
   if (buf->size != s)
@@ -33,7 +33,7 @@ eri_buf_reserve (struct eri_buf *buf, size_t size)
 
       void *t = buf->buf;
 
-      int res;
+      int32_t res;
       if ((res = buf->alloc (buf->data, buf->size, &buf->buf)) != 0)
 	return res;
 
@@ -45,19 +45,19 @@ eri_buf_reserve (struct eri_buf *buf, size_t size)
   return 0;
 }
 
-int
-eri_buf_append (struct eri_buf *buf, const void *data, size_t size)
+int32_t
+eri_buf_append (struct eri_buf *buf, const void *data, uint64_t size)
 {
-  int res;
+  int32_t res;
   if ((res = eri_buf_reserve (buf, size)) != 0)
     return res;
 
-  eri_memcpy ((char *) buf->buf + buf->off, data, size);
+  eri_memcpy ((uint8_t *) buf->buf + buf->off, data, size);
   buf->off += size;
   return 0;
 }
 
-int
+int32_t
 eri_buf_concat (struct eri_buf *buf, const struct eri_buf *data)
 {
   return eri_buf_append (buf, data->buf, data->off);

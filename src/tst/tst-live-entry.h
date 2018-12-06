@@ -1,20 +1,32 @@
+#ifndef ERI_TST_TST_LIVE_ENTRY_H
+#define ERI_TST_TST_LIVE_ENTRY_H
+
 #include "public/comm.h"
 
 #define INOP	0
-#define IXCHG	1
-#define ISNR	2
-#define ISYS	3
-#define IMJMP	4
-#define IJMP	5
-#define IPUFQ	6
-#define ISTF	7
-#define IPOFQ	8
+#define IXCHGB	1
+#define IXCHGW	2
+#define IXCHGL	3
+#define IXCHGQ	4
+#define ISNR	5
+#define ISYS	6
+#define IMJMP	7
+#define IJMP	8
+#define IPUFQ	9
+#define ISTF	10
+#define IPOFQ	11
 
-#define L(i)	_ERS_PASTE (l, i)
-#define LS(op) \
-  op (L (INOP)) op (L (IXCHG)) op (L (ISNR)) op (L (ISYS))	\
-  op (L (IMJMP)) op (L (IJMP)) op (L (IPUFQ)) op (L (ISTF)) op (L (IPOFQ))
+#define LABEL(i)		_ERS_PASTE (label, i)
+#define LABELS(op) \
+  op (LABEL (INOP)) op (LABEL (IXCHGB)) op (LABEL (IXCHGW))		\
+  op (LABEL (IXCHGL)) op (LABEL (IXCHGQ)) op (LABEL (ISNR))		\
+  op (LABEL (ISYS)) op (LABEL (IMJMP)) op (LABEL (IJMP))		\
+  op (LABEL (IPUFQ)) op (LABEL (ISTF)) op (LABEL (IPOFQ))
 
-#define TT_XCHG
-#define TT_SYSCALL
-#define TT_SYNC
+#define SUFFIX(label)		_ERS_PASTE (label, SUF)
+
+#define TST_XCHG
+#define TST_SYSCALL
+#define TST_SYNC
+
+#endif

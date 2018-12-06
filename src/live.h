@@ -1,6 +1,17 @@
 #ifndef ERI_LIVE_H
 #define ERI_LIVE_H
 
+#define ERI_LIVE_ATOMIC_LABEL(sz, label) \
+  _ERS_PASTE (atomic_, _ERS_PASTE (label, sz))
+
+#define ERI_TST_LIVE_COMPLETE_START_NAME(name) \
+  _ERS_PASTE (eri_tst_live_, _ERS_PASTE (name, _complete_start))
+
+#define ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME(sz, name) \
+  ERI_TST_LIVE_COMPLETE_START_NAME (ERI_LIVE_ATOMIC_LABEL (sz, name))
+
+#ifndef __ASSEMBLER__
+
 #include "recorder.h"
 #include "lib/syscall.h"
 
@@ -11,7 +22,7 @@ struct eri_live_thread
   uint64_t entry;
 
   uint64_t top;
-  uint64_t top16;
+  uint64_t top_saved;
   uint64_t rsp;
   uint64_t rflags_saved;
   uint64_t trace_flag;
@@ -68,7 +79,14 @@ extern uint8_t eri_live_resume_ret[];
 
 void eri_live_entry (void);
 
-extern uint8_t eri_tst_live_thread_xchg_complete_start[];
-extern uint8_t eri_tst_live_thread_syscall_complete_start[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (syscall)[];
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, xchg)[];
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, xchg)[];
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, xchg)[];
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, xchg)[];
+
+#endif
+
+#define ERI_LIVE_ENTRY_SAVED_REG_SIZE	80
 
 #endif

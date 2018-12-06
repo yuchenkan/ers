@@ -50,11 +50,11 @@ int32_t eri_fprintf (eri_file_t file, const char *fmd, ...);
 int32_t eri_vprintf (const char *fmt, va_list arg);
 int32_t eri_printf (const char *fmt, ...);
 
-#define eri_assert_vfprintf(f, fmt, arg \
+#define eri_assert_vfprintf(f, fmt, arg) \
   eri_assert (eri_vfprintf (f, fmt, arg) == 0)
 #define eri_assert_fprintf(f, fmt, ...) \
   eri_assert (eri_fprintf (f, fmt, ##__VA_ARGS__) == 0)
-#define eri_assert_vprintf(fmt, arg \
+#define eri_assert_vprintf(fmt, arg) \
   eri_assert (eri_vprintf (fmt, arg) == 0)
 #define eri_assert_printf(fmt, ...) \
   eri_assert (eri_printf (fmt, ##__VA_ARGS__) == 0)

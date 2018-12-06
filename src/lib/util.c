@@ -29,13 +29,13 @@ eri_memmove (void *d, const void *s, uint64_t n)
     for (i = n - 1; i >= 0; --i) cd[i] = cs[i];
 }
 
-ERI_FUNC_ATTR char
+ERI_FUNC_ATTR int8_t
 eri_memcmp (const void *s1, const void *s2, uint64_t n)
 {
   uint64_t i;
   for (i = 0; i < n; ++i)
-    if (((const char *) s1)[i] < ((const char *) s2)[i]) return -1;
-    else if (((const char *) s1)[i] > ((const char *) s2)[i]) return 1;
+    if (((const uint8_t *) s1)[i] < ((const uint8_t *) s2)[i]) return -1;
+    else if (((const uint8_t *) s1)[i] > ((const uint8_t *) s2)[i]) return 1;
   return 0;
 }
 
@@ -63,10 +63,10 @@ eri_strncat (char *d, const char *s, uint64_t n)
   *d = '\0';
 }
 
-ERI_FUNC_ATTR char
+ERI_FUNC_ATTR int8_t
 eri_strcmp (const char *s1, const char *s2)
 {
-  int i;
+  uint64_t i;
   for (i = 0; ; ++i)
     {
       if (s1[i] < s2[i]) return -1;
@@ -75,7 +75,7 @@ eri_strcmp (const char *s1, const char *s2)
     }
 }
 
-ERI_FUNC_ATTR char
+ERI_FUNC_ATTR int8_t
 eri_strncmp (const char *s1, const char *s2, uint64_t n)
 {
   uint64_t i;

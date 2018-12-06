@@ -1,5 +1,5 @@
 #ifndef _ERS_PUBLIC_COMM_H
-#define ERS_PUBLIC_COMM_H
+#define _ERS_PUBLIC_COMM_H
 
 #define __ERS_STR(x) #x
 #define _ERS_STR(x) __ERS_STR (x)
@@ -9,20 +9,27 @@
 
 #define _ERS_EVAL(...) __VA_ARGS__
 
-#define _ERS_OP_XCHG	0
-#define _ERS_OP_SYSCALL	1
-#define _ERS_OP_SYNC	2
-
 #define _ERS_MARK_EXTERNAL_RET	1
 #define _ERS_MARK_INTERNAL_RET	2
 
-#if 0
+#define _ERS_OP_SYSCALL		0
+#define _ERS_OP_SYNC_ASYNC	1
+#define _ERS_OP_ATOMIC_XCHG	2
+
+#define _ERS_OP_FLAGS_BITS	4
+#define _ERS_OP_FLAGS_MASK	((1 << _ERS_OP_FLAGS_BITS) - 1)
+
+#define _ERS_OP(op, flags)	(((op) << _ERS_OP_FLAGS_BITS) | (flags))
+#define _ERS_OP_OP(op)		((op) >> _ERS_OP_FLAGS_BITS)
+#define _ERS_OP_FLAGS(op)	(op & _ERS_OP_FLAGS_MASK)
 
 #define _ERS_ATOMIC_SIZE_b	0
 #define _ERS_ATOMIC_SIZE_w	1
 #define _ERS_ATOMIC_SIZE_l	2
 #define _ERS_ATOMIC_SIZE_q	3
-#define _ERS_ATOMIC_SIZE(s)	_ERS_PASTE (_ERS_ATOMIC_SIZE_, s)
+#define _ERS_ATOMIC_SIZE(sz)	_ERS_PASTE (_ERS_ATOMIC_SIZE_, sz)
+
+#if 0
 
 #define _ERS_ATOMIC_LOAD	0x1000
 #define _ERS_ATOMIC_STOR	0x1001

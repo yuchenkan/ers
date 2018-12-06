@@ -10,38 +10,38 @@
 
 struct file
 {
-  int fd;
-  size_t offset;
+  int32_t fd;
+  uint64_t offset;
 
-  char read;
+  uint8_t read;
 
-  char *buf;
-  size_t buf_size;
-  size_t buf_offset;
-  size_t buf_used;
+  uint8_t *buf;
+  uint64_t buf_size;
+  uint64_t buf_offset;
+  uint64_t buf_used;
 };
 
-int
-eri_fopen (const char *path, char r, eri_file_t *file,
-	   char *buf, size_t buf_size)
+int32_t
+eri_fopen (const char *path, uint8_t r, eri_file_t *file,
+	   void *buf, uint64_t buf_size)
 {
-  unsigned long res = ERI_SYSCALL (
+  uint64_t res = ERI_SYSCALL (
     open, path, r ? ERI_O_RDONLY : ERI_O_WRONLY | ERI_O_TRUNC | ERI_O_CREAT,
     ERI_S_IRUSR | ERI_S_IWUSR);
   if (ERI_SYSCALL_ERROR_P (res)) return 1;
 
   if (! buf || ! buf_size)
-    *file = _ERI_RAW_FILE_FROM_FD ((long) res);
+    *file = _ERI_RAW_FILE_FROM_FD (res);
   else
     {
-      // eri_assert (((unsigned long) buf & 0xf) == 0);
+      // eri_assert (((uint64_t) buf & 0xf) == 0);
       eri_assert (buf_size >= sizeof (struct file));
 
       struct file *f = (struct file *) buf;
       eri_memset (f, 0, sizeof *f);
-      f->fd = (long) res;
+      f->fd = (int32_t) res;
       f->read = !! r;
-      f->buf = (char *) buf + sizeof *f;
+      f->buf = (uint8_t *) buf + sizeof *f;
       f->buf_size = buf_size - sizeof *f;
 
       *file = (eri_file_t) f;
@@ -49,19 +49,19 @@ eri_fopen (const char *path, char r, eri_file_t *file,
   return 0;
 }
 
-#define FTYPE(file) ((long) file & 0xf)
+#define FTYPE(file) (file & 0xf)
 
 #define FRAW_P(file) (FTYPE (file) == _ERI_FILE_RAW)
-#define FRAW_FD(file) ((long) file >> 4)
+#define FRAW_FD(file) (file >> 4)
 
 struct iovec
 {
-  char *base;
-  size_t len;
+  void *base;
+  uint64_t len;
 };
 
 static void
-advance (char vec, long *buf, long *size, size_t adv)
+advance (uint8_t vec, uint64_t *buf, uint64_t *size, uint64_t adv)
 {
   if (! vec)
     {
@@ -86,17 +86,18 @@ advance (char vec, long *buf, long *size, size_t adv)
 	    ++iov;
 	    --*size;
 	  }
-      *buf = (long) iov;
+      *buf = (uint64_t) iov;
     }
 }
 
-static int
-ifwrite (int nr, int fd, long buf, long size, long offset, size_t *len)
+static int32_t
+ifwrite (int32_t nr, int32_t fd,
+	 uint64_t buf, uint64_t size, uint64_t offset, uint64_t *len)
 {
-  size_t wrote = 0;
+  uint64_t wrote = 0;
   while (size)
     {
-      unsigned long res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + wrote);
+      uint64_t res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + wrote);
       if (ERI_SYSCALL_ERROR_P (res)
 	  && res != -ERI_EAGAIN && res != -ERI_EINTR)
 	{
@@ -112,26 +113,26 @@ ifwrite (int nr, int fd, long buf, long size, long offset, size_t *len)
 }
 
 static void
-write_file_update (struct file *f, size_t wrote)
+write_file_update (struct file *f, uint64_t wrote)
 {
-  size_t left = f->buf_used - wrote;
+  uint64_t left = f->buf_used - wrote;
   if (left) eri_memmove (f->buf, f->buf + wrote, left);
   f->buf_used = left;
   f->buf_offset += wrote;
 }
 
-static int
+static int32_t
 file_pwrite (struct file *f)
 {
-  size_t wrote;
-  int res = ifwrite (__NR_pwrite64, f->fd, (long) f->buf,
-		     f->buf_used, f->buf_offset, &wrote);
+  uint64_t wrote;
+  int32_t res = ifwrite (__NR_pwrite64, f->fd, (uint64_t) f->buf,
+			 f->buf_used, f->buf_offset, &wrote);
   write_file_update (f, wrote);
   return res;
 }
 
-int
-eri_frelease (eri_file_t file, int *fd)
+int32_t
+eri_frelease (eri_file_t file, int32_t *fd)
 {
   if (file == 0) *fd = -1;
   else if (FRAW_P (file)) *fd = FRAW_FD (file);
@@ -140,7 +141,7 @@ eri_frelease (eri_file_t file, int *fd)
       struct file *f = (struct file *) file;
       if (f->fd >= 0 && ! f->read && f->buf_used)
 	{
-	  int res = file_pwrite (f);
+	  int32_t res = file_pwrite (f);
 	  if (res != 0) return res;
 	}
       *fd = f->fd;
@@ -149,7 +150,7 @@ eri_frelease (eri_file_t file, int *fd)
   return 0;
 }
 
-int
+int32_t
 eri_fclose (eri_file_t file)
 {
   if (! file) return 1;
@@ -162,31 +163,31 @@ eri_fclose (eri_file_t file)
 
   if (! f->read && f->buf_used)
     {
-      int res = file_pwrite (f);
+      int32_t res = file_pwrite (f);
       if (res != 0) return res;
     }
 
-  int res = ERI_SYSCALL_ERROR_P (ERI_SYSCALL (close, f->fd));
+  int32_t res = ERI_SYSCALL_ERROR_P (ERI_SYSCALL (close, f->fd));
   if (res == 0)
     eri_memset (f, 0, sizeof *f);
   return res;
 }
 
-int
-eri_fseek (eri_file_t file, long offset, int whence, unsigned long *res_offset)
+int32_t
+eri_fseek (eri_file_t file, int64_t offset, int32_t whence, uint64_t *res_offset)
 {
   if (! file) return 1;
 
   if (FRAW_P (file))
     {
-      unsigned long res = ERI_SYSCALL (lseek, FRAW_FD (file), offset, whence);
+      uint64_t res = ERI_SYSCALL (lseek, FRAW_FD (file), offset, whence);
       if (ERI_SYSCALL_ERROR_P (res)) return 1;
       if (res_offset) *res_offset = res;
       return 0;
     }
 
   struct file *f = (struct file *) file;
-  unsigned long new_offset = whence == ERI_SEEK_SET ? offset : f->offset + offset;
+  uint64_t new_offset = whence == ERI_SEEK_SET ? offset : f->offset + offset;
   if (f->read)
     {
       if (new_offset < f->buf_offset || new_offset > f->buf_offset + f->buf_used)
@@ -200,7 +201,7 @@ eri_fseek (eri_file_t file, long offset, int whence, unsigned long *res_offset)
     {
       if (new_offset < f->buf_offset || new_offset > f->buf_offset + f->buf_used)
 	{
-	  int res = file_pwrite (f);
+	  int32_t res = file_pwrite (f);
 	  if (res != 0) return res;
 
 	  f->buf_offset = new_offset;
@@ -214,13 +215,13 @@ eri_fseek (eri_file_t file, long offset, int whence, unsigned long *res_offset)
   return 0;
 }
 
-int
-eri_fwrite (eri_file_t file, const char *buf, size_t size, size_t *len)
+int32_t
+eri_fwrite (eri_file_t file, const void *buf, uint64_t size, uint64_t *len)
 {
   if (! file) return 1;
 
   if (FRAW_P (file))
-    return ifwrite (__NR_write, FRAW_FD (file), (long) buf, size, 0, len);
+    return ifwrite (__NR_write, FRAW_FD (file), (uint64_t) buf, size, 0, len);
 
   struct file *f = (struct file *) file;
 
@@ -236,8 +237,8 @@ eri_fwrite (eri_file_t file, const char *buf, size_t size, size_t *len)
       return 0;
     }
 
-  struct iovec iov[2] = { { f->buf, f->buf_used }, { (char *) buf, size} };
-  int res = ifwrite (__NR_pwritev, f->fd, (long) iov, 2, f->buf_offset, 0);
+  struct iovec iov[2] = { { f->buf, f->buf_used }, { (void *) buf, size} };
+  int32_t res = ifwrite (__NR_pwritev, f->fd, (uint64_t) iov, 2, f->buf_offset, 0);
   eri_assert (f->buf_used >= iov[0].len && size >= iov[1].len);
   write_file_update (f, f->buf_used - iov[0].len);
   f->buf_offset += size - iov[1].len;
@@ -247,13 +248,13 @@ eri_fwrite (eri_file_t file, const char *buf, size_t size, size_t *len)
   return res;
 }
 
-static int
-ifread (int nr, int fd, long buf, long size, long offset, size_t *len)
+static int32_t
+ifread (int32_t nr, int32_t fd, uint64_t buf, uint64_t size, uint64_t offset, uint64_t *len)
 {
-  size_t read = 0;
+  uint64_t read = 0;
   while (size)
     {
-      unsigned long res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + read);
+      uint64_t res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + read);
       if (ERI_SYSCALL_ERROR_P (res)
 	  && res != -ERI_EAGAIN && res != -ERI_EINTR)
 	{
@@ -270,15 +271,15 @@ ifread (int nr, int fd, long buf, long size, long offset, size_t *len)
   return 0;
 }
 
-int
-eri_fread (eri_file_t file, char *buf, size_t size, size_t *len)
+int32_t
+eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len)
 {
   if (! file) return 1;
 
   if (FRAW_P (file))
     {
-      size_t read;
-      int res = ifread (__NR_read, FRAW_FD (file), (long) buf, size, 0, &read);
+      uint64_t read;
+      int32_t res = ifread (__NR_read, FRAW_FD (file), (uint64_t) buf, size, 0, &read);
       if (len) *len = read;
       else if (res == 0 && read != size) return 1;
       return 0;
@@ -306,8 +307,8 @@ eri_fread (eri_file_t file, char *buf, size_t size, size_t *len)
     }
 
   struct iovec iov[2] = { { buf, size }, { f->buf, f->buf_size } };
-  size_t read;
-  int res = ifread (__NR_preadv, f->fd, (long) iov, 2, f->offset, &read);
+  uint64_t read;
+  int32_t res = ifread (__NR_preadv, f->fd, (uint64_t) iov, 2, f->offset, &read);
   f->offset += size - iov[0].len;
   f->buf_offset = f->offset;
   f->buf_used = f->buf_size - iov[1].len;
@@ -320,18 +321,18 @@ eri_fread (eri_file_t file, char *buf, size_t size, size_t *len)
 
 static const char digits[] = "0123456789abcdef";
 
-int
+int32_t
 eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 {
   if (! file) return 1;
 
   const char *p;
-  int s = 2;
+  int32_t s = 2;
   for (p = fmt; *p; ++p)
     if (*p == '%') s += 2;
 
   struct iovec *iov = __builtin_alloca (s * sizeof (struct iovec));
-  int niov = 1;
+  int32_t niov = 1;
   while (*fmt)
     {
       eri_assert (niov < s);
@@ -340,18 +341,18 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 	  ++fmt;
 	  if (*fmt == 'u' || *fmt == 'x' || *fmt == 'l')
 	    {
-	      int l = *fmt == 'l' ? sizeof (unsigned long) : sizeof (unsigned);
+	      int32_t l = *fmt == 'l' ? sizeof (uint64_t) : sizeof (uint32_t);
 
-	      unsigned long num;
+	      uint64_t num;
 	      if (*fmt == 'l')
 		{
 		  ++fmt;
 		  eri_assert (*fmt == 'u' || *fmt == 'x');
-		  num = va_arg (arg, unsigned long);
+		  num = va_arg (arg, uint64_t);
 		}
-	      else num = (unsigned long) va_arg (arg, unsigned);
+	      else num = (uint64_t) va_arg (arg, uint32_t);
 
-	      unsigned char base = *fmt == 'x' ? 16 : 10;
+	      uint8_t base = *fmt == 'x' ? 16 : 10;
 
 	      char *buf = __builtin_alloca (3 * sizeof num);
 	      char *endp = buf + 3 * sizeof num;
@@ -390,12 +391,12 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
     }
 
   if (FRAW_P (file))
-    return ifwrite (__NR_writev, FRAW_FD (file), (long) (iov + 1), niov - 1, 0, 0);
+    return ifwrite (__NR_writev, FRAW_FD (file), (uint64_t) (iov + 1), niov - 1, 0, 0);
 
   struct file *f = (struct file *) file;
 
-  size_t size = 0;
-  int i;
+  uint64_t size = 0;
+  int32_t i;
   for (i = 1; i < niov; ++i) size += iov[i].len;
 
   if (size + f->buf_used < f->buf_size)
@@ -411,81 +412,81 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 
   iov[0].base = f->buf;
   iov[0].len = f->buf_used;
-  size_t wrote;
-  int res = ifwrite (__NR_pwritev, f->fd, (long) iov, niov, f->buf_offset, &wrote);
-  size_t buf_wrote = f->buf_used - iov[0].len;
+  uint64_t wrote;
+  int32_t res = ifwrite (__NR_pwritev, f->fd, (uint64_t) iov, niov, f->buf_offset, &wrote);
+  uint64_t buf_wrote = f->buf_used - iov[0].len;
   write_file_update (f, buf_wrote);
   f->buf_offset += wrote - buf_wrote;
   f->offset += wrote - buf_wrote;
   return res;
 }
 
-int
+int32_t
 eri_fprintf (eri_file_t file, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_vfprintf (file, fmt, arg);
+  int32_t res = eri_vfprintf (file, fmt, arg);
   va_end (arg);
   return res;
 }
 
-int
+int32_t
 eri_vprintf (const char *fmt, va_list arg)
 {
   return eri_vfprintf (ERI_STDOUT, fmt, arg);
 }
 
-int
+int32_t
 eri_printf (const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_vprintf (fmt, arg);
+  int32_t res = eri_vprintf (fmt, arg);
   va_end (arg);
   return res;
 }
 
-int
-eri_lvfprintf (int *lock, eri_file_t file, const char *fmt, va_list arg)
+int32_t
+eri_lvfprintf (int32_t *lock, eri_file_t file, const char *fmt, va_list arg)
 {
   if (lock) eri_lock (lock);
-  int res = eri_vfprintf (file, fmt, arg);
+  int32_t res = eri_vfprintf (file, fmt, arg);
   if (lock) eri_unlock (lock);
   return res;
 }
 
-int
-eri_lfprintf (int *lock, eri_file_t file, const char *fmt, ...)
+int32_t
+eri_lfprintf (int32_t *lock, eri_file_t file, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_lvfprintf (file, lock, fmt, arg);
+  int32_t res = eri_lvfprintf (lock, file, fmt, arg);
   va_end (arg);
   return res;
 }
 
-int
-eri_lvprintf (int *lock, const char *fmt, va_list arg)
+int32_t
+eri_lvprintf (int32_t *lock, const char *fmt, va_list arg)
 {
-  return eri_lvfprintf (ERI_STDOUT, lock, fmt, arg);
+  return eri_lvfprintf (lock, ERI_STDOUT, fmt, arg);
 }
 
-int
-eri_lprintf (int *lock, const char *fmt, ...)
+int32_t
+eri_lprintf (int32_t *lock, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_lvprintf (lock, fmt, arg);
+  int32_t res = eri_lvprintf (lock, fmt, arg);
   va_end (arg);
   return res;
 }
 
-int
+int32_t
 eri_file_foreach_line (const char *path, struct eri_buf *buf,
-		       void (*proc) (const void *, size_t, void *), void *data)
+		       void (*proc) (const char *, uint64_t, void *), void *data)
 {
-  int res;
+  int32_t res;
 
   eri_file_t f;
   if ((res = eri_fopen (path, 1, &f, 0, 0)) != 0)
@@ -497,8 +498,8 @@ eri_file_foreach_line (const char *path, struct eri_buf *buf,
       const char *d = 0;
       while (1)
 	{
-	  size_t l;
-	  if ((res = eri_fread (f, (char *) buf->buf + buf->off, buf->size - buf->off, &l)) != 0)
+	  uint64_t l;
+	  if ((res = eri_fread (f, buf->buf + buf->off, buf->size - buf->off, &l)) != 0)
 	    return res;
 	  buf->off += l;
 
