@@ -1,12 +1,12 @@
-#ifndef ERI_BUF_H
-#define ERI_BUF_H
+#ifndef ERI_LIB_BUF_H
+#define ERI_LIB_BUF_H
 
-#include <stddef.h>
+#include <stdint.h>
 
-#include "malloc.h"
+#include "lib/malloc.h"
 
-typedef int (*eri_buf_alloc_t) (void *, size_t, void **);
-typedef int (*eri_buf_free_t) (void *, void *);
+typedef int32_t (*eri_buf_alloc_t) (void *, uint64_t, void **);
+typedef int32_t (*eri_buf_free_t) (void *, void *);
 
 struct eri_buf
 {
@@ -14,18 +14,18 @@ struct eri_buf
   eri_buf_free_t free;
   void *data;
 
-  size_t size;
+  uint64_t size;
   void *buf;
-  size_t off;
+  uint64_t off;
 };
 
-int eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,
-		  void *data, size_t size);
-int eri_buf_fini (struct eri_buf *buf);
+int32_t eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,
+		      void *data, uint64_t size);
+int32_t eri_buf_fini (struct eri_buf *buf);
 
-int eri_buf_reserve (struct eri_buf *buf, size_t size);
-int eri_buf_append (struct eri_buf *buf, const void *data, size_t size);
-int eri_buf_concat (struct eri_buf *buf, const struct eri_buf *data);
+int32_t eri_buf_reserve (struct eri_buf *buf, uint64_t size);
+int32_t eri_buf_append (struct eri_buf *buf, const void *data, uint64_t size);
+int32_t eri_buf_concat (struct eri_buf *buf, const struct eri_buf *data);
 
 #define eri_buf_static_init(buf, data, size) \
   eri_buf_init (buf, 0, 0, data, size)

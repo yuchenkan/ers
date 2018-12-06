@@ -5,15 +5,6 @@
 
 #include <asm/unistd.h>
 
-#define S_IRUSR	0400	/* Read by owner.  */
-#define S_IWUSR	0200	/* Write by owner.  */
-#define S_IXUSR	0100	/* Execute by owner.  */
-
-#define O_RDONLY	00
-#define O_WRONLY	01
-#define O_CREAT		0100
-#define O_TRUNC		01000
-
 #define READ_NORMAL	1
 #define READ_EOF	2
 
@@ -35,7 +26,8 @@ eri_fopen (const char *path, char r, eri_file_t *file,
 	   char *buf, size_t buf_size)
 {
   unsigned long res = ERI_SYSCALL (
-    open, path, r ? O_RDONLY : O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
+    open, path, r ? ERI_O_RDONLY : ERI_O_WRONLY | ERI_O_TRUNC | ERI_O_CREAT,
+    ERI_S_IRUSR | ERI_S_IWUSR);
   if (ERI_SYSCALL_ERROR_P (res)) return 1;
 
   if (! buf || ! buf_size)
@@ -455,7 +447,7 @@ eri_printf (const char *fmt, ...)
 }
 
 int
-eri_vlfprintf (eri_file_t file, int *lock, const char *fmt, va_list arg)
+eri_lvfprintf (int *lock, eri_file_t file, const char *fmt, va_list arg)
 {
   if (lock) eri_lock (lock);
   int res = eri_vfprintf (file, fmt, arg);
@@ -464,19 +456,19 @@ eri_vlfprintf (eri_file_t file, int *lock, const char *fmt, va_list arg)
 }
 
 int
-eri_lfprintf (eri_file_t file, int *lock, const char *fmt, ...)
+eri_lfprintf (int *lock, eri_file_t file, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_vlfprintf (file, lock, fmt, arg);
+  int res = eri_lvfprintf (file, lock, fmt, arg);
   va_end (arg);
   return res;
 }
 
 int
-eri_vlprintf (int *lock, const char *fmt, va_list arg)
+eri_lvprintf (int *lock, const char *fmt, va_list arg)
 {
-  return eri_vlfprintf (ERI_STDOUT, lock, fmt, arg);
+  return eri_lvfprintf (ERI_STDOUT, lock, fmt, arg);
 }
 
 int
@@ -484,7 +476,7 @@ eri_lprintf (int *lock, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
-  int res = eri_vlprintf (lock, fmt, arg);
+  int res = eri_lvprintf (lock, fmt, arg);
   va_end (arg);
   return res;
 }

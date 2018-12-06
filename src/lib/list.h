@@ -1,5 +1,5 @@
-#ifndef ERI_LIST_H
-#define ERI_LIST_H
+#ifndef ERI_LIB_LIST_H
+#define ERI_LIB_LIST_H
 
 #define ERI_LST_INIT_LIST(pfx, list) \
   do { typeof (list) __eri_l = (list);						\
@@ -9,9 +9,9 @@
 #define ERI_LST_NODE_FIELDS(pfx) void *pfx##_lst[2];
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
-attr __attribute__ ((unused)) void pfx##_lst_append (list_type *list, node_type *node);	\
-attr __attribute__ ((unused)) void pfx##_lst_remove (list_type *list, node_type *node);	\
-attr __attribute__ ((unused)) unsigned long pfx##_lst_get_size (list_type *list);
+attr void pfx##_lst_append (list_type *list, node_type *node) __attribute__ ((unused));	\
+attr void pfx##_lst_remove (list_type *list, node_type *node) __attribute__ ((unused));	\
+attr unsigned long pfx##_lst_get_size (list_type *list) __attribute__ ((unused));
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
 static void									\
@@ -23,14 +23,14 @@ pfx##_lst_insert_after (void **n, void **nn)					\
   n[1] = nn;			/* n->next = nn; */				\
 }										\
 										\
-attr __attribute__ ((unused)) void						\
+attr void __attribute__ ((unused))						\
 pfx##_lst_append (list_type *list, node_type *node)				\
 {										\
   pfx##_lst_insert_after ((void **) list->pfx##_lst[0], node->pfx##_lst);	\
   ++list->pfx##_lst_size;							\
 }										\
 										\
-attr __attribute__ ((unused)) void						\
+attr void __attribute__ ((unused))						\
 pfx##_lst_remove (list_type *list, node_type *node)				\
 {										\
   --list->pfx##_lst_size;							\
@@ -39,7 +39,7 @@ pfx##_lst_remove (list_type *list, node_type *node)				\
   ((void **) n[1])[0] = n[0];	/* n->next->prev = n->prev; */			\
 }										\
 										\
-attr __attribute__ ((unused)) unsigned long					\
+attr unsigned long __attribute__ ((unused))					\
 pfx##_lst_get_size (list_type *list)						\
 {										\
   return list->pfx##_lst_size;							\

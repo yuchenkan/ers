@@ -1,5 +1,5 @@
-#ifndef ERI_RBTREE_H
-#define ERI_RBTREE_H
+#ifndef ERI_LIB_RBTREE_H
+#define ERI_LIB_RBTREE_H
 
 #include "util.h"
 
@@ -29,12 +29,12 @@
 #define ERI_RBT_GT	4
 
 #define ERI_DECALRE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
-attr __attribute__ ((unused)) void pfx##_rbt_insert (tree_type *tree, node_type *node);	\
-attr __attribute__ ((unused)) void pfx##_rbt_remove (tree_type *tree, node_type *node);	\
-attr __attribute__ ((unused)) node_type *pfx##_rbt_get (tree_type *tree, key_type *key, int flags);	\
-attr __attribute__ ((unused)) node_type *pfx##_rbt_get_first (tree_type *tree);		\
-attr __attribute__ ((unused)) node_type *pfx##_rbt_get_next (node_type *node);		\
-attr __attribute__ ((unused)) unsigned long pfx##_rbt_get_size (tree_type *tree);
+attr void pfx##_rbt_insert (tree_type *tree, node_type *node) __attribute__ ((unused));	\
+attr void pfx##_rbt_remove (tree_type *tree, node_type *node) __attribute__ ((unused));	\
+attr node_type *pfx##_rbt_get (tree_type *tree, key_type *key, int flags) __attribute__ ((unused));	\
+attr node_type *pfx##_rbt_get_first (tree_type *tree); __attribute__ ((unused))		\
+attr node_type *pfx##_rbt_get_next (node_type *node); __attribute__ ((unused))		\
+attr unsigned long pfx##_rbt_get_size (tree_type *tre __attribute__ ((unused))e);
 
 #define ERI_DECALRE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERI_DECALRE_RBTREE (attr, pfx, tree_type, node_type, node_type)
@@ -82,19 +82,19 @@ pfx##_rbt_check (tree_type *tree)						\
 }										\
 										\
 										\
-static __attribute__ ((always_inline)) inline node_type *			\
+static inline node_type *							\
 pfx##_rbt_parent (node_type *n)							\
 {										\
   return n->pfx##_rbt_parent;							\
 }										\
 										\
-static __attribute__ ((always_inline)) inline node_type *			\
+static inline node_type *							\
 pfx##_rbt_grandparent (node_type *n)						\
 {										\
   return pfx##_rbt_parent (n) ? pfx##_rbt_parent (pfx##_rbt_parent (n)) : 0;	\
 }										\
 										\
-static __attribute__ ((always_inline)) inline node_type *			\
+static inline node_type *							\
 pfx##_rbt_sibling (node_type *n)						\
 {										\
   node_type *p = pfx##_rbt_parent (n);						\
@@ -102,7 +102,7 @@ pfx##_rbt_sibling (node_type *n)						\
   return n == p->pfx##_rbt_left ? p->pfx##_rbt_right : p->pfx##_rbt_left;	\
 }										\
 										\
-static __attribute__ ((always_inline)) inline node_type *			\
+static inline node_type *							\
 pfx##_rbt_uncle (node_type *n)							\
 {										\
   return pfx##_rbt_grandparent (n)						\
@@ -214,7 +214,7 @@ pfx##_rbt_insert_repair (tree_type *tree, node_type *n)				\
     }										\
 }										\
 										\
-attr __attribute__ ((unused)) void						\
+attr void __attribute__ ((unused))						\
 pfx##_rbt_insert (tree_type *tree, node_type *node)				\
 {										\
   node->pfx##_rbt_color = _RBT_RED;						\
@@ -319,7 +319,7 @@ pfx##_rbt_remove_one_child (tree_type *tree, node_type *n)			\
     }										\
 }										\
 										\
-attr __attribute__ ((unused)) void						\
+attr void __attribute__ ((unused))						\
 pfx##_rbt_remove (tree_type *tree, node_type *node)				\
 {										\
   if (node->pfx##_rbt_left && node->pfx##_rbt_right)				\
@@ -347,7 +347,7 @@ pfx##_rbt_remove (tree_type *tree, node_type *node)				\
   _RBT_CHECK (pfx##_rbt_check (tree));						\
 }										\
 										\
-attr __attribute__ ((unused)) node_type *					\
+attr node_type * __attribute__ ((unused))					\
 pfx##_rbt_get (tree_type *tree, key_type *key, int flags)			\
 {										\
   eri_assert (! (flags & ERI_RBT_LT) || ! (flags & ERI_RBT_GT));		\
@@ -383,13 +383,13 @@ pfx##_rbt_get_min (node_type *n)						\
   return n;									\
 }										\
 										\
-attr __attribute__ ((unused)) node_type *					\
+attr node_type * __attribute__ ((unused))					\
 pfx##_rbt_get_first (tree_type *tree)						\
 {										\
   return tree->pfx##_rbt_root ? pfx##_rbt_get_min (tree->pfx##_rbt_root) : 0;	\
 }										\
 										\
-attr __attribute__ ((unused)) node_type *					\
+attr node_type * __attribute__ ((unused))					\
 pfx##_rbt_get_next (node_type *node)						\
 {										\
   if (node->pfx##_rbt_right) return pfx##_rbt_get_min (node->pfx##_rbt_right);	\
@@ -400,7 +400,7 @@ pfx##_rbt_get_next (node_type *node)						\
   return pfx##_rbt_parent (n);							\
 }										\
 										\
-attr __attribute__ ((unused)) unsigned long					\
+attr unsigned long __attribute__ ((unused))					\
 pfx##_rbt_get_size (tree_type *tree)						\
 {										\
   return tree->pfx##_rbt_size;							\

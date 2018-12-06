@@ -1,17 +1,32 @@
 #ifndef ERI_RECORDER_H
 #define ERI_RECORDER_H
 
-struct eri_clone_desc
+#ifndef __ASSEMBLER__
+
+#include <stdint.h>
+
+struct eri_common_thread
 {
-  void *child;
+  uint64_t mark;
+  uint64_t op;
 
-  long flags;
-  void *cstack;
-  int *ptid;
-  int *ctid;
-  void *tp;
+  uint64_t start;
+  uint64_t ret;
+  uint64_t cont;
 
-  long replay_result;
+  uint64_t dir;
+
+  uint64_t rbx;
+  uint64_t var[2];
+
+  uint64_t thread_entry;
+
+  void *internal;
 };
+
+#endif
+
+#define ERI_STACK_SIZE		(2 * 1024 * 1024)
+#define ERI_SIG_STACK_SIZE	4096
 
 #endif

@@ -1,7 +1,25 @@
-#ifndef ERI_UTIL_H
-#define ERI_UTIL_H
+#ifndef ERI_LIB_UTIL_H
+#define ERI_LIB_UTIL_H
 
-#include <stddef.h>
+#include "public/comm.h"
+
+#define _ERI_PP_IF_0(...)
+#define _ERI_PP_IF_1(...)	__VA_ARGS__
+#define ERI_PP_IF(c, ...)	_ERS_PASTE (_ERI_PP_IF_, c) (__VA_ARGS__)
+
+#define _ERI_PP_IIF_0(t, f)	f
+#define _ERI_PP_IIF_1(t, f)	t
+#define ERI_PP_IIF(c, t, f)	_ERS_PASTE (_ERI_PP_IIF_, c) (t, f)
+
+#ifdef __ASSEMBLER__
+
+#define ERI_ASSERT_FALSE \
+  movq	$0, %r15;		\
+  movq	$0, (%r15)
+
+#else
+
+#include <stdint.h>
 
 #define eri_assert(exp) do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
 
@@ -19,19 +37,23 @@
     __a > __b ? __a : __b;	\
   })
 
-void eri_memset (void *s, char c, size_t n);
-void eri_memcpy (void *d, const void *s, size_t n);
-void eri_memmove (void *d, const void *s, size_t n);
-char eri_memcmp (const void *s1, const void *s2, size_t n);
-size_t eri_strlen (const char *s);
-void eri_strcpy (char *d, const char *s);
-void eri_strncat (char *d, const char *s, size_t n);
-char eri_strcmp (const char *s1, const char *s2);
-char eri_strncmp (const char *s1, const char *s2, size_t n);
-const char *eri_strtok (const char *s, char d);
-const char *eri_strntok (const char *s, char d, size_t n);
-const char *eri_strstr (const char *s, const char *d);
-const char *eri_strnstr (const char *s, const char *d, size_t n);
+#ifndef ERI_FUNC_ATTR
+# define ERI_FUNC_ATTR
+#endif
+
+ERI_FUNC_ATTR void eri_memset (void *s, char c, uint64_t n);
+ERI_FUNC_ATTR void eri_memcpy (void *d, const void *s, uint64_t n);
+ERI_FUNC_ATTR void eri_memmove (void *d, const void *s, uint64_t n);
+ERI_FUNC_ATTR char eri_memcmp (const void *s1, const void *s2, uint64_t n);
+ERI_FUNC_ATTR uint64_t eri_strlen (const char *s);
+ERI_FUNC_ATTR void eri_strcpy (char *d, const char *s);
+ERI_FUNC_ATTR void eri_strncat (char *d, const char *s, uint64_t n);
+ERI_FUNC_ATTR char eri_strcmp (const char *s1, const char *s2);
+ERI_FUNC_ATTR char eri_strncmp (const char *s1, const char *s2, uint64_t n);
+ERI_FUNC_ATTR const char *eri_strtok (const char *s, char d);
+ERI_FUNC_ATTR const char *eri_strntok (const char *s, char d, uint64_t n);
+ERI_FUNC_ATTR const char *eri_strstr (const char *s, const char *d);
+ERI_FUNC_ATTR const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 
 #define eri_round_up_mask(x, mask) \
   ({						\
@@ -47,5 +69,7 @@ const char *eri_strnstr (const char *s, const char *d, size_t n);
 #define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
 
 #define eri_size_of(x, r) (eri_round_up (sizeof (x), r))
+
+#endif
 
 #endif
