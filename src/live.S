@@ -94,7 +94,7 @@
 #define LABEL_COMPLETE_START(label)	LABEL_SUFFIX (label, _complete_start)
 #define LABEL_RESTART_START(label)	LABEL_SUFFIX (label, _restart_start)
 
-#define MARK_SEC_PART_BIT_OFFSET	3
+#define MARK_SEC_PART_BIT_OFFSET	4
 #define MARK_SEC_PART_BIT		(1 << MARK_SEC_PART_BIT_OFFSET)
 
 #define TRACE_FLAG_BIT_OFFSET		8
@@ -638,8 +638,9 @@ eri_live_entry:
   cmpq	$_ERS_PASTE (_ERS_OP_ATOMIC_, op), %r11;			\
   je	LABEL_ATOMIC (label)
 
-  IF_ATOMIC (XCHG, xchg)
+  IF_ATOMIC (STOR, stor)
   IF_ATOMIC (INC, inc)
+  IF_ATOMIC (XCHG, xchg)
 
   jmp	.lerror
 
@@ -889,6 +890,52 @@ LABEL_RESTART_START (sync_async):
   TST_MARK_COMPLETE_START (ATOMIC_LABEL (sz, label))
 
 /************************************************/
+/* eri_live_entry: atomic_stor			*/
+/************************************************/
+
+#define ATOMIC_STOR(sz) \
+LABEL_ATOMIC_SIZE (sz, stor):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, stor), %rax);		\
+									\
+  movq	PTH_VAR0(%rbx), %rax;						\
+  movq	PTH_VAR1(%rbx), %rdi;						\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, stor));		\
+									\
+  _ERS_PASTE (mov, sz)	RAX (sz), (%rdi);				\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, stor)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, stor)				\
+  INTERNAL_RET_DIR (%rdi);						\
+									\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, stor)):				\
+  RESTART_RESUME_RET
+
+/************************************************/
+/* eri_live_entry: atomic_inc			*/
+/************************************************/
+
+#define ATOMIC_INC(sz) \
+LABEL_ATOMIC_SIZE (sz, inc):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, inc), %rax);		\
+									\
+  movq	PTH_VAR1(%rbx), %rdi;						\
+  /* For rflags w/o tf.  */						\
+  subq	$8, %rsp;							\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, inc));		\
+									\
+  popfq;								\
+  _ERS_PASTE (inc, sz)	(%rdi);						\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, inc)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, inc)				\
+  SAVE_NEW_RFLAGS (%rax);						\
+  INTERNAL_RET_DIR (%rdi);						\
+									\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, inc)):				\
+  movq	TH_TOP_SAVED(%rbx), %rsp;					\
+  RESTART_RESUME_RET
+
+/************************************************/
 /* eri_live_entry: atomic_xchg			*/
 /************************************************/
 
@@ -904,40 +951,10 @@ LABEL_ATOMIC_SIZE (sz, xchg):						\
   _ERS_PASTE (xchg, sz)	RAX (sz), (%rdi);				\
 LABEL_COMPLETE_START (ATOMIC_LABEL (sz, xchg)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, xchg)				\
-									\
   movq	%rax, PTH_VAR0(%rbx);						\
-									\
   EXTERNAL_RET_DIR (%rdi);						\
 									\
 LABEL_RESTART_START (ATOMIC_LABEL (sz, xchg)):				\
-  RESTART_RESUME_RET
-
-/************************************************/
-/* eri_live_entry: atomic_inc			*/
-/************************************************/
-
-#define ATOMIC_INC(sz) \
-LABEL_ATOMIC_SIZE (sz, inc):						\
-  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, inc), %rax);		\
-									\
-  movq	PTH_VAR1(%rbx), %rdi;						\
-									\
-  /* For rflags w/o tf.  */						\
-  subq	$8, %rsp;							\
-									\
-  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, inc));		\
-									\
-  popfq;								\
-  _ERS_PASTE (inc, sz)	(%rdi);						\
-LABEL_COMPLETE_START (ATOMIC_LABEL (sz, inc)):				\
-  TST_MARK_ATOMIC_COMPLETE_START (sz, inc)				\
-									\
-  SAVE_NEW_RFLAGS (%rax);						\
-									\
-  INTERNAL_RET_DIR (%rdi);						\
-									\
-LABEL_RESTART_START (ATOMIC_LABEL (sz, inc)):				\
-  movq	TH_TOP_SAVED(%rbx), %rsp;					\
   RESTART_RESUME_RET
 
 /************************************************/
@@ -965,7 +982,8 @@ LABEL_ATOMIC (label):							\
 									 \
   ATOMIC_OP (op)
 
-  ATOMIC (XCHG, xchg)
+  ATOMIC (STOR, stor)
   ATOMIC (INC, inc)
+  ATOMIC (XCHG, xchg)
 
   .size eri_live_entry, . - eri_live_entry

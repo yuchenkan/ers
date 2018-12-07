@@ -19,6 +19,7 @@ uint64_t *xchg_mem_w;
 uint64_t *xchg_mem_l;
 uint64_t *xchg_mem_q;
 uint64_t *inc_mem;
+uint64_t *stor_mem;
 void *jmp_mem;
 
 struct addr
@@ -46,6 +47,7 @@ static uint8_t stk[ERI_STACK_SIZE];
 
 static uint64_t xchg_val = 0x123456789abcdef0;
 static uint64_t inc_val = 0xffffffffffffffff;
+static uint64_t stor_val = 0x123456789abcdef0;
 
 void
 setup (void)
@@ -55,6 +57,7 @@ setup (void)
   xchg_mem_l = &xchg_val;
   xchg_mem_q = &xchg_val;
   inc_mem = &inc_val;
+  stor_mem = &stor_val;
   jmp_mem = _ERS_PASTE (LABEL (IJMP), _raw);
 
   struct eri_sigaction sa = {
@@ -197,6 +200,9 @@ next_sig_step_inst (void)
 #ifdef TST_INC
 	|| ATOMIC_CINST_P (IINC)
 #endif
+#ifdef TST_STOR
+	|| ATOMIC_CINST_P (ISTOR)
+#endif
 #ifdef TST_SYSCALL
 	|| cinst == ISYS
 #endif
@@ -235,6 +241,9 @@ sig_sig_step (int32_t signum, struct eri_siginfo *info, struct eri_ucontext *ctx
 #endif
 #ifdef TST_INC
   CHECK_CLEAR_ATOMIC_RETRY (IINC, inc);
+#endif
+#ifdef TST_STOR
+  CHECK_CLEAR_ATOMIC_RETRY (ISTOR, stor);
 #endif
 #ifdef TST_SYSCALL
   CHECK_CLEAR_RETRY (ISYS,
@@ -289,29 +298,46 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (sig == ERI_SIGSEGV && cinst == 0)
     {
+      /* XCHGB  */
       assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
       eri_assert (ctx->mctx.rcx == 0);
       eri_assert (ctx->mctx.rdi == 0);
+      eri_assert (ctx->mctx.rsi == 0);
       ctx->mctx.rcx = (uint64_t) &xchg_val;
-      assert_eq (&addrs[INOP].ctx, &ctx->mctx, EQ_NRDI);
+      assert_eq (&addrs[INOP].ctx, &ctx->mctx, EQ_NRDI | EQ_NRSI);
       ctx->mctx.rflags = rflags;
       ++cinst;
     }
   else if (sig == ERI_SIGSEGV && cinst == 1)
     {
+      /* INCB  */
       assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
       eri_assert (ctx->mctx.rdi == 0);
       ctx->mctx.rdi = (uint64_t) &inc_val;
-      assert_eq (&addrs[IXCHGQ].ctx, &ctx->mctx, 0);
+      eri_assert (ctx->mctx.rsi == 0);
+      assert_eq (&addrs[IXCHGQ].ctx, &ctx->mctx, EQ_NRSI);
       ctx->mctx.rflags = rflags;
       ++cinst;
     }
   else if (sig == ERI_SIGSEGV && cinst == 2)
     {
+      /* STORQ  */
+      assert_thread ();
+      uint64_t rflags = ctx->mctx.rflags;
+      ctx->mctx.rflags &= ~0x10000;
+      eri_assert (ctx->mctx.rsi == 0);
+      ctx->mctx.rsi = (uint64_t) &stor_val;
+      assert_eq (&addrs[IMSTORQ].ctx, &ctx->mctx, 0);
+      ctx->mctx.rflags = rflags;
+      ++cinst;
+    }
+  else if (sig == ERI_SIGSEGV && cinst == 3)
+    {
+      /* JMP  */
       assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
@@ -370,6 +396,7 @@ process (void)
 
       xchg_val = 0x123456789abcdef0;
       inc_val = 0xffffffffffffffff;
+      stor_val = 0x123456789abcdef0;
       ++proc;
       return 1;
     }
@@ -388,6 +415,7 @@ process (void)
       final_inc_val = inc_val;
       xchg_val = 0x123456789abcdef0;
       inc_val = 0xffffffffffffffff;
+      stor_val = 0x123456789abcdef0;
       ++proc;
       return 1;
     }
@@ -407,6 +435,7 @@ process (void)
       eri_assert (final_inc_val == inc_val);
       xchg_val = 0x123456789abcdef0;
       inc_val = 0xffffffffffffffff;
+      stor_val = 0x123456789abcdef0;
       if (ignore_steps > max_steps)
 	{
 	  TH (template).tst_skip_ctf = 0;
@@ -425,8 +454,10 @@ process (void)
       eri_assert (final_inc_val == inc_val);
       xchg_val = 0x123456789abcdef0;
       inc_val = 0xffffffffffffffff;
+      stor_val = 0x123456789abcdef0;
       xchg_mem_b = 0;
       inc_mem = 0;
+      stor_mem = 0;
       jmp_mem = 0;
       cinst = 0;
       sigact = sigact_segv;
@@ -435,7 +466,7 @@ process (void)
     }
   else
     {
-      eri_assert (cinst == 3);
+      eri_assert (cinst == 4);
       eri_assert (final_inc_val == inc_val);
     }
   return 0;

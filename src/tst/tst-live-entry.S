@@ -1,3 +1,5 @@
+/* vim: set ft=gas: */
+
 #include "tst/tst-live-entry.h"
 
 #include "public/impl.h"
@@ -15,41 +17,76 @@
   movq	xchg_mem_w, %rdx;	\
   movq	xchg_mem_l, %rbx;	\
   movq	inc_mem, %rdi;		\
-  movq	$6, %rsi;		\
+  movq	stor_mem, %rsi;		\
   movq	$7, %r8;		\
   movq	$8, %r9;		\
   movq	$9, %r10;		\
   movq	xchg_mem_q, %r11;	\
+				\
   pushfq;			\
   movq	$0x150, (%rsp);		\
   popfq;			\
+				\
   nop;				\
+				\
 SUFFIX_LABEL (INOP):		\
-  XCHG (b, %al, (%rcx));	\
+  PXCHG (b, %al, (%rcx));	\
 SUFFIX_LABEL (IXCHGB):		\
-  XCHG (w, %ax, (%rdx));	\
+  PXCHG (w, %ax, (%rdx));	\
 SUFFIX_LABEL (IXCHGW):		\
-  XCHG (l, %eax, (%rbx));	\
+  PXCHG (l, %eax, (%rbx));	\
 SUFFIX_LABEL (IXCHGL):		\
-  XCHG (q, %rax, (%r11));	\
+  PXCHG (q, %rax, (%r11));	\
+				\
 SUFFIX_LABEL (IXCHGQ):		\
-  INC (b, (%rdi));		\
+  PINC (b, (%rdi));		\
 SUFFIX_LABEL (IINCB):		\
-  INC (w, (%rdi));		\
+  PINC (w, (%rdi));		\
 SUFFIX_LABEL (IINCW):		\
-  INC (l, (%rdi));		\
+  PINC (l, (%rdi));		\
 SUFFIX_LABEL (IINCL):		\
-  INC (q, (%rdi));		\
+  PINC (q, (%rdi));		\
 SUFFIX_LABEL (IINCQ):		\
+				\
+  movq	$0xf00000000, %rax;	\
+SUFFIX_LABEL (IMSTORQ):		\
+  PSTOR (q, %rax, (%rsi));	\
+SUFFIX_LABEL (ISTORQ):		\
+  movq	(%rsi), %rax;		\
+SUFFIX_LABEL (ILSTORQ):		\
+				\
+  movl	$0xf0000, %eax;		\
+SUFFIX_LABEL (IMSTORL):		\
+  PSTOR (l, %eax, (%rsi));	\
+SUFFIX_LABEL (ISTORL):		\
+  movq	(%rsi), %rax;		\
+SUFFIX_LABEL (ILSTORL):		\
+				\
+  movw	$0xf00, %ax;		\
+SUFFIX_LABEL (IMSTORW):		\
+  PSTOR (w, %ax, (%rsi));	\
+SUFFIX_LABEL (ISTORW):		\
+  movq	(%rsi), %rax;		\
+SUFFIX_LABEL (ILSTORW):		\
+				\
+  movb	$0xf, %al;		\
+SUFFIX_LABEL (IMSTORB):		\
+  PSTOR (b, %al, (%rsi));	\
+SUFFIX_LABEL (ISTORB):		\
+  movq	(%rsi), %rax;		\
+SUFFIX_LABEL (ILSTORB):		\
+				\
   movl	$__NR_getpid, %eax;	\
 SUFFIX_LABEL (ISNR):		\
-  SYSCALL;			\
+  PSYSCALL;			\
 SUFFIX_LABEL (ISYS):		\
+				\
   movq	jmp_mem, %rcx;		\
 SUFFIX_LABEL (IMJMP):		\
-  SYNC (jmp	*%rcx;)		\
+  PSYNC (jmp	*%rcx;)		\
   nop;				\
 SUFFIX_LABEL (IJMP):		\
+				\
   pushfq;			\
 SUFFIX_LABEL (IPUFQ):		\
   movq	$0, (%rsp);		\
@@ -74,47 +111,59 @@ main:
 
 #define RAW_XCHG(sz, reg, mem)	_ERS_PASTE (xchg, sz)	reg, mem
 #define RAW_INC(sz, mem)	_ERS_PASTE (inc, sz)	mem
+#define RAW_STOR(sz, imm_or_reg, mem) \
+  _ERS_PASTE (mov, sz)	imm_or_reg, mem
 #define RAW_SYSCALL		syscall
 #define RAW_SYNC(inst)		inst
 
-#define XCHG			RAW_XCHG
-#define INC			RAW_INC
-#define SYSCALL			RAW_SYSCALL
-#define SYNC			RAW_SYNC
+#define PXCHG			RAW_XCHG
+#define PINC			RAW_INC
+#define PSTOR			RAW_STOR
+#define PSYSCALL		RAW_SYSCALL
+#define PSYNC			RAW_SYNC
 
 #define SUF			_raw
+
   PROCESS
   call	process
 1:
 
-#undef XCHG
-#undef INC
-#undef SYSCALL
-#undef SYNC
+#undef PXCHG
+#undef PINC
+#undef PSTOR
+#undef PSYSCALL
+#undef PSYNC
 #undef SUF
 
 #ifdef TST_XCHG
-# define XCHG(sz, reg, mem)	_ERS_ATOMIC_XCHG (sz, reg, mem)
+# define PXCHG(sz, reg, mem)	_ERS_ATOMIC_XCHG (sz, reg, mem)
 #else
-# define XCHG			RAW_XCHG
+# define PXCHG			RAW_XCHG
 #endif
 
 #ifdef TST_INC
-# define INC(sz, mem)		_ERS_ATOMIC_INC (sz, mem)
+# define PINC(sz, mem)		_ERS_ATOMIC_INC (sz, mem)
 #else
-# define INC			RAW_INC
+# define PINC			RAW_INC
+#endif
+
+#ifdef TST_STOR
+# define PSTOR(sz, imm_or_reg, mem) \
+  _ERS_ATOMIC_STOR (sz, imm_or_reg, mem)
+#else
+# define PSTOR			RAW_STOR
 #endif
 
 #ifdef TST_SYSCALL
-# define SYSCALL		_ERS_SYSCALL
+# define PSYSCALL		_ERS_SYSCALL
 #else
-# define SYSCALL		RAW_SYSCALL
+# define PSYSCALL		RAW_SYSCALL
 #endif
 
 #ifdef TST_SYNC
-# define SYNC			_ERS_SYNC_ASYNC
+# define PSYNC			_ERS_SYNC_ASYNC
 #else
-# define SYNC			RAW_SYNC
+# define PSYNC			RAW_SYNC
 #endif
 
 #define SUF

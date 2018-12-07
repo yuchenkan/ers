@@ -44,25 +44,23 @@
 20:									\
   inst
 
+#define _ERS_ATOMIC_SAVE_VAL(sz, val) \
+  movq	$0, %gs:_ERS_COMMON_THREAD_VAR0;				\
+  _ERS_PASTE (mov, sz)	val, %gs:_ERS_COMMON_THREAD_VAR0
+
 #define _ERS_ATOMIC_SAVE_MEM(mem) \
   leaq	mem, %rbx;							\
   movq	%rbx, %gs:_ERS_COMMON_THREAD_VAR1
 
-#define _ERS_ATOMIC_XCHG(sz, reg, mem) \
+/* mov	imm8/16/32/r8/16/32/64, m8/16/32/64  */
+#define _ERS_ATOMIC_STOR(sz, imm_or_reg, mem) \
 30:									\
-  _ERS_ENTER (EXTERNAL_RET, _ERS_ATOMIC_OP (XCHG, sz));			\
-									\
-  movq	$0, %gs:_ERS_COMMON_THREAD_VAR0;				\
-  _ERS_PASTE (mov, sz)	reg, %gs:_ERS_COMMON_THREAD_VAR0;		\
+  _ERS_ENTER (INTERNAL_RET, _ERS_ATOMIC_OP (STOR, sz));			\
+  _ERS_ATOMIC_SAVE_VAL (sz, imm_or_reg);				\
   _ERS_ATOMIC_SAVE_MEM (mem);						\
-									\
   _ERS_SAVE_START (30b);						\
-  _ERS_SAVE_RET (10f);							\
   _ERS_SAVE_CONT (20f);							\
   jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
-10:									\
-  _ERS_PASTE (mov, sz)	%gs:_ERS_COMMON_THREAD_VAR0, reg;		\
-  _ERS_DIR;								\
 20:
 
 #define _ERS_ATOMIC_INC(sz, mem) \
@@ -72,6 +70,20 @@
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_CONT (20f);							\
   jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+20:
+
+#define _ERS_ATOMIC_XCHG(sz, reg, mem) \
+30:									\
+  _ERS_ENTER (EXTERNAL_RET, _ERS_ATOMIC_OP (XCHG, sz));			\
+  _ERS_ATOMIC_SAVE_VAL (sz, reg);					\
+  _ERS_ATOMIC_SAVE_MEM (mem);						\
+  _ERS_SAVE_START (30b);						\
+  _ERS_SAVE_RET (10f);							\
+  _ERS_SAVE_CONT (20f);							\
+  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+10:									\
+  _ERS_PASTE (mov, sz)	%gs:_ERS_COMMON_THREAD_VAR0, reg;		\
+  _ERS_DIR;								\
 20:
 
 #endif
