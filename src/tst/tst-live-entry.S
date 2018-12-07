@@ -9,6 +9,12 @@
 #define SUFFIX_LABEL(i)		SUFFIX (LABEL (i))
 #define GLOBAL_SUFFIX(label)	.global SUFFIX (label);
 
+#define PERS_LOAD_CMP(sz, res, reg) \
+  _ERS_PASTE (cmp, sz)	reg, res
+
+#define PERS_ATOMIC_CMP(sz, reg, mem) \
+  _ERS_ATOMIC_COMM_LOAD (sz, mem, PERS_LOAD_CMP, reg)
+
 #define PROCESS \
   LABELS (GLOBAL_SUFFIX)	\
 				\
@@ -18,9 +24,9 @@
   movq	xchg_mem_l, %rbx;	\
   movq	inc_mem, %rdi;		\
   movq	stor_mem, %rsi;		\
-  movq	$7, %r8;		\
-  movq	$8, %r9;		\
-  movq	$9, %r10;		\
+  movq	load_mem, %r8;		\
+  movq	cmpxchg_mem, %r9;	\
+  movq	cmp_mem, %r10;		\
   movq	xchg_mem_q, %r11;	\
 				\
   pushfq;			\
@@ -76,6 +82,27 @@ SUFFIX_LABEL (ISTORB):		\
   movq	(%rsi), %rax;		\
 SUFFIX_LABEL (ILSTORB):		\
 				\
+  PLOAD (q, (%r8), %rbx);	\
+SUFFIX_LABEL (ILOADQ):		\
+				\
+  movq	$0, %rax;		\
+SUFFIX_LABEL (IMCMPXCHGQ1):	\
+  movq	$1, %rbx;		\
+SUFFIX_LABEL (IMCMPXCHGQ2):	\
+  PCMPXCHG (q, %rbx, (%r9));	\
+SUFFIX_LABEL (ICMPXCHGQ_EQ):	\
+  PCMPXCHG (q, %rbx, (%r9));	\
+SUFFIX_LABEL (ICMPXCHGQ_NE):	\
+				\
+  movq	$0, %rax;		\
+SUFFIX_LABEL (IMCMPQ1):		\
+  movq	$1, %rbx;		\
+SUFFIX_LABEL (IMCMPQ2):		\
+  PCMP (q, %rax, (%r10));	\
+SUFFIX_LABEL (ICMPQ_EQ):	\
+  PCMP (q, %rbx, (%r10));	\
+SUFFIX_LABEL (ICMPQ_NE):	\
+				\
   movl	$__NR_getpid, %eax;	\
 SUFFIX_LABEL (ISNR):		\
   PSYSCALL;			\
@@ -113,12 +140,19 @@ main:
 #define RAW_INC(sz, mem)	_ERS_PASTE (inc, sz)	mem
 #define RAW_STOR(sz, imm_or_reg, mem) \
   _ERS_PASTE (mov, sz)	imm_or_reg, mem
+#define RAW_LOAD(sz, mem, reg)	_ERS_PASTE (mov, sz)	mem, reg
+#define RAW_CMPXCHG(sz, reg, mem) \
+  _ERS_PASTE (cmpxchg, sz)	reg, mem
+#define RAW_CMP(sz, reg, mem)	_ERS_PASTE (cmp, sz)	reg, mem
 #define RAW_SYSCALL		syscall
 #define RAW_SYNC(inst)		inst
 
 #define PXCHG			RAW_XCHG
 #define PINC			RAW_INC
 #define PSTOR			RAW_STOR
+#define PLOAD			RAW_LOAD
+#define PCMPXCHG		RAW_CMPXCHG
+#define PCMP			RAW_CMP
 #define PSYSCALL		RAW_SYSCALL
 #define PSYNC			RAW_SYNC
 
@@ -131,6 +165,9 @@ main:
 #undef PXCHG
 #undef PINC
 #undef PSTOR
+#undef PLOAD
+#undef PCMPXCHG
+#undef PCMP
 #undef PSYSCALL
 #undef PSYNC
 #undef SUF
@@ -152,6 +189,25 @@ main:
   _ERS_ATOMIC_STOR (sz, imm_or_reg, mem)
 #else
 # define PSTOR			RAW_STOR
+#endif
+
+#ifdef TST_LOAD
+# define PLOAD(sz, mem, reg) \
+  _ERS_ATOMIC_LOAD (sz, mem, reg)
+#else
+# define PLOAD			RAW_LOAD
+#endif
+
+#ifdef TST_CMPXCHG
+# define PCMPXCHG(sz, reg, mem)	_ERS_ATOMIC_CMPXCHG (sz, reg, mem)
+#else
+# define PCMPXCHG		RAW_CMPXCHG
+#endif
+
+#ifdef TST_CMP
+# define PCMP(sz, reg, mem) 	PERS_ATOMIC_CMP (sz, reg, mem)
+#else
+# define PCMP			RAW_CMP
 #endif
 
 #ifdef TST_SYSCALL

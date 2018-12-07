@@ -15,6 +15,11 @@
 #include "recorder.h"
 #include "lib/syscall.h"
 
+struct eri_live_internal
+{
+  uint64_t *atomic_mem_table;
+};
+
 struct eri_live_thread
 {
   struct eri_common_thread common;
@@ -87,11 +92,16 @@ extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, name)[]; \
 extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, name)[]; \
 extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, name)[];
 
+ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (load)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (stor)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (inc)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (dec)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
 
 #endif
+
+#define ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE	0 // TODO
 
 #define ERI_LIVE_ENTRY_SAVED_REG_SIZE	80
 

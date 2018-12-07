@@ -108,11 +108,11 @@
   movq	PTH_OP(th), dst;						\
   andq	$_ERS_OP_FLAGS_MASK, dst
 
-  .data
-
 /************************************************/
 /* eri_live_thread_template			*/
 /************************************************/
+
+  .data
 
   .align 16
   .global eri_live_thread_template
@@ -560,17 +560,18 @@ eri_live_entry:
 
   pushfq
 #ifndef ERI_NON_TST
+  /* We need to keep tf for same test.  */
   cmpq	$1, PTH_TST_SKIP_CTF(%rbx)
   je	.ltst_skip_ctf
 #endif
   andq	$~TRACE_FLAG_BIT, (%rsp)
   popfq
+  subq	$8, %rsp
 #ifndef ERI_NON_TST
-  jmp	.ltst_done_ctf
 .ltst_skip_ctf:
-  popq	-ERI_LIVE_ENTRY_SAVED_REG_SIZE(%rsp)
-.ltst_done_ctf:
 #endif
+
+  popq	-ERI_LIVE_ENTRY_SAVED_REG_SIZE(%rsp) /* STACK_RFLAGS_CTF */
 
   movq	$1, TH_RFLAGS_SAVED(%rbx)
 
@@ -638,9 +639,12 @@ eri_live_entry:
   cmpq	$_ERS_PASTE (_ERS_OP_ATOMIC_, op), %r11;			\
   je	LABEL_ATOMIC (label)
 
+  IF_ATOMIC (LOAD, load)
   IF_ATOMIC (STOR, stor)
   IF_ATOMIC (INC, inc)
+  IF_ATOMIC (DEC, dec)
   IF_ATOMIC (XCHG, xchg)
+  IF_ATOMIC (CMPXCHG, cmpxchg)
 
   jmp	.lerror
 
@@ -669,7 +673,6 @@ eri_live_entry:
 #define TST_MARK_COMPLETE_START(label) \
   .global ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
 ERI_TST_LIVE_COMPLETE_START_NAME (label):
-
 
 /* If not TST, it's not required as tf is already cleared in new_rflags,
    so when tst_skip_ctf is 0.
@@ -848,46 +851,143 @@ LABEL_RESTART_START (sync_async):
 
   jmp	*TH_RESUME_RET(%rbx)
 
-#define R0_b(i)		_ERS_PASTE (i, l)
-#define R0_w(i)		_ERS_PASTE (i, x)
-#define R0_l(i)		_ERS_PASTE (_ERS_PASTE (e, i), x)
-#define R0_q(i)		_ERS_PASTE (_ERS_PASTE (r, i), x)
+/************************************************/
+/* eri_live_entry: atomic common		*/
+/************************************************/
 
-#define RAX(sz)		%_ERS_PASTE (R0_, sz) (a)
-#define RBX(sz)		%_ERS_PASTE (R0_, sz) (b)
-#define RDX(sz)		%_ERS_PASTE (R0_, sz) (d)
-#define RCX(sz)		%_ERS_PASTE (R0_, sz) (c)
+#define R0_b(i)			_ERS_PASTE (i, l)
+#define R0_w(i)			_ERS_PASTE (i, x)
+#define R0_l(i)			_ERS_PASTE (_ERS_PASTE (e, i), x)
+#define R0_q(i)			_ERS_PASTE (_ERS_PASTE (r, i), x)
 
-#define R1_b(i)		_ERS_PASTE (i, l)
-#define R1_w(i)		i
-#define R1_l(i)		_ERS_PASTE (e, i)
-#define R1_q(i)		_ERS_PASTE (r, i)
+#define RAX(sz)			%_ERS_PASTE (R0_, sz) (a)
+#define RBX(sz)			%_ERS_PASTE (R0_, sz) (b)
+#define RDX(sz)			%_ERS_PASTE (R0_, sz) (d)
+#define RCX(sz)			%_ERS_PASTE (R0_, sz) (c)
 
-#define RDI(sz)		%_ERS_PASTE (R1_, sz) (di)
-#define RSI(sz)		%_ERS_PASTE (R1_, sz) (si)
-#define RSP(sz)		%_ERS_PASTE (R1_, sz) (sp)
-#define RBP(sz)		%_ERS_PASTE (R1_, sz) (bp)
+#define R1_b(i)			_ERS_PASTE (i, l)
+#define R1_w(i)			i
+#define R1_l(i)			_ERS_PASTE (e, i)
+#define R1_q(i)			_ERS_PASTE (r, i)
 
-#define R2_b(i)		_ERS_PASTE (i, b)
-#define R2_w(i)		_ERS_PASTE (i, w)
-#define R2_l(i)		_ERS_PASTE (i, d)
-#define R2_q(i)		i
+#define RDI(sz)			%_ERS_PASTE (R1_, sz) (di)
+#define RSI(sz)			%_ERS_PASTE (R1_, sz) (si)
+#define RSP(sz)			%_ERS_PASTE (R1_, sz) (sp)
+#define RBP(sz)			%_ERS_PASTE (R1_, sz) (bp)
 
-#define R8(sz)		%_ERS_PASTE (R2_, sz) (r8)
-#define R9(sz)		%_ERS_PASTE (R2_, sz) (r9)
-#define R10(sz)		%_ERS_PASTE (R2_, sz) (r10)
-#define R11(sz)		%_ERS_PASTE (R2_, sz) (r11)
-#define R12(sz)		%_ERS_PASTE (R2_, sz) (r12)
-#define R13(sz)		%_ERS_PASTE (R2_, sz) (r13)
-#define R14(sz)		%_ERS_PASTE (R2_, sz) (r14)
-#define R15(sz)		%_ERS_PASTE (R2_, sz) (r15)
+#define R2_b(i)			_ERS_PASTE (i, b)
+#define R2_w(i)			_ERS_PASTE (i, w)
+#define R2_l(i)			_ERS_PASTE (i, d)
+#define R2_q(i)			i
 
-#define LABEL_ATOMIC_SIZE(sz, label)	LABEL_ATOMIC (_ERS_PASTE (label, sz))
+#define R8(sz)			%_ERS_PASTE (R2_, sz) (r8)
+#define R9(sz)			%_ERS_PASTE (R2_, sz) (r9)
+#define R10(sz)			%_ERS_PASTE (R2_, sz) (r10)
+#define R11(sz)			%_ERS_PASTE (R2_, sz) (r11)
+#define R12(sz)			%_ERS_PASTE (R2_, sz) (r12)
+#define R13(sz)			%_ERS_PASTE (R2_, sz) (r13)
+#define R14(sz)			%_ERS_PASTE (R2_, sz) (r14)
+#define R15(sz)			%_ERS_PASTE (R2_, sz) (r15)
+
+#define LABEL_ATOMIC_SIZE(sz, label) \
+  LABEL_ATOMIC (_ERS_PASTE (label, sz))
 
 #define ATOMIC_LABEL		ERI_LIVE_ATOMIC_LABEL
 
+#define AT_REG_MEM_TAB		%r11
+#define AT_REG_IDX		%rax
+#define AT_REG_LOCK_LP_CNT	%rcx
+#define AT_REG_MEM		%rdi
+#define AT_REG_VER		%rsi
+#define AT_REG_VAL		%r8
+#define AT_REG_VAL_SZ		R8
+#define AT_REG_LD_RES		%rdx
+#define AT_REG_LD_RES_SZ	RDX
+
+#define AT_LOAD_VAL		movq	PTH_VAR0(%rbx), AT_REG_VAL
+#define AT_LOAD_MEM		movq	PTH_VAR1(%rbx), AT_REG_MEM
+
+#define ATOMIC_MEM_TAB		ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE
+#define AT_LOAD_MEM_TAB \
+  movq	eri_live_internal + ATOMIC_MEM_TAB(%rip), AT_REG_MEM_TAB
+
+#define AT_CALL(top_reg, fn) \
+  movq	%rbx, top_reg;							\
+  call	fn
+
+#define AT_HASH_MEM \
+  AT_LOAD_MEM;								\
+  AT_CALL (%rsi, eri_live_atomic_hash_mem)
+
+#define AT_MEM(idx)		(AT_REG_MEM_TAB, idx, 8)
+
+#define AT_LOCK(idx) \
+  AT_LOAD_MEM_TAB;							\
+1:									\
+  movq	$16, AT_REG_LOCK_LP_CNT;					\
+  btsq	$0, AT_MEM (idx);						\
+  jnc	2f;								\
+  loop	1b;								\
+									\
+  pushq	%rax;								\
+  movl	$__NR_sched_yield, %eax;					\
+  syscall;								\
+  popq	%rax;								\
+  AT_LOAD_MEM_TAB;							\
+  jmp	1b;								\
+									\
+2:
+
+#define AT_LOCK_LOAD		AT_LOCK
+
+#define AT_LOCK_STOR(idx) \
+  movq	$2, AT_REG_VER;							\
+  AT_LOCK (idx)
+
+#define AT_UNLOCK(idx) \
+  andb	$0xfe, AT_MEM (idx)
+
+#define AT_UNLOCK_LOAD(idx) \
+  movq	AT_MEM (idx), AT_REG_VER;					\
+  AT_UNLOCK (idx);							\
+  shrq	$1, AT_REG_VER
+
+#define AT_UNLOCK_STOR(idx) \
+  xaddq	AT_REG_VER, AT_MEM (idx);					\
+  AT_UNLOCK (idx);							\
+  shrq	$1, AT_REG_VER
+
 #define TST_MARK_ATOMIC_COMPLETE_START(sz, label) \
   TST_MARK_COMPLETE_START (ATOMIC_LABEL (sz, label))
+
+/************************************************/
+/* eri_live_entry: atomic_load			*/
+/************************************************/
+
+#define ATOMIC_LOAD(sz) \
+LABEL_ATOMIC_SIZE (sz, load):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, load), %rax);		\
+									\
+  AT_HASH_MEM;								\
+  AT_LOAD_MEM;								\
+									\
+  AT_LOCK_LOAD (AT_REG_IDX);						\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, load));		\
+									\
+  _ERS_PASTE (mov, sz)	(AT_REG_MEM), AT_REG_LD_RES_SZ (sz);		\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, load)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, load)				\
+									\
+  AT_UNLOCK_LOAD (AT_REG_IDX);						\
+  movq	AT_REG_LD_RES, PTH_VAR0(%rbx);					\
+  AT_CALL (%rcx, eri_live_atomic_load);					\
+									\
+  EXTERNAL_RET_DIR (%rdi);						\
+									\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, load)):				\
+  AT_UNLOCK (AT_REG_IDX);						\
+  RESTART_RESUME_RET
 
 /************************************************/
 /* eri_live_entry: atomic_stor			*/
@@ -897,43 +997,64 @@ LABEL_RESTART_START (sync_async):
 LABEL_ATOMIC_SIZE (sz, stor):						\
   SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, stor), %rax);		\
 									\
-  movq	PTH_VAR0(%rbx), %rax;						\
-  movq	PTH_VAR1(%rbx), %rdi;						\
+  AT_HASH_MEM;								\
+  AT_LOAD_VAL;								\
+  AT_LOAD_MEM;								\
+									\
+  AT_LOCK_STOR (AT_REG_IDX);						\
 									\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, stor));		\
 									\
-  _ERS_PASTE (mov, sz)	RAX (sz), (%rdi);				\
+  _ERS_PASTE (mov, sz)	AT_REG_VAL_SZ (sz), (AT_REG_MEM);		\
 LABEL_COMPLETE_START (ATOMIC_LABEL (sz, stor)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, stor)				\
+									\
+  AT_UNLOCK_STOR (AT_REG_IDX);						\
+  AT_CALL (%rdx, eri_live_atomic_stor);					\
+									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
 LABEL_RESTART_START (ATOMIC_LABEL (sz, stor)):				\
+  AT_UNLOCK (AT_REG_IDX);						\
   RESTART_RESUME_RET
 
 /************************************************/
-/* eri_live_entry: atomic_inc			*/
+/* eri_live_entry: atomic_inc / atomic_dec	*/
 /************************************************/
 
-#define ATOMIC_INC(sz) \
-LABEL_ATOMIC_SIZE (sz, inc):						\
-  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, inc), %rax);		\
+#define ATOMIC_INC_DEC(sz, op) \
+LABEL_ATOMIC_SIZE (sz, op):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, op), %rax);		\
 									\
-  movq	PTH_VAR1(%rbx), %rdi;						\
   /* For rflags w/o tf.  */						\
-  subq	$8, %rsp;							\
+  subq	$16, %rsp;							\
+  AT_HASH_MEM;								\
+  AT_LOAD_MEM;								\
 									\
-  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, inc));		\
+  addq	$8, %rsp;							\
+  AT_LOCK_STOR (AT_REG_IDX);						\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, op));		\
 									\
   popfq;								\
-  _ERS_PASTE (inc, sz)	(%rdi);						\
-LABEL_COMPLETE_START (ATOMIC_LABEL (sz, inc)):				\
-  TST_MARK_ATOMIC_COMPLETE_START (sz, inc)				\
-  SAVE_NEW_RFLAGS (%rax);						\
+  _ERS_PASTE (mov, sz)	(AT_REG_MEM), AT_REG_LD_RES_SZ (sz);		\
+  _ERS_PASTE (op, sz)	(AT_REG_MEM);					\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, op)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, op)				\
+  SAVE_NEW_RFLAGS (%rcx);						\
+									\
+  AT_UNLOCK_STOR (AT_REG_IDX);						\
+  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
-LABEL_RESTART_START (ATOMIC_LABEL (sz, inc)):				\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, op)):				\
   movq	TH_TOP_SAVED(%rbx), %rsp;					\
+  AT_UNLOCK (AT_REG_IDX);						\
   RESTART_RESUME_RET
+
+#define ATOMIC_INC(sz)		ATOMIC_INC_DEC (sz, inc)
+#define ATOMIC_DEC(sz)		ATOMIC_INC_DEC (sz, dec)
 
 /************************************************/
 /* eri_live_entry: atomic_xchg			*/
@@ -943,18 +1064,66 @@ LABEL_RESTART_START (ATOMIC_LABEL (sz, inc)):				\
 LABEL_ATOMIC_SIZE (sz, xchg):						\
   SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, xchg), %rax);		\
 									\
-  movq	PTH_VAR0(%rbx), %rax;						\
-  movq	PTH_VAR1(%rbx), %rdi;						\
+  AT_HASH_MEM;								\
+  AT_LOAD_VAL;								\
+  AT_LOAD_MEM;								\
+									\
+  AT_LOCK_STOR (AT_REG_IDX);						\
 									\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, xchg));		\
 									\
-  _ERS_PASTE (xchg, sz)	RAX (sz), (%rdi);				\
+  _ERS_PASTE (xchg, sz)	AT_REG_VAL_SZ (sz), (AT_REG_MEM);		\
 LABEL_COMPLETE_START (ATOMIC_LABEL (sz, xchg)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, xchg)				\
-  movq	%rax, PTH_VAR0(%rbx);						\
+									\
+  AT_UNLOCK_STOR (AT_REG_IDX);						\
+  movq	AT_REG_VAL, PTH_VAR0(%rbx);					\
+  movq	AT_REG_VAL, AT_REG_LD_RES;					\
+  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+									\
   EXTERNAL_RET_DIR (%rdi);						\
 									\
 LABEL_RESTART_START (ATOMIC_LABEL (sz, xchg)):				\
+  AT_UNLOCK (AT_REG_IDX);						\
+  RESTART_RESUME_RET
+
+/************************************************/
+/* eri_live_entry: atomic_cmpxchg		*/
+/************************************************/
+
+#define ATOMIC_CMPXCHG(sz) \
+LABEL_ATOMIC_SIZE (sz, cmpxchg):					\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, cmpxchg), %rax);	\
+									\
+  /* For rflags w/o tf.  */						\
+  subq	$16, %rsp;							\
+  AT_HASH_MEM;								\
+  AT_LOAD_VAL;								\
+  AT_LOAD_MEM;								\
+									\
+  addq	$8, %rsp;							\
+  movq	%rax, %r10;							\
+  movq	8 + STACK_RAX(%rsp), %rax;					\
+  AT_LOCK_STOR (%r10);							\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, cmpxchg));		\
+									\
+  popfq;								\
+  _ERS_PASTE (mov, sz)	(AT_REG_MEM), AT_REG_LD_RES_SZ (sz);		\
+  _ERS_PASTE (cmpxchg, sz)	AT_REG_VAL_SZ (sz), (AT_REG_MEM);	\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, cmpxchg)):			\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, cmpxchg)				\
+  SAVE_NEW_RFLAGS (%rcx);						\
+									\
+  AT_UNLOCK_STOR (%r10);						\
+  movq	%rax, STACK_RAX(%rsp);						\
+  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+									\
+  INTERNAL_RET_DIR (%rdi);						\
+									\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, cmpxchg)):			\
+  movq	TH_TOP_SAVED(%rbx), %rsp;					\
+  AT_UNLOCK (%r10);							\
   RESTART_RESUME_RET
 
 /************************************************/
@@ -979,11 +1148,14 @@ LABEL_ATOMIC (label):							\
   IF_ATOMIC_SIZE (l, label);						\
   IF_ATOMIC_SIZE (q, label);						\
   jmp	.lerror;							\
-									 \
+									\
   ATOMIC_OP (op)
 
+  ATOMIC (LOAD, load)
   ATOMIC (STOR, stor)
   ATOMIC (INC, inc)
+  ATOMIC (DEC, dec)
   ATOMIC (XCHG, xchg)
+  ATOMIC (CMPXCHG, cmpxchg)
 
   .size eri_live_entry, . - eri_live_entry

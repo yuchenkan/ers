@@ -31,15 +31,27 @@
 #define ISTORB	19
 #define ILSTORB	20
 
-#define ISNR	21
-#define ISYS	22
+#define ILOADQ	21
 
-#define IMJMP	23
-#define IJMP	24
+#define IMCMPXCHGQ1	22
+#define IMCMPXCHGQ2	23
+#define ICMPXCHGQ_EQ	24
+#define ICMPXCHGQ_NE	25
 
-#define IPUFQ	25
-#define ISTF	26
-#define IPOFQ	27
+#define IMCMPQ1	26
+#define IMCMPQ2	27
+#define ICMPQ_EQ	28
+#define ICMPQ_NE	29
+
+#define ISNR	30
+#define ISYS	31
+
+#define IMJMP	32
+#define IJMP	33
+
+#define IPUFQ	34
+#define ISTF	35
+#define IPOFQ	36
 
 #define LABEL(i)			_ERS_PASTE (label, i)
 
@@ -71,6 +83,11 @@
   LABEL_OP (NOP, l_op)							\
   ATOMIC_LABELS (l_op, XCHG) ATOMIC_LABELS (l_op, INC)			\
   ATOMIC_STOR_LABELS (l_op)						\
+  LABEL_OP (LOADQ, l_op)						\
+  LABEL_OP (MCMPXCHGQ1, l_op) LABEL_OP (MCMPXCHGQ2, l_op)		\
+  LABEL_OP (CMPXCHGQ_EQ, l_op) LABEL_OP (CMPXCHGQ_NE, l_op)		\
+  LABEL_OP (MCMPQ1, l_op) LABEL_OP (MCMPQ2, l_op)			\
+  LABEL_OP (CMPQ_EQ, l_op) LABEL_OP (CMPQ_NE, l_op)			\
   LABEL_OP (SNR, l_op) LABEL_OP (SYS, l_op) LABEL_OP (MJMP, l_op)	\
   LABEL_OP (JMP, l_op) LABEL_OP (PUFQ, l_op) LABEL_OP (STF, l_op)	\
   LABEL_OP (POFQ, l_op)
@@ -80,6 +97,9 @@
 #define TST_XCHG
 #define TST_INC
 #define TST_STOR
+#define TST_LOAD
+#define TST_CMPXCHG
+#define TST_CMP
 #define TST_SYSCALL
 #define TST_SYNC
 
