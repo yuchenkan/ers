@@ -80,10 +80,15 @@ extern uint8_t eri_live_resume_ret[];
 void eri_live_entry (void);
 
 extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (syscall)[];
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, xchg)[];
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, xchg)[];
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, xchg)[];
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, xchg)[];
+
+#define ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS(name) \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, name)[];
+
+ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (inc)
 
 #endif
 

@@ -14,7 +14,7 @@
   movq	xchg_mem_b, %rcx;	\
   movq	xchg_mem_w, %rdx;	\
   movq	xchg_mem_l, %rbx;	\
-  movq	$5, %rdi;		\
+  movq	inc_mem, %rdi;		\
   movq	$6, %rsi;		\
   movq	$7, %r8;		\
   movq	$8, %r9;		\
@@ -33,6 +33,14 @@ SUFFIX_LABEL (IXCHGW):		\
 SUFFIX_LABEL (IXCHGL):		\
   XCHG (q, %rax, (%r11));	\
 SUFFIX_LABEL (IXCHGQ):		\
+  INC (b, (%rdi));		\
+SUFFIX_LABEL (IINCB):		\
+  INC (w, (%rdi));		\
+SUFFIX_LABEL (IINCW):		\
+  INC (l, (%rdi));		\
+SUFFIX_LABEL (IINCL):		\
+  INC (q, (%rdi));		\
+SUFFIX_LABEL (IINCQ):		\
   movl	$__NR_getpid, %eax;	\
 SUFFIX_LABEL (ISNR):		\
   SYSCALL;			\
@@ -65,10 +73,12 @@ main:
   movq	$14, %r15
 
 #define RAW_XCHG(sz, reg, mem)	_ERS_PASTE (xchg, sz)	reg, mem
+#define RAW_INC(sz, mem)	_ERS_PASTE (inc, sz)	mem
 #define RAW_SYSCALL		syscall
 #define RAW_SYNC(inst)		inst
 
 #define XCHG			RAW_XCHG
+#define INC			RAW_INC
 #define SYSCALL			RAW_SYSCALL
 #define SYNC			RAW_SYNC
 
@@ -78,6 +88,7 @@ main:
 1:
 
 #undef XCHG
+#undef INC
 #undef SYSCALL
 #undef SYNC
 #undef SUF
@@ -86,6 +97,12 @@ main:
 # define XCHG(sz, reg, mem)	_ERS_ATOMIC_XCHG (sz, reg, mem)
 #else
 # define XCHG			RAW_XCHG
+#endif
+
+#ifdef TST_INC
+# define INC(sz, mem)		_ERS_ATOMIC_INC (sz, mem)
+#else
+# define INC			RAW_INC
 #endif
 
 #ifdef TST_SYSCALL

@@ -18,12 +18,13 @@ uint64_t *xchg_mem_b;
 uint64_t *xchg_mem_w;
 uint64_t *xchg_mem_l;
 uint64_t *xchg_mem_q;
+uint64_t *inc_mem;
 void *jmp_mem;
 
 struct addr
 {
-  uint8_t *rl;
-  uint8_t *xl;
+  uint8_t *raw_label;
+  uint8_t *label;
   struct eri_mcontext ctx;
   uint64_t steps;
 };
@@ -36,22 +37,24 @@ sig_raw_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   static uint16_t c;
 
-  eri_assert ((uint64_t) addrs[c].rl == ctx->mctx.rip);
+  eri_assert ((uint64_t) addrs[c].raw_label == ctx->mctx.rip);
   addrs[c].ctx = ctx->mctx;
   ++c;
 }
 
 static uint8_t stk[ERI_STACK_SIZE];
 
-static uint64_t val = 0x123456789abcdef0;
+static uint64_t xchg_val = 0x123456789abcdef0;
+static uint64_t inc_val = 0xffffffffffffffff;
 
 void
 setup (void)
 {
-  xchg_mem_b = &val;
-  xchg_mem_w = &val;
-  xchg_mem_l = &val;
-  xchg_mem_q = &val;
+  xchg_mem_b = &xchg_val;
+  xchg_mem_w = &xchg_val;
+  xchg_mem_l = &xchg_val;
+  xchg_mem_q = &xchg_val;
+  inc_mem = &inc_val;
   jmp_mem = _ERS_PASTE (LABEL (IJMP), _raw);
 
   struct eri_sigaction sa = {
@@ -96,30 +99,51 @@ setup (void)
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, &TH (template));
 }
 
-#define EQ_ORCX 	1
-#define EQ_ORIP		2
+#define EQ_NR8		(1 << 1)
+#define EQ_NR9		(1 << 2)
+#define EQ_NR10		(1 << 3)
+#define EQ_NR11		(1 << 4)
+#define EQ_NR12		(1 << 5)
+#define EQ_NR13		(1 << 6)
+#define EQ_NR14		(1 << 7)
+#define EQ_NR15		(1 << 8)
+#define EQ_NRDI		(1 << 9)
+#define EQ_NRSI		(1 << 10)
+#define EQ_NRBP		(1 << 11)
+#define EQ_NRBX		(1 << 12)
+#define EQ_NRDX		(1 << 13)
+#define EQ_NRAX		(1 << 14)
+#define EQ_NRCX		(1 << 15)
+#define EQ_NRSP		(1 << 16)
+#define EQ_NRIP		(1 << 17)
+#define EQ_NRFLAGS	(1 << 18)
 
 static void
-assert_eq (struct eri_mcontext *c1, struct eri_mcontext *c2, uint8_t s)
+assert_eq (struct eri_mcontext *c1, struct eri_mcontext *c2, uint32_t s)
 {
-  eri_assert (c1->r8 == c2->r8);
-  eri_assert (c1->r9 == c2->r9);
-  eri_assert (c1->r10 == c2->r10);
-  eri_assert (c1->r11 == c2->r11);
-  eri_assert (c1->r12 == c2->r12);
-  eri_assert (c1->r13 == c2->r13);
-  eri_assert (c1->r14 == c2->r14);
-  eri_assert (c1->r15 == c2->r15);
-  eri_assert (c1->rdi == c2->rdi);
-  eri_assert (c1->rsi == c2->rsi);
-  eri_assert (c1->rbp == c2->rbp);
-  eri_assert (c1->rbx == c2->rbx);
-  eri_assert (c1->rdx == c2->rdx);
-  eri_assert (c1->rax == c2->rax);
-  if (s & EQ_ORCX) eri_assert (c1->rcx == c2->rcx);
-  eri_assert (c1->rsp == c2->rsp);
-  if (s & EQ_ORIP) eri_assert (c1->rip == c2->rip);
-  eri_assert (c1->rflags == c2->rflags);
+#define CHECK_ASSERT_EQ(R, r) \
+  do {									\
+    if (! (s & _ERS_PASTE (EQ_N, R))) eri_assert (c1->r == c2->r);	\
+  } while (0)
+
+  CHECK_ASSERT_EQ(R8, r8);
+  CHECK_ASSERT_EQ(R9, r9);
+  CHECK_ASSERT_EQ(R10, r10);
+  CHECK_ASSERT_EQ(R11, r11);
+  CHECK_ASSERT_EQ(R12, r12);
+  CHECK_ASSERT_EQ(R13, r13);
+  CHECK_ASSERT_EQ(R14, r14);
+  CHECK_ASSERT_EQ(R15, r15);
+  CHECK_ASSERT_EQ(RDI, rdi);
+  CHECK_ASSERT_EQ(RSI, rsi);
+  CHECK_ASSERT_EQ(RBP, rbp);
+  CHECK_ASSERT_EQ(RBX, rbx);
+  CHECK_ASSERT_EQ(RDX, rdx);
+  CHECK_ASSERT_EQ(RAX, rax);
+  CHECK_ASSERT_EQ(RCX, rcx);
+  CHECK_ASSERT_EQ(RSP, rsp);
+  CHECK_ASSERT_EQ(RIP, rip);
+  CHECK_ASSERT_EQ(RFLAGS, rflags);
 }
 
 static uint16_t cinst;
@@ -138,10 +162,10 @@ sig_x_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   ++addrs[cinst].steps;
 
-  if ((uint64_t) addrs[cinst].xl == ctx->mctx.rip)
+  if ((uint64_t) addrs[cinst].label == ctx->mctx.rip)
     {
       assert_thread ();
-      uint8_t s = cinst < ISYS ? EQ_ORCX : 0;
+      uint32_t s = cinst < ISYS ? EQ_NRIP : EQ_NRIP | EQ_NRCX;
       assert_eq (&addrs[cinst].ctx, &ctx->mctx, s);
       addrs[cinst].ctx = ctx->mctx;
       if (cinst > ISYS && cinst < IMJMP)
@@ -164,11 +188,14 @@ next_sig_step_inst (void)
   ++cinst;
 
   retry = 0
+#define ATOMIC_CINST_P(op) \
+  (cinst == _ERS_PASTE (op, B) || cinst == _ERS_PASTE (op, W)		\
+   || cinst == _ERS_PASTE (op, L) || cinst == _ERS_PASTE (op, Q))
 #ifdef TST_XCHG
-	|| cinst == IXCHGB
-	|| cinst == IXCHGL
-	|| cinst == IXCHGW
-	|| cinst == IXCHGQ
+	|| ATOMIC_CINST_P (IXCHG)
+#endif
+#ifdef TST_INC
+	|| ATOMIC_CINST_P (IINC)
 #endif
 #ifdef TST_SYSCALL
 	|| cinst == ISYS
@@ -185,40 +212,36 @@ sig_sig_step (int32_t signum, struct eri_siginfo *info, struct eri_ucontext *ctx
   ++sig_steps;
   eri_assert_printf ("sig_sig_step %lu\n", sig_steps);
 
+#define CHECK_CLEAR_RETRY(op, addr) \
+  do {									\
+    if (cinst == (op) && ctx->mctx.rip == (addr) && retry == 1)		\
+      retry = 0;							\
+  } while (0)
+
+#define CHECK_CLEAR_ATOMIC_RETRY(op, label) \
+  do {									\
+    CHECK_CLEAR_RETRY (_ERS_PASTE (op, B),				\
+      (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, label));	\
+    CHECK_CLEAR_RETRY (_ERS_PASTE (op, W),				\
+      (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, label));	\
+    CHECK_CLEAR_RETRY (_ERS_PASTE (op, L),				\
+      (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, label));	\
+    CHECK_CLEAR_RETRY (_ERS_PASTE (op, Q),				\
+      (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, label));	\
+  } while (0)
+
 #ifdef TST_XCHG
-  if (cinst == IXCHGB
-      && ctx->mctx.rip
-	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, xchg)
-      && retry == 1)
-    retry = 0;
-  if (cinst == IXCHGW
-      && ctx->mctx.rip
-	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, xchg)
-      && retry == 1)
-    retry = 0;
-  if (cinst == IXCHGL
-      && ctx->mctx.rip
-	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, xchg)
-      && retry == 1)
-    retry = 0;
-  if (cinst == IXCHGQ
-      && ctx->mctx.rip
-	== (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, xchg)
-      && retry == 1)
-    retry = 0;
+  CHECK_CLEAR_ATOMIC_RETRY (IXCHG, xchg);
+#endif
+#ifdef TST_INC
+  CHECK_CLEAR_ATOMIC_RETRY (IINC, inc);
 #endif
 #ifdef TST_SYSCALL
-  if (cinst == ISYS
-      && ctx->mctx.rip
-	== (uint64_t) ERI_TST_LIVE_COMPLETE_START_NAME (syscall)
-      && retry == 1)
-    retry = 0;
+  CHECK_CLEAR_RETRY (ISYS,
+    (uint64_t) ERI_TST_LIVE_COMPLETE_START_NAME (syscall));
 #endif
 #ifdef TST_SYNC
-  if (cinst == IJMP
-      && ctx->mctx.rip == (uint64_t) addrs[IJMP].xl
-      && retry == 1)
-    retry = 0;
+  CHECK_CLEAR_RETRY (IJMP, (uint64_t) addrs[IJMP].label);
 #endif
 
   if (sig_steps > ignore_steps && retry < 2)
@@ -248,7 +271,7 @@ sigact_sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx
   ++sigact_sig_step_num;
 
   assert_thread ();
-  assert_eq (&addrs[cinst - !! retry].ctx, &ctx->mctx, EQ_ORCX | EQ_ORIP);
+  assert_eq (&addrs[cinst - !! retry].ctx, &ctx->mctx, 0);
   if (! retry)
     next_sig_step_inst ();
 }
@@ -257,7 +280,7 @@ static void
 sigact_trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   assert_thread ();
-  assert_eq (&addrs[cinst].ctx, &ctx->mctx, EQ_ORCX | EQ_ORIP);
+  assert_eq (&addrs[cinst].ctx, &ctx->mctx, 0);
   ++cinst;
 }
 
@@ -269,19 +292,30 @@ sigact_segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
-      assert_eq (&addrs[INOP].ctx, &ctx->mctx, EQ_ORIP);
-      ctx->mctx.rflags = rflags;
       eri_assert (ctx->mctx.rcx == 0);
+      eri_assert (ctx->mctx.rdi == 0);
+      ctx->mctx.rcx = (uint64_t) &xchg_val;
+      assert_eq (&addrs[INOP].ctx, &ctx->mctx, EQ_NRDI);
+      ctx->mctx.rflags = rflags;
       ++cinst;
-
-      ctx->mctx.rcx = (uint64_t) &val;
     }
   else if (sig == ERI_SIGSEGV && cinst == 1)
     {
       assert_thread ();
       uint64_t rflags = ctx->mctx.rflags;
       ctx->mctx.rflags &= ~0x10000;
-      assert_eq (&addrs[IMJMP].ctx, &ctx->mctx, 0);
+      eri_assert (ctx->mctx.rdi == 0);
+      ctx->mctx.rdi = (uint64_t) &inc_val;
+      assert_eq (&addrs[IXCHGQ].ctx, &ctx->mctx, 0);
+      ctx->mctx.rflags = rflags;
+      ++cinst;
+    }
+  else if (sig == ERI_SIGSEGV && cinst == 2)
+    {
+      assert_thread ();
+      uint64_t rflags = ctx->mctx.rflags;
+      ctx->mctx.rflags &= ~0x10000;
+      assert_eq (&addrs[IMJMP].ctx, &ctx->mctx, EQ_NRCX | EQ_NRIP);
       ctx->mctx.rflags = rflags;
       eri_assert (ctx->mctx.rcx == 0);
       eri_assert (ctx->mctx.rip == 0);
@@ -324,6 +358,7 @@ process (void)
 
   eri_assert_printf ("process: %u\n", proc);
   static uint64_t max_steps;
+  static uint64_t final_inc_val;
   if (proc == PROC_RAW)
     {
       struct eri_sigaction sa = {
@@ -333,7 +368,8 @@ process (void)
 
       jmp_mem = LABEL (IJMP);
 
-      val = 0x123456789abcdef0;
+      xchg_val = 0x123456789abcdef0;
+      inc_val = 0xffffffffffffffff;
       ++proc;
       return 1;
     }
@@ -349,7 +385,9 @@ process (void)
 
       sigact = sigact_sig_step;
 
-      val = 0x123456789abcdef0;
+      final_inc_val = inc_val;
+      xchg_val = 0x123456789abcdef0;
+      inc_val = 0xffffffffffffffff;
       ++proc;
       return 1;
     }
@@ -366,7 +404,9 @@ process (void)
       ++ignore_steps;
       sigact_sig_step_num = 0;
 
-      val = 0x123456789abcdef0;
+      eri_assert (final_inc_val == inc_val);
+      xchg_val = 0x123456789abcdef0;
+      inc_val = 0xffffffffffffffff;
       if (ignore_steps > max_steps)
 	{
 	  TH (template).tst_skip_ctf = 0;
@@ -382,13 +422,21 @@ process (void)
 
       reg_sigaction (eri_live_sigaction);
 
-      val = 0x123456789abcdef0;
+      eri_assert (final_inc_val == inc_val);
+      xchg_val = 0x123456789abcdef0;
+      inc_val = 0xffffffffffffffff;
       xchg_mem_b = 0;
+      inc_mem = 0;
       jmp_mem = 0;
       cinst = 0;
       sigact = sigact_segv;
       ++proc;
       return 1;
+    }
+  else
+    {
+      eri_assert (cinst == 3);
+      eri_assert (final_inc_val == inc_val);
     }
   return 0;
 }

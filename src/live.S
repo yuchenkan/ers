@@ -1,3 +1,5 @@
+/* vim: set ft=gas: */
+
 #include "recorder.h" /* ERI_STACK_SIZE */
 
 #include "public/comm.h"
@@ -620,7 +622,6 @@ eri_live_entry:
   RESTORE_EXTERNAL_RET;							\
   movq	$0, PTH_MARK(%rbx)
 
-
 #define STACK_RFLAGS_CTF	-8
 
   LOAD_OP_OP (%rbx, %r11)
@@ -632,11 +633,13 @@ eri_live_entry:
 
 #define LABEL_ATOMIC(label)	LABEL_PREFIX (atomic_, label)
 
+/* %r11 is op.  */
 #define IF_ATOMIC(op, label) \
   cmpq	$_ERS_PASTE (_ERS_OP_ATOMIC_, op), %r11;			\
   je	LABEL_ATOMIC (label)
 
   IF_ATOMIC (XCHG, xchg)
+  IF_ATOMIC (INC, inc)
 
   jmp	.lerror
 
@@ -662,26 +665,79 @@ eri_live_entry:
   orq	$MARK_SEC_PART_BIT, PTH_MARK(%rbx);				\
   CHECK_RESTART (label)
 
-#define ENTER_RESTART \
-  movq	PTH_START(%rbx), %rax;						\
-  movq	%rax, PTH_CONT(%rbx);						\
-  movq	$0, TH_RESTART(%rbx)
-
 #define TST_MARK_COMPLETE_START(label) \
   .global ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
 ERI_TST_LIVE_COMPLETE_START_NAME (label):
 
-/* We have to atomically set dir to cnt if no signal yet, because signal
+
+/* If not TST, it's not required as tf is already cleared in new_rflags,
+   so when tst_skip_ctf is 0.
+*/
+#ifndef ERI_NON_TST
+# define TST_NEW_RFLAGS_CTF(reg) \
+  cmpq	$0, PTH_TST_SKIP_CTF(%rbx);					\
+  je	1f;								\
+  andq	$~TRACE_FLAG_BIT, reg;						\
+1:
+#else
+# define TST_NEW_RFLAGS_CTF(reg)
+#endif
+
+/* %rsp is top - ERI_LIVE_ENTRY_SAVED_REG_SIZE.  */
+#define SAVE_NEW_RFLAGS(reg) \
+  pushfq;								\
+  popq	reg;								\
+									\
+  /* Reset tf:							*/	\
+									\
+  /* rflags = (rflags & TF_MASK) | new_rflags			*/	\
+									\
+  /* Setting rflags has to be like this. We can't move rflags	*/	\
+  /* out of stack as by so clear tf code in lresume may not	*/	\
+  /* work.  */								\
+  andq	$TRACE_FLAG_BIT, STACK_RFLAGS(%rsp);				\
+  TST_NEW_RFLAGS_CTF (reg)						\
+  orq	reg, STACK_RFLAGS(%rsp)
+
+/* Destory %rax.
+   We have to atomically set dir to cnt if no signal yet, because signal
    can happen between any two instructions, so we have to keep dir
    zero when we leave this place. There are three possible ways leaving
    here: 1, no signal, dir is cleared in cont, 2, signal before setting
    mark to 0, dir is cleared in resume_ret, 3, signal after, dir is cleared
-   in fix
+   in fix.
 */
 #define CHECK_SET_DIR(cont, reg) \
   xorq	%rax, %rax;							\
   movq	_ERS_PASTE (TH_THREAD_, _ERS_PASTE (cont, _CONT))(%rbx), reg;	\
   cmpxchgq	reg, PTH_DIR(%rbx)
+
+#define EXTERNAL_RET_DIR(reg) \
+  CHECK_SET_DIR (EXTERNAL, reg);					\
+									\
+  RESTORE_EXTERNAL_RET;							\
+  jmp	*TH_THREAD_RET(%rbx)
+
+#define INTERNAL_RET_DIR(reg) \
+  CHECK_SET_DIR (INTERNAL, reg);					\
+									\
+  RESTORE_INTERNAL_RET;							\
+  jmp	*PTH_DIR(%rbx)
+
+#define ENTER_RESTART(reg) \
+  movq	PTH_START(%rbx), reg;						\
+  movq	reg, PTH_CONT(%rbx);						\
+  movq	$0, TH_RESTART(%rbx)
+
+#define RESTART_RESUME_RET \
+  ENTER_RESTART (%rax);							\
+									\
+  RESTORE_INTERNAL_RET;							\
+  jmp	*TH_RESUME_RET(%rbx)
+
+/************************************************/
+/* eri_live_entry: syscall			*/
+/************************************************/
 
 .lsyscall:
   SET_COMPLETE_RESTART_START (syscall, %r11)
@@ -701,41 +757,27 @@ LABEL_COMPLETE_START (syscall):
   movq	%r11, STACK_R11(%rsp)
   movq	%rax, STACK_RAX(%rsp)
 
-  pushfq
-  popq	%rax
+  SAVE_NEW_RFLAGS (%rax)
 
-  /* Reset tf.
-
-     r11 = (rflags & TF_MASK) | r11
-     rflags = (rflags & TF_MASK) | (new_rflags & ~TF_MASK)
-
-     Setting rflags has to be like this. We can't move rflags
-     out of stack or clear tf code in lresume may not work.
-  */
-  andq	$TRACE_FLAG_BIT, STACK_RFLAGS(%rsp)
-#ifndef ERI_NON_TST
-  /* May also not required if tst_skip_ctf is 0.  */
-  andq	$~TRACE_FLAG_BIT, %rax 
-  andq	$~TRACE_FLAG_BIT, STACK_R11(%rsp)
-#endif
-  orq	%rax, STACK_RFLAGS(%rsp)
-
+  /* Reset tf for %r11: r11 = (rflags & TF_MASK) | r11  */
   movq	STACK_RFLAGS(%rsp), %rax
   andq	$TRACE_FLAG_BIT, %rax
+#ifndef ERI_NON_TST
+  /* See TODO.  */
+  andq	$~TRACE_FLAG_BIT, STACK_R11(%rsp)
+#endif
   orq	%rax, STACK_R11(%rsp)
 
-  CHECK_SET_DIR (INTERNAL, %r11)
-
-  RESTORE_INTERNAL_RET
-  jmp	*PTH_DIR(%rbx)
+  INTERNAL_RET_DIR (%r11)
 
 LABEL_RESTART_START (syscall):
   movq	TH_TOP_SAVED(%rbx), %rsp
 
-  ENTER_RESTART
+  RESTART_RESUME_RET
 
-  RESTORE_INTERNAL_RET
-  jmp	*TH_RESUME_RET(%rbx)
+/************************************************/
+/* eri_live_entry: sync_async			*/
+/************************************************/
 
 .lsync_async:
   SET_RESTART_START (sync_async, %rax)
@@ -796,7 +838,7 @@ LABEL_RESTART_START (sync_async):
   subq	$8, %rsp
 
 .lsync_async_restart_restore0:
-  ENTER_RESTART
+  ENTER_RESTART (%rax)
 
   popq	%rdi
   popq	%rax
@@ -846,6 +888,10 @@ LABEL_RESTART_START (sync_async):
 #define TST_MARK_ATOMIC_COMPLETE_START(sz, label) \
   TST_MARK_COMPLETE_START (ATOMIC_LABEL (sz, label))
 
+/************************************************/
+/* eri_live_entry: atomic_xchg			*/
+/************************************************/
+
 #define ATOMIC_XCHG(sz) \
 LABEL_ATOMIC_SIZE (sz, xchg):						\
   SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, xchg), %rax);		\
@@ -856,22 +902,47 @@ LABEL_ATOMIC_SIZE (sz, xchg):						\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, xchg));		\
 									\
   _ERS_PASTE (xchg, sz)	RAX (sz), (%rdi);				\
-									\
 LABEL_COMPLETE_START (ATOMIC_LABEL (sz, xchg)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, xchg)				\
 									\
   movq	%rax, PTH_VAR0(%rbx);						\
 									\
-  CHECK_SET_DIR (EXTERNAL, %rdi);					\
-									\
-  RESTORE_EXTERNAL_RET;							\
-  jmp	*TH_THREAD_RET(%rbx);						\
+  EXTERNAL_RET_DIR (%rdi);						\
 									\
 LABEL_RESTART_START (ATOMIC_LABEL (sz, xchg)):				\
-  ENTER_RESTART;							\
+  RESTART_RESUME_RET
+
+/************************************************/
+/* eri_live_entry: atomic_inc			*/
+/************************************************/
+
+#define ATOMIC_INC(sz) \
+LABEL_ATOMIC_SIZE (sz, inc):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_LABEL (sz, inc), %rax);		\
 									\
-  RESTORE_INTERNAL_RET;							\
-  jmp	*TH_RESUME_RET(%rbx)
+  movq	PTH_VAR1(%rbx), %rdi;						\
+									\
+  /* For rflags w/o tf.  */						\
+  subq	$8, %rsp;							\
+									\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_LABEL (sz, inc));		\
+									\
+  popfq;								\
+  _ERS_PASTE (inc, sz)	(%rdi);						\
+LABEL_COMPLETE_START (ATOMIC_LABEL (sz, inc)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, inc)				\
+									\
+  SAVE_NEW_RFLAGS (%rax);						\
+									\
+  INTERNAL_RET_DIR (%rdi);						\
+									\
+LABEL_RESTART_START (ATOMIC_LABEL (sz, inc)):				\
+  movq	TH_TOP_SAVED(%rbx), %rsp;					\
+  RESTART_RESUME_RET
+
+/************************************************/
+/* eri_live_entry: atomic			*/
+/************************************************/
 
 #define IF_ATOMIC_SIZE(sz, label) \
   cmpq	$_ERS_ATOMIC_SIZE (sz), %r11;					\
@@ -895,5 +966,6 @@ LABEL_ATOMIC (label):							\
   ATOMIC_OP (op)
 
   ATOMIC (XCHG, xchg)
+  ATOMIC (INC, inc)
 
   .size eri_live_entry, . - eri_live_entry

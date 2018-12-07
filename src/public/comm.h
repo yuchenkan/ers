@@ -15,6 +15,7 @@
 #define _ERS_OP_SYSCALL		0
 #define _ERS_OP_SYNC_ASYNC	1
 #define _ERS_OP_ATOMIC_XCHG	2
+#define _ERS_OP_ATOMIC_INC	3
 
 #define _ERS_OP_FLAGS_BITS	4
 #define _ERS_OP_FLAGS_MASK	((1 << _ERS_OP_FLAGS_BITS) - 1)
