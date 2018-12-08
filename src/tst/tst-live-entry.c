@@ -46,7 +46,11 @@ sig_raw_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   ++c;
 }
 
-static uint8_t stk[ERI_STACK_SIZE];
+#define STACK_SIZE	(2 * 1024 * 1024)
+static uint8_t stk[STACK_SIZE];
+#define TBUF_SIZE	512
+static uint8_t thread[sizeof (struct eri_live_thread) + 16 + TBUF_SIZE];
+#define thread		(*(struct eri_live_thread *) thread)
 
 static uint64_t xchg_val = 0x123456789abcdef0;
 static uint64_t inc_val = 0xffffffffffffffff;
@@ -81,38 +85,12 @@ setup (void)
   static uint64_t atomic_mem_table;
   eri_live_internal.atomic_mem_table = &atomic_mem_table;
 
-#define TH(i)	_ERS_PASTE (eri_live_thread_, i)
-#define TT(i)	TH (_ERS_PASTE (template_, i))
+  eri_assert (TBUF_SIZE >= eri_live_thread_text_end - eri_live_thread_text);
+  eri_live_init_thread (&thread, 0, (uint64_t) stk + STACK_SIZE, STACK_SIZE);
 
-  uint64_t sz16 = eri_round_up (sizeof (struct eri_live_thread), 16);
-#define SET_TH_RELA(t, f, e) \
-  do {									\
-    (t)->f = (uint64_t) (t) + sz16 + (e - TT (text));			\
-  } while (0)
+  thread.tst_skip_ctf = 1;
 
-  SET_TH_RELA (&TH (template), common.thread_entry, TT (entry));
-  TH (template).entry = (uint64_t) eri_live_entry;
-  SET_TH_RELA (&TH (template), common.thread_entry, TT (entry));
-
-  TH (template).top = (uint64_t) stk + ERI_STACK_SIZE;
-  TH (template).top_saved = TH (template).top - ERI_LIVE_ENTRY_SAVED_REG_SIZE;
-  TH (template).rsp = TH (template).top;
-
-  SET_TH_RELA (&TH (template), thread_internal_cont, TT (internal_cont));
-  SET_TH_RELA (&TH (template), thread_external_cont, TT (external_cont));
-  SET_TH_RELA (&TH (template), thread_cont_end, TT (cont_end));
-
-  SET_TH_RELA (&TH (template), thread_ret, TT (ret));
-  SET_TH_RELA (&TH (template), thread_ret_end, TT (ret_end));
-
-  SET_TH_RELA (&TH (template), thread_resume, TT (resume));
-  SET_TH_RELA (&TH (template), thread_resume_ret, TT (resume_ret));
-
-  TH (template).resume_ret = (uint64_t) eri_live_resume_ret;
-
-  TH (template).tst_skip_ctf = 1;
-
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, &TH (template));
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, &thread);
 }
 
 #define EQ_NR8		(1 << 1)
@@ -167,11 +145,11 @@ static uint16_t cinst;
 static void
 assert_thread (void)
 {
-  eri_assert (TH (template).common.mark == 0);
-  eri_assert (TH (template).common.dir == 0);
-  eri_assert (TH (template).rsp == (uint64_t) stk + ERI_STACK_SIZE);
-  eri_assert (TH (template).fix_restart == 0);
-  eri_assert (TH (template).restart == 0);
+  eri_assert (thread.common.mark == 0);
+  eri_assert (thread.common.dir == 0);
+  eri_assert (thread.rsp == (uint64_t) stk + STACK_SIZE);
+  eri_assert (thread.fix_restart == 0);
+  eri_assert (thread.restart == 0);
 }
 
 static void
@@ -450,7 +428,7 @@ static void
 reg_sigaction (void *a)
 {
   static uint8_t ss[ERI_SIG_STACK_SIZE];
-  *(struct eri_live_thread **) ss = &TH (template);
+  *(struct eri_live_thread **) ss = &thread;
   struct eri_stack st = { ss, 0, sizeof ss };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 
@@ -539,7 +517,7 @@ process (void)
       cmpxchg_val = 0;
       if (ignore_steps > max_steps)
 	{
-	  TH (template).tst_skip_ctf = 0;
+	  thread.tst_skip_ctf = 0;
 	  reg_sigaction (eri_live_sigaction);
 	  sigact = sigact_trap;
 	  ++proc;

@@ -13,6 +13,7 @@ declare (void)
   LIVE_THREAD_OFFSET (TOP, top);
   LIVE_THREAD_OFFSET (TOP_SAVED, top_saved);
   LIVE_THREAD_OFFSET (RSP, rsp);
+  LIVE_THREAD_OFFSET (STACK_SIZE, stack_size);
   LIVE_THREAD_OFFSET (RFLAGS_SAVED, rflags_saved);
   LIVE_THREAD_OFFSET (TRACE_FLAG, trace_flag);
 

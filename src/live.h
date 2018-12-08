@@ -29,6 +29,7 @@ struct eri_live_thread
   uint64_t top;
   uint64_t top_saved;
   uint64_t rsp;
+  uint64_t stack_size;
   uint64_t rflags_saved;
   uint64_t trace_flag;
 
@@ -71,17 +72,16 @@ struct eri_live_thread
   uint64_t tst_skip_ctf;
 };
 
-extern struct eri_live_thread eri_live_thread_template;
-
-extern uint8_t eri_live_thread_template_text[]; 
-extern uint8_t eri_live_thread_template_resume[]; 
-extern uint8_t eri_live_thread_template_entry[]; 
-extern uint8_t eri_live_thread_template_resume_ret[]; 
-extern uint8_t eri_live_thread_template_internal_cont[]; 
-extern uint8_t eri_live_thread_template_external_cont[]; 
-extern uint8_t eri_live_thread_template_cont_end[]; 
-extern uint8_t eri_live_thread_template_ret[]; 
-extern uint8_t eri_live_thread_template_ret_end[]; 
+extern uint8_t eri_live_thread_text[];
+extern uint8_t eri_live_thread_text_resume[];
+extern uint8_t eri_live_thread_text_entry[];
+extern uint8_t eri_live_thread_text_resume_ret[];
+extern uint8_t eri_live_thread_text_internal_cont[];
+extern uint8_t eri_live_thread_text_external_cont[];
+extern uint8_t eri_live_thread_text_cont_end[];
+extern uint8_t eri_live_thread_text_ret[];
+extern uint8_t eri_live_thread_text_ret_end[];
+extern uint8_t eri_live_thread_text_end[];
 
 void eri_live_sigaction (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *uctx);
@@ -104,6 +104,9 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (inc)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (dec)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
+
+void eri_live_init_thread (struct eri_live_thread *th, void *internal,
+			   uint64_t stack_top, uint64_t stack_size);
 
 #endif
 

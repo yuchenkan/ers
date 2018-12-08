@@ -1,7 +1,5 @@
 /* vim: set ft=gas: */
 
-#include "recorder.h" /* ERI_STACK_SIZE */
-
 #include "public/comm.h"
 #include "public/recorder-offsets.h"
 
@@ -53,6 +51,7 @@
 #define TH_TOP			ERI_LIVE_THREAD_TOP
 #define TH_TOP_SAVED		ERI_LIVE_THREAD_TOP_SAVED
 #define TH_RSP			ERI_LIVE_THREAD_RSP
+#define TH_STACK_SIZE		ERI_LIVE_THREAD_STACK_SIZE
 #define TH_RFLAGS_SAVED		ERI_LIVE_THREAD_RFLAGS_SAVED
 #define TH_TRACE_FLAG		ERI_LIVE_THREAD_TRACE_FLAG
 
@@ -119,52 +118,53 @@
 
   .data
 
+  .global eri_live_thread_text
+  .global eri_live_thread_text_resume
+  .global eri_live_thread_text_entry
+  .global eri_live_thread_text_resume_ret
+  .global eri_live_thread_text_internal_cont
+  .global eri_live_thread_text_external_cont
+  .global eri_live_thread_text_cont_end
+  .global eri_live_thread_text_ret
+  .global eri_live_thread_text_ret_end
+  .global eri_live_thread_text_end
+
   .align 16
-  .global eri_live_thread_template
-eri_live_thread_template:
-  .space TH_SIZE16, 0
-  .global eri_live_thread_template_text
-  .global eri_live_thread_template_resume
-  .global eri_live_thread_template_entry
-  .global eri_live_thread_template_resume_ret
-  .global eri_live_thread_template_internal_cont
-  .global eri_live_thread_template_external_cont
-  .global eri_live_thread_template_cont_end
-  .global eri_live_thread_template_ret
-  .global eri_live_thread_template_ret_end
+eri_live_thread_text:
+#define RELA(off)	eri_live_thread_text - TH_SIZE16 + off
 
-#define RELA(off)	eri_live_thread_template + off
-eri_live_thread_template_text:
-
-eri_live_thread_template_entry:
+eri_live_thread_text_entry:
   leaq	RELA (0)(%rip), %rbx
   jmp	*RELA (TH_ENTRY)(%rip)
 
   .align 16
-eri_live_thread_template_internal_cont:
+eri_live_thread_text_internal_cont:
   movq	RELA (PTH_RBX)(%rip), %rbx
   .align 16, 0x90
-eri_live_thread_template_external_cont:
+eri_live_thread_text_external_cont:
   movq	$0, RELA (PTH_DIR)(%rip)
   jmp	*RELA (PTH_CONT)(%rip)
-eri_live_thread_template_cont_end:
+eri_live_thread_text_cont_end:
 
   .align 16
-eri_live_thread_template_ret:
+eri_live_thread_text_ret:
   movq	RELA (PTH_RBX)(%rip), %rbx
   jmp	*RELA (PTH_RET)(%rip)
-eri_live_thread_template_ret_end:
+eri_live_thread_text_ret_end:
 
   .align 16
-eri_live_thread_template_resume:
+eri_live_thread_text_resume:
   movq	UCTX_RBX(%rdx), %rbx
   movq	UCTX_RDX(%rdx), %rdx
   jmp	*RELA (TH_RESUME)(%rip)
   .align 16
-eri_live_thread_template_resume_ret:
+eri_live_thread_text_resume_ret:
   movq	%rbx, RELA (PTH_RBX)(%rip)
   leaq	RELA (0)(%rip), %rbx
   jmp	*RELA (TH_RESUME_RET)(%rip)
+
+  .align 16
+eri_live_thread_text_end:
 
   .text
 
@@ -386,7 +386,7 @@ eri_live_sigaction:
   cmpq	%rax, UCTX_RSP(%rdx)
   jae	.lresume_done_proc_saved_flags
   movq	TH_TOP(%rbx), %rax
-  subq	$ERI_STACK_SIZE, %rax 
+  subq	TH_STACK_SIZE(%rbx), %rax
   cmpq	%rax, UCTX_RSP(%rdx)
   jbe	.lresume_done_proc_saved_flags
 
