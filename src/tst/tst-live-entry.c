@@ -170,6 +170,7 @@ assert_thread (void)
   eri_assert (TH (template).common.mark == 0);
   eri_assert (TH (template).common.dir == 0);
   eri_assert (TH (template).rsp == (uint64_t) stk + ERI_STACK_SIZE);
+  eri_assert (TH (template).fix_restart == 0);
   eri_assert (TH (template).restart == 0);
 }
 

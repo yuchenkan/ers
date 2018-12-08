@@ -70,6 +70,11 @@
 
 #define TH_COMPLETE_START	ERI_LIVE_THREAD_COMPLETE_START
 
+#define TH_FIX_RESTART		ERI_LIVE_THREAD_FIX_RESTART
+#define TH_FIX_RESTART_RAX	ERI_LIVE_THREAD_FIX_RESTART_RAX
+#define TH_FIX_RESTART_RBX	ERI_LIVE_THREAD_FIX_RESTART_RBX
+#define TH_FIX_RESTART_RIP	ERI_LIVE_THREAD_FIX_RESTART_RIP
+#define TH_FIX_RESTART_RFLAGS	ERI_LIVE_THREAD_FIX_RESTART_RFLAGS
 #define TH_RESTART		ERI_LIVE_THREAD_RESTART
 #define TH_RESTART_START	ERI_LIVE_THREAD_RESTART_START
 
@@ -274,8 +279,9 @@ eri_live_sigaction:
      instruction.
   */
   je	.lcheck_restart_fix_sync_async
-  /* When op is sync_async it can't be inside eri_live_thread_*_cont
-     and dir must be zero.
+
+  /* Invoke user sigaction without further check. when op is sync_async
+     it can't be inside eri_live_thread_*_cont and dir also must be zero.
   */
   jmp	.linvoke
 
@@ -291,7 +297,9 @@ eri_live_sigaction:
   /* Fix context externally if we are in eri_live_thread_external_cont.  */
   jb	.lfix
 
-  /* Check remainging code from mark zero to continue.  */
+  /* Check remainging code from mark zero to continue by checking dir
+     field.
+  */
 .lcheck_remaining:
   movq	PTH_DIR(%rbx), %r11
   testq	%r11, %r11
@@ -305,6 +313,7 @@ eri_live_sigaction:
   jmp	.lfix
 
 .lcheck_restart_fix_sync_async:
+  /* To jump to fix_restart.  */
   movq	$MARK_SEC_PART_BIT, %r11
 
 .lcheck_restart:
@@ -334,11 +343,14 @@ eri_live_sigaction:
   jmp	.lresume
 
 .lfix_restart:
-  /* Inform the restarter &live_thread and the interrupted rip through
-     %rbx and %rdi.
-  */
+  movq	$1, TH_FIX_RESTART(%rbx)
+  movq	UCTX_RBX(%rdx), %r11
+  movq	%r11, TH_FIX_RESTART_RBX(%rbx)
   movq	%rbx, UCTX_RBX(%rdx)
-  movq	%rax, UCTX_RDI(%rdx)
+  movq	%rax, TH_FIX_RESTART_RIP(%rbx)
+  movq	UCTX_RFLAGS(%rdx), %r11
+  andq	$~TRACE_FLAG_BIT, %r11
+  movq	%r11, TH_FIX_RESTART_RFLAGS(%rbx)
 
   /* Resume to the restarter.  */
   movq	TH_RESTART_START(%rbx), %rax
@@ -368,17 +380,17 @@ eri_live_sigaction:
   movq	$0, TH_TRACE_FLAG(%rbx)
 
   cmpq	$1, TH_RFLAGS_SAVED(%rbx)
-  je	.lcheck_reset_trace_flag
+  je	.lresume_check_reset_trace_flag
 
   movq	TH_TOP(%rbx), %rax
   cmpq	%rax, UCTX_RSP(%rdx)
-  jae	.ldone_proc_saved_flags
+  jae	.lresume_done_proc_saved_flags
   movq	TH_TOP(%rbx), %rax
   subq	$ERI_STACK_SIZE, %rax 
   cmpq	%rax, UCTX_RSP(%rdx)
-  jbe	.ldone_proc_saved_flags
+  jbe	.lresume_done_proc_saved_flags
 
-.lcheck_reset_trace_flag:
+.lresume_check_reset_trace_flag:
   movq	TH_TOP(%rbx), %rax
 
   movq	-8(%rax), %r11
@@ -386,7 +398,7 @@ eri_live_sigaction:
   movq	%r11, TH_TRACE_FLAG(%rbx)
   andq	$~TRACE_FLAG_BIT, -8(%rax)
 
-.ldone_proc_saved_flags:
+.lresume_done_proc_saved_flags:
 
   movq	UCTX_RBP(%rdx), %rbp
   movq	UCTX_R8(%rdx), %r8
@@ -469,6 +481,7 @@ eri_live_resume_ret:
 
   /* Set rsp to top again.  */
   movq	%rsp, TH_RSP(%rbx)
+  movq	$0, TH_FIX_RESTART(%rbx)
 
   movq	TH_SIG_RBP(%rbx), %rbp
   movq	TH_SIG_R12(%rbx), %r12
@@ -505,7 +518,7 @@ eri_live_resume_ret:
   movq	%rdi, TH_SIG_RDI(%rbx)
 
 .ldo_invoke:
-  // TODO fix ctx->stack
+  /* TODO fix ctx->stack */
   movq	UCTX_SS_SP(%rdx), %rdi
   movq	%rsp, %rcx
   subq	$24, %rsp
@@ -596,17 +609,14 @@ eri_live_entry:
 #define STACK_R10		8
 #define STACK_R11		0
 
-#define RESTORE_GENERAL_REGS2 \
+#define RESTORE_GENERAL_REGS \
   popq	%r11;								\
   popq	%r10;								\
   popq	%r9;								\
   popq	%r8;								\
   popq	%rcx;								\
   popq	%rdx;								\
-  popq	%rsi
-
-#define RESTORE_GENERAL_REGS \
-  RESTORE_GENERAL_REGS2;						\
+  popq	%rsi;								\
   popq	%rdi;								\
   popq	%rax
 
@@ -678,13 +688,13 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
    so when tst_skip_ctf is 0.
 */
 #ifndef ERI_NON_TST
-# define TST_NEW_RFLAGS_CTF(reg) \
+# define TST_NEW_RFLAGS_CTF(reg_or_mem) \
   cmpq	$0, PTH_TST_SKIP_CTF(%rbx);					\
   je	1f;								\
-  andq	$~TRACE_FLAG_BIT, reg;						\
+  andq	$~TRACE_FLAG_BIT, reg_or_mem;					\
 1:
 #else
-# define TST_NEW_RFLAGS_CTF(reg)
+# define TST_NEW_RFLAGS_CTF(reg_or_mem)
 #endif
 
 /* %rsp is top - ERI_LIVE_ENTRY_SAVED_REG_SIZE.  */
@@ -739,6 +749,10 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
   RESTORE_INTERNAL_RET;							\
   jmp	*TH_RESUME_RET(%rbx)
 
+#define CALL_TH(th_reg, fn) \
+  movq	%rbx, th_reg;							\
+  call	fn
+
 /************************************************/
 /* eri_live_entry: syscall			*/
 /************************************************/
@@ -766,10 +780,7 @@ LABEL_COMPLETE_START (syscall):
   /* Reset tf for %r11: r11 = (rflags & TF_MASK) | r11  */
   movq	STACK_RFLAGS(%rsp), %rax
   andq	$TRACE_FLAG_BIT, %rax
-#ifndef ERI_NON_TST
-  /* See TODO.  */
-  andq	$~TRACE_FLAG_BIT, STACK_R11(%rsp)
-#endif
+  TST_NEW_RFLAGS_CTF (STACK_R11(%rsp))
   orq	%rax, STACK_R11(%rsp)
 
   INTERNAL_RET_DIR (%r11)
@@ -786,69 +797,71 @@ LABEL_RESTART_START (syscall):
 .lsync_async:
   SET_RESTART_START (sync_async, %rax)
 
-  RESTORE_GENERAL_REGS2
+  movq	%rcx, %rdi
+  CALL_TH (%rsi, eri_live_sync_async)
 
-  xorq	%rdi, %rdi
+  RESTORE_GENERAL_REGS
+
   movq	$0, PTH_MARK(%rbx)
+  /* Check restart modifies rflags.  */
   CHECK_RESTART (sync_async)
 
-  popq	%rdi
-.lsync_async1:
-  popq	%rax
-.lsync_async2:
   RESTORE_RFLAGS
-.lsync_async3:
+.lsync_async1:
   xchgq	TH_RSP(%rbx), %rsp
-.lsync_async4:
+.lsync_async2:
   jmp	*TH_THREAD_RET(%rbx)
 
 LABEL_RESTART_START (sync_async):
   /* TODO check rcx for rep.  */
-  testq	%rdi, %rdi
-  jz	.lsync_async_restart_restore0
 
-  leaq	.lsync_async(%rip), %rax
-  cmpq	%rax, %rdi
-  jb	.lsync_async_restart_restore4
+  /* Not fixing if %rdi is not set to the interrupted rip.  */
+  cmpq	$0, TH_FIX_RESTART(%rbx)
+  je	.lsync_async_restart_restore
 
-  leaq	.lsync_async1(%rip), %rax
-  cmpq	%rax, %rdi
-  jb	.lsync_async_restart_restore0
+  movq	%rax, TH_FIX_RESTART_RAX(%rbx)
 
-  leaq	.lsync_async2(%rip), %rax
-  cmpq	%rax, %rdi
-  jb	.lsync_async_restart_restore1
+  movq	PTH_RET(%rbx), %rax
+  cmpq	%rax, TH_FIX_RESTART_RIP(%rbx)
+  je	.lsync_async_restart_restore_inst
 
-  leaq	.lsync_async3(%rip), %rax
-  cmpq	%rax, %rdi
-  jb	.lsync_async_restart_restore2
+#define SYNC_JMP_IF_BELOW(label, dst) \
+  leaq	label(%rip), %rax;						\
+  cmpq	%rax, TH_FIX_RESTART_RIP(%rbx);					\
+  jb	dst
 
-  leaq	.lsync_async4(%rip), %rax
-  cmpq	%rax, %rdi
-  jb	.lsync_async_restart_restore3
-  jmp	.lsync_async_restart_restore4
+  SYNC_JMP_IF_BELOW (.lsync_async1, .lsync_async_restart_restore1)
+  SYNC_JMP_IF_BELOW (.lsync_async2, .lsync_async_restart_restore2)
+  jmp	.lsync_async_restart_restore3
 
-.lsync_async_restart_restore4:
-  xchgq	%rsp, TH_RSP(%rbx)
+.lsync_async_restart_restore_inst:
+  movq	TH_FIX_RESTART_RBX(%rbx), %rax
+  movq	%rax, PTH_RBX(%rbx)
 .lsync_async_restart_restore3:
-  subq	$8, %rsp
-  movq	(%rsp), %rax
-  andq	$~TRACE_FLAG_BIT, (%rsp)
-  andq	$TRACE_FLAG_BIT, %rax
-  movq	%rax, TH_TRACE_FLAG(%rbx)
+  xchgq	%rsp, TH_RSP(%rbx)
 .lsync_async_restart_restore2:
-  subq	$8, %rsp
+  pushq	TH_FIX_RESTART_RFLAGS(%rbx)
 .lsync_async_restart_restore1:
-  subq	$8, %rsp
+  movq	TH_FIX_RESTART_RAX(%rbx), %rax
+.lsync_async_restart_restore:
+  pushq	%rax
 
-.lsync_async_restart_restore0:
   ENTER_RESTART (%rax)
 
-  popq	%rdi
-  popq	%rax
-  RESTORE_RFLAGS
-  xchgq	TH_RSP(%rbx), %rsp
+  pushq	%rdi
+  pushq	%rsi
+  pushq	%rdx
+  pushq	%rcx
+  pushq	%r8
+  pushq	%r9
+  pushq	%r10
+  pushq	%r11
 
+  movq	%rcx, %rdi
+  CALL_TH (%rsi, eri_live_restart_sync_async)
+
+  /* Not RESTORE_INTERNAL_RET as mark is already zeroed.  */
+  RESTORE_EXTERNAL_RET
   jmp	*TH_RESUME_RET(%rbx)
 
 /************************************************/
@@ -911,13 +924,9 @@ LABEL_RESTART_START (sync_async):
 #define AT_LOAD_MEM_TAB \
   movq	eri_live_internal + ATOMIC_MEM_TAB(%rip), AT_REG_MEM_TAB
 
-#define AT_CALL(top_reg, fn) \
-  movq	%rbx, top_reg;							\
-  call	fn
-
 #define AT_HASH_MEM \
   AT_LOAD_MEM;								\
-  AT_CALL (%rsi, eri_live_atomic_hash_mem)
+  CALL_TH (%rsi, eri_live_atomic_hash_mem)
 
 #define AT_MEM(idx)		(AT_REG_MEM_TAB, idx, 8)
 
@@ -981,7 +990,7 @@ LABEL_COMPLETE_START (ATOMIC_LABEL (sz, load)):				\
 									\
   AT_UNLOCK_LOAD (AT_REG_IDX);						\
   movq	AT_REG_LD_RES, PTH_VAR0(%rbx);					\
-  AT_CALL (%rcx, eri_live_atomic_load);					\
+  CALL_TH (%rcx, eri_live_atomic_load);					\
 									\
   EXTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1010,7 +1019,7 @@ LABEL_COMPLETE_START (ATOMIC_LABEL (sz, stor)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, stor)				\
 									\
   AT_UNLOCK_STOR (AT_REG_IDX);						\
-  AT_CALL (%rdx, eri_live_atomic_stor);					\
+  CALL_TH (%rdx, eri_live_atomic_stor);					\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1044,7 +1053,7 @@ LABEL_COMPLETE_START (ATOMIC_LABEL (sz, op)):				\
   SAVE_NEW_RFLAGS (%rcx);						\
 									\
   AT_UNLOCK_STOR (AT_REG_IDX);						\
-  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+  CALL_TH (%rcx, eri_live_atomic_load_stor);				\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1079,7 +1088,7 @@ LABEL_COMPLETE_START (ATOMIC_LABEL (sz, xchg)):				\
   AT_UNLOCK_STOR (AT_REG_IDX);						\
   movq	AT_REG_VAL, PTH_VAR0(%rbx);					\
   movq	AT_REG_VAL, AT_REG_LD_RES;					\
-  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+  CALL_TH (%rcx, eri_live_atomic_load_stor);				\
 									\
   EXTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1117,7 +1126,7 @@ LABEL_COMPLETE_START (ATOMIC_LABEL (sz, cmpxchg)):			\
 									\
   AT_UNLOCK_STOR (%r10);						\
   movq	%rax, STACK_RAX(%rsp);						\
-  AT_CALL (%rcx, eri_live_atomic_load_stor);				\
+  CALL_TH (%rcx, eri_live_atomic_load_stor);				\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\

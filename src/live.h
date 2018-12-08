@@ -46,6 +46,12 @@ struct eri_live_thread
 
   uint64_t complete_start;
 
+  uint64_t fix_restart;
+  uint64_t fix_restart_rax;
+  uint64_t fix_restart_rbx;
+  uint64_t fix_restart_rip;
+  uint64_t fix_restart_rflags;
+
   uint64_t restart;
   uint64_t restart_start;
 
