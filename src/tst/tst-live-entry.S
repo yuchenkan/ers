@@ -1,257 +1,231 @@
 /* vim: set ft=gas: */
 
-#include "tst/tst-live-entry.h"
-
 #include "public/impl.h"
 
-#include <asm/unistd.h>
-
-#define SUFFIX_LABEL(i)		SUFFIX (LABEL (i))
-#define GLOBAL_SUFFIX(label)	.global SUFFIX (label);
-
-#define PERS_LOAD_CMP(sz, res, reg) \
-  _ERS_PASTE (cmp, sz)	reg, res
-
-#define PERS_ATOMIC_CMP(sz, reg, mem) \
-  _ERS_ATOMIC_COMM_LOAD (sz, mem, PERS_LOAD_CMP, reg)
-
-#define PROCESS \
-  LABELS (GLOBAL_SUFFIX)	\
-				\
-  movq	$1, %rax;		\
-  movq	xchg_mem_b, %rcx;	\
-  movq	xchg_mem_w, %rdx;	\
-  movq	xchg_mem_l, %rbx;	\
-  movq	inc_mem, %rdi;		\
-  movq	stor_mem, %rsi;		\
-  movq	load_mem, %r8;		\
-  movq	cmpxchg_mem, %r9;	\
-  movq	cmp_mem, %r10;		\
-  movq	xchg_mem_q, %r11;	\
-				\
-  pushfq;			\
-  movq	$0x150, (%rsp);		\
-  popfq;			\
-				\
-  nop;				\
-				\
-SUFFIX_LABEL (INOP):		\
-  PXCHG (b, %al, (%rcx));	\
-SUFFIX_LABEL (IXCHGB):		\
-  PXCHG (w, %ax, (%rdx));	\
-SUFFIX_LABEL (IXCHGW):		\
-  PXCHG (l, %eax, (%rbx));	\
-SUFFIX_LABEL (IXCHGL):		\
-  PXCHG (q, %rax, (%r11));	\
-				\
-SUFFIX_LABEL (IXCHGQ):		\
-  PINC (b, (%rdi));		\
-SUFFIX_LABEL (IINCB):		\
-  PINC (w, (%rdi));		\
-SUFFIX_LABEL (IINCW):		\
-  PINC (l, (%rdi));		\
-SUFFIX_LABEL (IINCL):		\
-  PINC (q, (%rdi));		\
-SUFFIX_LABEL (IINCQ):		\
-				\
-  movq	$0xf00000000, %rax;	\
-SUFFIX_LABEL (IMSTORQ):		\
-  PSTOR (q, %rax, (%rsi));	\
-SUFFIX_LABEL (ISTORQ):		\
-  movq	(%rsi), %rax;		\
-SUFFIX_LABEL (ILSTORQ):		\
-				\
-  movl	$0xf0000, %eax;		\
-SUFFIX_LABEL (IMSTORL):		\
-  PSTOR (l, %eax, (%rsi));	\
-SUFFIX_LABEL (ISTORL):		\
-  movq	(%rsi), %rax;		\
-SUFFIX_LABEL (ILSTORL):		\
-				\
-  movw	$0xf00, %ax;		\
-SUFFIX_LABEL (IMSTORW):		\
-  PSTOR (w, %ax, (%rsi));	\
-SUFFIX_LABEL (ISTORW):		\
-  movq	(%rsi), %rax;		\
-SUFFIX_LABEL (ILSTORW):		\
-				\
-  movb	$0xf, %al;		\
-SUFFIX_LABEL (IMSTORB):		\
-  PSTOR (b, %al, (%rsi));	\
-SUFFIX_LABEL (ISTORB):		\
-  movq	(%rsi), %rax;		\
-SUFFIX_LABEL (ILSTORB):		\
-				\
-  PLOAD (q, (%r8), %rbx);	\
-SUFFIX_LABEL (ILOADQ):		\
-				\
-  movq	$0, %rax;		\
-SUFFIX_LABEL (IMCMPXCHGQ1):	\
-  movq	$1, %rbx;		\
-SUFFIX_LABEL (IMCMPXCHGQ2):	\
-  PCMPXCHG (q, %rbx, (%r9));	\
-SUFFIX_LABEL (ICMPXCHGQ_EQ):	\
-  PCMPXCHG (q, %rbx, (%r9));	\
-SUFFIX_LABEL (ICMPXCHGQ_NE):	\
-				\
-  movq	$0, %rax;		\
-SUFFIX_LABEL (IMCMPQ1):		\
-  movq	$1, %rbx;		\
-SUFFIX_LABEL (IMCMPQ2):		\
-  PCMP (q, %rax, (%r10));	\
-SUFFIX_LABEL (ICMPQ_EQ):	\
-  PCMP (q, %rbx, (%r10));	\
-SUFFIX_LABEL (ICMPQ_NE):	\
-				\
-  movl	$__NR_getpid, %eax;	\
-SUFFIX_LABEL (ISNR):		\
-  PSYSCALL;			\
-SUFFIX_LABEL (ISYS):		\
-				\
-  movq	jmp_mem, %rcx;		\
-SUFFIX_LABEL (IMJMP):		\
-  PSYNC (jmp	*%rcx;)		\
-  nop;				\
-SUFFIX_LABEL (IJMP):		\
-				\
-  pushfq;			\
-SUFFIX_LABEL (IPUFQ):		\
-  movq	$0, (%rsp);		\
-SUFFIX_LABEL (ISTF):		\
-  popfq;			\
-SUFFIX_LABEL (IPOFQ):		\
-  nop
+#include "lib/syscall.h"
+#include "tst/tst-live-entry.h"
+#include "tst/tst-live-entry-offsets.h"
 
   .text
 
   .align 16
-  .type main, @function
-  .global main
-main:
-  call	setup
-  movq	$1, %rbx
-  movq	$6, %rbp
-  movq	$11, %r12
-  movq	$12, %r13
-  movq	$13, %r14
-  movq	$14, %r15
-
-#define RAW_XCHG(sz, reg, mem)	_ERS_PASTE (xchg, sz)	reg, mem
-#define RAW_INC(sz, mem)	_ERS_PASTE (inc, sz)	mem
-#define RAW_STOR(sz, imm_or_reg, mem) \
-  _ERS_PASTE (mov, sz)	imm_or_reg, mem
-#define RAW_LOAD(sz, mem, reg)	_ERS_PASTE (mov, sz)	mem, reg
-#define RAW_CMPXCHG(sz, reg, mem) \
-  _ERS_PASTE (cmpxchg, sz)	reg, mem
-#define RAW_CMP(sz, reg, mem)	_ERS_PASTE (cmp, sz)	reg, mem
-#define RAW_SYSCALL		syscall
-#define RAW_SYNC(inst)		inst
-
-#define PXCHG			RAW_XCHG
-#define PINC			RAW_INC
-#define PSTOR			RAW_STOR
-#define PLOAD			RAW_LOAD
-#define PCMPXCHG		RAW_CMPXCHG
-#define PCMP			RAW_CMP
-#define PSYSCALL		RAW_SYSCALL
-#define PSYNC			RAW_SYNC
-
-#define SUF			_raw
-
-  PROCESS
-  call	process
-1:
-
-#undef PXCHG
-#undef PINC
-#undef PSTOR
-#undef PLOAD
-#undef PCMPXCHG
-#undef PCMP
-#undef PSYSCALL
-#undef PSYNC
-#undef SUF
-
-#ifdef TST_XCHG
-# define PXCHG(sz, reg, mem)	_ERS_ATOMIC_XCHG (sz, reg, mem)
-#else
-# define PXCHG			RAW_XCHG
-#endif
-
-#ifdef TST_INC
-# define PINC(sz, mem)		_ERS_ATOMIC_INC (sz, mem)
-#else
-# define PINC			RAW_INC
-#endif
-
-#ifdef TST_STOR
-# define PSTOR(sz, imm_or_reg, mem) \
-  _ERS_ATOMIC_STOR (sz, imm_or_reg, mem)
-#else
-# define PSTOR			RAW_STOR
-#endif
-
-#ifdef TST_LOAD
-# define PLOAD(sz, mem, reg) \
-  _ERS_ATOMIC_LOAD (sz, mem, reg)
-#else
-# define PLOAD			RAW_LOAD
-#endif
-
-#ifdef TST_CMPXCHG
-# define PCMPXCHG(sz, reg, mem)	_ERS_ATOMIC_CMPXCHG (sz, reg, mem)
-#else
-# define PCMPXCHG		RAW_CMPXCHG
-#endif
-
-#ifdef TST_CMP
-# define PCMP(sz, reg, mem) 	PERS_ATOMIC_CMP (sz, reg, mem)
-#else
-# define PCMP			RAW_CMP
-#endif
-
-#ifdef TST_SYSCALL
-# define PSYSCALL		_ERS_SYSCALL
-#else
-# define PSYSCALL		RAW_SYSCALL
-#endif
-
-#ifdef TST_SYNC
-# define PSYNC			_ERS_SYNC_ASYNC
-#else
-# define PSYNC			RAW_SYNC
-#endif
-
-#define SUF
-
-  PROCESS
-
-  call	process
-  testb	%al, %al
-  jnz	1b
+  .global tst_start
+  .type tst_start, @function
+tst_start:
+  call	tst_main
+  movq	%rax, %rdi
   movl	$__NR_exit, %eax
-  xorq	%rdi, %rdi
   syscall
-  .size main, . - main
+  .size tst_start, . - tst_start
 
   .align 16
-  .type sig_x_sig_step, @function
-  .global sig_x_sig_step
-sig_x_sig_step:
+  .global tst_live_entry
+  .hidden tst_live_entry
+  .type tst_live_entry, @function
+tst_live_entry:
+  pushq	%rbx
+  pushq	%rbp
+  pushq	%r12
+  pushq	%r13
+  pushq	%r14
+  pushq	%r15
+
+  movq	%rsp, %rax
+  movq	TST_CONTEXT_RSP(%rdi), %rsp
+  pushq	%rax
+
+  leaq	.ltst_live_entry_ctf(%rip), %rax
+  pushq	%rax
+
+  movq	TST_CONTEXT_RAX(%rdi), %rax
+  movq	TST_CONTEXT_RBX(%rdi), %rbx
+  movq	TST_CONTEXT_RCX(%rdi), %rcx
+  movq	TST_CONTEXT_RDX(%rdi), %rdx
+  movq	TST_CONTEXT_RSI(%rdi), %rsi
+  movq	TST_CONTEXT_RBP(%rdi), %rbp
+  movq	TST_CONTEXT_R8(%rdi), %r8
+  movq	TST_CONTEXT_R9(%rdi), %r9
+  movq	TST_CONTEXT_R10(%rdi), %r10
+  movq	TST_CONTEXT_R11(%rdi), %r11
+  movq	TST_CONTEXT_R12(%rdi), %r12
+  movq	TST_CONTEXT_R13(%rdi), %r13
+  movq	TST_CONTEXT_R14(%rdi), %r14
+  movq	TST_CONTEXT_R15(%rdi), %r15
+
+  pushq	TST_CONTEXT_RIP(%rdi)
+  pushq	TST_CONTEXT_RFLAGS(%rdi)
+  movq	TST_CONTEXT_RDI(%rdi), %rdi
+  popfq
+  ret
+.ltst_live_entry_ctf:
+  pushfq
+  andq	$~ERI_TRACE_FLAG_MASK, (%rsp)
+  popfq
+
+  popq	%rsp
+
+  popq	%r15
+  popq	%r14
+  popq	%r13
+  popq	%r12
+  popq	%rbp
+  popq	%rbx
+  ret
+  .size tst_live_entry, . - tst_live_entry
+
+#define TST_LIVE_ENTRY(entry, raw, tst, ...) \
+  .align 16;								\
+  .global _ERS_PASTE (tst_live_entry_raw_enter_, entry);		\
+  .hidden _ERS_PASTE (tst_live_entry_raw_enter_, entry);		\
+  .global _ERS_PASTE (tst_live_entry_raw_leave_, entry);		\
+  .hidden _ERS_PASTE (tst_live_entry_raw_leave_, entry);		\
+  .global _ERS_PASTE (tst_live_entry_enter_, entry);			\
+  .hidden _ERS_PASTE (tst_live_entry_enter_, entry);			\
+  .global _ERS_PASTE (tst_live_entry_leave_, entry);			\
+  .hidden _ERS_PASTE (tst_live_entry_leave_, entry);			\
+_ERS_PASTE (tst_live_entry_raw_enter_, entry):				\
+  raw (__VA_ARGS__);							\
+_ERS_PASTE (tst_live_entry_raw_leave_, entry):				\
+  ret;									\
+_ERS_PASTE (tst_live_entry_enter_, entry):				\
+  tst (__VA_ARGS__);							\
+_ERS_PASTE (tst_live_entry_leave_, entry):				\
+  ret;
+
+#define RAW_SYSCALL()	syscall
+#define SYSCALL()	_ERS_SYSCALL
+
+TST_LIVE_ENTRY (syscall, RAW_SYSCALL, SYSCALL)
+
+#define SYNC_ASYNC_REG		TST_LIVE_SYNC_ASYNC_REG
+
+#define TST_SYNC_ASYNC(raw) \
+  ERI_PP_IIF (raw,							\
+	      jmp	*(%SYNC_ASYNC_REG),				\
+	      _ERS_SYNC_ASYNC (jmp	*(%SYNC_ASYNC_REG)));		\
+  nop;									\
+
+#define RAW_SYNC_ASYNC()	TST_SYNC_ASYNC (1)
+#define SYNC_ASYNC()		TST_SYNC_ASYNC (0)
+
+TST_LIVE_ENTRY (sync_async, RAW_SYNC_ASYNC, SYNC_ASYNC)
+
+#define LOAD_REG_DST		TST_LIVE_LOAD_REG_DST
+#define LOAD_REG_MEM		TST_LIVE_LOAD_REG_MEM
+
+#define RAW_LOAD(sz) \
+  _ERS_PASTE (mov, sz)	(%LOAD_REG_MEM), %LOAD_REG_DST (sz)
+#define LOAD(sz) \
+  _ERS_ATOMIC_LOAD (sz, (%LOAD_REG_MEM), %LOAD_REG_DST (sz))
+
+#define TST_LOAD(sz) \
+  TST_LIVE_ENTRY (_ERS_PASTE (load, sz), RAW_LOAD, LOAD, sz)
+
+TST_ATOMIC_SIZES (TST_LOAD)
+
+#define CMP_REG			TST_LIVE_CMP_REG
+#define CMP_REG_MEM		TST_LIVE_CMP_REG_MEM
+
+#define RAW_CMP(sz) \
+  _ERS_PASTE (cmp, sz)	%CMP_REG (sz), (%CMP_REG_MEM)
+
+#define TST_LOAD_CMP(sz, res, reg) \
+  _ERS_PASTE (cmp, sz)	reg, res
+
+#define TST_ATOMIC_CMP(sz, reg, mem) \
+  _ERS_ATOMIC_COMM_LOAD (sz, mem, TST_LOAD_CMP, reg)
+
+#define CMP(sz) \
+  TST_ATOMIC_CMP (sz, %CMP_REG (sz), (%CMP_REG_MEM))
+
+#define TST_CMP(sz, name) \
+  TST_LIVE_ENTRY (_ERS_PASTE (name, sz), RAW_CMP, CMP, sz)
+
+TST_ATOMIC_SIZES (TST_CMP, cmp_eq)
+TST_ATOMIC_SIZES (TST_CMP, cmp_ne)
+
+#define STOR_IMM_VAL		TST_LIVE_STOR_IMM_VAL
+#define STOR_REG_SRC		TST_LIVE_STOR_REG_SRC
+#define STOR_REG_MEM		TST_LIVE_STOR_REG_MEM
+
+#define RAW_STOR_IMM(sz) \
+  _ERS_PASTE (mov, sz)	$STOR_IMM_VAL (sz), (%STOR_REG_MEM)
+#define STOR_IMM(sz) \
+  _ERS_ATOMIC_STOR (sz, $STOR_IMM_VAL (sz), (%STOR_REG_MEM))
+
+#define TST_STOR_IMM(sz) \
+  TST_LIVE_ENTRY (_ERS_PASTE (stor_imm, sz), RAW_STOR_IMM, STOR_IMM, sz)
+
+#define RAW_STOR_REG(sz) \
+  _ERS_PASTE (mov, sz)	%STOR_REG_SRC (sz), (%STOR_REG_MEM)
+#define STOR_REG(sz) \
+  _ERS_ATOMIC_STOR (sz, %STOR_REG_SRC (sz), (%STOR_REG_MEM))
+
+#define TST_STOR_REG(sz) \
+  TST_LIVE_ENTRY (_ERS_PASTE (stor_reg, sz), RAW_STOR_REG, STOR_REG, sz)
+
+TST_ATOMIC_SIZES32 (TST_STOR_IMM)
+TST_ATOMIC_SIZES (TST_STOR_REG)
+
+#define INC_REG_MEM		TST_LIVE_INC_REG_MEM
+#define DEC_REG_MEM		TST_LIVE_DEC_REG_MEM
+
+#define RAW_INC_DEC(sz, uinc, inc) \
+  _ERS_PASTE (inc, sz)	(%_ERS_PASTE (uinc, _REG_MEM))
+#define INC_DEC(sz, uinc, inc) \
+  _ERS_PASTE (_ERS_ATOMIC_, uinc) (sz, (%_ERS_PASTE (uinc, _REG_MEM)))
+
+#define TST_INC_DEC(sz, uinc, inc) \
+  TST_LIVE_ENTRY (_ERS_PASTE (inc, sz), RAW_INC_DEC, INC_DEC, sz, uinc, inc)
+
+TST_ATOMIC_SIZES (TST_INC_DEC, INC, inc)
+TST_ATOMIC_SIZES (TST_INC_DEC, DEC, dec)
+
+#define XCHG_REG		TST_LIVE_XCHG_REG
+#define XCHG_REG_MEM		TST_LIVE_XCHG_REG_MEM
+
+#define RAW_XCHG(sz) \
+  _ERS_PASTE (xchg, sz)	%XCHG_REG (sz), (%XCHG_REG_MEM)
+#define XCHG(sz) \
+  _ERS_ATOMIC_XCHG (sz, %XCHG_REG (sz), (%XCHG_REG_MEM))
+
+#define TST_XCHG(sz) \
+  TST_LIVE_ENTRY (_ERS_PASTE (xchg, sz), RAW_XCHG, XCHG, sz)
+
+TST_ATOMIC_SIZES (TST_XCHG)
+
+#define CMPXCHG_REG		TST_LIVE_CMPXCHG_REG
+
+#define RAW_CMPXCHG(sz) \
+  _ERS_PASTE (cmpxchg, sz)	%CMPXCHG_REG (sz), (%CMPXCHG_REG (q))
+#define CMPXCHG(sz) \
+  _ERS_ATOMIC_CMPXCHG (sz, %CMPXCHG_REG (sz), (%CMPXCHG_REG (q)))
+
+#define TST_CMPXCHG(sz, name) \
+  TST_LIVE_ENTRY (_ERS_PASTE (name, sz), RAW_CMPXCHG, CMPXCHG, sz)
+
+TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_eq)
+TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_ne)
+
+  .align 16
+  .type sig_trigger, @function
+  .global sig_trigger
+  .hidden sig_trigger
+sig_trigger:
   subq	$8, %rsp
   pushq	%rsi
   pushq	%rdx
-  call	sig_sig_step
+  call	sig_check_trigger
   popq	%rdx
   popq	%rsi
   addq	$8, %rsp
 
-  testq	%rax, %rax
-  jz	.lignore
+  testl	%eax, %eax
+  jz	.lno_trigger
 
   movl	%eax, %edi
   jmp	eri_live_sigaction
 
-.lignore:
+.lno_trigger:
   ret
-  .size sig_x_sig_step, . - sig_x_sig_step
+  .size sig_trigger, . - sig_trigger

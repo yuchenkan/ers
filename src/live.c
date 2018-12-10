@@ -18,6 +18,8 @@ eri_live_init_thread (struct eri_live_thread *th, void *internal,
   } while (0)
 
   th->common.internal = internal;
+  th->common.mark = 0;
+  th->common.dir = 0;
 
   SET_TH_RELA (common.thread_entry, eri_live_thread_text_entry);
   th->entry = (uint64_t) eri_live_entry;
@@ -37,6 +39,10 @@ eri_live_init_thread (struct eri_live_thread *th, void *internal,
   SET_TH_RELA (thread_resume, eri_live_thread_text_resume);
   SET_TH_RELA (thread_resume_ret, eri_live_thread_text_resume_ret);
   th->resume_ret = (uint64_t) eri_live_resume_ret;
+
+  th->fix_restart = 0;
+  th->restart = 0;
+  th->tst_skip_ctf = 0;
 }
 
 uint64_t

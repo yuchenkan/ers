@@ -3,104 +3,99 @@
 
 #include "public/comm.h"
 
-#define INOP	0
+#include "live.h"
 
-#define IXCHGB	1
-#define IXCHGW	2
-#define IXCHGL	3
-#define IXCHGQ	4
+#define TST_LIVE_SYNC_ASYNC_REG		r8
+#define TST_LIVE_SYNC_ASYNC_UREG	R8
 
-#define IINCB	5
-#define IINCW	6
-#define IINCL	7
-#define IINCQ	8
+#define TST_LIVE_VAL(sz, v) \
+  ((v) * (1ul << (_ERS_ATOMIC_SIZE (sz) * 8)))
 
-#define IMSTORQ	9
-#define ISTORQ	10
-#define ILSTORQ	11
+#define TST_LIVE_STOR_IMM_VAL(sz)	TST_LIVE_VAL (sz, 0xfe)
 
-#define IMSTORL	12
-#define ISTORL	13
-#define ILSTORL	14
+#define TST_LIVE_LOAD_REG_DST		ERI_RBX
+#define TST_LIVE_LOAD_REG_MEM		rbx
 
-#define IMSTORW	15
-#define ISTORW	16
-#define ILSTORW	17
+#define TST_LIVE_CMP_REG		ERI_RSP
+#define TST_LIVE_CMP_REG_MEM		rbp
 
-#define IMSTORB	18
-#define ISTORB	19
-#define ILSTORB	20
+#define TST_LIVE_STOR_REG_SRC		ERI_RCX
+#define TST_LIVE_STOR_REG_MEM		rdx
 
-#define ILOADQ	21
+#define TST_LIVE_INC_REG_MEM		rdi
+#define TST_LIVE_DEC_REG_MEM		rsi
 
-#define IMCMPXCHGQ1	22
-#define IMCMPXCHGQ2	23
-#define ICMPXCHGQ_EQ	24
-#define ICMPXCHGQ_NE	25
+#define TST_LIVE_XCHG_REG		ERI_R9
+#define TST_LIVE_XCHG_REG_MEM		r10
 
-#define IMCMPQ1	26
-#define IMCMPQ2	27
-#define ICMPQ_EQ	28
-#define ICMPQ_NE	29
+#define TST_LIVE_CMPXCHG_REG		ERI_R11
 
-#define ISNR	30
-#define ISYS	31
+#define TST_ATOMIC_SIZES32(op, ...) \
+  op (b, ##__VA_ARGS__) op (w, ##__VA_ARGS__)				\
+  op (l, ##__VA_ARGS__)
 
-#define IMJMP	32
-#define IJMP	33
+#define TST_ATOMIC_SIZES(op, ...) \
+  TST_ATOMIC_SIZES32 (op, ##__VA_ARGS__) op (q, ##__VA_ARGS__)
 
-#define IPUFQ	34
-#define ISTF	35
-#define IPOFQ	36
+#ifndef __ASSEMBLER__
 
-#define LABEL(i)			_ERS_PASTE (label, i)
+#include <stdint.h>
 
-#define ATOMIC_COMM_OP(at_op, at, a, b, c, d, ...) \
-  at_op (_ERS_PASTE (at, a), ##__VA_ARGS__)				\
-  at_op (_ERS_PASTE (at, b), ##__VA_ARGS__)				\
-  at_op (_ERS_PASTE (at, c), ##__VA_ARGS__)				\
-  at_op (_ERS_PASTE (at, d), ##__VA_ARGS__)
+struct tst_context
+{
+  uint64_t rax;
+  uint64_t rbx;
+  uint64_t rcx;
+  uint64_t rdx;
+  uint64_t rdi;
+  uint64_t rsi;
+  uint64_t rbp;
+  uint64_t rsp;
+  uint64_t r8;
+  uint64_t r9;
+  uint64_t r10;
+  uint64_t r11;
+  uint64_t r12;
+  uint64_t r13;
+  uint64_t r14;
+  uint64_t r15;
+  uint64_t rip;
+  uint64_t rflags;
+};
 
-#define ATOMIC_OP(at_op, at, ...) \
-  ATOMIC_COMM_OP (at_op, at, B, W, L, Q, ##__VA_ARGS__)
+void tst_live_entry (struct tst_context *ctx);
 
-#define ATOMIC_REV_OP(at_op, at, ...) \
-  ATOMIC_COMM_OP (at_op, at, Q, L, W, B, ##__VA_ARGS__)
+#define TST_LIVE_ENTRY_ADDRS(entry) \
+extern uint8_t _ERS_PASTE (tst_live_entry_raw_enter_, entry)[];		\
+extern uint8_t _ERS_PASTE (tst_live_entry_raw_leave_, entry)[];		\
+extern uint8_t _ERS_PASTE (tst_live_entry_enter_, entry)[];		\
+extern uint8_t _ERS_PASTE (tst_live_entry_leave_, entry)[];
 
-#define LABEL_OP(name, l_op)		l_op (LABEL (_ERS_PASTE (I, name)))
+TST_LIVE_ENTRY_ADDRS (syscall)
+TST_LIVE_ENTRY_ADDRS (sync_async)
 
-#define ATOMIC_LABELS(l_op, at)		ATOMIC_OP (LABEL_OP, at, l_op)
-#define ATOMIC_REV_LABELS(l_op, at)	ATOMIC_REV_OP (LABEL_OP, at, l_op)
+#define TST_LIVE_ENTRY_ATOMIC_ADDRS(sz, entry) \
+extern uint8_t _ERS_PASTE2 (tst_live_entry_raw_enter_, entry, sz)[];	\
+extern uint8_t _ERS_PASTE2 (tst_live_entry_raw_leave_, entry, sz)[];	\
+extern uint8_t _ERS_PASTE2 (tst_live_entry_enter_, entry, sz)[];	\
+extern uint8_t _ERS_PASTE2 (tst_live_entry_leave_, entry, sz)[];
 
-#define ATOMIC_STOR_SIZE_LABELS(at, l_op) \
-  LABEL_OP (_ERS_PASTE (M, at), l_op) LABEL_OP (at, l_op)		\
-  LABEL_OP (_ERS_PASTE (L, at), l_op)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, load)
 
-#define ATOMIC_STOR_LABELS(l_op) \
-  ATOMIC_REV_OP (ATOMIC_STOR_SIZE_LABELS, STOR, l_op)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, cmp_eq)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, cmp_ne)
 
-#define LABELS(l_op) \
-  LABEL_OP (NOP, l_op)							\
-  ATOMIC_LABELS (l_op, XCHG) ATOMIC_LABELS (l_op, INC)			\
-  ATOMIC_STOR_LABELS (l_op)						\
-  LABEL_OP (LOADQ, l_op)						\
-  LABEL_OP (MCMPXCHGQ1, l_op) LABEL_OP (MCMPXCHGQ2, l_op)		\
-  LABEL_OP (CMPXCHGQ_EQ, l_op) LABEL_OP (CMPXCHGQ_NE, l_op)		\
-  LABEL_OP (MCMPQ1, l_op) LABEL_OP (MCMPQ2, l_op)			\
-  LABEL_OP (CMPQ_EQ, l_op) LABEL_OP (CMPQ_NE, l_op)			\
-  LABEL_OP (SNR, l_op) LABEL_OP (SYS, l_op) LABEL_OP (MJMP, l_op)	\
-  LABEL_OP (JMP, l_op) LABEL_OP (PUFQ, l_op) LABEL_OP (STF, l_op)	\
-  LABEL_OP (POFQ, l_op)
+TST_ATOMIC_SIZES32 (TST_LIVE_ENTRY_ATOMIC_ADDRS, stor_imm)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, stor_reg)
 
-#define SUFFIX(name)		_ERS_PASTE (name, SUF)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, inc)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, dec)
 
-#define TST_XCHG
-#define TST_INC
-#define TST_STOR
-#define TST_LOAD
-#define TST_CMPXCHG
-#define TST_CMP
-#define TST_SYSCALL
-#define TST_SYNC
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, xchg)
+
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, cmpxchg_eq)
+TST_ATOMIC_SIZES (TST_LIVE_ENTRY_ATOMIC_ADDRS, cmpxchg_ne)
+
+#endif
 
 #endif

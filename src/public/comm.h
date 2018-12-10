@@ -1,11 +1,13 @@
 #ifndef _ERS_PUBLIC_COMM_H
 #define _ERS_PUBLIC_COMM_H
 
-#define __ERS_STR(x) #x
-#define _ERS_STR(x) __ERS_STR (x)
+#define __ERS_STR(x)		#x
+#define _ERS_STR(x)		__ERS_STR (x)
 
-#define __ERS_PASTE(x, y) x##y
-#define _ERS_PASTE(x, y) __ERS_PASTE (x, y)
+#define __ERS_PASTE(x, y)	x##y
+#define _ERS_PASTE(x, y)	__ERS_PASTE (x, y)
+
+#define _ERS_PASTE2(x, y,z)	_ERS_PASTE (_ERS_PASTE (x, y), z)
 
 #define _ERS_EVAL(...) __VA_ARGS__
 

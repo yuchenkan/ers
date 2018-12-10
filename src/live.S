@@ -101,9 +101,6 @@
 #define MARK_SEC_PART_BIT_OFFSET	4
 #define MARK_SEC_PART_BIT		(1 << MARK_SEC_PART_BIT_OFFSET)
 
-#define TRACE_FLAG_BIT_OFFSET		8
-#define TRACE_FLAG_BIT			(1 << TRACE_FLAG_BIT_OFFSET)
-
 #define LOAD_OP_OP(th, dst) \
   movq	PTH_OP(th), dst;						\
   shrq	$_ERS_OP_FLAGS_BITS, dst
@@ -119,15 +116,25 @@
   .data
 
   .global eri_live_thread_text
+  .hidden eri_live_thread_text
   .global eri_live_thread_text_resume
+  .hidden eri_live_thread_text_resume
   .global eri_live_thread_text_entry
+  .hidden eri_live_thread_text_entry
   .global eri_live_thread_text_resume_ret
+  .hidden eri_live_thread_text_resume_ret
   .global eri_live_thread_text_internal_cont
+  .hidden eri_live_thread_text_internal_cont
   .global eri_live_thread_text_external_cont
+  .hidden eri_live_thread_text_external_cont
   .global eri_live_thread_text_cont_end
+  .hidden eri_live_thread_text_cont_end
   .global eri_live_thread_text_ret
+  .hidden eri_live_thread_text_ret
   .global eri_live_thread_text_ret_end
+  .hidden eri_live_thread_text_ret_end
   .global eri_live_thread_text_end
+  .hidden eri_live_thread_text_end
 
   .align 16
 eri_live_thread_text:
@@ -175,6 +182,7 @@ eri_live_thread_text_end:
   .align 16
   .type eri_live_sigaction, @function
   .global eri_live_sigaction
+  .hidden eri_live_sigaction
 eri_live_sigaction:
 
   movq	UCTX_SS_SP(%rdx), %rax
@@ -203,7 +211,7 @@ eri_live_sigaction:
   movq	%rax, UCTX_RSI(%rdx)
   movq	TH_SIG_RDX(%rbx), %rax
   movq	%rax, UCTX_RDX(%rdx)
-  leaq	sigact(%rip), %rax
+  leaq	sig_act(%rip), %rax /* TODO */
   movq	%rax, UCTX_RIP(%rdx)
   jmp	.linvoke
 
@@ -349,7 +357,7 @@ eri_live_sigaction:
   movq	%rbx, UCTX_RBX(%rdx)
   movq	%rax, TH_FIX_RESTART_RIP(%rbx)
   movq	UCTX_RFLAGS(%rdx), %r11
-  andq	$~TRACE_FLAG_BIT, %r11
+  andq	$~ERI_TRACE_FLAG_MASK, %r11
   movq	%r11, TH_FIX_RESTART_RFLAGS(%rbx)
 
   /* Resume to the restarter.  */
@@ -394,9 +402,9 @@ eri_live_sigaction:
   movq	TH_TOP(%rbx), %rax
 
   movq	-8(%rax), %r11
-  andq	$TRACE_FLAG_BIT, %r11
+  andq	$ERI_TRACE_FLAG_MASK, %r11
   movq	%r11, TH_TRACE_FLAG(%rbx)
-  andq	$~TRACE_FLAG_BIT, -8(%rax)
+  andq	$~ERI_TRACE_FLAG_MASK, -8(%rax)
 
 .lresume_done_proc_saved_flags:
 
@@ -410,7 +418,7 @@ eri_live_sigaction:
 
   /* Clear the trace flag.  */
   pushq	UCTX_RFLAGS(%rdx)
-  andq	$~TRACE_FLAG_BIT, (%rsp)
+  andq	$~ERI_TRACE_FLAG_MASK, (%rsp)
   popfq
 
   movq	UCTX_RSP(%rdx), %rsp
@@ -428,6 +436,7 @@ eri_live_sigaction:
      All other regs are not modified.
   */
   .global eri_live_resume_ret
+  .hidden eri_live_resume_ret
 eri_live_resume_ret:
   /* Modify the context based on the new register values.  */
   xchgq	%rsp, TH_RSP(%rbx)
@@ -462,7 +471,7 @@ eri_live_resume_ret:
   pushfq
   popq	UCTX_RFLAGS(%rdx)
   /* Set if it's set in the interrupted %rflags.  */
-  andq	$TRACE_FLAG_BIT, %rax
+  andq	$ERI_TRACE_FLAG_MASK, %rax
   /* Set if it's set in the saved %rflags.  */
   orq	TH_TRACE_FLAG(%rbx), %rax
   orq	%rax, UCTX_RFLAGS(%rdx)
@@ -543,7 +552,7 @@ eri_live_resume_ret:
   movq	TH_SIG_RSI(%rbx), %rsi
   movq	TH_SIG_RDX(%rbx), %rdx
   movq	TH_SIG_RBX(%rbx), %rbx
-  movq	sigact, %rax
+  movq	sig_act, %rax	/* TODO */
   jmp	*%rax
 .lnested_signal_end:
 
@@ -559,6 +568,7 @@ eri_live_resume_ret:
   .align 16
   .type eri_live_entry, @function
   .global eri_live_entry
+  .hidden eri_live_entry
 eri_live_entry:
   xchgq	%rsp, TH_RSP(%rbx)
 
@@ -577,7 +587,7 @@ eri_live_entry:
   cmpq	$1, PTH_TST_SKIP_CTF(%rbx)
   je	.ltst_skip_ctf
 #endif
-  andq	$~TRACE_FLAG_BIT, (%rsp)
+  andq	$~ERI_TRACE_FLAG_MASK, (%rsp)
   popfq
   subq	$8, %rsp
 #ifndef ERI_NON_TST
@@ -682,6 +692,7 @@ eri_live_entry:
 
 #define TST_MARK_COMPLETE_START(label) \
   .global ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
+  .hidden ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
 ERI_TST_LIVE_COMPLETE_START_NAME (label):
 
 /* If not TST, it's not required as tf is already cleared in new_rflags,
@@ -691,7 +702,7 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
 # define TST_NEW_RFLAGS_CTF(reg_or_mem) \
   cmpq	$0, PTH_TST_SKIP_CTF(%rbx);					\
   je	1f;								\
-  andq	$~TRACE_FLAG_BIT, reg_or_mem;					\
+  andq	$~ERI_TRACE_FLAG_MASK, reg_or_mem;				\
 1:
 #else
 # define TST_NEW_RFLAGS_CTF(reg_or_mem)
@@ -709,7 +720,7 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
   /* Setting rflags has to be like this. We can't move rflags	*/	\
   /* out of stack as by so clear tf code in lresume may not	*/	\
   /* work.  */								\
-  andq	$TRACE_FLAG_BIT, STACK_RFLAGS(%rsp);				\
+  andq	$ERI_TRACE_FLAG_MASK, STACK_RFLAGS(%rsp);			\
   TST_NEW_RFLAGS_CTF (reg)						\
   orq	reg, STACK_RFLAGS(%rsp)
 
@@ -779,9 +790,12 @@ LABEL_COMPLETE_START (syscall):
 
   /* Reset tf for %r11: r11 = (rflags & TF_MASK) | r11  */
   movq	STACK_RFLAGS(%rsp), %rax
-  andq	$TRACE_FLAG_BIT, %rax
+  andq	$ERI_TRACE_FLAG_MASK, %rax
   TST_NEW_RFLAGS_CTF (STACK_R11(%rsp))
   orq	%rax, STACK_R11(%rsp)
+
+  movq	PTH_START(%rbx), %rax
+  movq	%rax, STACK_RCX(%rsp)
 
   INTERNAL_RET_DIR (%r11)
 
@@ -868,40 +882,6 @@ LABEL_RESTART_START (sync_async):
 /* eri_live_entry: atomic common		*/
 /************************************************/
 
-#define R0_b(i)			_ERS_PASTE (i, l)
-#define R0_w(i)			_ERS_PASTE (i, x)
-#define R0_l(i)			_ERS_PASTE (_ERS_PASTE (e, i), x)
-#define R0_q(i)			_ERS_PASTE (_ERS_PASTE (r, i), x)
-
-#define RAX(sz)			%_ERS_PASTE (R0_, sz) (a)
-#define RBX(sz)			%_ERS_PASTE (R0_, sz) (b)
-#define RDX(sz)			%_ERS_PASTE (R0_, sz) (d)
-#define RCX(sz)			%_ERS_PASTE (R0_, sz) (c)
-
-#define R1_b(i)			_ERS_PASTE (i, l)
-#define R1_w(i)			i
-#define R1_l(i)			_ERS_PASTE (e, i)
-#define R1_q(i)			_ERS_PASTE (r, i)
-
-#define RDI(sz)			%_ERS_PASTE (R1_, sz) (di)
-#define RSI(sz)			%_ERS_PASTE (R1_, sz) (si)
-#define RSP(sz)			%_ERS_PASTE (R1_, sz) (sp)
-#define RBP(sz)			%_ERS_PASTE (R1_, sz) (bp)
-
-#define R2_b(i)			_ERS_PASTE (i, b)
-#define R2_w(i)			_ERS_PASTE (i, w)
-#define R2_l(i)			_ERS_PASTE (i, d)
-#define R2_q(i)			i
-
-#define R8(sz)			%_ERS_PASTE (R2_, sz) (r8)
-#define R9(sz)			%_ERS_PASTE (R2_, sz) (r9)
-#define R10(sz)			%_ERS_PASTE (R2_, sz) (r10)
-#define R11(sz)			%_ERS_PASTE (R2_, sz) (r11)
-#define R12(sz)			%_ERS_PASTE (R2_, sz) (r12)
-#define R13(sz)			%_ERS_PASTE (R2_, sz) (r13)
-#define R14(sz)			%_ERS_PASTE (R2_, sz) (r14)
-#define R15(sz)			%_ERS_PASTE (R2_, sz) (r15)
-
 #define LABEL_ATOMIC_SIZE(sz, label) \
   LABEL_ATOMIC (_ERS_PASTE (label, sz))
 
@@ -913,9 +893,9 @@ LABEL_RESTART_START (sync_async):
 #define AT_REG_MEM		%rdi
 #define AT_REG_VER		%rsi
 #define AT_REG_VAL		%r8
-#define AT_REG_VAL_SZ		R8
+#define AT_REG_VAL_SZ		%ERI_R8
 #define AT_REG_LD_RES		%rdx
-#define AT_REG_LD_RES_SZ	RDX
+#define AT_REG_LD_RES_SZ	%ERI_RDX
 
 #define AT_LOAD_VAL		movq	PTH_VAR0(%rbx), AT_REG_VAL
 #define AT_LOAD_MEM		movq	PTH_VAR1(%rbx), AT_REG_MEM

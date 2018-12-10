@@ -176,15 +176,15 @@
 #define ERI_SIG_SETMASK	2
 #define ERI_SIG_SETSIZE	(ERI_NSIG / 8)
 
-#ifdef __ASSEMBLER__
-
-#define ERI_SIG_DFL	0
-#define ERI_SIG_IGN	1
-
 #define ERI_SS_ONSTACK	1
 #define ERI_SS_DISABLE	2
 
 #define ERI_TRAP_TRACE	2
+
+#ifdef __ASSEMBLER__
+
+#define ERI_SIG_DFL	0
+#define ERI_SIG_IGN	1
 
 #else
 
@@ -325,5 +325,8 @@ void eri_sigreturn (void);
      (set)->val[_eri_sigword (_s)] & _eri_sigmask (_s); })
 
 #endif
+
+#define ERI_TRACE_FLAG_BIT_OFFSET	8
+#define ERI_TRACE_FLAG_MASK		(1 << ERI_TRACE_FLAG_BIT_OFFSET)
 
 #endif
