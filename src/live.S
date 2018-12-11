@@ -197,48 +197,46 @@ eri_live_sigaction:
   /* %rax is the interrupted rip.  */
   movq	UCTX_RIP(%rdx), %rax
 
+#define CMP_RIP_V(v) \
+  cmpq	v(%rbx), %rax
+#define CMP_RIP_L(l) \
+  leaq	l(%rip), %r11;							\
+  cmpq	%r11, %rax
+
+#define IF_RIP_IN_RANGE(min_type, min, max_type, max, true) \
+  _ERS_PASTE (CMP_RIP_, min_type) (min);				\
+  jb	1f;								\
+  _ERS_PASTE (CMP_RIP_, max_type) (max);				\
+  jb	true;								\
+1:
+
+#define IF_RIP_IN_RANGE_VV(min, max, true) \
+  IF_RIP_IN_RANGE (V, min, V, max, true)
+#define IF_RIP_IN_RANGE_VL(min, max, true) \
+  IF_RIP_IN_RANGE (V, min, L, max, true)
+#define IF_RIP_IN_RANGE_LV(min, max, true) \
+  IF_RIP_IN_RANGE (L, min, V, max, true)
+#define IF_RIP_IN_RANGE_LL(min, max, true) \
+  IF_RIP_IN_RANGE (L, min, L, max, true)
+
   /* Check nested signal.  */
-  cmpq	.lnested_signal_start(%rip), %rax
-  jb	.lnone_nested_signal
-  cmpq	.lnested_signal_end(%rip), %rax
-  jae	.lnone_nested_signal
+  IF_RIP_IN_RANGE_LL (.lnested_signal_start, .lnested_signal_end,
+		      .lnested_signal)
 
-  /* Nested signal, complete the context for the old signal
-     and invoke.
-  */
-  movq	TH_SIG_RBX(%rbx), %rax
-  movq	%rax, UCTX_RBX(%rdx)
-  movq	TH_SIG_RDI(%rbx), %rax
-  movq	%rax, UCTX_RDI(%rdx)
-  movq	TH_SIG_RSI(%rbx), %rax
-  movq	%rax, UCTX_RSI(%rdx)
-  movq	TH_SIG_RDX(%rbx), %rax
-  movq	%rax, UCTX_RDX(%rdx)
-  leaq	sig_act(%rip), %rax /* TODO */
-  movq	%rax, UCTX_RIP(%rdx)
-  jmp	.linvoke
-
-.lnone_nested_signal:
   movq	PTH_MARK(%rbx), %r11
   testq	%r11, %r11
   jz	.lzero_mark
 
   bt	$MARK_SEC_PART_BIT_OFFSET, %r11
   /* ! (mark & MARK_SEC_PART_BIT) means we need to restart.  */
-  jnc	.lcheck_restart
+  jnc	.lrestart_check_trace
 
-  /* Otherwise means we may restart or complete.  */
+  /* Otherwise means we may restart or complete.
+     Restart if we are inside eri_live_entry and not down the
+     target instruction.
+  */
+  IF_RIP_IN_RANGE_VV (TH_ENTRY, TH_COMPLETE_START, .lrestart_check_trace)
 
-  cmpq	TH_ENTRY(%rbx), %rax
-  /* Complete if not inside eri_live_entry.  */
-  jb	.lcomplete
-
-  cmpq	TH_COMPLETE_START(%rbx), %rax
-  /* Restart if the instruction not reached.  */
-  jb	.lcheck_restart
-
-  /* Complete if reached.  */
-.lcomplete:
   /* Complete internally, we don't return to the user code.  */
   cmpq	$(MARK_SEC_PART_BIT | _ERS_MARK_INTERNAL_RET), %r11
   je	.linternal_complete
@@ -256,31 +254,17 @@ eri_live_sigaction:
      3. we need to fix context.
   */
 .lzero_mark:
-  leaq	.lsync_async(%rip), %r11
-  cmpq	%r11, %rax
-  /* Continue check if we are not in lsync_async to
-     LABEL_RESTART_START (sync_async).
-  */
-  jb	.lcheck_ret_from_sync_async
-  leaq	LABEL_RESTART_START (sync_async)(%rip), %r11
-  cmpq	%r11, %rax
-  /* Restart if we are in lsync_async to LABEL_RESTART_START (sync_async).  */
-  jb	.lcheck_restart_fix_sync_async
-  
-  /* Continue check if we are returning from sync_async, eri_live_thread_ret
-     is only called by sync_async when mark is zero.
-  */
-.lcheck_ret_from_sync_async:
-  cmpq	TH_THREAD_RET(%rbx), %rax
+  /* Restart if we are inside sync_async.  */
+  IF_RIP_IN_RANGE_LL (.lsync_async, LABEL_RESTART_START (sync_async),
+		      .lrestart_fix_sync_async_check_trace)
+
+  /* Restart if we are inside eri_live_thread_ret.  */
+  IF_RIP_IN_RANGE_VV (TH_THREAD_RET, TH_THREAD_RET_END,
+		      .lrestart_fix_sync_async_check_trace)
+
   /* Continue check if we are about to run the sync_async instruction when we
      are not inside eri_live_thread_ret.
   */
-  jb	.lcheck_sync_async_inst
-  cmpq	TH_THREAD_RET_END(%rbx), %rax
-  /* Restart if we are inside eri_live_thread_ret.  */
-  jb	.lcheck_restart_fix_sync_async
-
-.lcheck_sync_async_inst:
   LOAD_OP_OP (%rbx, %r11)
   cmpq	$_ERS_OP_SYNC_ASYNC, %r11
   /* Check if we are inside continue when op is not sync_async.  */
@@ -289,7 +273,7 @@ eri_live_sigaction:
   /* Restart if op is sync_async and we are at the sync_async
      instruction.
   */
-  je	.lcheck_restart_fix_sync_async_inst
+  je	.lrestart_fix_sync_async_inst_check_trace
 
   /* Invoke user sigaction without further check. when op is sync_async
      it can't be inside eri_live_thread_*_cont and dir also must be zero.
@@ -323,29 +307,45 @@ eri_live_sigaction:
   /* Fix externally if continue address is eri_live_thread_external_cont.  */
   jmp	.lfix
 
+.lnested_signal:
+  /* Nested signal, complete the context for the old signal
+     and invoke.
+  */
+  movq	TH_SIG_RBX(%rbx), %rax
+  movq	%rax, UCTX_RBX(%rdx)
+  movq	TH_SIG_RDI(%rbx), %rax
+  movq	%rax, UCTX_RDI(%rdx)
+  movq	TH_SIG_RSI(%rbx), %rax
+  movq	%rax, UCTX_RSI(%rdx)
+  movq	TH_SIG_RDX(%rbx), %rax
+  movq	%rax, UCTX_RDX(%rdx)
+  leaq	sig_act(%rip), %rax /* TODO */
+  movq	%rax, UCTX_RIP(%rdx)
+  jmp	.linvoke
+
 /* Check sigtrap from single step tracing.  */
-#define CHECK_TRACE(label) \
+#define IF_NOT_TRACE(false) \
   cmpq	$ERI_SIGTRAP, %rdi;						\
-  jne	label;								\
+  jne	false;								\
   cmpl	$ERI_TRAP_TRACE, SI_CODE(%rsi);					\
-  jne	label
+  jne	false
 
 /* Ignore sigtrap from single step tracing.  */
-#define IGNORE_TRACE(label) \
-  CHECK_TRACE (label);							\
+#define IGNORE_TRACE(false) \
+  IF_NOT_TRACE (false);							\
   ret
 
-.lcheck_restart_fix_sync_async:
+.lrestart_fix_sync_async_check_trace:
   IGNORE_TRACE (.lfix_restart)
 
-.lcheck_restart_fix_sync_async_inst:
-  CHECK_TRACE (.lfix_restart)
+.lrestart_fix_sync_async_inst_check_trace:
+  IF_NOT_TRACE (.lfix_restart)
   cmpq	$0, TH_SYNC_REPEAT_TRACE(%rbx)
   jne	.lfix_restart
   movq	$1, TH_SYNC_REPEAT_TRACE(%rbx)
   ret
 
-.lcheck_restart:
+.lrestart_check_trace:
   IGNORE_TRACE (.lrestart)
 
   /* We are done all the branching.  */
@@ -783,7 +783,7 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
 /* eri_live_entry: syscall			*/
 /************************************************/
 
-.lsyscall:
+.lsyscall: /* TODO */
   SET_COMPLETE_RESTART_START (syscall, %r11)
 
   /* For rflags w/o tf.  */
@@ -843,8 +843,6 @@ LABEL_RESTART_START (syscall):
   jmp	*TH_THREAD_RET(%rbx)
 
 LABEL_RESTART_START (sync_async):
-  /* TODO check rcx for rep.  */
-
   /* Not fixing if %rdi is not set to the interrupted rip.  */
   cmpq	$0, TH_FIX_RESTART(%rbx)
   je	.lsync_async_restart_restore
