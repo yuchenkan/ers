@@ -5,8 +5,8 @@
 
 #include "live.h"
 
-#define TST_LIVE_SYNC_ASYNC_REG		r8
-#define TST_LIVE_SYNC_ASYNC_UREG	R8
+#define TST_LIVE_SYNC_JMP_REG		r8
+#define TST_LIVE_SYNC_JMP_UREG		R8
 
 #define TST_LIVE_VAL(sz, v) \
   ((v) * (1ul << (_ERS_ATOMIC_SIZE (sz) * 8)))
@@ -72,7 +72,11 @@ extern uint8_t _ERS_PASTE (tst_live_entry_enter_, entry)[];		\
 extern uint8_t _ERS_PASTE (tst_live_entry_leave_, entry)[];
 
 TST_LIVE_ENTRY_ADDRS (syscall)
-TST_LIVE_ENTRY_ADDRS (sync_async)
+TST_LIVE_ENTRY_ADDRS (sync_jmp)
+
+TST_LIVE_ENTRY_ADDRS (sync_rep)
+extern uint8_t tst_live_raw_sync_rep[];
+extern uint8_t tst_live_sync_rep[];
 
 #define TST_LIVE_ENTRY_ATOMIC_ADDRS(sz, entry) \
 extern uint8_t _ERS_PASTE2 (tst_live_entry_raw_enter_, entry, sz)[];	\

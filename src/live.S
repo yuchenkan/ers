@@ -74,8 +74,11 @@
 #define TH_FIX_RESTART_RBX	ERI_LIVE_THREAD_FIX_RESTART_RBX
 #define TH_FIX_RESTART_RIP	ERI_LIVE_THREAD_FIX_RESTART_RIP
 #define TH_FIX_RESTART_RFLAGS	ERI_LIVE_THREAD_FIX_RESTART_RFLAGS
+
 #define TH_RESTART		ERI_LIVE_THREAD_RESTART
 #define TH_RESTART_START	ERI_LIVE_THREAD_RESTART_START
+
+#define TH_SYNC_REPEAT_TRACE	ERI_LIVE_THREAD_SYNC_REPEAT_TRACE
 
 #define TH_SIG_RBX		ERI_LIVE_THREAD_SIG_RBX
 #define TH_SIG_RDI		ERI_LIVE_THREAD_SIG_RDI
@@ -286,7 +289,7 @@ eri_live_sigaction:
   /* Restart if op is sync_async and we are at the sync_async
      instruction.
   */
-  je	.lcheck_restart_fix_sync_async
+  je	.lcheck_restart_fix_sync_async_inst
 
   /* Invoke user sigaction without further check. when op is sync_async
      it can't be inside eri_live_thread_*_cont and dir also must be zero.
@@ -320,18 +323,30 @@ eri_live_sigaction:
   /* Fix externally if continue address is eri_live_thread_external_cont.  */
   jmp	.lfix
 
+/* Check sigtrap from single step tracing.  */
+#define CHECK_TRACE(label) \
+  cmpq	$ERI_SIGTRAP, %rdi;						\
+  jne	label;								\
+  cmpl	$ERI_TRAP_TRACE, SI_CODE(%rsi);					\
+  jne	label
+
+/* Ignore sigtrap from single step tracing.  */
+#define IGNORE_TRACE(label) \
+  CHECK_TRACE (label);							\
+  ret
+
 .lcheck_restart_fix_sync_async:
-  /* To jump to fix_restart.  */
-  movq	$MARK_SEC_PART_BIT, %r11
+  IGNORE_TRACE (.lfix_restart)
+
+.lcheck_restart_fix_sync_async_inst:
+  CHECK_TRACE (.lfix_restart)
+  cmpq	$0, TH_SYNC_REPEAT_TRACE(%rbx)
+  jne	.lfix_restart
+  movq	$1, TH_SYNC_REPEAT_TRACE(%rbx)
+  ret
 
 .lcheck_restart:
-  cmpq	$ERI_SIGTRAP, %rdi
-  jne	.lrestart
-  cmpl	$ERI_TRAP_TRACE, SI_CODE(%rsi)
-  jne	.lrestart
-
-  /* Ignore sigtrap from single step tracing.  */
-  ret
+  IGNORE_TRACE (.lrestart)
 
   /* We are done all the branching.  */
 
@@ -810,6 +825,7 @@ LABEL_RESTART_START (syscall):
 
 .lsync_async:
   SET_RESTART_START (sync_async, %rax)
+  movq	$0, TH_SYNC_REPEAT_TRACE(%rbx)
 
   movq	%rcx, %rdi
   CALL_TH (%rsi, eri_live_sync_async)

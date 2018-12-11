@@ -97,18 +97,29 @@ _ERS_PASTE (tst_live_entry_leave_, entry):				\
 
 TST_LIVE_ENTRY (syscall, RAW_SYSCALL, SYSCALL)
 
-#define SYNC_ASYNC_REG		TST_LIVE_SYNC_ASYNC_REG
+#define SYNC_JMP_REG		TST_LIVE_SYNC_JMP_REG
 
-#define TST_SYNC_ASYNC(raw) \
+#define TST_SYNC_JMP(raw) \
   ERI_PP_IIF (raw,							\
-	      jmp	*(%SYNC_ASYNC_REG),				\
-	      _ERS_SYNC_ASYNC (jmp	*(%SYNC_ASYNC_REG)));		\
+	      jmp	*(%SYNC_JMP_REG),				\
+	      _ERS_SYNC_ASYNC (jmp	*(%SYNC_JMP_REG)));		\
   nop;									\
 
-#define RAW_SYNC_ASYNC()	TST_SYNC_ASYNC (1)
-#define SYNC_ASYNC()		TST_SYNC_ASYNC (0)
+#define RAW_SYNC_JMP()	TST_SYNC_JMP (1)
+#define SYNC_JMP()	TST_SYNC_JMP (0)
 
-TST_LIVE_ENTRY (sync_async, RAW_SYNC_ASYNC, SYNC_ASYNC)
+TST_LIVE_ENTRY (sync_jmp, RAW_SYNC_JMP, SYNC_JMP)
+
+#define RAW_SYNC_REP() \
+  .global tst_live_raw_sync_rep;					\
+tst_live_raw_sync_rep:							\
+  rep movsq;
+#define SYNC_REP() \
+  _ERS_SYNC_ASYNC (.global tst_live_sync_rep;				\
+tst_live_sync_rep:							\
+  rep movsq);
+
+TST_LIVE_ENTRY (sync_rep, RAW_SYNC_REP, SYNC_REP)
 
 #define LOAD_REG_DST		TST_LIVE_LOAD_REG_DST
 #define LOAD_REG_MEM		TST_LIVE_LOAD_REG_MEM

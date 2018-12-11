@@ -95,6 +95,8 @@ struct eri_live_thread
   uint64_t restart;
   uint64_t restart_start;
 
+  uint64_t sync_repeat_trace;
+
   uint64_t sig_rbx;
   uint64_t sig_rdi;
   uint64_t sig_rsi;

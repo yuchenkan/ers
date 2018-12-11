@@ -36,8 +36,11 @@ declare (void)
   LIVE_THREAD_OFFSET (FIX_RESTART_RBX, fix_restart_rbx);
   LIVE_THREAD_OFFSET (FIX_RESTART_RIP, fix_restart_rip);
   LIVE_THREAD_OFFSET (FIX_RESTART_RFLAGS, fix_restart_rflags);
+
   LIVE_THREAD_OFFSET (RESTART, restart);
   LIVE_THREAD_OFFSET (RESTART_START, restart_start);
+
+  LIVE_THREAD_OFFSET (SYNC_REPEAT_TRACE, sync_repeat_trace);
 
   LIVE_THREAD_OFFSET (SIG_RBX, sig_rbx);
   LIVE_THREAD_OFFSET (SIG_RDI, sig_rdi);
