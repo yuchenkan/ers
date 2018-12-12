@@ -21,7 +21,10 @@
 
 #include <stdint.h>
 
-#define eri_assert(exp) do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
+#ifndef eri_assert
+# define eri_assert(exp) \
+  do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
+#endif
 
 #define eri_min(a, b) \
   ({				\

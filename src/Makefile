@@ -1,4 +1,5 @@
 all:
+	bash make.sh
 	gcc -I . -Wall -O3 -S -o lib/syscall-offsets.s lib/syscall-offsets.c
 	grep __AS_DEFINE__ lib/syscall-offsets.s | sed 's/__AS_DEFINE__/#define/g' >lib/syscall-offsets.h
 	\
@@ -11,4 +12,4 @@ all:
 	gcc -I . -Wall -O3 -S -o tst/tst-live-entry-offsets.s tst/tst-live-entry-offsets.c
 	grep __AS_DEFINE__ tst/tst-live-entry-offsets.s | sed 's/__AS_DEFINE__/#define/g' >tst/tst-live-entry-offsets.h
 	\
-	gcc -I . -nostdlib -e tst_start tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry.c live-entry.c live-entry.S -o tst-live-entry -g -Wall
+	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry.c live-entry.c live-entry.S -o tst-live-entry -g -Wall -Wl,--no-undefined

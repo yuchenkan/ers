@@ -2,10 +2,16 @@
 #define _ERS_PUBLIC_IMPL_H
 
 #include "public/comm.h"
+#ifndef ERI_TST_RTLD
+# include "public/rtld.h"
+#else
+# include "public/tst-rtld.h"
+#endif
 #include "public/recorder-offsets.h"
 
-#define _ERS_ATOMIC_OP(op, sz) \
-  _ERS_OP (_ERS_PASTE (_ERS_OP_ATOMIC_, op), _ERS_ATOMIC_SIZE (sz))
+#define _ERS_INIT \
+  .align 16, 0x90;							\
+  _ERS_RTLD
 
 #define _ERS_ENTER(mark, op) \
   movq	$_ERS_PASTE (_ERS_MARK_, mark), %gs:_ERS_COMMON_THREAD_MARK;	\
@@ -43,6 +49,9 @@
   jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
 20:									\
   inst
+
+#define _ERS_ATOMIC_OP(op, sz) \
+  _ERS_OP (_ERS_PASTE (_ERS_OP_ATOMIC_, op), _ERS_ATOMIC_SIZE (sz))
 
 #define _ERS_ATOMIC_SAVE_VAL(sz, val) \
   movq	$0, %gs:_ERS_COMMON_THREAD_VAR0;				\
