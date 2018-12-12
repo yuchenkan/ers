@@ -1,5 +1,5 @@
-#ifndef ERI_LIVE_H
-#define ERI_LIVE_H
+#ifndef ERI_LIVE_ENTRY_H
+#define ERI_LIVE_ENTRY_H
 
 #define _ERI_R0_b(i)		_ERS_PASTE (i, l)
 #define _ERI_R0_w(i)		_ERS_PASTE (i, x)
@@ -51,7 +51,7 @@
 
 #ifndef __ASSEMBLER__
 
-#include "recorder.h"
+#include "entry.h"
 #include "lib/syscall.h"
 
 struct eri_live_internal

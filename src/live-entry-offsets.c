@@ -1,5 +1,5 @@
 #include "lib/offset.h"
-#include "live.h"
+#include "live-entry.h"
 #include "lib/util.h"
 
 #define THREAD_OFFSET(name, member) \

@@ -3,7 +3,7 @@
 
 #include "public/comm.h"
 
-#include "live.h"
+#include "live-entry.h"
 
 #define TST_LIVE_SYNC_JMP_REG		r8
 #define TST_LIVE_SYNC_JMP_UREG		R8

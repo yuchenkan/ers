@@ -1,5 +1,5 @@
 #include "lib/offset.h"
-#include "recorder.h"
+#include "entry.h"
 
 #define COMMON_THREAD_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (_ERS_COMMON_THREAD_, name, struct eri_common_thread, member)

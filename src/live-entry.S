@@ -3,8 +3,8 @@
 #include "public/comm.h"
 #include "public/recorder-offsets.h"
 
-#include "live.h"
-#include "live-offsets.h"
+#include "live-entry.h"
+#include "live-entry-offsets.h"
 
 #include "lib/syscall.h"
 #include "lib/syscall-offsets.h"

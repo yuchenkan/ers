@@ -1,6 +1,6 @@
 #include "tst/tst-live-entry.h"
 
-#include "live.h"
+#include "live-entry.h"
 
 #include "lib/syscall.h"
 #include "lib/printf.h"
@@ -158,6 +158,11 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  struct eri_live_syscall_info *info,
 		  struct eri_live_thread *th)
 {
+  silence = 1;
+  eri_assert_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
+		     current->name, info->rax, info->rflags);
+  eri_assert (current_thread == th);
+  silence = 0;
   return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
 }
 

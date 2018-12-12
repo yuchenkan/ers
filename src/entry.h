@@ -1,5 +1,5 @@
-#ifndef ERI_RECORDER_H
-#define ERI_RECORDER_H
+#ifndef ERI_ENTRY_H
+#define ERI_ENTRY_H
 
 #ifndef __ASSEMBLER__
 
