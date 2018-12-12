@@ -3,11 +3,11 @@
 
 #include "public/comm.h"
 #ifndef ERI_TST_RTLD
-# include "public/rtld.h"
+/* # include "public/rtld.h" */
 #else
 # include "public/tst-rtld.h"
 #endif
-#include "public/recorder-offsets.h"
+#include "public/entry-offsets.h"
 
 #define _ERS_INIT \
   .align 16, 0x90;							\

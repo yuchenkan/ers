@@ -1,7 +1,7 @@
 /* vim: set ft=gas: */
 
 #include "public/comm.h"
-#include "public/recorder-offsets.h"
+#include "public/entry-offsets.h"
 
 #include "live-entry.h"
 #include "live-entry-offsets.h"
