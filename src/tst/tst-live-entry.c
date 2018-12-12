@@ -148,6 +148,19 @@ struct eri_live_internal eri_live_internal;
 
 static uint8_t silence;
 
+uint8_t eri_live_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
+			     uint64_t a3, uint64_t a4, uint64_t a5,
+			     struct eri_live_syscall_info *info);
+
+uint8_t
+eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
+		  uint64_t a3, uint64_t a4, uint64_t a5,
+		  struct eri_live_syscall_info *info,
+		  struct eri_live_thread *th)
+{
+  return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
+}
+
 void
 eri_live_sync_async (uint64_t cnt, struct eri_live_thread *th)
 {

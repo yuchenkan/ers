@@ -95,6 +95,7 @@ struct eri_live_thread
   uint64_t restart;
   uint64_t restart_start;
 
+  uint64_t syscall_rsp;
   uint64_t sync_repeat_trace;
 
   uint64_t sig_rbx;
@@ -148,6 +149,14 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
 
 void eri_live_init_thread (struct eri_live_thread *th, void *internal,
 			   uint64_t stack_top, uint64_t stack_size);
+
+struct eri_live_syscall_info
+{
+  uint64_t rax;
+  uint64_t rsp; /* XXX */
+  uint64_t r11;
+  uint64_t rflags;
+};
 
 #endif
 
