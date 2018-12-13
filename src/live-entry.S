@@ -1,6 +1,6 @@
 /* vim: set ft=gas: */
 
-#include "public/comm.h"
+#include "public/common.h"
 #include "public/entry-offsets.h"
 
 #include "live-entry.h"
@@ -118,12 +118,12 @@
   movq	src, reg;							\
   cmpq	reg, dst
 
-#define LOAD_OP_OP(th, dst) \
-  movq	PTE_OP(th), dst;						\
+#define LOAD_OP_OP(dst) \
+  movq	PTE_OP(%rbx), dst;						\
   shrq	$_ERS_OP_FLAGS_BITS, dst
 
-#define LOAD_OP_RFLAGS(th, dst) \
-  movq	PTE_OP(th), dst;						\
+#define LOAD_OP_RFLAGS(dst) \
+  movq	PTE_OP(%rbx), dst;						\
   andq	$_ERS_OP_FLAGS_MASK, dst
 
 /************************************************/
@@ -131,6 +131,11 @@
 /************************************************/
 
   .data
+
+  .global eri_live_entry_atomic_mem_table
+  .hidden eri_live_entry_atomic_mem_table
+eri_live_entry_atomic_mem_table:
+  .long 0
 
   .global eri_live_thread_entry_text
   .hidden eri_live_thread_entry_text
@@ -284,7 +289,7 @@ eri_live_sigaction:
   /* Continue check if we are about to run the sync_async instruction when we
      are not inside eri_live_thread_entry_ret.
   */
-  LOAD_OP_OP (%rbx, %r11)
+  LOAD_OP_OP (%r11)
   cmpq	$_ERS_OP_SYNC_ASYNC, %r11
   /* Check if we are inside continue when op is not sync_async.  */
   jne	.lcheck_continue
@@ -338,9 +343,6 @@ eri_live_sigaction:
   NESTED_FIX (RDI)
   NESTED_FIX (RSI)
   NESTED_FIX (RDX)
-
-  leaq	sig_act(%rip), %rax /* TODO */
-  movq	%rax, UCTX_RIP(%rdx)
   jmp	.linvoke
 
 /* Check sigtrap from single step tracing.  */
@@ -507,7 +509,8 @@ eri_live_resume_ret:
   /* Set trace flag in r11 accordingly if op is syscall and
      we are completing the instruction.
   */
-  cmpq	$_ERS_OP_SYSCALL, PTE_OP(%rbx)
+  LOAD_OP_OP (%r11)
+  cmpq	$_ERS_OP_SYSCALL, %r11
   jne	.ldone_restore_trace_flag
   cmpq	$0, PTE_DIR(%rbx)
   je	.ldone_restore_trace_flag
@@ -526,9 +529,7 @@ eri_live_resume_ret:
   movq	TE_SIG_R14(%rbx), %r14
   movq	TE_SIG_R15(%rbx), %r15
 
-  /* %rdi is not used in do_invoke
-     movq	TE_SIG_RDI(%rbx), %rdi
-  */
+  movq	TE_SIG_RDI(%rbx), %rdi
   movq	TE_SIG_RSI(%rbx), %rsi
   movq	TE_SIG_RSP(%rbx), %rsp
   /* Clear INTR, see .latomic_xchg_complete_start.  */
@@ -551,22 +552,33 @@ eri_live_resume_ret:
 .linvoke:
   movq	%rdi, TE_SIG_RDI(%rbx)
 
-.ldo_invoke:
-  /* TODO fix ctx->stack */
-  movq	UCTX_SS_SP(%rdx), %rdi
-  movq	%rsp, %rcx
-  subq	$24, %rsp
-  call	eri_live_copy_stack
-  popq	%rsi
-  popq	%rdx
-  movq	%rax, %rsp
+#define SIGACTION_RSI		ERI_LIVE_ENTRY_SIGACTION_INFO_RSI
+#define SIGACTION_RDX		ERI_LIVE_ENTRY_SIGACTION_INFO_RDX
+#define SIGACTION_RSP		ERI_LIVE_ENTRY_SIGACTION_INFO_RSP
+#define SIGACTION_RIP		ERI_LIVE_ENTRY_SIGACTION_INFO_RIP
+#define SIGACTION_MASK_ALL	ERI_LIVE_ENTRY_SIGACTION_INFO_MASK_ALL
+#define SIGACTION_MASK		ERI_LIVE_ENTRY_SIGACTION_INFO_MASK
+#define SIGACTION_SIZE16	ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16
 
-  movq	%rsi, TE_SIG_RSI(%rbx)
-  movq	%rdx, TE_SIG_RDX(%rbx)
+.ldo_invoke:
+  movq	UCTX_SS_SP(%rdx), %rcx
+  movq	%rsp, %r8
+  subq	$SIGACTION_SIZE16 + 8, %rsp
+  call	eri_live_entry_start_sigaction
+
+  cmpq	$1, SIGACTION_MASK_ALL(%rsp)
+  je	.lfast_invoke
+
+  MOV_MM (SIGACTION_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
+  MOV_MM (SIGACTION_RDX(%rsp), TE_SIG_RDX(%rbx), %rax)
+
+  movq	SIGACTION_RIP(%rsp), %r8
+
+  leaq	SIGACTION_MASK(%rsp), %rsi
+  movq	SIGACTION_RSP(%rsp), %rsp
 
   movl	$__NR_rt_sigprocmask, %eax
   movq	$ERI_SIG_SETMASK, %rdi
-  leaq	eri_live_sigempty, %rsi
   movq	$0, %rdx
   movq	$ERI_SIG_SETSIZE, %r10
   syscall
@@ -577,9 +589,15 @@ eri_live_resume_ret:
   movq	TE_SIG_RSI(%rbx), %rsi
   movq	TE_SIG_RDX(%rbx), %rdx
   movq	TE_SIG_RBX(%rbx), %rbx
-  movq	sig_act, %rax	/* TODO */
-  jmp	*%rax
+  jmp	*%r8
 .lnested_signal_end:
+
+.lfast_invoke:
+  movq	SIGACTION_RSI(%rsp), %rsi
+  movq	SIGACTION_RDX(%rsp), %rdx
+  movq	SIGACTION_RIP(%rsp), %rax
+  movq	SIGACTION_RSP(%rsp), %rsp
+  jmp	*%rax
 
 .lerror:
   ERI_ASSERT_FALSE
@@ -669,7 +687,7 @@ eri_live_entry:
 
 #define STACK_RFLAGS_CTF	-8
 
-  LOAD_OP_OP (%rbx, %r11)
+  LOAD_OP_OP (%r11)
 
   cmpq	$_ERS_OP_SYSCALL, %r11
   je	.lsyscall
@@ -792,11 +810,11 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
 /* eri_live_entry: syscall			*/
 /************************************************/
 
-#define SYSCALL_RAX		ERI_LIVE_SYSCALL_INFO_RAX
-#define SYSCALL_R11		ERI_LIVE_SYSCALL_INFO_R11
-#define SYSCALL_RFLAGS		ERI_LIVE_SYSCALL_INFO_RFLAGS
+#define SYSCALL_RAX		ERI_LIVE_ENTRY_SYSCALL_INFO_RAX
+#define SYSCALL_R11		ERI_LIVE_ENTRY_SYSCALL_INFO_R11
+#define SYSCALL_RFLAGS		ERI_LIVE_ENTRY_SYSCALL_INFO_RFLAGS
 
-#define SYSCALL_SIZE16		ERI_LIVE_SYSCALL_INFO_SIZE16
+#define SYSCALL_SIZE16		ERI_LIVE_ENTRY_SYSCALL_INFO_SIZE16
 
 .lsyscall:
   movq	%r10, %rcx
@@ -918,7 +936,7 @@ LABEL_RESTART_START (sync_async):
 
 #define ATOMIC_LABEL		ERI_LIVE_ATOMIC_LABEL
 
-#define AT_REG_MEM_TAB		%r11
+#define AT_REG_MEM_TABLE	%r11
 #define AT_REG_IDX		%rax
 #define AT_REG_LOCK_LP_CNT	%rcx
 #define AT_REG_MEM		%rdi
@@ -931,18 +949,17 @@ LABEL_RESTART_START (sync_async):
 #define AT_LOAD_VAL		movq	PTE_VAR0(%rbx), AT_REG_VAL
 #define AT_LOAD_MEM		movq	PTE_VAR1(%rbx), AT_REG_MEM
 
-#define ATOMIC_MEM_TAB		ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE
-#define AT_LOAD_MEM_TAB \
-  movq	eri_live_internal + ATOMIC_MEM_TAB(%rip), AT_REG_MEM_TAB
+#define AT_LOAD_MEM_TABLE \
+  movq	eri_live_entry_atomic_mem_table(%rip), AT_REG_MEM_TABLE
 
 #define AT_HASH_MEM \
   AT_LOAD_MEM;								\
   TH_CALL (%rsi, eri_live_atomic_hash_mem)
 
-#define AT_MEM(idx)		(AT_REG_MEM_TAB, idx, 8)
+#define AT_MEM(idx)		(AT_REG_MEM_TABLE, idx, 8)
 
 #define AT_LOCK(idx) \
-  AT_LOAD_MEM_TAB;							\
+  AT_LOAD_MEM_TABLE;							\
 1:									\
   movq	$16, AT_REG_LOCK_LP_CNT;					\
   btsq	$0, AT_MEM (idx);						\
@@ -953,7 +970,7 @@ LABEL_RESTART_START (sync_async):
   movl	$__NR_sched_yield, %eax;					\
   syscall;								\
   popq	%rax;								\
-  AT_LOAD_MEM_TAB;							\
+  AT_LOAD_MEM_TABLE;							\
   jmp	1b;								\
 									\
 2:
@@ -1162,7 +1179,7 @@ LABEL_RESTART_START (ATOMIC_LABEL (sz, cmpxchg)):			\
 
 #define ATOMIC(op, label) \
 LABEL_ATOMIC (label):							\
-  LOAD_OP_RFLAGS (%rbx, %r11);						\
+  LOAD_OP_RFLAGS (%r11);						\
   IF_ATOMIC_SIZE (b, label);						\
   IF_ATOMIC_SIZE (w, label);						\
   IF_ATOMIC_SIZE (l, label);						\

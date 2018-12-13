@@ -1,7 +1,7 @@
 #ifndef _ERS_PUBLIC_IMPL_H
 #define _ERS_PUBLIC_IMPL_H
 
-#include "public/comm.h"
+#include "public/common.h"
 #ifndef ERI_TST_RTLD
 /* # include "public/rtld.h" */
 #else
@@ -63,7 +63,7 @@
   leaq	mem, %rbx;							\
   movq	%rbx, _ERS_ENTRY (VAR1)
 
-#define _ERS_ATOMIC_COMM_LOAD(sz, mem, op, ...) \
+#define _ERS_ATOMIC_COMMON_LOAD(sz, mem, op, ...) \
 30:									\
   _ERS_ENTER (EXTERNAL_RET, _ERS_ATOMIC_OP (LOAD, sz));			\
   _ERS_ATOMIC_SAVE_MEM (mem);						\
@@ -80,7 +80,7 @@
   _ERS_PASTE (mov, sz)	res, reg
 
 #define _ERS_ATOMIC_LOAD(sz, mem, reg) \
-  _ERS_ATOMIC_COMM_LOAD (sz, mem, _ERS_LOAD_LOAD, reg)
+  _ERS_ATOMIC_COMMON_LOAD (sz, mem, _ERS_LOAD_LOAD, reg)
 
 /* mov	imm8/16/32/r8/16/32/64, m8/16/32/64  */
 #define _ERS_ATOMIC_STOR(sz, imm_or_reg, mem) \

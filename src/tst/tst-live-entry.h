@@ -1,7 +1,7 @@
 #ifndef ERI_TST_TST_LIVE_ENTRY_H
 #define ERI_TST_TST_LIVE_ENTRY_H
 
-#include "public/comm.h"
+#include "public/common.h"
 
 #include "live-entry.h"
 

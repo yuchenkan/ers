@@ -1,7 +1,7 @@
 #ifndef ERI_LIB_UTIL_H
 #define ERI_LIB_UTIL_H
 
-#include "public/comm.h"
+#include "public/common.h"
 
 #define _ERI_PP_IF_0(...)
 #define _ERI_PP_IF_1(...)	__VA_ARGS__

@@ -1,8 +1,6 @@
 #ifndef ERI_ENTRY_H
 #define ERI_ENTRY_H
 
-#ifndef __ASSEMBLER__
-
 #include <stdint.h>
 
 struct eri_public_thread_entry
@@ -21,9 +19,5 @@ struct eri_public_thread_entry
 
   uint64_t thread_entry;
 };
-
-#endif
-
-#define ERI_SIG_STACK_SIZE	4096
 
 #endif

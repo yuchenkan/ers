@@ -6,7 +6,7 @@ gcc -I . binary.c -o binary
 
 ./binary recorder tst-rtld-recorder.so tst-rtld-recorder tst-rtld-recorder-binary.h
 
-gcc -I . -g -fPIE -Wl,-Map,rtld.map -Wl,-T,rtld.ld -Wl,-e,start -o rtld rtld.c lib/util.c lib/printf.c -fvisibility=hidden -nostdlib -pie -D ERI_TST_RTLD -fdata-sections -ffunction-sections -Wl,--gc-sections -Wl,-N -Wall -Wl,--no-undefined
+gcc -I . -g -fPIE -Wl,-Map,rtld.map -Wl,-T,rtld.ld -Wl,-e,eri_start -o rtld rtld.c rtld.S lib/util.c lib/printf.c -fvisibility=hidden -nostdlib -pie -D ERI_TST_RTLD -fdata-sections -ffunction-sections -Wl,--gc-sections -Wl,-N -Wall -Wl,--no-undefined
 
 #gcc -I . -g -fPIE -Wl,-Map,rtld.map -Wl,-T,rtld.ld -Wl,-e,start -o rtld rtld.c -fvisibility=hidden -nostdlib -pie -Wl,-N
 #objcopy -R .eh_frame -R .eh_frame_hdr -R .note.gnu.build-id -R .dynsym -R .dynstr -R .gnu.hash rtld

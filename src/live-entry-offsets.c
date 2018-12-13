@@ -7,8 +7,12 @@
 		      struct eri_live_thread_entry, member)
 
 #define SYSCALL_INFO_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_LIVE_SYSCALL_INFO_, name,			\
-		      struct eri_live_syscall_info, member)
+  ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SYSCALL_INFO_, name,		\
+		      struct eri_live_entry_syscall_info, member)
+
+#define SIGACTION_INFO_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SIGACTION_INFO_, name,		\
+		      struct eri_live_entry_sigaction_info, member)
 
 void
 declare (void)
@@ -70,6 +74,16 @@ declare (void)
   SYSCALL_INFO_OFFSET (R11, r11);
   SYSCALL_INFO_OFFSET (RFLAGS, rflags);
 
-  ERI_DECLARE_SYMBOL (ERI_LIVE_SYSCALL_INFO_SIZE16,
-		      eri_size_of (struct eri_live_syscall_info, 16));
+  ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SYSCALL_INFO_SIZE16,
+		      eri_size_of (struct eri_live_entry_syscall_info, 16));
+
+  SIGACTION_INFO_OFFSET (RSI, rsi);
+  SIGACTION_INFO_OFFSET (RDX, rdx);
+  SIGACTION_INFO_OFFSET (RSP, rsp);
+  SIGACTION_INFO_OFFSET (RIP, rip);
+  SIGACTION_INFO_OFFSET (MASK_ALL, mask_all);
+  SIGACTION_INFO_OFFSET (MASK, mask);
+
+  ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16,
+		      eri_size_of (struct eri_live_entry_sigaction_info, 16));
 }

@@ -4,7 +4,7 @@
 #include <asm/unistd.h>
 
 #include "lib/util.h"
-#include "public/comm.h"
+#include "public/common.h"
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>

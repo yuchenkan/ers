@@ -144,7 +144,7 @@ TST_ATOMIC_SIZES (TST_LOAD)
   _ERS_PASTE (cmp, sz)	reg, res
 
 #define TST_ATOMIC_CMP(sz, reg, mem) \
-  _ERS_ATOMIC_COMM_LOAD (sz, mem, TST_LOAD_CMP, reg)
+  _ERS_ATOMIC_COMMON_LOAD (sz, mem, TST_LOAD_CMP, reg)
 
 #define CMP(sz) \
   TST_ATOMIC_CMP (sz, %CMP_REG (sz), (%CMP_REG_MEM))

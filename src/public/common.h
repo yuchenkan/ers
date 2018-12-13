@@ -1,5 +1,5 @@
-#ifndef _ERS_PUBLIC_COMM_H
-#define _ERS_PUBLIC_COMM_H
+#ifndef _ERS_PUBLIC_COMMON_H
+#define _ERS_PUBLIC_COMMON_H
 
 #define __ERS_STR(x)		#x
 #define _ERS_STR(x)		__ERS_STR (x)
@@ -14,15 +14,15 @@
 #define _ERS_MARK_EXTERNAL_RET	1
 #define _ERS_MARK_INTERNAL_RET	2
 
-#define _ERS_OP_SYSCALL		0
-#define _ERS_OP_SYNC_ASYNC	1
+#define _ERS_OP_SYSCALL		1
+#define _ERS_OP_SYNC_ASYNC	2
 
-#define _ERS_OP_ATOMIC_LOAD	2
-#define _ERS_OP_ATOMIC_STOR	3
-#define _ERS_OP_ATOMIC_INC	4
-#define _ERS_OP_ATOMIC_DEC	5
-#define _ERS_OP_ATOMIC_XCHG	6
-#define _ERS_OP_ATOMIC_CMPXCHG	7
+#define _ERS_OP_ATOMIC_LOAD	3
+#define _ERS_OP_ATOMIC_STOR	4
+#define _ERS_OP_ATOMIC_INC	5
+#define _ERS_OP_ATOMIC_DEC	6
+#define _ERS_OP_ATOMIC_XCHG	7
+#define _ERS_OP_ATOMIC_CMPXCHG	8
 
 #define _ERS_OP_FLAGS_BITS	4
 #define _ERS_OP_FLAGS_MASK	((1 << _ERS_OP_FLAGS_BITS) - 1)

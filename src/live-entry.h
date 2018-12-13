@@ -1,10 +1,12 @@
 #ifndef ERI_LIVE_ENTRY_H
 #define ERI_LIVE_ENTRY_H
 
+#include "public/common.h"
+
 #define _ERI_R0_b(i)		_ERS_PASTE (i, l)
 #define _ERI_R0_w(i)		_ERS_PASTE (i, x)
-#define _ERI_R0_l(i)		_ERS_PASTE (_ERS_PASTE (e, i), x)
-#define _ERI_R0_q(i)		_ERS_PASTE (_ERS_PASTE (r, i), x)
+#define _ERI_R0_l(i)		_ERS_PASTE2 (e, i, x)
+#define _ERI_R0_q(i)		_ERS_PASTE2 (r, i, x)
 
 #define ERI_RAX(sz)		_ERS_PASTE (_ERI_R0_, sz) (a)
 #define ERI_RBX(sz)		_ERS_PASTE (_ERI_R0_, sz) (b)
@@ -35,18 +37,14 @@
 #define ERI_R14(sz)		_ERS_PASTE (_ERI_R2_, sz) (r14)
 #define ERI_R15(sz)		_ERS_PASTE (_ERI_R2_, sz) (r15)
 
-/* TODO: this is hard coded for eri_live_internal, which is defined
-   in live.h.
-*/
-#define ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE	0
-
 #define ERI_LIVE_ENTRY_SAVED_REG_SIZE		80
+#define ERI_LIVE_SIG_STACK_SIZE			4096
 
 #define ERI_LIVE_ATOMIC_LABEL(sz, label) \
-  _ERS_PASTE (atomic_, _ERS_PASTE (label, sz))
+  _ERS_PASTE2 (atomic_, label, sz)
 
 #define ERI_TST_LIVE_COMPLETE_START_NAME(name) \
-  _ERS_PASTE (eri_tst_live_, _ERS_PASTE (name, _complete_start))
+  _ERS_PASTE2 (eri_tst_live_, name, _complete_start)
 
 #define ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME(sz, name) \
   ERI_TST_LIVE_COMPLETE_START_NAME (ERI_LIVE_ATOMIC_LABEL (sz, name))
@@ -114,6 +112,8 @@ struct eri_live_thread_entry
   uint64_t tst_skip_ctf;
 };
 
+extern uint64_t *eri_live_entry_atomic_mem_table;
+
 extern uint8_t eri_live_thread_entry_text[];
 extern uint8_t eri_live_thread_entry_text_resume[];
 extern uint8_t eri_live_thread_entry_text_entry[];
@@ -148,14 +148,25 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
 
 void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
-		void *thread, uint64_t stack_top, uint64_t stack_size);
+		void *thread, uint64_t stack_top, uint64_t stack_size,
+		void *sigstack);
 
-struct eri_live_syscall_info
+struct eri_live_entry_syscall_info
 {
   uint64_t rax;
   uint64_t rsp; /* XXX */
   uint64_t r11;
   uint64_t rflags;
+};
+
+struct eri_live_entry_sigaction_info
+{
+  uint64_t rsi;
+  uint64_t rdx;
+  uint64_t rsp;
+  uint64_t rip;
+  uint64_t mask_all;
+  struct eri_sigset mask;
 };
 
 #endif

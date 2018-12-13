@@ -11,24 +11,8 @@
 #include "lib/syscall.h"
 #include "lib/printf.h"
 
-asm ("  .text					\n\
-  .section .text.start, \"ax\", @progbits	\n\
-  .align 16					\n\
-  .global start					\n\
-  .hidden start					\n\
-  .type start, @function			\n\
-start:						\n\
-  movq	%rsp, %rdi				\n\
-  pushq	$0					\n\
-  jmp	rtld					\n\
-  .size start, .-start				\n\
-  .previous					\n"
-);
-
-extern uint8_t binary_end[];
-
 void
-rtld (void **arg)
+eri_rtld (void **arg)
 {
 #ifdef ERI_TST_RTLD
   arg += 2;
@@ -55,7 +39,8 @@ rtld (void **arg)
   struct eri_seg segs[] = ERI_RECORDER_BINARY_SEGMENTS;
   uint16_t nsegs = eri_length_of (segs);
 
-  struct eri_rtld r = { (uint64_t) arg, (uint64_t) binary_end };
+  extern uint8_t eri_binary_end[];
+  struct eri_rtld r = { (uint64_t) arg, (uint64_t) eri_binary_end };
 
   uint64_t base;
   uint16_t i;

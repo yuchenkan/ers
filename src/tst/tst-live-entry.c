@@ -1,11 +1,10 @@
 #include "tst/tst-live-entry.h"
 
-#include "live.h"
 #include "live-entry.h"
 
 #include "lib/syscall.h"
 #include "lib/printf.h"
-#include "public/comm.h"
+#include "public/common.h"
 
 struct rand
 {
@@ -145,91 +144,89 @@ static struct tst_entry *current;
 
 static struct eri_live_thread_entry *current_thread;
 
-struct eri_live_internal eri_live_internal;
-
 static uint8_t silence;
 
 uint8_t eri_live_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 			     uint64_t a3, uint64_t a4, uint64_t a5,
-			     struct eri_live_syscall_info *info);
+			     struct eri_live_entry_syscall_info *info);
 
 uint8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
-		  struct eri_live_syscall_info *info,
-		  struct eri_live_thread_entry *th)
+		  struct eri_live_entry_syscall_info *info,
+		  struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
 		     current->name, info->rax, info->rflags);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
   return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
 }
 
 void
-eri_live_sync_async (uint64_t cnt, struct eri_live_thread_entry *th)
+eri_live_sync_async (uint64_t cnt, struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live sync async: cnt = %lx\n",
 		     current->name, cnt);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
 }
 
 void
-eri_live_restart_sync_async (uint64_t cnt, struct eri_live_thread_entry *th)
+eri_live_restart_sync_async (uint64_t cnt, struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live restart sync async: cnt = %lx\n",
 		     current->name, cnt);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
 }
 
 uint64_t
-eri_live_atomic_hash_mem (uint64_t mem, struct eri_live_thread_entry *th)
+eri_live_atomic_hash_mem (uint64_t mem, struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic hash mem: mem = %lx\n",
 		     current->name, mem);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
   return 0;
 }
 
 void
 eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val,
-		      struct eri_live_thread_entry *th)
+		      struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load: mem = %lx, "
 		     "ver = %lx, val = %lx\n",
 		     current->name, mem, ver, val);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
 }
 
 void
 eri_live_atomic_stor (uint64_t mem, uint64_t ver,
-		      struct eri_live_thread_entry *th)
+		      struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic stor: mem = %lx, ver = %lx\n",
 		     current->name, mem, ver);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
 }
 
 void
 eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
-			   struct eri_live_thread_entry *th)
+			   struct eri_live_thread_entry *thread)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load stor: mem = %lx, "
 		     "ver = %lx, val = %lx\n",
 		     current->name, mem, ver, val);
-  eri_assert (current_thread == th);
+  eri_assert (current_thread == thread);
   silence = 0;
 }
 
@@ -300,7 +297,18 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 }
 
-void *sig_act;
+static struct eri_sigset sigmask;
+static void *sigact;
+
+void eri_live_start_sigaction (int32_t sig,
+			       struct eri_live_entry_sigaction_info *info,
+			       struct eri_live_thread_entry *thread)
+{
+  eri_assert (current_thread == thread);
+  info->rip = (uint64_t) sigact;
+  info->mask_all = 0;
+  info->mask = sigmask;
+}
 
 int32_t
 sig_check_trigger (int32_t sig, struct eri_siginfo *info,
@@ -351,6 +359,7 @@ sig_trigger_act (int32_t sig, struct eri_siginfo *info,
 
   eri_assert (sig == ERI_SIGINT);
   current->check (current, &ctx->mctx, CHECK_STEP_INT);
+  eri_assert_printf ("[%s:step_int] sig trigger act down\n", current->name);
 }
 
 static void
@@ -444,10 +453,12 @@ tst (struct rand *rand, struct tst_entry *entry)
   uint8_t stk[2 * 1024 * 1024];
   rand_fill (rand, stk, sizeof stk);
 
-  eri_live_init_thread_entry (thread, thread,
-			      (uint64_t) stk + sizeof stk, sizeof stk);
-  thread->tst_skip_ctf = 1;
+  uint8_t sstk[ERI_LIVE_SIG_STACK_SIZE];
+  rand_fill (rand, sstk, sizeof sstk);
 
+  eri_live_init_thread_entry (thread, thread,
+			(uint64_t) stk + sizeof stk, sizeof stk, sstk);
+  thread->tst_skip_ctf = 1;
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, thread);
 
@@ -455,9 +466,6 @@ tst (struct rand *rand, struct tst_entry *entry)
 
   eri_assert_printf ("[%s] setup sig stack\n", entry->name);
 
-  uint8_t sstk[ERI_SIG_STACK_SIZE];
-  rand_fill (rand, sstk, sizeof sstk);
-  *(struct eri_live_thread_entry **) sstk = thread;
   struct eri_stack st = { sstk, 0, sizeof sstk };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 
@@ -481,7 +489,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   sa.act = sig_trigger;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  sig_act = sig_trigger_act;
+  sigact = sig_trigger_act;
 
   for (entry->trigger = 0; entry->trigger <= entry->steps; ++entry->trigger)
     {
@@ -506,7 +514,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   sa.act = eri_live_sigaction;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  sig_act = sigtrap_act;
+  sigact = sigtrap_act;
 
   entry->init (entry, &ctx, INIT_TRAP);
   tst_live_entry (&ctx);
@@ -522,7 +530,7 @@ tst (struct rand *rand, struct tst_entry *entry)
 
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 
-      sig_act = sigsegv_act;
+      sigact = sigsegv_act;
 
       tst_live_entry (&ctx);
 
@@ -853,11 +861,10 @@ tst_main (void)
   struct rand rand;
   rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (getpid));
 
-  extern struct eri_sigset eri_live_sigempty; /* TODO */
-  eri_sigaddset (&eri_live_sigempty, ERI_SIGSEGV);
+  eri_sigaddset (&sigmask, ERI_SIGSEGV);
 
   static uint64_t atomic_mem_table;
-  eri_live_internal.atomic_mem_table = &atomic_mem_table;
+  eri_live_entry_atomic_mem_table = &atomic_mem_table;
 
 #define ENTRY_ADDR_FIELDS(entry) \
   (uint64_t) _ERS_PASTE (tst_live_entry_raw_enter_, entry),		\
