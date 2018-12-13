@@ -13,14 +13,16 @@
   .align 16, 0x90;							\
   _ERS_RTLD
 
-#define _ERS_ENTER(mark, op) \
-  movq	$_ERS_PASTE (_ERS_MARK_, mark), %gs:_ERS_COMMON_THREAD_MARK;	\
-  movq	$op, %gs:_ERS_COMMON_THREAD_OP;					\
-  movq	%rbx, %gs:_ERS_COMMON_THREAD_RBX
+#define _ERS_ENTRY(field)	%gs:_ERS_PASTE (_ERS_THREAD_ENTRY_, field)
 
-#define _ERS_SAVE_LABEL(label, off) \
+#define _ERS_ENTER(mark, op) \
+  movq	$_ERS_PASTE (_ERS_MARK_, mark), _ERS_ENTRY (MARK);		\
+  movq	$op, _ERS_ENTRY (OP);						\
+  movq	%rbx, _ERS_ENTRY (RBX)
+
+#define _ERS_SAVE_LABEL(label, field) \
   leaq	label(%rip), %rbx;						\
-  movq	%rbx, %gs:_ERS_PASTE (_ERS_COMMON_THREAD_, off)
+  movq	%rbx, _ERS_ENTRY (field)
 
 #define _ERS_SAVE_START(label)	_ERS_SAVE_LABEL (label, START)
 #define _ERS_SAVE_RET(label)	_ERS_SAVE_LABEL (label, RET)
@@ -30,15 +32,15 @@
   /* This has to be before jumping to dir, so that if mark is 1,  */	\
   /* we have chance to run and return to sigaction. After this, */	\
   /* if we get sginal we have to manually fix the context.  */		\
-  movq	$0, %gs:_ERS_COMMON_THREAD_MARK;				\
-  jmp	*%gs:_ERS_COMMON_THREAD_DIR
+  movq	$0, _ERS_ENTRY (MARK);						\
+  jmp	*_ERS_ENTRY (DIR)
 
 #define _ERS_SYSCALL \
 30:									\
   _ERS_ENTER (INTERNAL_RET, _ERS_OP (_ERS_OP_SYSCALL, 0));		\
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 20:
 
 #define _ERS_SYNC_ASYNC(inst) \
@@ -46,7 +48,7 @@
   _ERS_ENTER (EXTERNAL_RET, _ERS_OP (_ERS_OP_SYNC_ASYNC, 0));		\
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_RET (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 20:									\
   inst
 
@@ -54,12 +56,12 @@
   _ERS_OP (_ERS_PASTE (_ERS_OP_ATOMIC_, op), _ERS_ATOMIC_SIZE (sz))
 
 #define _ERS_ATOMIC_SAVE_VAL(sz, val) \
-  movq	$0, %gs:_ERS_COMMON_THREAD_VAR0;				\
-  _ERS_PASTE (mov, sz)	val, %gs:_ERS_COMMON_THREAD_VAR0
+  movq	$0, _ERS_ENTRY (VAR0);						\
+  _ERS_PASTE (mov, sz)	val, _ERS_ENTRY (VAR0)
 
 #define _ERS_ATOMIC_SAVE_MEM(mem) \
   leaq	mem, %rbx;							\
-  movq	%rbx, %gs:_ERS_COMMON_THREAD_VAR1
+  movq	%rbx, _ERS_ENTRY (VAR1)
 
 #define _ERS_ATOMIC_COMM_LOAD(sz, mem, op, ...) \
 30:									\
@@ -68,9 +70,9 @@
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_RET (10f);							\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 10:									\
-  op (sz, %gs:_ERS_COMMON_THREAD_VAR0, ##__VA_ARGS__);			\
+  op (sz, _ERS_ENTRY (VAR0), ##__VA_ARGS__);				\
   _ERS_DIR;								\
 20:
 
@@ -88,7 +90,7 @@
   _ERS_ATOMIC_SAVE_MEM (mem);						\
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 20:
 
 #define _ERS_ATOMIC_INC_DEC(sz, mem, op) \
@@ -97,7 +99,7 @@
   _ERS_ATOMIC_SAVE_MEM (mem);						\
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 20:
 
 #define _ERS_ATOMIC_INC(sz, mem)	_ERS_ATOMIC_INC_DEC (sz, mem, INC)
@@ -111,9 +113,9 @@
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_RET (10f);							\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 10:									\
-  _ERS_PASTE (mov, sz)	%gs:_ERS_COMMON_THREAD_VAR0, reg;		\
+  _ERS_PASTE (mov, sz)	_ERS_ENTRY (VAR0), reg;				\
   _ERS_DIR;								\
 20:
 
@@ -124,7 +126,7 @@
   _ERS_ATOMIC_SAVE_MEM (mem);						\
   _ERS_SAVE_START (30b);						\
   _ERS_SAVE_CONT (20f);							\
-  jmp	*%gs:_ERS_COMMON_THREAD_THREAD_ENTRY;				\
+  jmp	*_ERS_ENTRY (THREAD_ENTRY);					\
 20:
 
 #endif

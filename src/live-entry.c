@@ -6,43 +6,45 @@
 struct eri_sigset eri_live_sigempty;
 
 void
-eri_live_init_thread (struct eri_live_thread *th, void *internal,
-		      uint64_t stack_top, uint64_t stack_size)
+eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
+		 void *thread, uint64_t stack_top, uint64_t stack_size)
 {
-  uint8_t *text = (uint8_t *) th + eri_size_of (*th, 16);
-  eri_memcpy (text, eri_live_thread_text,
-	      eri_live_thread_text_end - eri_live_thread_text);
-#define SET_TH_RELA(field, entry) \
+  uint8_t *text = (uint8_t *) entry + eri_size_of (*entry, 16);
+#define TEXT(text)	_ERS_PASTE (eri_live_thread_entry_, text)
+  eri_memcpy (text, TEXT (text), TEXT (text_end) - TEXT (text));
+#define SET_ENTRY_RELA(field, val) \
   do {									\
-    th->field = (uint64_t) text + (entry - eri_live_thread_text);	\
+    entry->field = (uint64_t) text + (TEXT (val) - TEXT (text));	\
   } while (0)
 
-  th->common.internal = internal;
-  th->common.mark = 0;
-  th->common.dir = 0;
+  entry->public.mark = 0;
+  entry->public.dir = 0;
 
-  SET_TH_RELA (common.thread_entry, eri_live_thread_text_entry);
-  th->entry = (uint64_t) eri_live_entry;
+  SET_ENTRY_RELA (public.thread_entry, text_entry);
+  entry->entry = (uint64_t) eri_live_entry;
 
-  th->top = stack_top;
-  th->top_saved = stack_top - ERI_LIVE_ENTRY_SAVED_REG_SIZE;
-  th->rsp = stack_top;
-  th->stack_size = stack_size;
+  entry->top = stack_top;
+  entry->top_saved = stack_top - ERI_LIVE_ENTRY_SAVED_REG_SIZE;
+  entry->rsp = stack_top;
+  entry->stack_size = stack_size;
 
-  SET_TH_RELA (thread_internal_cont, eri_live_thread_text_internal_cont);
-  SET_TH_RELA (thread_external_cont, eri_live_thread_text_external_cont);
-  SET_TH_RELA (thread_cont_end, eri_live_thread_text_cont_end);
+  SET_ENTRY_RELA (thread_internal_cont, text_internal_cont);
+  SET_ENTRY_RELA (thread_external_cont, text_external_cont);
+  SET_ENTRY_RELA (thread_cont_end, text_cont_end);
 
-  SET_TH_RELA (thread_ret, eri_live_thread_text_ret);
-  SET_TH_RELA (thread_ret_end, eri_live_thread_text_ret_end);
+  SET_ENTRY_RELA (thread_ret, text_ret);
+  SET_ENTRY_RELA (thread_ret_end, text_ret_end);
 
-  SET_TH_RELA (thread_resume, eri_live_thread_text_resume);
-  SET_TH_RELA (thread_resume_ret, eri_live_thread_text_resume_ret);
-  th->resume_ret = (uint64_t) eri_live_resume_ret;
+  SET_ENTRY_RELA (thread_resume, text_resume);
+  SET_ENTRY_RELA (thread_resume_ret, text_resume_ret);
+  entry->resume_ret = (uint64_t) eri_live_resume_ret;
 
-  th->fix_restart = 0;
-  th->restart = 0;
-  th->tst_skip_ctf = 0;
+  entry->fix_restart = 0;
+  entry->restart = 0;
+
+  entry->thread = thread;
+
+  entry->tst_skip_ctf = 0;
 }
 
 uint64_t

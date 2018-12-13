@@ -35,7 +35,10 @@
 #define ERI_R14(sz)		_ERS_PASTE (_ERI_R2_, sz) (r14)
 #define ERI_R15(sz)		_ERS_PASTE (_ERI_R2_, sz) (r15)
 
-#define ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE	0 // TODO
+/* TODO: this is hard coded for eri_live_internal, which is defined
+   in live.h.
+*/
+#define ERI_LIVE_INTERNAL_ATOMIC_MEM_TABLE	0
 
 #define ERI_LIVE_ENTRY_SAVED_REG_SIZE		80
 
@@ -54,14 +57,9 @@
 #include "entry.h"
 #include "lib/syscall.h"
 
-struct eri_live_internal
+struct eri_live_thread_entry
 {
-  uint64_t *atomic_mem_table;
-};
-
-struct eri_live_thread
-{
-  struct eri_common_thread common;
+  struct eri_public_thread_entry public;
 
   uint64_t entry;
 
@@ -111,19 +109,21 @@ struct eri_live_thread
   uint64_t sig_r14;
   uint64_t sig_r15;
 
+  void *thread;
+
   uint64_t tst_skip_ctf;
 };
 
-extern uint8_t eri_live_thread_text[];
-extern uint8_t eri_live_thread_text_resume[];
-extern uint8_t eri_live_thread_text_entry[];
-extern uint8_t eri_live_thread_text_resume_ret[];
-extern uint8_t eri_live_thread_text_internal_cont[];
-extern uint8_t eri_live_thread_text_external_cont[];
-extern uint8_t eri_live_thread_text_cont_end[];
-extern uint8_t eri_live_thread_text_ret[];
-extern uint8_t eri_live_thread_text_ret_end[];
-extern uint8_t eri_live_thread_text_end[];
+extern uint8_t eri_live_thread_entry_text[];
+extern uint8_t eri_live_thread_entry_text_resume[];
+extern uint8_t eri_live_thread_entry_text_entry[];
+extern uint8_t eri_live_thread_entry_text_resume_ret[];
+extern uint8_t eri_live_thread_entry_text_internal_cont[];
+extern uint8_t eri_live_thread_entry_text_external_cont[];
+extern uint8_t eri_live_thread_entry_text_cont_end[];
+extern uint8_t eri_live_thread_entry_text_ret[];
+extern uint8_t eri_live_thread_entry_text_ret_end[];
+extern uint8_t eri_live_thread_entry_text_end[];
 
 void eri_live_sigaction (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *uctx);
@@ -147,8 +147,8 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (dec)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
 
-void eri_live_init_thread (struct eri_live_thread *th, void *internal,
-			   uint64_t stack_top, uint64_t stack_size);
+void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
+		void *thread, uint64_t stack_top, uint64_t stack_size);
 
 struct eri_live_syscall_info
 {

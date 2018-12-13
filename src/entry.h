@@ -5,10 +5,8 @@
 
 #include <stdint.h>
 
-struct eri_common_thread
+struct eri_public_thread_entry
 {
-  void *internal;
-
   uint64_t mark;
   uint64_t op;
 

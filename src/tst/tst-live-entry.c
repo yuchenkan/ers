@@ -1,5 +1,6 @@
 #include "tst/tst-live-entry.h"
 
+#include "live.h"
 #include "live-entry.h"
 
 #include "lib/syscall.h"
@@ -142,7 +143,7 @@ struct tst_entry
 
 static struct tst_entry *current;
 
-static struct eri_live_thread *current_thread;
+static struct eri_live_thread_entry *current_thread;
 
 struct eri_live_internal eri_live_internal;
 
@@ -156,7 +157,7 @@ uint8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  struct eri_live_syscall_info *info,
-		  struct eri_live_thread *th)
+		  struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
@@ -167,7 +168,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 }
 
 void
-eri_live_sync_async (uint64_t cnt, struct eri_live_thread *th)
+eri_live_sync_async (uint64_t cnt, struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live sync async: cnt = %lx\n",
@@ -177,7 +178,7 @@ eri_live_sync_async (uint64_t cnt, struct eri_live_thread *th)
 }
 
 void
-eri_live_restart_sync_async (uint64_t cnt, struct eri_live_thread *th)
+eri_live_restart_sync_async (uint64_t cnt, struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live restart sync async: cnt = %lx\n",
@@ -187,7 +188,7 @@ eri_live_restart_sync_async (uint64_t cnt, struct eri_live_thread *th)
 }
 
 uint64_t
-eri_live_atomic_hash_mem (uint64_t mem, struct eri_live_thread *th)
+eri_live_atomic_hash_mem (uint64_t mem, struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic hash mem: mem = %lx\n",
@@ -199,7 +200,7 @@ eri_live_atomic_hash_mem (uint64_t mem, struct eri_live_thread *th)
 
 void
 eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val,
-		      struct eri_live_thread *th)
+		      struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load: mem = %lx, "
@@ -211,7 +212,7 @@ eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val,
 
 void
 eri_live_atomic_stor (uint64_t mem, uint64_t ver,
-		      struct eri_live_thread *th)
+		      struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic stor: mem = %lx, ver = %lx\n",
@@ -222,7 +223,7 @@ eri_live_atomic_stor (uint64_t mem, uint64_t ver,
 
 void
 eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
-			   struct eri_live_thread *th)
+			   struct eri_live_thread_entry *th)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load stor: mem = %lx, "
@@ -393,10 +394,10 @@ sigsegv_act (int32_t sig, struct eri_siginfo *info,
 }
 
 static void
-assert_thread (struct eri_live_thread *thread)
+assert_thread (struct eri_live_thread_entry *thread)
 {
-  eri_assert (thread->common.mark == 0);
-  eri_assert (thread->common.dir == 0);
+  eri_assert (thread->public.mark == 0);
+  eri_assert (thread->public.dir == 0);
   eri_assert (thread->rsp == thread->top);
   eri_assert (thread->fix_restart == 0);
   eri_assert (thread->restart == 0);
@@ -435,15 +436,16 @@ tst (struct rand *rand, struct tst_entry *entry)
   /* Prepare test.  */
   eri_assert_printf ("[%s] setup thread\n", entry->name);
 
-  uint8_t thread_buf[eri_size_of (struct eri_live_thread, 16)
-		       + (eri_live_thread_text_end - eri_live_thread_text)];
+  uint8_t thread_buf[eri_size_of (struct eri_live_thread_entry, 16)
+	+ (eri_live_thread_entry_text_end - eri_live_thread_entry_text)];
   rand_fill (rand, thread_buf, sizeof thread_buf);
 
-  struct eri_live_thread *thread = (struct eri_live_thread *) thread_buf;
+  struct eri_live_thread_entry *thread = (void *) thread_buf;
   uint8_t stk[2 * 1024 * 1024];
   rand_fill (rand, stk, sizeof stk);
 
-  eri_live_init_thread (thread, 0, (uint64_t) stk + sizeof stk, sizeof stk);
+  eri_live_init_thread_entry (thread, thread,
+			      (uint64_t) stk + sizeof stk, sizeof stk);
   thread->tst_skip_ctf = 1;
 
 
@@ -455,7 +457,7 @@ tst (struct rand *rand, struct tst_entry *entry)
 
   uint8_t sstk[ERI_SIG_STACK_SIZE];
   rand_fill (rand, sstk, sizeof sstk);
-  *(struct eri_live_thread **) sstk = thread;
+  *(struct eri_live_thread_entry **) sstk = thread;
   struct eri_stack st = { sstk, 0, sizeof sstk };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 

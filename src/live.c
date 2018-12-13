@@ -1,9 +1,5 @@
 #include "live-entry.h"
 
-struct live_internal
-{
-};
-
 uint8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
