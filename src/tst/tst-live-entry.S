@@ -230,7 +230,7 @@ sig_trigger:
   jz	.lno_trigger
 
   movl	%eax, %edi
-  jmp	eri_live_sigaction
+  jmp	eri_live_entry_sigaction
 
 .lno_trigger:
   ret

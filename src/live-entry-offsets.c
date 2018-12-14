@@ -81,8 +81,8 @@ declare (void)
   SIGACTION_INFO_OFFSET (RDX, rdx);
   SIGACTION_INFO_OFFSET (RSP, rsp);
   SIGACTION_INFO_OFFSET (RIP, rip);
-  SIGACTION_INFO_OFFSET (MASK_ALL, mask_all);
-  SIGACTION_INFO_OFFSET (MASK, mask);
+  SIGACTION_INFO_OFFSET (MASK_ALL, mask.mask_all);
+  SIGACTION_INFO_OFFSET (MASK, mask.mask);
 
   ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16,
 		      eri_size_of (struct eri_live_entry_sigaction_info, 16));

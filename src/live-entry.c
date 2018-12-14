@@ -55,6 +55,16 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 }
 
 void
+eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry)
+{
+  eri_assert (entry->public.mark == 0);
+  eri_assert (entry->public.dir == 0);
+  eri_assert (entry->rsp == entry->top);
+  eri_assert (entry->fix_restart == 0);
+  eri_assert (entry->restart == 0);
+}
+
+void
 eri_live_entry_start_sigaction (int32_t sig, struct eri_siginfo *info,
 			struct eri_ucontext *ctx, uint64_t bot, uint64_t cur)
 {

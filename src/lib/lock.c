@@ -6,7 +6,7 @@ eri_lock (int32_t *lock)
   while (__atomic_exchange_n (lock, 1, __ATOMIC_ACQUIRE))
     {
       uint64_t res = ERI_SYSCALL (futex, lock, ERI_FUTEX_WAIT, 1, 0);
-      eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
+      eri_assert (! ERI_SYSCALL_IS_ERROR (res) || -res == ERI_EAGAIN);
     }
 }
 

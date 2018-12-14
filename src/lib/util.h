@@ -44,23 +44,19 @@
     __a > __b ? __a : __b;	\
   })
 
-#ifndef ERI_FUNC_ATTR
-# define ERI_FUNC_ATTR
-#endif
-
-ERI_FUNC_ATTR void eri_memset (void *s, char c, uint64_t n);
-ERI_FUNC_ATTR void eri_memcpy (void *d, const void *s, uint64_t n);
-ERI_FUNC_ATTR void eri_memmove (void *d, const void *s, uint64_t n);
-ERI_FUNC_ATTR int8_t eri_memcmp (const void *s1, const void *s2, uint64_t n);
-ERI_FUNC_ATTR uint64_t eri_strlen (const char *s);
-ERI_FUNC_ATTR void eri_strcpy (char *d, const char *s);
-ERI_FUNC_ATTR void eri_strncat (char *d, const char *s, uint64_t n);
-ERI_FUNC_ATTR int8_t eri_strcmp (const char *s1, const char *s2);
-ERI_FUNC_ATTR int8_t eri_strncmp (const char *s1, const char *s2, uint64_t n);
-ERI_FUNC_ATTR const char *eri_strtok (const char *s, char d);
-ERI_FUNC_ATTR const char *eri_strntok (const char *s, char d, uint64_t n);
-ERI_FUNC_ATTR const char *eri_strstr (const char *s, const char *d);
-ERI_FUNC_ATTR const char *eri_strnstr (const char *s, const char *d, uint64_t n);
+void eri_memset (void *s, char c, uint64_t n);
+void eri_memcpy (void *d, const void *s, uint64_t n);
+void eri_memmove (void *d, const void *s, uint64_t n);
+int8_t eri_memcmp (const void *s1, const void *s2, uint64_t n);
+uint64_t eri_strlen (const char *s);
+void eri_strcpy (char *d, const char *s);
+void eri_strncat (char *d, const char *s, uint64_t n);
+int8_t eri_strcmp (const char *s1, const char *s2);
+int8_t eri_strncmp (const char *s1, const char *s2, uint64_t n);
+const char *eri_strtok (const char *s, char d);
+const char *eri_strntok (const char *s, char d, uint64_t n);
+const char *eri_strstr (const char *s, const char *d);
+const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 
 #define eri_round_up_mask(x, mask) \
   ({						\

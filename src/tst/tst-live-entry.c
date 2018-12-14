@@ -306,8 +306,8 @@ void eri_live_start_sigaction (int32_t sig,
 {
   eri_assert (current_thread == thread);
   info->rip = (uint64_t) sig_action;
-  info->mask_all = 0;
-  info->mask = sig_mask;
+  info->mask.mask_all = 0;
+  info->mask.mask = sig_mask;
 }
 
 int32_t
@@ -402,16 +402,6 @@ sigsegv_act (int32_t sig, struct eri_siginfo *info,
     }
 }
 
-static void
-assert_thread (struct eri_live_thread_entry *thread)
-{
-  eri_assert (thread->public.mark == 0);
-  eri_assert (thread->public.dir == 0);
-  eri_assert (thread->rsp == thread->top);
-  eri_assert (thread->fix_restart == 0);
-  eri_assert (thread->restart == 0);
-}
-
 static struct tst_context *current_ctx;
 
 static void
@@ -481,7 +471,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   entry->init (entry, &ctx, INIT_STEP);
   tst_live_entry (&ctx);
 
-  assert_thread (thread);
+  eri_tst_live_assert_thread_entry (thread);
 
   /* Trigger sigint at each step.  */
   eri_assert_printf ("[%s:step_int] trigger at each step\n", entry->name);
@@ -499,7 +489,7 @@ tst (struct rand *rand, struct tst_entry *entry)
       entry->init (entry, &ctx, INIT_STEP_INT);
       tst_live_entry (&ctx);
 
-      assert_thread (thread);
+      eri_tst_live_assert_thread_entry (thread);
       if (entry->trigger < entry->steps) eri_assert (entry->triggered);
       else eri_assert (! entry->triggered);
 
@@ -511,7 +501,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   thread->tst_skip_ctf = 0;
 
   eri_assert_printf ("[%s:trap] tigger sigtrap\n", entry->name);
-  sa.act = eri_live_sigaction;
+  sa.act = eri_live_entry_sigaction;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   sig_action = sigtrap_act;
@@ -519,7 +509,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   entry->init (entry, &ctx, INIT_TRAP);
   tst_live_entry (&ctx);
 
-  assert_thread (thread);
+  eri_tst_live_assert_thread_entry (thread);
   eri_assert (entry->triggered);
   entry->triggered = 0;
 
@@ -534,7 +524,7 @@ tst (struct rand *rand, struct tst_entry *entry)
 
       tst_live_entry (&ctx);
 
-      assert_thread (thread);
+      eri_tst_live_assert_thread_entry (thread);
       eri_assert (entry->triggered);
       entry->triggered = 0;
 
@@ -559,7 +549,7 @@ tst (struct rand *rand, struct tst_entry *entry)
       sa.act = 0;
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 
-      assert_thread (thread);
+      eri_tst_live_assert_thread_entry (thread);
       eri_assert (entry->triggered);
       entry->triggered = 0;
     }

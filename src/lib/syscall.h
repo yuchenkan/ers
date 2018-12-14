@@ -86,12 +86,12 @@
 #define ERI_SYSCALL_NCS(no, ...) \
   _SYSCALL_NR (no, ERI_SYSCALL_NARGS (0, ##__VA_ARGS__), ##__VA_ARGS__)
 
-#define ERI_SYSCALL_ERROR_P(val) ((val) >= -4095L)
+#define ERI_SYSCALL_IS_ERROR(val) ((val) >= -4095L)
 
 #define ERI_ASSERT_SYSCALL_RES(...) \
   ({								\
     uint64_t _result = ERI_SYSCALL (__VA_ARGS__);		\
-    eri_assert (! ERI_SYSCALL_ERROR_P (_result));		\
+    eri_assert (! ERI_SYSCALL_IS_ERROR (_result));		\
     _result;							\
   })
 
@@ -222,6 +222,12 @@ struct eri_sigset
   uint64_t val[16];
 };
 
+struct eri_sigmask
+{
+  uint8_t mask_all;
+  struct eri_sigset mask;
+};
+
 struct eri_stack
 {
   void *sp;
@@ -306,23 +312,58 @@ void eri_sigreturn (void);
   eri_memset (set, 0, sizeof (struct eri_sigset))
 
 #define _eri_sigword(sig) \
-  (((sig) - 1) / (8 * sizeof (uint64_t)))
+  (((sig) - 1) / 64)
 #define _eri_sigmask(sig) \
-  (((uint64_t) 1) << ((sig) - 1) % (8 * sizeof (uint64_t)))
+  (((uint64_t) 1) << ((sig) - 1) % 64)
 
 #define eri_sigaddset(set, sig) \
-  do {								\
-    int32_t _s = sig;						\
-    (set)->val[_eri_sigword (_s)] |= _eri_sigmask (_s);		\
+  do {									\
+    int32_t _s = sig;							\
+    (set)->val[_eri_sigword (_s)] |= _eri_sigmask (_s);			\
   } while (0)
 #define eri_sigdelset(set, sig) \
-  do {								\
-    int32_t _s = sig;						\
-    (set)->val[_eri_sigword (_s)] &= ~_eri_sigmask (_s);	\
+  do {									\
+    int32_t _s = sig;							\
+    (set)->val[_eri_sigword (_s)] &= ~_eri_sigmask (_s);		\
   } while (0)
-#define eri_sigset_p(set, sig) \
-  ({ int32_t _s = sig;						\
+#define eri_sigsetset(set, sig) \
+  ({ int32_t _s = sig;							\
      (set)->val[_eri_sigword (_s)] & _eri_sigmask (_s); })
+
+#define _eri_sigset_word_eq(word, set, val, ...) \
+  ({									\
+    uint64_t _m = ~0;							\
+    if (_eri_sigword (ERI_SIGKILL) == (word))				\
+      _m &= ~_eri_sigmask (ERI_SIGKILL);				\
+    if (_eri_sigword (ERI_SIGSTOP) == (word))				\
+      _m &= ~_eri_sigmask (ERI_SIGSTOP);				\
+    ((set)->val[word] & _m) == (val (word, ##__VA_ARGS__) & _m);	\
+  })
+
+#define _eri_sigset_cmp(set, val, ...) \
+  ({									\
+    uint8_t _eq = 1;							\
+    int32_t _w;								\
+    for (_w = 0; _eq && _w < (ERI_NSIG - 1) / 64; ++_w)			\
+      _eq = _eri_sigset_word_eq (_w, set, val, ##__VA_ARGS__);		\
+    if (_eq && (ERI_NSIG - 1) % 64)					\
+      _eq = _eri_sigset_word_eq (_w, set, val, ##__VA_ARGS__);		\
+    _eq;								\
+  })
+
+#define _eri_sigset_eq_val(word, b)	((b)->val[word])
+#define eri_sigset_eq(a, b) \
+  ({									\
+    struct eri_sigset *_a = a, *_b = b;					\
+    _eri_sigset_cmp (_a, _eri_sigset_eq_val, _b);			\
+  })
+
+#define _eri_sigset_full_val(word)	(~0)
+#define eri_sigset_full(set) \
+  ({									\
+    struct eri_sigset *_s = set;					\
+    _eri_sigset_cmp (_s, _eri_sigset_full_val);				\
+  })
 
 #endif
 

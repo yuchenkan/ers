@@ -1,20 +1,20 @@
 #include "lib/util.h"
 
-ERI_FUNC_ATTR void
+void
 eri_memset (void *s, char c, uint64_t n)
 {
   uint64_t i;
   for (i = 0; i < n; ++i) ((char *) s)[i] = c;
 }
 
-ERI_FUNC_ATTR void
+void
 eri_memcpy (void *d, const void *s, uint64_t n)
 {
   uint64_t i;
   for (i = 0; i < n; ++i) ((char *) d)[i] = ((const char *) s)[i];
 }
 
-ERI_FUNC_ATTR void
+void
 eri_memmove (void *d, const void *s, uint64_t n)
 {
   char *cd = (char *) d;
@@ -29,7 +29,7 @@ eri_memmove (void *d, const void *s, uint64_t n)
     for (i = n - 1; i >= 0; --i) cd[i] = cs[i];
 }
 
-ERI_FUNC_ATTR int8_t
+int8_t
 eri_memcmp (const void *s1, const void *s2, uint64_t n)
 {
   uint64_t i;
@@ -39,7 +39,7 @@ eri_memcmp (const void *s1, const void *s2, uint64_t n)
   return 0;
 }
 
-ERI_FUNC_ATTR uint64_t
+uint64_t
 eri_strlen (const char *s)
 {
   uint64_t i;
@@ -47,14 +47,14 @@ eri_strlen (const char *s)
   return i;
 }
 
-ERI_FUNC_ATTR void
+void
 eri_strcpy (char *d, const char *s)
 {
   while (*s) *d++ = *s++;
   *d = '\0';
 }
 
-ERI_FUNC_ATTR void
+void
 eri_strncat (char *d, const char *s, uint64_t n)
 {
   d = d + eri_strlen (d);
@@ -63,7 +63,7 @@ eri_strncat (char *d, const char *s, uint64_t n)
   *d = '\0';
 }
 
-ERI_FUNC_ATTR int8_t
+int8_t
 eri_strcmp (const char *s1, const char *s2)
 {
   uint64_t i;
@@ -75,7 +75,7 @@ eri_strcmp (const char *s1, const char *s2)
     }
 }
 
-ERI_FUNC_ATTR int8_t
+int8_t
 eri_strncmp (const char *s1, const char *s2, uint64_t n)
 {
   uint64_t i;
@@ -88,14 +88,14 @@ eri_strncmp (const char *s1, const char *s2, uint64_t n)
   return 0;
 }
 
-ERI_FUNC_ATTR const char *
+const char *
 eri_strtok (const char *s, char d)
 {
   while (*s && *s != d) ++s;
   return *s ? s : 0;
 }
 
-ERI_FUNC_ATTR const char *
+const char *
 eri_strntok (const char *s, char d, uint64_t n)
 {
   uint64_t i;
@@ -104,13 +104,13 @@ eri_strntok (const char *s, char d, uint64_t n)
   return i < n ? s + i : 0;
 }
 
-ERI_FUNC_ATTR const char *
+const char *
 eri_strstr (const char *s, const char *d)
 {
   return eri_strnstr (s, d, eri_strlen (s));
 }
 
-ERI_FUNC_ATTR const char *
+const char *
 eri_strnstr (const char *s, const char *d, uint64_t n)
 {
   uint64_t dl = eri_strlen (d);

@@ -126,13 +126,13 @@ extern uint8_t eri_live_thread_entry_text_ret[];
 extern uint8_t eri_live_thread_entry_text_ret_end[];
 extern uint8_t eri_live_thread_entry_text_end[];
 
-void eri_live_entry_start (struct eri_live_thread_entry *entry,
-			   struct eri_rtld *rtld) __attribute__ ((noreturn));
-
-void eri_live_sigaction (int32_t sig, struct eri_siginfo *info,
-			 struct eri_ucontext *uctx);
+void eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
+			       struct eri_ucontext *uctx);
 
 extern uint8_t eri_live_resume_ret[];
+
+void eri_live_entry_start (struct eri_live_thread_entry *entry,
+			   struct eri_rtld *rtld) __attribute__ ((noreturn));
 
 void eri_live_entry (void);
 
@@ -155,6 +155,8 @@ void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 		void *thread, uint64_t stack_top, uint64_t stack_size,
 		void *sig_stack);
 
+void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
+
 struct eri_live_entry_syscall_info
 {
   uint64_t rax;
@@ -169,8 +171,8 @@ struct eri_live_entry_sigaction_info
   uint64_t rdx;
   uint64_t rsp;
   uint64_t rip;
-  uint64_t mask_all;
-  struct eri_sigset mask;
+
+  struct eri_sigmask mask;
 };
 
 #endif

@@ -188,13 +188,13 @@ eri_live_thread_entry_text_end:
   .text
 
 /************************************************/
-/* eri_live_sigaction				*/
+/* eri_live_entry_sigaction			*/
 /************************************************/
 
   .align 16
-  .type eri_live_sigaction, @function
-  ERI_GLOBAL_HIDDEN (eri_live_sigaction)
-eri_live_sigaction:
+  .type eri_live_entry_sigaction, @function
+  ERI_GLOBAL_HIDDEN (eri_live_entry_sigaction)
+eri_live_entry_sigaction:
 
   movq	UCTX_SS_SP(%rdx), %rax
   movq	(%rax), %rax
@@ -554,7 +554,7 @@ eri_live_resume_ret:
   subq	$SIGACTION_SIZE16 + 8, %rsp
   call	eri_live_entry_start_sigaction
 
-  cmpq	$1, SIGACTION_MASK_ALL(%rsp)
+  cmpb	$1, SIGACTION_MASK_ALL(%rsp)
   je	.lfast_invoke
 
   MOV_MM (SIGACTION_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
@@ -589,7 +589,7 @@ eri_live_resume_ret:
 
 .lerror:
   ERI_ASSERT_FALSE
-  .size eri_live_sigaction, . - eri_live_sigaction
+  .size eri_live_entry_sigaction, . - eri_live_entry_sigaction
 
 /************************************************/
 /* eri_live_entry_start				*/
@@ -645,9 +645,11 @@ eri_live_entry_start:
   popfq
   movq	$0, -8(%rsp)
 
+  movq	$0, PTE_MARK(%rbx)
   jmp	*PTE_DIR(%rbx)
 
   .size eri_live_entry_start, . - eri_live_entry_start
+
 
 /************************************************/
 /* eri_live_entry				*/

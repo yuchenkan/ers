@@ -31,8 +31,7 @@ struct sig_action
 
   void *act;
   int32_t flags;
-  uint8_t mask_all;
-  struct eri_sigset mask;
+  struct eri_sigmask mask;
 };
 
 struct internal
@@ -43,7 +42,7 @@ struct internal
   int32_t sys_pid;
   struct eri_daemon *daemon;
 
-  struct sig_action sig_actions[ERI_NSIG];
+  struct sig_action sig_actions[ERI_NSIG - 1];
 
   int32_t threads_lock;
   ERI_LST_LIST_FIELDS (thread)
@@ -105,6 +104,13 @@ start_thread (struct thread *th)
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 }
 
+static void
+set_sigmask (struct eri_sigmask *mask, const struct eri_sigset *set)
+{
+  mask->mask_all = eri_sigset_full (set);
+  mask->mask = *set;
+}
+
 void
 eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 {
@@ -123,15 +129,29 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   internal->daemon = eri_daemon_start (0, pool, 256 * 1024);
 
   int32_t sig;
-  for (sig = 0; sig < ERI_NSIG; ++sig)
+  for (sig = 1; sig < ERI_NSIG; ++sig)
     {
       if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
 
-      /* TODO */
-      internal->sig_actions[sig].lock = 0;
-      internal->sig_actions[sig].act = 0;
-      internal->sig_actions[sig].flags = 0;
-      internal->sig_actions[sig].mask_all = 1;
+      internal->sig_actions[sig - 1].lock = 0;
+
+      struct eri_sigaction old;
+      ERI_ASSERT_SYSCALL (rt_sigaction, sig, 0, &old);
+
+      internal->sig_actions[sig - 1].act = old.act;
+      internal->sig_actions[sig - 1].flags = old.flags;
+      set_sigmask (&internal->sig_actions[sig - 1].mask, &old.mask);
+
+      struct eri_sigaction new = {
+	eri_live_entry_sigaction, 
+	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
+	  | (old.flags & ERI_SA_RESTART),
+	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
+	  ? eri_sigreturn : old.restorer;
+      };
+      eri_sigfillset (&new.mask);
+
+      ERI_ASSERT_SYSCALL (rt_sigaction, sig, &new, 0);
     }
 
   internal->threads_lock = 0;
