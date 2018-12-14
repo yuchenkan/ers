@@ -53,6 +53,7 @@
 #ifndef __ASSEMBLER__
 
 #include "entry.h"
+#include "rtld.h"
 #include "lib/syscall.h"
 
 struct eri_live_thread_entry
@@ -125,6 +126,9 @@ extern uint8_t eri_live_thread_entry_text_ret[];
 extern uint8_t eri_live_thread_entry_text_ret_end[];
 extern uint8_t eri_live_thread_entry_text_end[];
 
+void eri_live_entry_start (struct eri_live_thread_entry *entry,
+			   struct eri_rtld *rtld) __attribute__ ((noreturn));
+
 void eri_live_sigaction (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *uctx);
 
@@ -149,7 +153,7 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
 
 void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 		void *thread, uint64_t stack_top, uint64_t stack_size,
-		void *sigstack);
+		void *sig_stack);
 
 struct eri_live_entry_syscall_info
 {

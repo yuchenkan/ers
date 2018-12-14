@@ -297,17 +297,17 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 }
 
-static struct eri_sigset sigmask;
-static void *sigact;
+static struct eri_sigset sig_mask;
+static void *sig_action;
 
 void eri_live_start_sigaction (int32_t sig,
 			       struct eri_live_entry_sigaction_info *info,
 			       struct eri_live_thread_entry *thread)
 {
   eri_assert (current_thread == thread);
-  info->rip = (uint64_t) sigact;
+  info->rip = (uint64_t) sig_action;
   info->mask_all = 0;
-  info->mask = sigmask;
+  info->mask = sig_mask;
 }
 
 int32_t
@@ -422,8 +422,8 @@ tst (struct rand *rand, struct tst_entry *entry)
   struct tst_context ctx;
   rand_fill (rand, &ctx, sizeof ctx);
 
-  uint8_t ustk[4096];
-  ctx.rsp = (uint64_t) ustk + sizeof ustk;
+  uint8_t user_stack[4096];
+  ctx.rsp = (uint64_t) user_stack + sizeof user_stack;
   ctx.rflags &= 0xd5;
   ctx.rflags |= ERI_TRACE_FLAG_MASK;
 
@@ -450,14 +450,14 @@ tst (struct rand *rand, struct tst_entry *entry)
   rand_fill (rand, thread_buf, sizeof thread_buf);
 
   struct eri_live_thread_entry *thread = (void *) thread_buf;
-  uint8_t stk[2 * 1024 * 1024];
-  rand_fill (rand, stk, sizeof stk);
+  uint8_t stack[2 * 1024 * 1024];
+  rand_fill (rand, stack, sizeof stack);
 
-  uint8_t sstk[ERI_LIVE_SIG_STACK_SIZE];
-  rand_fill (rand, sstk, sizeof sstk);
+  uint8_t sig_stack[ERI_LIVE_SIG_STACK_SIZE];
+  rand_fill (rand, sig_stack, sizeof sig_stack);
 
   eri_live_init_thread_entry (thread, thread,
-			(uint64_t) stk + sizeof stk, sizeof stk, sstk);
+		(uint64_t) stack + sizeof stack, sizeof stack, sig_stack);
   thread->tst_skip_ctf = 1;
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, thread);
@@ -466,7 +466,7 @@ tst (struct rand *rand, struct tst_entry *entry)
 
   eri_assert_printf ("[%s] setup sig stack\n", entry->name);
 
-  struct eri_stack st = { sstk, 0, sizeof sstk };
+  struct eri_stack st = { sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 
   ctx.rip = entry->enter;
@@ -489,7 +489,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   sa.act = sig_trigger;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  sigact = sig_trigger_act;
+  sig_action = sig_trigger_act;
 
   for (entry->trigger = 0; entry->trigger <= entry->steps; ++entry->trigger)
     {
@@ -514,7 +514,7 @@ tst (struct rand *rand, struct tst_entry *entry)
   sa.act = eri_live_sigaction;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  sigact = sigtrap_act;
+  sig_action = sigtrap_act;
 
   entry->init (entry, &ctx, INIT_TRAP);
   tst_live_entry (&ctx);
@@ -530,7 +530,7 @@ tst (struct rand *rand, struct tst_entry *entry)
 
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 
-      sigact = sigsegv_act;
+      sig_action = sigsegv_act;
 
       tst_live_entry (&ctx);
 
@@ -861,7 +861,7 @@ tst_main (void)
   struct rand rand;
   rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (getpid));
 
-  eri_sigaddset (&sigmask, ERI_SIGSEGV);
+  eri_sigaddset (&sig_mask, ERI_SIGSEGV);
 
   static uint64_t atomic_mem_table;
   eri_live_entry_atomic_mem_table = &atomic_mem_table;

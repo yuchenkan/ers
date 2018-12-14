@@ -8,12 +8,15 @@
   .text
 
   .align 16
-  .global start
+  ERI_GLOBAL_HIDDEN (start)
   .type start, @function
 start:
   pushq	$0x12345678
   pushq	$0x12345678
+  movq	$0x12345678, %rdx
   _ERS_INIT
+  cmpq	$0x12345678, %rdx
+  jne	.lerror
   cmpl	$0x12345678, (%rsp)
   jne	.lerror
   cmpl	$0x12345678, 8(%rsp)

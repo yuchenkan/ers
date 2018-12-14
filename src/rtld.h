@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "lib/syscall.h"
+
 struct eri_auxv
 {
   uint64_t type;
@@ -79,8 +81,11 @@ struct eri_seg
 
 struct eri_rtld
 {
-  uint64_t arg;
-  uint64_t cont;
+  uint64_t rdx;
+  uint64_t rsp;
+  uint64_t rip;
+
+  struct eri_sigset sig_mask;
 
   uint64_t map_start;
   uint64_t map_end;

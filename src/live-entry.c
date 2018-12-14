@@ -7,7 +7,7 @@
 void
 eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 		 void *thread, uint64_t stack_top, uint64_t stack_size,
-		 void *sigstack)
+		 void *sig_stack)
 {
   uint8_t *text = (uint8_t *) entry + eri_size_of (*entry, 16);
 #define TEXT(text)	_ERS_PASTE (eri_live_thread_entry_, text)
@@ -51,7 +51,7 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 
   entry->tst_skip_ctf = 0;
 
-  *(struct eri_live_thread_entry **) sigstack = entry;
+  *(struct eri_live_thread_entry **) sig_stack = entry;
 }
 
 void

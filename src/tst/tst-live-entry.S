@@ -2,6 +2,7 @@
 
 #include "public/impl.h"
 
+#include "lib/util.h"
 #include "lib/syscall.h"
 #include "tst/tst-live-entry.h"
 #include "tst/tst-live-entry-offsets.h"
@@ -9,7 +10,7 @@
   .text
 
   .align 16
-  .global tst_start
+  ERI_GLOBAL_HIDDEN (tst_start)
   .type tst_start, @function
 tst_start:
   call	tst_main
@@ -19,8 +20,7 @@ tst_start:
   .size tst_start, . - tst_start
 
   .align 16
-  .global tst_live_entry
-  .hidden tst_live_entry
+  ERI_GLOBAL_HIDDEN (tst_live_entry)
   .type tst_live_entry, @function
 tst_live_entry:
   pushq	%rbx
@@ -75,14 +75,10 @@ tst_live_entry:
 
 #define TST_LIVE_ENTRY(entry, raw, tst, ...) \
   .align 16;								\
-  .global _ERS_PASTE (tst_live_entry_raw_enter_, entry);		\
-  .hidden _ERS_PASTE (tst_live_entry_raw_enter_, entry);		\
-  .global _ERS_PASTE (tst_live_entry_raw_leave_, entry);		\
-  .hidden _ERS_PASTE (tst_live_entry_raw_leave_, entry);		\
-  .global _ERS_PASTE (tst_live_entry_enter_, entry);			\
-  .hidden _ERS_PASTE (tst_live_entry_enter_, entry);			\
-  .global _ERS_PASTE (tst_live_entry_leave_, entry);			\
-  .hidden _ERS_PASTE (tst_live_entry_leave_, entry);			\
+  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_enter_, entry));	\
+  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_leave_, entry));	\
+  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_enter_, entry));	\
+  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_leave_, entry));	\
 _ERS_PASTE (tst_live_entry_raw_enter_, entry):				\
   raw (__VA_ARGS__);							\
 _ERS_PASTE (tst_live_entry_raw_leave_, entry):				\
@@ -111,11 +107,11 @@ TST_LIVE_ENTRY (syscall, RAW_SYSCALL, SYSCALL)
 TST_LIVE_ENTRY (sync_jmp, RAW_SYNC_JMP, SYNC_JMP)
 
 #define RAW_SYNC_REP() \
-  .global tst_live_raw_sync_rep;					\
+  ERI_GLOBAL_HIDDEN (tst_live_raw_sync_rep);				\
 tst_live_raw_sync_rep:							\
   rep movsq;
 #define SYNC_REP() \
-  _ERS_SYNC_ASYNC (.global tst_live_sync_rep;				\
+  _ERS_SYNC_ASYNC (ERI_GLOBAL_HIDDEN (tst_live_sync_rep);		\
 tst_live_sync_rep:							\
   rep movsq);
 
@@ -220,8 +216,7 @@ TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_ne)
 
   .align 16
   .type sig_trigger, @function
-  .global sig_trigger
-  .hidden sig_trigger
+  ERI_GLOBAL_HIDDEN (sig_trigger)
 sig_trigger:
   subq	$8, %rsp
   pushq	%rsi

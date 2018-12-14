@@ -5,15 +5,11 @@
   .text
 
   .align 16
-  .global eri_start
-  .hidden eri_start
+  ERI_GLOBAL_HIDDEN (eri_start)
   .type eri_start, @function
 eri_start:
-  pushq	%rdi
-  call	eri_init
-  popq	%rdi
-  movq	ERI_RTLD_ARG(%rdi), %rsp
-  jmp	*ERI_RTLD_CONT(%rdi)
+  subq	$16, %rsp
+  jmp	eri_init
   .size start, . - start
 
   .align 16
@@ -31,8 +27,7 @@ set_context:
   .size set_context, . - set_context
 
   .align 16
-  .global eri_init_context
-  .hidden eri_init_context
+  ERI_GLOBAL_HIDDEN (eri_init_context)
   .type eri_init_context, @function
 eri_init_context:
 

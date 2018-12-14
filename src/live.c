@@ -20,17 +20,18 @@ struct thread
   eri_file_t file;
 
   int32_t sys_tid;
-  uint8_t __attribute__ ((aligned (16))) sigstack[ERI_LIVE_SIG_STACK_SIZE];
+  uint8_t __attribute__ ((aligned (16))) sig_stack[ERI_LIVE_SIG_STACK_SIZE];
 
   ERI_LST_NODE_FIELDS (thread)
 };
 
-struct sigact
+struct sig_action
 {
   int32_t lock;
 
   void *act;
   int32_t flags;
+  uint8_t mask_all;
   struct eri_sigset mask;
 };
 
@@ -42,7 +43,7 @@ struct internal
   int32_t sys_pid;
   struct eri_daemon *daemon;
 
-  struct sigact sigacts[ERI_NSIG];
+  struct sig_action sig_actions[ERI_NSIG];
 
   int32_t threads_lock;
   ERI_LST_LIST_FIELDS (thread)
@@ -62,7 +63,7 @@ alloc_thread_entry (struct thread *th)
   uint64_t stack_top = eri_assert_cmalloc (MT(internal), &internal->pool,
 					   internal->common->stack_size);
   eri_live_init_thread_entry (entry, th, stack_top,
-			      internal->common->stack_size, th->sigstack);
+			      internal->common->stack_size, th->sig_stack);
   return entry;
 }
 
@@ -98,14 +99,14 @@ start_thread (struct thread *th)
 
   th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
 
-  struct eri_stack stack = { th->sigstack, 0, ERI_LIVE_SIG_STACK_SIZE };
+  struct eri_stack stack = { th->sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
   ERI_ASSERT_SYSCALL (sigaltstack, &stack, 0);
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 }
 
 void
-eri_live_init (struct eri_common *common)
+eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 {
   struct eri_mtpool *pool = (void *) common->buf;
   eri_assert_init_pool (&pool->pool, common->buf + eri_size_of (*pool, 16),
@@ -121,12 +122,33 @@ eri_live_init (struct eri_common *common)
 
   internal->daemon = eri_daemon_start (0, pool, 256 * 1024);
 
+  int32_t sig;
+  for (sig = 0; sig < ERI_NSIG; ++sig)
+    {
+      if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
+
+      /* TODO */
+      internal->sig_actions[sig].lock = 0;
+      internal->sig_actions[sig].act = 0;
+      internal->sig_actions[sig].flags = 0;
+      internal->sig_actions[sig].mask_all = 1;
+    }
+
+  internal->threads_lock = 0;
   ERI_LST_INIT_LIST (thread, internal);
 
   struct thread *th = alloc_thread (internal, 0);
   th->id = 0;
 
   start_thread (th);
+
+  eri_live_entry_start (th->entry, rtld);
+}
+
+void
+eri_live_start_sigaction (int32_t sig,
+		struct eri_live_entry_sigaction_info *info, void *thread)
+{
 }
 
 uint8_t

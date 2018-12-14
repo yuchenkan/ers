@@ -12,8 +12,15 @@
 #include "lib/printf.h"
 
 void
-eri_rtld (void **arg)
+eri_rtld (void **arg, uint64_t rdx)
 {
+  extern uint8_t eri_binary_end[];
+  struct eri_rtld rtld = { rdx, (uint64_t) arg - 8, (uint64_t) eri_binary_end };
+  struct eri_sigset set;
+  eri_sigfillset (&set);
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
+		      &rtld.sig_mask, ERI_SIG_SETSIZE);
+
 #ifdef ERI_TST_RTLD
   arg += 2;
   const char *rec = "tst-rtld-recorder";
@@ -38,9 +45,6 @@ eri_rtld (void **arg)
 
   struct eri_seg segs[] = ERI_RECORDER_BINARY_SEGMENTS;
   uint16_t nsegs = eri_length_of (segs);
-
-  extern uint8_t eri_binary_end[];
-  struct eri_rtld r = { (uint64_t) arg, (uint64_t) eri_binary_end };
 
   uint64_t base;
   uint16_t i;
@@ -68,8 +72,8 @@ eri_rtld (void **arg)
 			      prot, ERI_MAP_FIXED | ERI_MAP_PRIVATE,
 			      fd, offset);
 
-	  r.map_start = base + mapstart;
-	  r.map_end = base + maplastend;
+	  rtld.map_start = base + mapstart;
+	  rtld.map_end = base + maplastend;
 	}
       else
 	ERI_ASSERT_SYSCALL (mmap, base + mapstart, mapend - mapstart,
@@ -103,5 +107,5 @@ eri_rtld (void **arg)
 
   ERI_ASSERT_SYSCALL (close, fd);
 
-  ((void (*) (struct eri_rtld *)) (base + ERI_RECORDER_BINARY_ENTRY)) (&r);
+  ((void (*) (struct eri_rtld *)) (base + ERI_RECORDER_BINARY_ENTRY)) (&rtld);
 }

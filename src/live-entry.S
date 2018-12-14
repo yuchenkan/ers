@@ -3,6 +3,7 @@
 #include "public/common.h"
 #include "public/entry-offsets.h"
 
+#include "rtld-offsets.h"
 #include "live-entry.h"
 #include "live-entry-offsets.h"
 
@@ -132,31 +133,20 @@
 
   .data
 
-  .global eri_live_entry_atomic_mem_table
-  .hidden eri_live_entry_atomic_mem_table
+  ERI_GLOBAL_HIDDEN (eri_live_entry_atomic_mem_table)
 eri_live_entry_atomic_mem_table:
   .long 0
 
-  .global eri_live_thread_entry_text
-  .hidden eri_live_thread_entry_text
-  .global eri_live_thread_entry_text_resume
-  .hidden eri_live_thread_entry_text_resume
-  .global eri_live_thread_entry_text_entry
-  .hidden eri_live_thread_entry_text_entry
-  .global eri_live_thread_entry_text_resume_ret
-  .hidden eri_live_thread_entry_text_resume_ret
-  .global eri_live_thread_entry_text_internal_cont
-  .hidden eri_live_thread_entry_text_internal_cont
-  .global eri_live_thread_entry_text_external_cont
-  .hidden eri_live_thread_entry_text_external_cont
-  .global eri_live_thread_entry_text_cont_end
-  .hidden eri_live_thread_entry_text_cont_end
-  .global eri_live_thread_entry_text_ret
-  .hidden eri_live_thread_entry_text_ret
-  .global eri_live_thread_entry_text_ret_end
-  .hidden eri_live_thread_entry_text_ret_end
-  .global eri_live_thread_entry_text_end
-  .hidden eri_live_thread_entry_text_end
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_resume)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_entry)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_resume_ret)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_internal_cont)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_external_cont)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_cont_end)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_ret)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_ret_end)
+  ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_end)
 
   .align 16
 eri_live_thread_entry_text:
@@ -203,8 +193,7 @@ eri_live_thread_entry_text_end:
 
   .align 16
   .type eri_live_sigaction, @function
-  .global eri_live_sigaction
-  .hidden eri_live_sigaction
+  ERI_GLOBAL_HIDDEN (eri_live_sigaction)
 eri_live_sigaction:
 
   movq	UCTX_SS_SP(%rdx), %rax
@@ -262,7 +251,7 @@ eri_live_sigaction:
   IF_RIP_IN_RANGE_LF (eri_live_entry, TE_COMPLETE_START, .lrestart_check_trace)
 
   /* Complete internally, we don't return to the user code.  */
-  cmpq	$(MARK_SEC_PART_BIT | _ERS_MARK_INTERNAL_RET), PTE_MARK(%rbx)
+  cmpq	$MARK_SEC_PART_BIT | _ERS_MARK_INTERNAL_RET, PTE_MARK(%rbx)
   je	.linternal_complete
   /* Complete externally.  */
   movq	TE_THREAD_RESUME_RET(%rbx), %rax
@@ -468,8 +457,7 @@ eri_live_sigaction:
      %rip is saved in CNT. %rflags is the interrupted %rflags & ~tf,
      All other regs are not modified.
   */
-  .global eri_live_resume_ret
-  .hidden eri_live_resume_ret
+  ERI_GLOBAL_HIDDEN (eri_live_resume_ret)
 eri_live_resume_ret:
   /* Modify the context based on the new register values.  */
   xchgq	%rsp, TE_RSP(%rbx)
@@ -532,7 +520,7 @@ eri_live_resume_ret:
   movq	TE_SIG_RDI(%rbx), %rdi
   movq	TE_SIG_RSI(%rbx), %rsi
   movq	TE_SIG_RSP(%rbx), %rsp
-  /* Clear INTR, see .latomic_xchg_complete_start.  */
+  /* Clear INTR, see CHECK_SET_DIR.  */
   movq	$0, PTE_DIR(%rbx)
   jmp	.ldo_invoke
 
@@ -545,7 +533,7 @@ eri_live_resume_ret:
   MOV_MM (PTE_RBX(%rbx), UCTX_RBX(%rdx), %rax)
 
 .lfix:
-  /* Clear INTR, see .latomic_xchg_complete_start.  */
+  /* Clear INTR, see CHECK_SET_DIR.  */
   movq	$0, PTE_DIR(%rbx)
   MOV_MM (PTE_CONT(%rbx), UCTX_RIP(%rdx), %rax)
 
@@ -604,13 +592,70 @@ eri_live_resume_ret:
   .size eri_live_sigaction, . - eri_live_sigaction
 
 /************************************************/
+/* eri_live_entry_start				*/
+/************************************************/
+
+  .align 16
+  ERI_GLOBAL_HIDDEN (eri_live_entry_start)
+  .type eri_live_entry_start, @function
+eri_live_entry_start:
+
+  movq	%rsp, %rbp
+
+  movq	%rdi, %rbx
+  movq	ERI_RTLD_RDX(%rsi), %r8
+  movq	ERI_RTLD_RSP(%rsi), %rsp
+  MOV_MM (ERI_RTLD_RIP(%rsi), PTE_CONT(%rbx), %rax)
+  movq	$0, PTE_RBX(%rbx)
+  MOV_MM (TE_THREAD_INTERNAL_CONT(%rbx), PTE_DIR(%rbx), %rax)
+
+  xorq	%r9, %r9
+  xorq	%r12, %r12
+  xorq	%r13, %r13
+  xorq	%r14, %r14
+  xorq	%r15, %r15
+
+  movq	$_ERS_MARK_INTERNAL_RET | MARK_SEC_PART_BIT, PTE_MARK(%rbx)
+
+  movl	$__NR_rt_sigprocmask, %eax
+  movq	$ERI_SIG_SETMASK, %rdi
+  leaq	ERI_RTLD_SIG_MASK(%rsi), %rsi
+  movq	$0, %rdx
+  movq	$ERI_SIG_SETSIZE, %r10
+  syscall
+  testq	%rax, %rax
+  jnz	.lerror
+
+  movq	%r8, %rdx
+
+  xorq	%rsi, %rsi
+  xorq	%r8, %r8
+  xorq	%r10, %r10
+  xorq	%r11, %r11
+
+  movq	%rbp, %rdi
+  movq	%rsp, %rcx
+  subq	%rbp, %rcx
+  rep stosb
+
+  xorq	%rbp, %rbp
+  xorq	%rcx, %rcx
+  xorq	%rdi, %rdi
+
+  popfq
+  movq	$0, -8(%rsp)
+
+  jmp	*PTE_DIR(%rbx)
+
+  .size eri_live_entry_start, . - eri_live_entry_start
+
+/************************************************/
 /* eri_live_entry				*/
 /************************************************/
 
   .align 16
   .type eri_live_entry, @function
-  .global eri_live_entry
-  .hidden eri_live_entry
+  ERI_GLOBAL_HIDDEN (eri_live_entry)
 eri_live_entry:
   xchgq	%rsp, TE_RSP(%rbx)
 
@@ -734,8 +779,7 @@ PASTE (.lxxx_, label): \
   CHECK_RESTART (label)
 
 #define TST_MARK_COMPLETE_START(label) \
-  .global ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
-  .hidden ERI_TST_LIVE_COMPLETE_START_NAME (label);			\
+  ERI_GLOBAL_HIDDEN (ERI_TST_LIVE_COMPLETE_START_NAME (label));		\
 ERI_TST_LIVE_COMPLETE_START_NAME (label):
 
 /* If not TST, it's not required as tf is already cleared in new_rflags,
@@ -1205,8 +1249,7 @@ LABEL_ATOMIC (label):							\
 
   .align 16
   .type eri_live_do_syscall, @function
-  .global eri_live_do_syscall
-  .hidden eri_live_do_syscall
+  ERI_GLOBAL_HIDDEN (eri_live_do_syscall)
 eri_live_do_syscall:
   movq	$0, TE_COMPLETE_START(%rbx)
   SET_RESTART_START (syscall, %r11)

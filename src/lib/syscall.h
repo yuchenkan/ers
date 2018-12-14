@@ -288,7 +288,7 @@ struct eri_ucontext
   struct eri_ucontext *link;
   struct eri_stack stack;
   struct eri_mcontext mctx;
-  struct eri_sigset sigmask;
+  struct eri_sigset sig_mask;
 };
 
 #define ERI_UCONTEXT_GET_RSP(ctx) \

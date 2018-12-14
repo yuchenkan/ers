@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "lib/malloc.h"
+
 struct eri_common
 {
   const char *config;

@@ -13,6 +13,10 @@
 
 #ifdef __ASSEMBLER__
 
+#define ERI_GLOBAL_HIDDEN(symbol) \
+  .global symbol;		\
+  .hidden symbol
+
 #define ERI_ASSERT_FALSE \
   movq	$0, %r15;		\
   movq	$0, (%r15)
