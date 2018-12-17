@@ -88,10 +88,15 @@ _ERS_PASTE (tst_live_entry_enter_, entry):				\
 _ERS_PASTE (tst_live_entry_leave_, entry):				\
   ret;
 
-#define RAW_SYSCALL()	syscall
-#define SYSCALL()	_ERS_SYSCALL
+#define RAW_DO_SYSCALL()	syscall
+#define DO_SYSCALL()		_ERS_SYSCALL
 
-TST_LIVE_ENTRY (syscall, RAW_SYSCALL, SYSCALL)
+TST_LIVE_ENTRY (do_syscall, RAW_DO_SYSCALL, DO_SYSCALL)
+
+#define RAW_HOLD_SYSCALL()	nop
+#define HOLD_SYSCALL()		_ERS_SYSCALL
+
+TST_LIVE_ENTRY (hold_syscall, RAW_HOLD_SYSCALL, HOLD_SYSCALL)
 
 #define SYNC_JMP_REG		TST_LIVE_SYNC_JMP_REG
 
@@ -101,8 +106,8 @@ TST_LIVE_ENTRY (syscall, RAW_SYSCALL, SYSCALL)
 	      _ERS_SYNC_ASYNC (jmp	*(%SYNC_JMP_REG)));		\
   nop;									\
 
-#define RAW_SYNC_JMP()	TST_SYNC_JMP (1)
-#define SYNC_JMP()	TST_SYNC_JMP (0)
+#define RAW_SYNC_JMP()		TST_SYNC_JMP (1)
+#define SYNC_JMP()		TST_SYNC_JMP (0)
 
 TST_LIVE_ENTRY (sync_jmp, RAW_SYNC_JMP, SYNC_JMP)
 
@@ -215,13 +220,13 @@ TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_eq)
 TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_ne)
 
   .align 16
-  .type sig_trigger, @function
-  ERI_GLOBAL_HIDDEN (sig_trigger)
-sig_trigger:
+  .type sig_step_int_trigger, @function
+  ERI_GLOBAL_HIDDEN (sig_step_int_trigger)
+sig_step_int_trigger:
   subq	$8, %rsp
   pushq	%rsi
   pushq	%rdx
-  call	sig_check_trigger
+  call	sig_step_int_check_trigger
   popq	%rdx
   popq	%rsi
   addq	$8, %rsp
@@ -234,4 +239,4 @@ sig_trigger:
 
 .lno_trigger:
   ret
-  .size sig_trigger, . - sig_trigger
+  .size sig_step_int_trigger, . - sig_step_int_trigger

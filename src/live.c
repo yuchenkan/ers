@@ -22,6 +22,8 @@ struct thread
   int32_t sys_tid;
   uint8_t __attribute__ ((aligned (16))) sig_stack[ERI_LIVE_SIG_STACK_SIZE];
 
+  struct eri_stack user_sig_stack;
+
   ERI_LST_NODE_FIELDS (thread)
 };
 
@@ -43,6 +45,8 @@ struct internal
   struct eri_daemon *daemon;
 
   struct sig_action sig_actions[ERI_NSIG - 1];
+
+  int32_t quit_lock;
 
   int32_t threads_lock;
   ERI_LST_LIST_FIELDS (thread)
@@ -100,6 +104,8 @@ start_thread (struct thread *th)
 
   struct eri_stack stack = { th->sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
   ERI_ASSERT_SYSCALL (sigaltstack, &stack, 0);
+
+  th->user_sig_stack.size = 0;
 
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 }
@@ -166,22 +172,25 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 }
 
 void
-eri_live_start_sigaction (int32_t sig,
+eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
 		struct eri_live_entry_sigaction_info *info, void *thread)
 {
+  struct eri_ucontext *ctx = (void *) info->rdx;
+  /* TODO */
 }
 
-uint8_t
+int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  struct eri_live_entry_syscall_info *info, void *thread)
 {
-#if 0
   int32_t nr = (int32_t) info->rax;
   if (nr == __NR_clone)
     {
     }
-#endif
+  else if (nr == __NR_exit || nr == __NR_exit_group)
+    {
+    }
   return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
 }
 

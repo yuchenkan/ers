@@ -71,7 +71,9 @@ extern uint8_t _ERS_PASTE (tst_live_entry_raw_leave_, entry)[];		\
 extern uint8_t _ERS_PASTE (tst_live_entry_enter_, entry)[];		\
 extern uint8_t _ERS_PASTE (tst_live_entry_leave_, entry)[];
 
-TST_LIVE_ENTRY_ADDRS (syscall)
+TST_LIVE_ENTRY_ADDRS (do_syscall)
+TST_LIVE_ENTRY_ADDRS (hold_syscall)
+
 TST_LIVE_ENTRY_ADDRS (sync_jmp)
 
 TST_LIVE_ENTRY_ADDRS (sync_rep)

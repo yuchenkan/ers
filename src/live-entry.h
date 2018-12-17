@@ -136,7 +136,8 @@ void eri_live_entry_start (struct eri_live_thread_entry *entry,
 
 void eri_live_entry (void);
 
-extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (syscall)[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (do_syscall)[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (hold_syscall)[];
 
 #define ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS(name) \
 extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, name)[]; \

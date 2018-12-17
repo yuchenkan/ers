@@ -1,3 +1,4 @@
+#include "live.h"
 #include "live-entry.h"
 #include "rtld.h"
 
@@ -24,11 +25,9 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (ctx->mctx.rsi == 0);
   eri_assert (*(uint64_t *) ctx->mctx.rsp == 0x12345678);
   eri_assert (*(uint64_t *) (ctx->mctx.rsp + 8) == 0x12345678);
-#if 0
   uint64_t i;
-  for (i = 1024; i > 0; i -= 8)
+  for (i = 4096; i > 0; i -= 8)
     eri_assert (*(uint64_t *) (ctx->mctx.rsp - i) == 0);
-#endif
   eri_assert (ctx->mctx.rbp == 0);
   eri_assert (ctx->mctx.r8 == 0);
   eri_assert (ctx->mctx.r9 == 0);
@@ -46,10 +45,14 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 }
 
 void
-eri_live_start_sigaction (int32_t sig,
+eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
 			  struct eri_live_entry_sigaction_info *info,
 			  void *thread)
 {
+  static uint8_t user_stack[4096];
+  stack->sp = (uint64_t) user_stack;
+  stack->size = 4096;
+
   info->rip = (uint64_t) sigtrap_act;
   info->mask.mask_all = 0;
   eri_sigemptyset (&info->mask.mask);
@@ -72,7 +75,7 @@ tst_rtld (uint64_t rsp, uint64_t rdx, uint64_t rip)
   eri_live_init_thread_entry (&tst_entry, 0, (uint64_t) stack + sizeof stack,
 			      sizeof stack, sig_stack);
 
-  struct eri_stack st = { sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
+  struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 
   struct eri_sigaction sa = {

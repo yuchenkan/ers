@@ -242,7 +242,7 @@ eri_live_entry_sigaction:
   /* Otherwise means we may restart or complete. */
 
   /* Restart if we are inside do_syscall but not down the syscall.  */
-  IF_RIP_IN_RANGE_LL (eri_live_do_syscall, LABEL_COMPLETE_START (syscall),
+  IF_RIP_IN_RANGE_LL (eri_live_do_syscall, LABEL_COMPLETE_START (do_syscall),
 		      .lrestart_check_trace)
 
   /* Restart if we are inside eri_live_entry but not down the
@@ -453,7 +453,7 @@ eri_live_entry_sigaction:
 
   jmp	*TE_THREAD_RESUME(%rbx)
 
-  /* %rbx is &live_thread, the interrupted %rbx is saved in RBX.
+  /* %rbx is live_thread_entry, the interrupted %rbx is saved in RBX.
      %rip is saved in CNT. %rflags is the interrupted %rflags & ~tf,
      All other regs are not modified.
   */
@@ -494,13 +494,13 @@ eri_live_resume_ret:
   /* Set if it's set in the saved %rflags.  */
   orq	TE_TRACE_FLAG(%rbx), %rax
   orq	%rax, UCTX_RFLAGS(%rdx)
-  /* Set trace flag in r11 accordingly if op is syscall and
-     we are completing the instruction.
+  /* Set trace flag in r11 accordingly if op is syscall, and
+     we are not restarting or holding (see lsyscall).
   */
   LOAD_OP_OP (%r11)
   cmpq	$_ERS_OP_SYSCALL, %r11
   jne	.ldone_restore_trace_flag
-  cmpq	$0, PTE_DIR(%rbx)
+  CMP_MM (PTE_START(%rbx), PTE_CONT(%rbx), %r11)
   je	.ldone_restore_trace_flag
   orq	%rax, UCTX_R11(%rdx)
 .ldone_restore_trace_flag:
@@ -600,8 +600,6 @@ eri_live_resume_ret:
   .type eri_live_entry_start, @function
 eri_live_entry_start:
 
-  movq	%rsp, %rbp
-
   movq	%rdi, %rbx
   movq	ERI_RTLD_RDX(%rsi), %r8
   movq	ERI_RTLD_RSP(%rsi), %rsp
@@ -609,6 +607,7 @@ eri_live_entry_start:
   movq	$0, PTE_RBX(%rbx)
   MOV_MM (TE_THREAD_INTERNAL_CONT(%rbx), PTE_DIR(%rbx), %rax)
 
+  xorq	%rbp, %rbp
   xorq	%r9, %r9
   xorq	%r12, %r12
   xorq	%r13, %r13
@@ -633,12 +632,11 @@ eri_live_entry_start:
   xorq	%r10, %r10
   xorq	%r11, %r11
 
-  movq	%rbp, %rdi
-  movq	%rsp, %rcx
-  subq	%rbp, %rcx
-  rep stosb
+  movq	%rsp, %rdi
+  subq	$8192, %rdi
+  movq	$1024, %rcx
+  rep stosq
 
-  xorq	%rbp, %rbp
   xorq	%rcx, %rcx
   xorq	%rdi, %rdi
 
@@ -773,7 +771,6 @@ eri_live_entry:
 
 #define CHECK_RESTART(label) \
   cmpq	$1, TE_RESTART(%rbx);						\
-PASTE (.lxxx_, label): \
   je	LABEL_RESTART_START (label)
 
 #define MARK_SEC_PART_AND_CHECK_RESTART(label) \
@@ -814,12 +811,11 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
   SAVE_NEW_RFLAGS_FROM_REG (reg)
 
 /* Destory %rax.
-   We have to atomically set dir to cnt if no signal yet, because signal
-   can happen between any two instructions, so we have to keep dir
-   zero when we leave this place. There are three possible ways leaving
-   here: 1, no signal, dir is cleared in cont, 2, signal before setting
-   mark to 0, dir is cleared in resume_ret, 3, signal after, dir is cleared
-   in fix.
+   We have to atomically set dir to cont if no signal yet, because signal
+   can happen between any two instructions. Using atomic cmpxchg means we
+   have to clear dir when we return. There are three possible ways return:
+   1, no signal, dir is cleared in cont, 2, signal before setting mark to
+   0, dir is cleared in resume_ret, 3, signal after, dir is cleared in fix.
 */
 #define CHECK_SET_DIR(cont, reg) \
   xorq	%rax, %rax;							\
@@ -879,6 +875,10 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
   addq	$16, %rsp
   testb	%al, %al
   jz	.lrestart_syscall
+  /* Essentially 1: jmp	1b; to hold the thread state (waiting for e.g.
+     the incoming signal).
+  */
+  jl	.lhold_syscall
 
   movq	%rsp, %rax
   addq	$SYSCALL_SIZE16, %rsp
@@ -895,10 +895,26 @@ ERI_TST_LIVE_COMPLETE_START_NAME (label):
   orq	%r11, STACK_R11(%rsp)
 
   MOV_MM (PTE_START(%rbx), STACK_RCX(%rsp), %r11)
+  jmp	.ldone_syscall
 
+.lhold_syscall:
+  SET_COMPLETE_RESTART_START (hold_syscall, %rax)
+  MARK_SEC_PART_AND_CHECK_RESTART (hold_syscall)
+LABEL_COMPLETE_START (hold_syscall):
+  TST_MARK_COMPLETE_START (hold_syscall)
+
+  MOV_MM (PTE_START(%rbx), PTE_CONT(%rbx), %rax)
+
+  addq	$SYSCALL_SIZE16, %rsp
+
+  movl	$__NR_sched_yield, %eax
+  syscall
+
+.ldone_syscall:
   INTERNAL_RET_DIR (%r11)
 
 .lrestart_syscall:
+LABEL_RESTART_START (hold_syscall):
   addq	$SYSCALL_SIZE16, %rsp
 
   RESTART_RESUME_RET
@@ -1254,20 +1270,20 @@ LABEL_ATOMIC (label):							\
   ERI_GLOBAL_HIDDEN (eri_live_do_syscall)
 eri_live_do_syscall:
   movq	$0, TE_COMPLETE_START(%rbx)
-  SET_RESTART_START (syscall, %r11)
+  SET_RESTART_START (do_syscall, %r11)
 
   movq	%rcx, %r10
   movq	ARG_INFO(%rsp), %r11
   movq	SYSCALL_RAX(%r11), %rax
   movq	%rsp, TE_SYSCALL_RSP(%rbx)
   pushq	SYSCALL_RFLAGS(%r11)
-  MARK_SEC_PART_AND_CHECK_RESTART (syscall)
+  MARK_SEC_PART_AND_CHECK_RESTART (do_syscall)
 
   popfq
   /* movq	SYSCALL_RSP(%rsp), %rsp */
   syscall
-LABEL_COMPLETE_START (syscall):
-  TST_MARK_COMPLETE_START (syscall)
+LABEL_COMPLETE_START (do_syscall):
+  TST_MARK_COMPLETE_START (do_syscall)
 
   movq	TE_SYSCALL_RSP(%rbx), %rsp
   movq	ARG_INFO(%rsp), %rcx
@@ -1279,7 +1295,7 @@ LABEL_COMPLETE_START (syscall):
   movb	$1, %al
   ret
 
-LABEL_RESTART_START (syscall):
+LABEL_RESTART_START (do_syscall):
   movq	TE_SYSCALL_RSP(%rbx), %rsp
 
   movb	$0, %al

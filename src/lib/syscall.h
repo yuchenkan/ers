@@ -230,7 +230,7 @@ struct eri_sigmask
 
 struct eri_stack
 {
-  void *sp;
+  uint64_t sp;
   int32_t flags;
   uint64_t size;
 };
