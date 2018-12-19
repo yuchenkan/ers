@@ -85,7 +85,7 @@ struct eri_rtld
   uint64_t rsp;
   uint64_t rip;
 
-  struct eri_sigset sig_mask;
+  struct eri_sigmask sig_mask;
 
   uint64_t map_start;
   uint64_t map_end;

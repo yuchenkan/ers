@@ -1,5 +1,5 @@
 #include "lib/offset.h"
-#include "tst/tst-live-entry.h"
+#include "tst/tst-live-entry-common.h"
 
 #define TST_CONTEXT_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (TST_CONTEXT_, name, struct tst_context, member)

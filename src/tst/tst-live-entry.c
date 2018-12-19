@@ -1,4 +1,6 @@
 #include "tst/tst-live-entry.h"
+#include "tst/tst-live-entry-common.h"
+#include "tst/tst-util.h"
 
 #include "live.h"
 #include "live-entry.h"
@@ -6,88 +8,6 @@
 #include "lib/syscall.h"
 #include "lib/printf.h"
 #include "public/common.h"
-
-struct rand
-{
-  uint64_t val;
-};
-
-static uint64_t
-rand_next (struct rand *rand)
-{
-  rand->val ^= rand->val << 13;
-  rand->val ^= rand->val >> 7;
-  rand->val ^= rand->val << 17;
-  return rand->val;
-}
-
-static void
-rand_seed (struct rand *rand, uint64_t seed)
-{
-  rand->val = seed * seed * seed * seed;
-  rand_next (rand);
-}
-
-static void
-rand_fill (struct rand *rand, void *buf, uint64_t size)
-{
-  uint64_t i;
-  for (i = 0; i < size / sizeof i; ++i)
-    *(uint64_t *) ((uint8_t *) buf + i * sizeof i) = rand_next (rand);
-  if (size % sizeof i)
-    {
-      uint64_t v = rand_next (rand);
-      eri_memcpy ((uint8_t *) buf + i * 8, &v, size % sizeof i);
-    }
-}
-
-#define EQ_NR8		(1 << 1)
-#define EQ_NR9		(1 << 2)
-#define EQ_NR10		(1 << 3)
-#define EQ_NR11		(1 << 4)
-#define EQ_NR12		(1 << 5)
-#define EQ_NR13		(1 << 6)
-#define EQ_NR14		(1 << 7)
-#define EQ_NR15		(1 << 8)
-#define EQ_NRDI		(1 << 9)
-#define EQ_NRSI		(1 << 10)
-#define EQ_NRBP		(1 << 11)
-#define EQ_NRBX		(1 << 12)
-#define EQ_NRDX		(1 << 13)
-#define EQ_NRAX		(1 << 14)
-#define EQ_NRCX		(1 << 15)
-#define EQ_NRSP		(1 << 16)
-#define EQ_NRIP		(1 << 17)
-#define EQ_NRFLAGS	(1 << 18)
-
-static void
-assert_eq (struct eri_mcontext *c1, struct eri_mcontext *c2, uint32_t s)
-{
-#define CHECK_ASSERT_EQ(R, r) \
-  do {									\
-    if (! (s & _ERS_PASTE (EQ_N, R))) eri_assert (c1->r == c2->r);	\
-  } while (0)
-
-  CHECK_ASSERT_EQ(R8, r8);
-  CHECK_ASSERT_EQ(R9, r9);
-  CHECK_ASSERT_EQ(R10, r10);
-  CHECK_ASSERT_EQ(R11, r11);
-  CHECK_ASSERT_EQ(R12, r12);
-  CHECK_ASSERT_EQ(R13, r13);
-  CHECK_ASSERT_EQ(R14, r14);
-  CHECK_ASSERT_EQ(R15, r15);
-  CHECK_ASSERT_EQ(RDI, rdi);
-  CHECK_ASSERT_EQ(RSI, rsi);
-  CHECK_ASSERT_EQ(RBP, rbp);
-  CHECK_ASSERT_EQ(RBX, rbx);
-  CHECK_ASSERT_EQ(RDX, rdx);
-  CHECK_ASSERT_EQ(RAX, rax);
-  CHECK_ASSERT_EQ(RCX, rcx);
-  CHECK_ASSERT_EQ(RSP, rsp);
-  CHECK_ASSERT_EQ(RIP, rip);
-  if (! (s & EQ_NRFLAGS))
-    eri_assert ((c1->rflags & ~0x10000) == (c2->rflags & ~0x10000));
-}
 
 #define INIT_RAW	0
 #define INIT_STEP	1
@@ -102,12 +22,12 @@ assert_eq (struct eri_mcontext *c1, struct eri_mcontext *c2, uint32_t s)
 #define CHECK_TRAP	4
 #define CHECK_SEGV	5
 
-struct tst_entry
+struct tst_case
 {
   char *name;
 
-  uint8_t (*init) (struct tst_entry *, struct tst_context *, uint8_t type);
-  void (*check) (struct tst_entry *, struct eri_mcontext *, uint8_t type);
+  uint8_t (*init) (struct tst_case *, struct tst_context *, uint8_t type);
+  void (*check) (struct tst_case *, struct eri_mcontext *, uint8_t type);
 
   uint64_t raw_enter;
   uint64_t raw_leave;
@@ -123,7 +43,7 @@ struct tst_entry
   uint64_t repeat;
 
   uint8_t repeating	: 1;
-  uint8_t stepping	: 1;
+  struct tst_step step;
 
   uint32_t triggered;
 
@@ -133,24 +53,22 @@ struct tst_entry
   uint32_t raw_repeat_steps;
   uint32_t repeat_steps;
 
-  uint32_t trigger;
-  uint32_t trigger_steps;
-
   struct eri_mcontext before;
   struct eri_mcontext after;
 
   struct eri_mcontext repeats[];
 };
 
-static struct tst_entry *current;
+static struct tst_case *current;
 
-static struct eri_live_thread_entry *current_thread;
+static struct eri_live_thread_entry *current_entry;
 
 static uint8_t silence;
 
-uint8_t eri_live_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
-			     uint64_t a3, uint64_t a4, uint64_t a5,
-			     struct eri_live_entry_syscall_info *info);
+uint8_t tst_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
+		        uint64_t a3, uint64_t a4, uint64_t a5,
+		        struct eri_live_entry_syscall_info *info,
+			void *entry);
 
 static uint8_t hold_syscall;
 
@@ -158,87 +76,85 @@ int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  struct eri_live_entry_syscall_info *info,
-		  void *thread)
+		  void *entry)
 {
   if (hold_syscall) return -1;
 
   silence = 1;
   eri_assert_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
 		     current->name, info->rax, info->rflags);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
-  return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
+  return tst_do_syscall (a0, a1, a2, a3, a4, a5, info, entry);
 }
 
 void
-eri_live_sync_async (uint64_t cnt, void *thread)
+eri_live_sync_async (uint64_t cnt, void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live sync async: cnt = %lx\n",
 		     current->name, cnt);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
 }
 
 void
-eri_live_restart_sync_async (uint64_t cnt, void *thread)
+eri_live_restart_sync_async (uint64_t cnt, void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live restart sync async: cnt = %lx\n",
 		     current->name, cnt);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
 }
 
 uint64_t
-eri_live_atomic_hash_mem (uint64_t mem, void *thread)
+eri_live_atomic_hash_mem (uint64_t mem, void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic hash mem: mem = %lx\n",
 		     current->name, mem);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
   return 0;
 }
 
 void
-eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *thread)
+eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load: mem = %lx, "
 		     "ver = %lx, val = %lx\n",
 		     current->name, mem, ver, val);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
 }
 
 void
-eri_live_atomic_stor (uint64_t mem, uint64_t ver, void *thread)
+eri_live_atomic_stor (uint64_t mem, uint64_t ver, void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic stor: mem = %lx, ver = %lx\n",
 		     current->name, mem, ver);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
 }
 
 void
 eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
-			   void *thread)
+			   void *entry)
 {
   silence = 1;
   eri_assert_printf ("[%s] eri live atomic load stor: mem = %lx, "
 		     "ver = %lx, val = %lx\n",
 		     current->name, mem, ver, val);
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   silence = 0;
 }
 
 static void
 sig_raw (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (silence) return;
-
   eri_assert_printf ("[%s:raw] sig raw: rip = %lx\n",
 		     current->name, ctx->mctx.rip);
 
@@ -262,7 +178,7 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (silence) return;
 
-  if (current->stepping)
+  if (current->step.stepping)
     {
       eri_assert_printf ("[%s:step] sig step: step = %u, rip = %lx\n",
 			 current->name, current->steps, ctx->mctx.rip);
@@ -272,9 +188,9 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
       if (current->repeating && ctx->mctx.rip == current->repeat)
 	{
+	  current->check (current, &ctx->mctx, CHECK_REPEAT);
 	  current->repeats[current->repeat_steps] = ctx->mctx;
 	  current->repeats[current->repeat_steps].rip = current->enter;
-	  current->check (current, &ctx->mctx, CHECK_REPEAT);
 	  ++current->repeat_steps;
 	}
 
@@ -286,18 +202,18 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (ctx->mctx.rip == current->enter)
     {
-      current->stepping = 1;
-      current->before = ctx->mctx;
+      current->step.stepping = 1;
 
       current->check (current, &ctx->mctx, CHECK_CMP_ENTER);
+      current->before = ctx->mctx;
     }
 
   if (ctx->mctx.rip == current->leave)
     {
-      current->stepping = 0;
+      current->step.stepping = 0;
       current->repeating = 0;
-      current->after = ctx->mctx;
       current->check (current, &ctx->mctx, CHECK_CMP);
+      current->after = ctx->mctx;
 
       eri_assert (current->raw_repeat_steps == current->repeat_steps);
     }
@@ -308,9 +224,9 @@ static void *sig_action;
 
 void eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
 			       struct eri_live_entry_sigaction_info *info,
-			       void *thread)
+			       void *entry)
 {
-  eri_assert (current_thread == thread);
+  eri_assert (current_entry == entry);
   stack->size = 0;
   info->rip = (uint64_t) sig_action;
   info->mask.mask_all = 0;
@@ -318,8 +234,8 @@ void eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
 }
 
 int32_t
-sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
-			    struct eri_ucontext *ctx)
+tst_sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
+				struct eri_ucontext *ctx)
 {
   if (silence) return 0;
 
@@ -328,33 +244,14 @@ sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
 		     "trigger = %u, complete = %u, steps = %u, "
 		     "rip = %lx\n",
 		     current->name,
-		     current->trigger_steps, current->trigger,
+		     current->step.trigger_steps, current->step.trigger,
 		     current->complete_steps, current->steps,
 		     ctx->mctx.rip);
 #endif
 
-  if (current->stepping)
-    {
-      if (current->trigger_steps == current->trigger)
-	{
-	  current->triggered = 1;
-	  current->stepping = 0;
-	  return ERI_SIGINT;
-	}
-
-      ++current->trigger_steps;
-    }
-
-  if (ctx->mctx.rip == current->enter)
-    current->stepping = 1;
-  if (ctx->mctx.rip == current->leave)
-    current->stepping = 0;
-
-  return 0;
+  return tst_sig_step_int_check (&current->step, ctx->mctx.rip,
+				 current->enter, current->leave);
 }
-
-void sig_step_int_trigger (int32_t sig, struct eri_siginfo *info,
-			   struct eri_ucontext *ctx);
 
 static void
 sig_step_int_act (int32_t sig, struct eri_siginfo *info,
@@ -363,6 +260,7 @@ sig_step_int_act (int32_t sig, struct eri_siginfo *info,
   eri_assert_printf ("[%s:step_int] sig trigger act\n", current->name);
 
   eri_assert (sig == ERI_SIGINT);
+  eri_assert (++current->triggered == 1);
   current->check (current, &ctx->mctx, CHECK_STEP_INT);
   ctx->mctx.rip = current->leave;
 }
@@ -410,22 +308,22 @@ sigsegv_act (int32_t sig, struct eri_siginfo *info,
 static struct tst_context *current_ctx;
 
 static void
-tst (struct rand *rand, struct tst_entry *entry)
+tst (struct tst_rand *rand, struct tst_case *caze)
 {
-  eri_assert_printf ("[%s] test: data = %lx\n", entry->name, entry->data);
+  eri_assert_printf ("[%s] test: data = %lx\n", caze->name, caze->data);
 
   struct tst_context ctx;
-  rand_fill (rand, &ctx, sizeof ctx);
+  tst_rand_fill (rand, &ctx, sizeof ctx);
 
   uint8_t user_stack[4096];
   ctx.rsp = (uint64_t) user_stack + sizeof user_stack;
-  ctx.rflags &= 0xd5;
+  ctx.rflags &= TST_RFLAGS_STATUS_MASK;
   ctx.rflags |= ERI_TRACE_FLAG_MASK;
 
-  entry->init (entry, &ctx, INIT_RAW);
+  caze->init (caze, &ctx, INIT_RAW);
 
   current_ctx = &ctx;
-  current = entry;
+  current = caze;
 
   /* Run raw instruction.  */
   struct eri_sigaction sa = {
@@ -433,96 +331,89 @@ tst (struct rand *rand, struct tst_entry *entry)
   };
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  ctx.rip = entry->raw_enter;
+  ctx.rip = caze->raw_enter;
 
   tst_live_entry (&ctx);
 
   /* Prepare test.  */
-  eri_assert_printf ("[%s] setup thread\n", entry->name);
+  eri_assert_printf ("[%s] setup entry\n", caze->name);
 
-  uint8_t thread_buf[eri_size_of (struct eri_live_thread_entry, 16)
-	+ (eri_live_thread_entry_text_end - eri_live_thread_entry_text)];
-  rand_fill (rand, thread_buf, sizeof thread_buf);
-
-  struct eri_live_thread_entry *thread = (void *) thread_buf;
+  uint8_t entry_buf[ERI_LIVE_THREAD_ENTRY_SIZE];
   uint8_t stack[2 * 1024 * 1024];
-  rand_fill (rand, stack, sizeof stack);
-
   uint8_t sig_stack[ERI_LIVE_SIG_STACK_SIZE];
-  rand_fill (rand, sig_stack, sizeof sig_stack);
-
-  eri_live_init_thread_entry (thread, thread,
-		(uint64_t) stack + sizeof stack, sizeof stack, sig_stack);
-  thread->tst_skip_ctf = 1;
-
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, thread);
-
-  current_thread = thread;
-
-  eri_assert_printf ("[%s] setup sig stack\n", entry->name);
+  struct eri_live_thread_entry *entry = tst_init_live_thread_entry (
+			rand, entry_buf, stack, sizeof stack, sig_stack);
 
   struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
   ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
 
-  ctx.rip = entry->enter;
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, entry);
+  entry->tst_skip_ctf = 1;
+
+  current_entry = entry;
+
+  eri_assert_printf ("[%s] setup sig stack\n", caze->name);
+
+  ctx.rip = caze->enter;
 
   /* Step instruction.  */
-  eri_assert_printf ("[%s:step] step instruction\n", entry->name);
+  eri_assert_printf ("[%s:step] step instruction\n", caze->name);
 
   sa.act = sig_step;
   sa.flags |= ERI_SA_ONSTACK;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
-  entry->init (entry, &ctx, INIT_STEP);
+  caze->init (caze, &ctx, INIT_STEP);
   tst_live_entry (&ctx);
 
-  eri_tst_live_assert_thread_entry (thread);
+  eri_tst_live_assert_thread_entry (entry);
 
   /* Trigger sigint at each step.  */
-  eri_assert_printf ("[%s:step_int] trigger at each step\n", entry->name);
+  eri_assert_printf ("[%s:step_int] trigger at each step\n", caze->name);
 
-  sa.act = sig_step_int_trigger;
+  sa.act = tst_sig_step_int_trigger;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   sig_action = sig_step_int_act;
 
-  for (entry->trigger = 0; entry->trigger <= entry->steps; ++entry->trigger)
+  for (caze->step.trigger = 0;
+	caze->step.trigger <= caze->steps; ++caze->step.trigger)
     {
       eri_assert_printf ("[%s:step_int] trigger at step %u\n",
-			 entry->name, entry->trigger);
+			 caze->name, caze->step.trigger);
 
-      if (! entry->init (entry, &ctx, INIT_STEP_INT)) continue;
+      if (! caze->init (caze, &ctx, INIT_STEP_INT)) continue;
 
       tst_live_entry (&ctx);
 
-      eri_tst_live_assert_thread_entry (thread);
-      if (entry->trigger < entry->steps) eri_assert (entry->triggered);
-      else eri_assert (! entry->triggered);
+      eri_tst_live_assert_thread_entry (entry);
+      eri_assert (caze->triggered == 0 || caze->triggered == 1);
+      eri_assert ((caze->step.trigger >= caze->steps) != caze->triggered);
 
-      entry->triggered = 0;
-      entry->trigger_steps = 0;
+      caze->triggered = 0;
+      caze->step.trigger_steps = 0;
     }
 
   /* Trigger sigtrap.  */
-  thread->tst_skip_ctf = 0;
+  entry->tst_skip_ctf = 0;
 
-  eri_assert_printf ("[%s:trap] tigger sigtrap\n", entry->name);
+  eri_assert_printf ("[%s:trap] tigger sigtrap\n", caze->name);
   sa.act = eri_live_entry_sigaction;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   sig_action = sigtrap_act;
 
-  entry->init (entry, &ctx, INIT_TRAP);
+  caze->init (caze, &ctx, INIT_TRAP);
   tst_live_entry (&ctx);
 
-  eri_tst_live_assert_thread_entry (thread);
-  eri_assert (entry->triggered);
-  entry->triggered = 0;
+  eri_tst_live_assert_thread_entry (entry);
+  eri_assert (caze->triggered);
+  caze->triggered = 0;
 
   /* Trigger sigsegv.  */
-  if (entry->init (entry, &ctx, INIT_SEGV))
+  if (caze->init (caze, &ctx, INIT_SEGV))
     {
-      eri_assert_printf ("[%s:segv] tigger sigsegv\n", entry->name);
+      eri_assert_printf ("[%s:segv] tigger sigsegv\n", caze->name);
 
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 
@@ -530,38 +421,38 @@ tst (struct rand *rand, struct tst_entry *entry)
 
       tst_live_entry (&ctx);
 
-      eri_tst_live_assert_thread_entry (thread);
-      eri_assert (entry->triggered);
-      entry->triggered = 0;
+      eri_tst_live_assert_thread_entry (entry);
+      eri_assert (caze->triggered);
+      caze->triggered = 0;
 
-      eri_assert_printf ("[%s:segv] tigger sigsegv ctf\n", entry->name);
-      entry->init (entry, &ctx, INIT_SEGV);
+      eri_assert_printf ("[%s:segv] tigger sigsegv ctf\n", caze->name);
+      caze->init (caze, &ctx, INIT_SEGV);
 
       ctx.rflags &= ~ERI_TRACE_FLAG_MASK;
-      entry->before.rflags &= ~ERI_TRACE_FLAG_MASK;
-      entry->after.rflags &= ~ERI_TRACE_FLAG_MASK;
+      caze->before.rflags &= ~ERI_TRACE_FLAG_MASK;
+      caze->after.rflags &= ~ERI_TRACE_FLAG_MASK;
       uint32_t i;
-      for (i = 0; i < entry->repeat_steps; ++i)
-	entry->repeats[i].rflags &= ~ERI_TRACE_FLAG_MASK;
+      for (i = 0; i < caze->repeat_steps; ++i)
+	caze->repeats[i].rflags &= ~ERI_TRACE_FLAG_MASK;
 
       tst_live_entry (&ctx);
 
       ctx.rflags |= ERI_TRACE_FLAG_MASK;
-      entry->before.rflags |= ERI_TRACE_FLAG_MASK;
-      entry->after.rflags |= ERI_TRACE_FLAG_MASK;
-      for (i = 0; i < entry->repeat_steps; ++i)
-	entry->repeats[i].rflags |= ERI_TRACE_FLAG_MASK;
+      caze->before.rflags |= ERI_TRACE_FLAG_MASK;
+      caze->after.rflags |= ERI_TRACE_FLAG_MASK;
+      for (i = 0; i < caze->repeat_steps; ++i)
+	caze->repeats[i].rflags |= ERI_TRACE_FLAG_MASK;
 
       sa.act = 0;
       ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &sa, 0, ERI_SIG_SETSIZE);
 
-      eri_tst_live_assert_thread_entry (thread);
-      eri_assert (entry->triggered);
-      entry->triggered = 0;
+      eri_tst_live_assert_thread_entry (entry);
+      eri_assert (caze->triggered);
+      caze->triggered = 0;
     }
 
   /* Done.  */
-  eri_assert_printf ("[%s] done\n", entry->name);
+  eri_assert_printf ("[%s] done\n", caze->name);
 
   sa.act = 0;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
@@ -572,27 +463,28 @@ tst (struct rand *rand, struct tst_entry *entry)
   ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, 0);
 }
 
-#define COMMON_CHECK_CMP(entry, mctx) \
+#define COMMON_CHECK_CMP(caze, mctx) \
   do {									\
-    assert_eq (&(entry)->after, mctx, EQ_NRIP);				\
-    eri_assert ((mctx)->rip == (entry)->leave);				\
+    tst_assert_mctx_eq (&(caze)->after, mctx, TST_MEQ_NRIP);		\
+    eri_assert ((mctx)->rip == (caze)->leave);				\
   } while (0)
 
-#define NON_REP_CHECK_STEP_INT(entry, mctx) \
-  assert_eq ((entry)->trigger_steps < (entry)->complete_steps		\
-	       ? &(entry)->before : &(entry)->after, mctx, 0)
-#define NON_REP_CHECK_TRAP(entry, mctx) \
-  assert_eq (&(entry)->after, mctx, 0)
-#define NON_REP_CHECK(entry, mctx, type) \
+#define NON_REP_CHECK_STEP_INT(caze, mctx) \
+  tst_assert_mctx_eq (							\
+		(caze)->step.trigger_steps < (caze)->complete_steps	\
+		  ? &(caze)->before : &(caze)->after, mctx, 0)
+#define NON_REP_CHECK_TRAP(caze, mctx) \
+  tst_assert_mctx_eq (&(caze)->after, mctx, 0)
+#define NON_REP_CHECK(caze, mctx, type) \
   do {									\
     if ((type) == CHECK_STEP_INT)					\
-      NON_REP_CHECK_STEP_INT (entry, mctx);				\
+      NON_REP_CHECK_STEP_INT (caze, mctx);				\
     else if ((type) == CHECK_TRAP)					\
-      NON_REP_CHECK_TRAP (entry, mctx);					\
+      NON_REP_CHECK_TRAP (caze, mctx);					\
   } while (0)
 
 static uint8_t
-do_syscall_init (struct tst_entry *entry, struct tst_context *ctx,
+do_syscall_init (struct tst_case *caze, struct tst_context *ctx,
 		 uint8_t type)
 {
   ctx->rax = __NR_gettid;
@@ -600,45 +492,45 @@ do_syscall_init (struct tst_entry *entry, struct tst_context *ctx,
 }
 
 static void
-do_syscall_check (struct tst_entry *entry,
+do_syscall_check (struct tst_case *caze,
 		  struct eri_mcontext *mctx, uint8_t type)
 {
   if (type == CHECK_CMP)
     {
-      assert_eq (&entry->after, mctx, EQ_NRCX | EQ_NRIP);
-      eri_assert (mctx->rcx == entry->enter);
-      eri_assert (mctx->rip == entry->leave);
+      tst_assert_mctx_eq (&caze->after, mctx,
+			  TST_MEQ_NRCX | TST_MEQ_NRIP);
+      eri_assert (mctx->rcx == caze->leave);
+      eri_assert (mctx->rip == caze->leave);
     }
-  else NON_REP_CHECK (entry, mctx, type);
+  else NON_REP_CHECK (caze, mctx, type);
 }
 
 static uint8_t
-hold_syscall_init (struct tst_entry *entry, struct tst_context *ctx,
+hold_syscall_init (struct tst_case *caze, struct tst_context *ctx,
 		   uint8_t type)
 {
-  return ! (type == INIT_STEP_INT && entry->trigger == entry->steps)
+  if (type != INIT_RAW && type != INIT_STEP)
+    caze->before.rip = caze->after.rip = caze->enter;
+  return ! (type == INIT_STEP_INT && caze->step.trigger == caze->steps)
 	 && type != INIT_SEGV;
 }
 
 static void
-hold_syscall_check (struct tst_entry *entry,
+hold_syscall_check (struct tst_case *caze,
 		    struct eri_mcontext *mctx, uint8_t type)
 {
   if (type == CHECK_CMP_ENTER)
     {
-      if (entry->steps) mctx->rip = entry->leave;
+      if (caze->steps) mctx->rip = caze->leave;
     }
   else if (type == CHECK_CMP)
-    {
-      COMMON_CHECK_CMP (entry, mctx);
-      entry->after.rip = entry->enter;
-    }
+    COMMON_CHECK_CMP (caze, mctx);
   else if (type == CHECK_STEP_INT)
-    NON_REP_CHECK_STEP_INT (entry, mctx);
+    NON_REP_CHECK_STEP_INT (caze, mctx);
   else if (type == CHECK_TRAP)
     {
-      NON_REP_CHECK_TRAP (entry, mctx);
-      mctx->rip = entry->leave;
+      NON_REP_CHECK_TRAP (caze, mctx);
+      mctx->rip = caze->leave;
     }
 }
 
@@ -646,34 +538,34 @@ hold_syscall_check (struct tst_entry *entry,
 #define SYNC_JMP_UREG	TST_LIVE_SYNC_JMP_UREG
 
 static uint8_t
-sync_jmp_init (struct tst_entry *entry, struct tst_context *ctx,
+sync_jmp_init (struct tst_case *caze, struct tst_context *ctx,
 	       uint8_t type)
 {
   if (type == INIT_RAW)
-    ctx->SYNC_JMP_REG = (uint64_t) (&entry->raw_leave);
+    ctx->SYNC_JMP_REG = (uint64_t) (&caze->raw_leave);
   else if (type == INIT_SEGV) ctx->SYNC_JMP_REG = 0;
-  else ctx->SYNC_JMP_REG = (uint64_t) (&entry->leave);
+  else ctx->SYNC_JMP_REG = (uint64_t) (&caze->leave);
   return 1;
 }
 
 static void
-sync_jmp_check (struct tst_entry *entry, struct eri_mcontext *mctx,
+sync_jmp_check (struct tst_case *caze, struct eri_mcontext *mctx,
 		uint8_t type)
 {
   if (type == CHECK_CMP)
     {
-      assert_eq (&entry->after, mctx,
-		 _ERS_PASTE (EQ_N, SYNC_JMP_UREG) | EQ_NRIP);
-      eri_assert (mctx->SYNC_JMP_REG == (uint64_t) &entry->leave);
-      eri_assert (mctx->rip == entry->leave);
+      tst_assert_mctx_eq (&caze->after, mctx,
+		_ERS_PASTE (TST_MEQ_N, SYNC_JMP_UREG) | TST_MEQ_NRIP);
+      eri_assert (mctx->SYNC_JMP_REG == (uint64_t) &caze->leave);
+      eri_assert (mctx->rip == caze->leave);
     }
   else if (type == CHECK_SEGV)
     {
       eri_assert (mctx->SYNC_JMP_REG == 0);
-      mctx->SYNC_JMP_REG = (uint64_t) &entry->leave;
-      assert_eq (&entry->before, mctx, 0);
+      mctx->SYNC_JMP_REG = (uint64_t) &caze->leave;
+      tst_assert_mctx_eq (&caze->before, mctx, 0);
     }
-  else NON_REP_CHECK (entry, mctx, type);
+  else NON_REP_CHECK (caze, mctx, type);
 }
 
 #define SYNC_REP_HALF_SIZE	2
@@ -681,23 +573,23 @@ sync_jmp_check (struct tst_entry *entry, struct eri_mcontext *mctx,
 
 struct tst_sync_rep
 {
-  struct rand *rand;
+  struct tst_rand *rand;
   uint8_t src[SYNC_REP_SIZE * 8];
   uint8_t *dst;
 };
 
 static uint8_t
-sync_rep_init (struct tst_entry *entry, struct tst_context *ctx,
+sync_rep_init (struct tst_case *caze, struct tst_context *ctx,
 	       uint8_t type)
 {
-  struct tst_sync_rep *rep = entry->data;
+  struct tst_sync_rep *rep = caze->data;
   ctx->rcx = SYNC_REP_SIZE;
   ctx->rsi = (uint64_t) rep->src;
   ctx->rdi = (uint64_t) rep->dst;
 
-  rand_fill (rep->rand, rep->src, sizeof rep->src);
+  tst_rand_fill (rep->rand, rep->src, sizeof rep->src);
   if (type == INIT_TRAP)
-    entry->repeat_steps = 0;
+    caze->repeat_steps = 0;
   else if (type == INIT_SEGV)
     ERI_ASSERT_SYSCALL (mprotect,
 			eri_round_up ((uint64_t) rep->dst, 4096), 4096, 0);
@@ -705,57 +597,57 @@ sync_rep_init (struct tst_entry *entry, struct tst_context *ctx,
 }
 
 static void
-sync_rep_check (struct tst_entry *entry, struct eri_mcontext *mctx,
+sync_rep_check (struct tst_case *caze, struct eri_mcontext *mctx,
 		uint8_t type)
 {
   if (type == CHECK_CMP)
-    COMMON_CHECK_CMP (entry, mctx);
+    COMMON_CHECK_CMP (caze, mctx);
   else if (type == CHECK_REPEAT)
     {
-      eri_assert (entry->repeat_steps < entry->raw_repeat_steps);
-      assert_eq (entry->repeats + entry->repeat_steps, mctx, EQ_NRIP);
+      eri_assert (caze->repeat_steps < caze->raw_repeat_steps);
+      tst_assert_mctx_eq (caze->repeats + caze->repeat_steps, mctx,
+			  TST_MEQ_NRIP);
     }
   else if (type == CHECK_STEP_INT)
     {
-      if (entry->trigger_steps <= entry->complete_steps)
-	assert_eq (&entry->before, mctx, 0);
+      if (caze->step.trigger_steps <= caze->complete_steps)
+	tst_assert_mctx_eq (&caze->before, mctx, 0);
       else
 	{
-	  uint32_t steps = entry->trigger_steps - entry->complete_steps - 1;
-	  if (steps < entry->repeat_steps)
-	    assert_eq (entry->repeats + steps, mctx, 0);
+	  uint32_t steps
+		= caze->step.trigger_steps - caze->complete_steps - 1;
+	  if (steps < caze->repeat_steps)
+	    tst_assert_mctx_eq (caze->repeats + steps, mctx, 0);
 	  else
-	    assert_eq (&entry->after, mctx, 0);
+	    tst_assert_mctx_eq (&caze->after, mctx, 0);
 	}
     }
   else if (type == CHECK_TRAP)
     {
-      if (entry->repeat_steps < entry->raw_repeat_steps)
-	assert_eq (entry->repeats + entry->repeat_steps++, mctx, 0);
+      if (caze->repeat_steps < caze->raw_repeat_steps)
+	tst_assert_mctx_eq (caze->repeats + caze->repeat_steps++, mctx, 0);
       else
-	assert_eq (&entry->after, mctx, 0);
+	tst_assert_mctx_eq (&caze->after, mctx, 0);
     }
   else if (type == CHECK_SEGV)
     {
-      assert_eq (entry->repeats + SYNC_REP_HALF_SIZE - 1, mctx, 0);
-      struct tst_sync_rep *rep = entry->data;
+      tst_assert_mctx_eq (caze->repeats + SYNC_REP_HALF_SIZE - 1, mctx, 0);
+      struct tst_sync_rep *rep = caze->data;
       ERI_ASSERT_SYSCALL (mprotect,
 			  eri_round_up ((uint64_t) rep->dst, 4096), 4096,
 			  ERI_PROT_READ | ERI_PROT_WRITE);
     }
 }
 
-#define AT_NAME			_ERS_PASTE2
-
 #define AT_INIT_MEM(reg) \
-  ctx->reg = type != INIT_SEGV ? (uint64_t) entry->data : 0
+  ctx->reg = type != INIT_SEGV ? (uint64_t) caze->data : 0
 
 #define AT_INIT(name, val, reg, ...) \
 static uint8_t								\
-_ERS_PASTE (name, _init) (struct tst_entry *entry,			\
+_ERS_PASTE (name, _init) (struct tst_case *caze,			\
 			  struct tst_context *ctx, uint8_t type)	\
 {									\
-  *(uint64_t *) entry->data = val;					\
+  *(uint64_t *) caze->data = val;					\
   __VA_ARGS__								\
   AT_INIT_MEM (reg);							\
   return 1;								\
@@ -764,21 +656,21 @@ _ERS_PASTE (name, _init) (struct tst_entry *entry,			\
 #define AT_CHECK_SEGV(reg) \
   do {									\
     eri_assert (mctx->reg == 0);					\
-    mctx->reg = (uint64_t) entry->data;					\
-    assert_eq (&entry->before, mctx, 0);				\
+    mctx->reg = (uint64_t) caze->data;					\
+    tst_assert_mctx_eq (&caze->before, mctx, 0);			\
   } while (0)
 
 #define AT_CHECK_LOAD(name, val, reg) \
 static void								\
-_ERS_PASTE (name, _check) (struct tst_entry *entry,			\
+_ERS_PASTE (name, _check) (struct tst_case *caze,			\
 			   struct eri_mcontext *mctx, uint8_t type)	\
 {									\
-  eri_assert (*(uint64_t *) entry->data == (val));			\
+  eri_assert (*(uint64_t *) caze->data == (val));			\
   if (type == CHECK_CMP)						\
-    COMMON_CHECK_CMP (entry, mctx);					\
+    COMMON_CHECK_CMP (caze, mctx);					\
   else if (type == CHECK_SEGV)						\
     AT_CHECK_SEGV (reg);						\
-  else NON_REP_CHECK (entry, mctx, type);				\
+  else NON_REP_CHECK (caze, mctx, type);				\
 }
 
 #define LOAD_VAL(sz)		TST_LIVE_VAL (sz, 0xef)
@@ -804,30 +696,30 @@ TST_ATOMIC_SIZES (CMP_CALLBACKS, cmp_ne, 0)
 
 #define AT_CHECK_STOR(name, old_val, new_val, reg) \
 static void								\
-_ERS_PASTE (name, _check) (struct tst_entry *entry,			\
+_ERS_PASTE (name, _check) (struct tst_case *caze,			\
 			   struct eri_mcontext *mctx, uint8_t type)	\
 {									\
   if (type == CHECK_CMP)						\
     {									\
-      COMMON_CHECK_CMP (entry, mctx);					\
-      eri_assert (*(uint64_t *) entry->data == (new_val));		\
+      COMMON_CHECK_CMP (caze, mctx);					\
+      eri_assert (*(uint64_t *) caze->data == (new_val));		\
     }									\
   else if (type == CHECK_STEP_INT)					\
     {									\
-      NON_REP_CHECK_STEP_INT (entry, mctx);				\
-      eri_assert (*(uint64_t *) entry->data				\
-		    == (entry->trigger_steps < entry->complete_steps	\
+      NON_REP_CHECK_STEP_INT (caze, mctx);				\
+      eri_assert (*(uint64_t *) caze->data				\
+		    == (caze->step.trigger_steps < caze->complete_steps	\
 			  ? (old_val) : (new_val)));			\
     }									\
   else if (type == CHECK_TRAP)						\
     {									\
-      NON_REP_CHECK_TRAP (entry, mctx);					\
-      eri_assert (*(uint64_t *) entry->data == (new_val));		\
+      NON_REP_CHECK_TRAP (caze, mctx);					\
+      eri_assert (*(uint64_t *) caze->data == (new_val));		\
     }									\
   else if (type == CHECK_SEGV)						\
     {									\
       AT_CHECK_SEGV (reg);						\
-      eri_assert (*(uint64_t *) entry->data == (old_val));		\
+      eri_assert (*(uint64_t *) caze->data == (old_val));		\
     }									\
 }
 
@@ -883,7 +775,7 @@ TST_ATOMIC_SIZES (XCHG_CALLBACKS)
 AT_INIT (_ERS_PASTE (name, sz), CMPXCHG_VAL (sz), CMPXCHG_REG,		\
 	 ctx->rax = CMPXCHG_VAL (sz) + ! (eq);)				\
 AT_CHECK_STOR (_ERS_PASTE (name, sz), CMPXCHG_VAL (sz),			\
-	       (eq) ? (TST_TYPE (sz)) (uint64_t) entry->data		\
+	       (eq) ? (TST_TYPE (sz)) (uint64_t) caze->data		\
 		    : CMPXCHG_VAL (sz),					\
 	       CMPXCHG_REG)
 
@@ -893,41 +785,41 @@ TST_ATOMIC_SIZES (CMPXCHG_CALLBACKS, cmpxchg_ne, 0)
 uint64_t
 tst_main (void)
 {
-  struct rand rand;
-  rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (getpid));
+  struct tst_rand rand;
+  tst_rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (getpid));
 
   eri_sigaddset (&sig_mask, ERI_SIGSEGV);
 
   static uint64_t atomic_mem_table;
   eri_live_entry_atomic_mem_table = &atomic_mem_table;
 
-#define ENTRY_ADDR_FIELDS(entry) \
-  (uint64_t) _ERS_PASTE (tst_live_entry_raw_enter_, entry),		\
-  (uint64_t) _ERS_PASTE (tst_live_entry_raw_leave_, entry),		\
-  (uint64_t) _ERS_PASTE (tst_live_entry_enter_, entry),			\
-  (uint64_t) _ERS_PASTE (tst_live_entry_leave_, entry)
+#define ENTRY_ADDR_FIELDS(caze) \
+  (uint64_t) _ERS_PASTE (tst_live_entry_raw_enter_, caze),		\
+  (uint64_t) _ERS_PASTE (tst_live_entry_raw_leave_, caze),		\
+  (uint64_t) _ERS_PASTE (tst_live_entry_enter_, caze),			\
+  (uint64_t) _ERS_PASTE (tst_live_entry_leave_, caze)
 
-#define ENTRY_FIELDS(entry) \
-  #entry,								\
-  _ERS_PASTE (entry, _init), _ERS_PASTE (entry, _check),		\
-  ENTRY_ADDR_FIELDS (entry)
+#define ENTRY_FIELDS(caze) \
+  #caze,								\
+  _ERS_PASTE (caze, _init), _ERS_PASTE (caze, _check),			\
+  ENTRY_ADDR_FIELDS (caze)
 
-  struct tst_entry do_syscall = {
+  struct tst_case do_syscall = {
     ENTRY_FIELDS (do_syscall),
-    (uint64_t) ERI_TST_LIVE_COMPLETE_START_NAME (do_syscall)
+    (uint64_t) ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall)
   };
 
   tst (&rand, &do_syscall);
 
   hold_syscall = 1;
-  struct tst_entry hold_syscall __attribute__ ((unused)) = {
+  struct tst_case hold_syscall = {
     ENTRY_FIELDS (hold_syscall),
-    (uint64_t) ERI_TST_LIVE_COMPLETE_START_NAME (hold_syscall)
+    (uint64_t) ERI_TST_LIVE_COMPLETE_START_SYMBOL (hold_syscall)
   };
 
   tst (&rand, &hold_syscall);
 
-  struct tst_entry sync_jmp = {
+  struct tst_case sync_jmp = {
     ENTRY_FIELDS (sync_jmp),
     (uint64_t) tst_live_entry_leave_sync_jmp
   };
@@ -940,16 +832,16 @@ tst_main (void)
 	    ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
   rep.dst = sync_dst + 4096 - SYNC_REP_HALF_SIZE * 8;
 
-  uint8_t sync_rep[sizeof (struct tst_entry)
+  uint8_t sync_rep[sizeof (struct tst_case)
 		     + sizeof (struct eri_mcontext) * SYNC_REP_SIZE - 1];
-  struct tst_entry sync_rep_fields = {
+  struct tst_case sync_rep_fields = {
     ENTRY_FIELDS (sync_rep),
     (uint64_t) tst_live_sync_rep,
     &rep,
     (uint64_t) tst_live_raw_sync_rep,
     (uint64_t) tst_live_sync_rep
   };
-#define sync_rep	(*(struct tst_entry *) sync_rep)
+#define sync_rep	(*(struct tst_case *) sync_rep)
   sync_rep = sync_rep_fields;
 
   tst (&rand, &sync_rep);
@@ -959,13 +851,13 @@ tst_main (void)
 		      eri_round_down ((uint64_t) rep.dst, 4096), 4096 * 2);
 
 #define AT_TST(sz, name, at) \
-  uint64_t AT_NAME (name, sz, _val);					\
-  struct tst_entry _ERS_PASTE (name, sz) = {				\
+  uint64_t _ERS_PASTE2 (name, sz, _val);				\
+  struct tst_case _ERS_PASTE (name, sz) = {				\
     #name #sz,								\
-    AT_NAME (name, sz, _init), AT_NAME (name, sz, _check),		\
+    _ERS_PASTE2 (name, sz, _init), _ERS_PASTE2 (name, sz, _check),	\
     ENTRY_ADDR_FIELDS (_ERS_PASTE (name, sz)),				\
-    (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (sz, at),	\
-    &AT_NAME (name, sz, _val)						\
+    (uint64_t) ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (sz, at),	\
+    &_ERS_PASTE2 (name, sz, _val)					\
   };									\
 									\
   tst (&rand, &_ERS_PASTE (name, sz));

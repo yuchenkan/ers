@@ -150,6 +150,11 @@
 #define ERI_CLONE_PARENT_SETTID		0x00100000
 #define ERI_CLONE_CHILD_CLEARTID	0x00200000
 
+#define ERI_SUPPORTED_CLONE_FLAGS \
+  (ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SIGHAND	\
+   | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
+   | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
+
 #define ERI_SEEK_SET	0
 #define ERI_SEEK_CUR	1
 
@@ -210,7 +215,7 @@ struct eri_stat
   int64_t blocks;
   struct eri_timespec atime;
   struct eri_timespec mtime;
-  struct eri_timespec ctime;  
+  struct eri_timespec ctime;
 };
 #endif
 
@@ -330,39 +335,39 @@ void eri_sigreturn (void);
   ({ int32_t _s = sig;							\
      (set)->val[_eri_sigword (_s)] & _eri_sigmask (_s); })
 
-#define _eri_sigset_word_eq(word, set, val, ...) \
+#define _eri_sigset_word_eq(word, set, to, ...) \
   ({									\
     uint64_t _m = ~0;							\
     if (_eri_sigword (ERI_SIGKILL) == (word))				\
       _m &= ~_eri_sigmask (ERI_SIGKILL);				\
     if (_eri_sigword (ERI_SIGSTOP) == (word))				\
       _m &= ~_eri_sigmask (ERI_SIGSTOP);				\
-    ((set)->val[word] & _m) == (val (word, ##__VA_ARGS__) & _m);	\
+    ((set)->val[word] & _m) == (to (word, ##__VA_ARGS__) & _m);	\
   })
 
-#define _eri_sigset_cmp(set, val, ...) \
+#define _eri_sigset_cmp(set, to, ...) \
   ({									\
     uint8_t _eq = 1;							\
     int32_t _w;								\
     for (_w = 0; _eq && _w < (ERI_NSIG - 1) / 64; ++_w)			\
-      _eq = _eri_sigset_word_eq (_w, set, val, ##__VA_ARGS__);		\
+      _eq = _eri_sigset_word_eq (_w, set, to, ##__VA_ARGS__);		\
     if (_eq && (ERI_NSIG - 1) % 64)					\
-      _eq = _eri_sigset_word_eq (_w, set, val, ##__VA_ARGS__);		\
+      _eq = _eri_sigset_word_eq (_w, set, to, ##__VA_ARGS__);		\
     _eq;								\
   })
 
-#define _eri_sigset_eq_val(word, b)	((b)->val[word])
+#define _eri_sigset_eq_to(word, b)	((b)->val[word])
 #define eri_sigset_eq(a, b) \
   ({									\
     struct eri_sigset *_a = a, *_b = b;					\
-    _eri_sigset_cmp (_a, _eri_sigset_eq_val, _b);			\
+    _eri_sigset_cmp (_a, _eri_sigset_eq_to, _b);			\
   })
 
-#define _eri_sigset_full_val(word)	(~0)
+#define _eri_sigset_full_to(word)	(~0)
 #define eri_sigset_full(set) \
   ({									\
     struct eri_sigset *_s = set;					\
-    _eri_sigset_cmp (_s, _eri_sigset_full_val);				\
+    _eri_sigset_cmp (_s, _eri_sigset_full_to);				\
   })
 
 #endif

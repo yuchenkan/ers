@@ -5,87 +5,19 @@
 #include "lib/util.h"
 #include "lib/syscall.h"
 #include "tst/tst-live-entry.h"
-#include "tst/tst-live-entry-offsets.h"
+#include "tst/tst-live-entry-common-offsets.h"
 
   .text
 
-  .align 16
-  ERI_GLOBAL_HIDDEN (tst_start)
-  .type tst_start, @function
-tst_start:
-  call	tst_main
-  movq	%rax, %rdi
-  movl	$__NR_exit, %eax
-  syscall
-  .size tst_start, . - tst_start
-
-  .align 16
-  ERI_GLOBAL_HIDDEN (tst_live_entry)
-  .type tst_live_entry, @function
-tst_live_entry:
-  pushq	%rbx
-  pushq	%rbp
-  pushq	%r12
-  pushq	%r13
-  pushq	%r14
-  pushq	%r15
-
-  movq	%rsp, %rax
-  movq	TST_CONTEXT_RSP(%rdi), %rsp
-  pushq	%rax
-
-  leaq	.ltst_live_entry_ctf(%rip), %rax
-  pushq	%rax
-
-  movq	TST_CONTEXT_RAX(%rdi), %rax
-  movq	TST_CONTEXT_RBX(%rdi), %rbx
-  movq	TST_CONTEXT_RCX(%rdi), %rcx
-  movq	TST_CONTEXT_RDX(%rdi), %rdx
-  movq	TST_CONTEXT_RSI(%rdi), %rsi
-  movq	TST_CONTEXT_RBP(%rdi), %rbp
-  movq	TST_CONTEXT_R8(%rdi), %r8
-  movq	TST_CONTEXT_R9(%rdi), %r9
-  movq	TST_CONTEXT_R10(%rdi), %r10
-  movq	TST_CONTEXT_R11(%rdi), %r11
-  movq	TST_CONTEXT_R12(%rdi), %r12
-  movq	TST_CONTEXT_R13(%rdi), %r13
-  movq	TST_CONTEXT_R14(%rdi), %r14
-  movq	TST_CONTEXT_R15(%rdi), %r15
-
-  pushq	TST_CONTEXT_RIP(%rdi)
-  pushq	TST_CONTEXT_RFLAGS(%rdi)
-  movq	TST_CONTEXT_RDI(%rdi), %rdi
-  popfq
-  ret
-.ltst_live_entry_ctf:
-  pushfq
-  andq	$~ERI_TRACE_FLAG_MASK, (%rsp)
-  popfq
-
-  popq	%rsp
-
-  popq	%r15
-  popq	%r14
-  popq	%r13
-  popq	%r12
-  popq	%rbp
-  popq	%rbx
-  ret
-  .size tst_live_entry, . - tst_live_entry
-
 #define TST_LIVE_ENTRY(entry, raw, tst, ...) \
   .align 16;								\
-  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_enter_, entry));	\
-  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_leave_, entry));	\
-  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_enter_, entry));	\
-  ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_leave_, entry));	\
-_ERS_PASTE (tst_live_entry_raw_enter_, entry):				\
+ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_enter_, entry))	\
   raw (__VA_ARGS__);							\
-_ERS_PASTE (tst_live_entry_raw_leave_, entry):				\
+ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_raw_leave_, entry))	\
   ret;									\
-_ERS_PASTE (tst_live_entry_enter_, entry):				\
+ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_enter_, entry))		\
   tst (__VA_ARGS__);							\
-_ERS_PASTE (tst_live_entry_leave_, entry):				\
+ERI_GLOBAL_HIDDEN (_ERS_PASTE (tst_live_entry_leave_, entry))		\
   ret;
 
 #define RAW_DO_SYSCALL()	syscall
@@ -219,24 +151,13 @@ TST_ATOMIC_SIZES (TST_XCHG)
 TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_eq)
 TST_ATOMIC_SIZES (TST_CMPXCHG, cmpxchg_ne)
 
-  .align 16
-  .type sig_step_int_trigger, @function
-  ERI_GLOBAL_HIDDEN (sig_step_int_trigger)
-sig_step_int_trigger:
-  subq	$8, %rsp
-  pushq	%rsi
-  pushq	%rdx
-  call	sig_step_int_check_trigger
-  popq	%rdx
-  popq	%rsi
-  addq	$8, %rsp
-
-  testl	%eax, %eax
-  jz	.lno_trigger
-
-  movl	%eax, %edi
-  jmp	eri_live_entry_sigaction
-
-.lno_trigger:
+ERI_GLOBAL_HIDDEN_FUNCTION (tst_do_syscall)
+  pushq	%rbx
+  xorq	%rbx, %rbx
+  pushq	24(%rsp)
+  pushq	24(%rsp)
+  call	eri_live_entry_do_syscall
+  addq	$16, %rsp
+  popq	%rbx
   ret
-  .size sig_step_int_trigger, . - sig_step_int_trigger
+  .size tst_do_syscall, . - tst_do_syscall

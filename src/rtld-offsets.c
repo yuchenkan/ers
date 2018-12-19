@@ -10,5 +10,6 @@ declare (void)
   RTLD_OFFSET (RDX, rdx);
   RTLD_OFFSET (RSP, rsp);
   RTLD_OFFSET (RIP, rip);
-  RTLD_OFFSET (SIG_MASK, sig_mask);
+  RTLD_OFFSET (SIG_MASK_ALL, sig_mask.mask_all);
+  RTLD_OFFSET (SIG_MASK, sig_mask.mask);
 }

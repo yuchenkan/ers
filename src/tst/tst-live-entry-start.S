@@ -1,15 +1,13 @@
 /* vim: set ft=gas: */
 
+#include "tst/tst-live-entry-common.h"
+
 #include "lib/util.h"
 #include "lib/syscall.h"
 
   .text
 
-  .align 16
-  ERI_GLOBAL_HIDDEN (tst_start)
-  ERI_GLOBAL_HIDDEN (tst_continue)
-  .type tst_start, @function
-tst_start:
+ERI_GLOBAL_HIDDEN_FUNCTION (tst_start)
   pushq	$0x12345678
   pushq	$0x12345678
   movq	%rsp, %rdi
@@ -19,9 +17,10 @@ tst_start:
   orq	$ERI_TRACE_FLAG_MASK, (%rsp)
   jmp	tst_rtld
 
-tst_continue:
+ERI_GLOBAL_HIDDEN (tst_continue)
   cmpb	$1, sigtrap_triggered
   jne	.lerror
+  call	tst_block_all_signals
   movq	%rsp, %rdi
   movq	$0x12345678, %rsi
   leaq	.lexit(%rip), %rdx
@@ -74,17 +73,4 @@ tst_continue:
   syscall
   .size tst_start, . - tst_start
 
-#define STUB(symbol) \
-  ERI_GLOBAL_HIDDEN (symbol);					\
-symbol:
-
-  .align 16
-  STUB (eri_live_syscall)
-  STUB (eri_live_sync_async)
-  STUB (eri_live_restart_sync_async)
-  STUB (eri_live_atomic_hash_mem)
-  STUB (eri_live_atomic_load)
-  STUB (eri_live_atomic_stor)
-  STUB (eri_live_atomic_load_stor)
-.lerror:
-  ERI_ASSERT_FALSE
+TST_ERI_LIVE_NULL_STUBS (ERI_GLOBAL_HIDDEN (eri_live_syscall))

@@ -14,11 +14,23 @@
 #ifdef __ASSEMBLER__
 
 #define ERI_GLOBAL_HIDDEN(symbol) \
-  .global symbol;		\
-  .hidden symbol
+  .global symbol;							\
+  .hidden symbol;							\
+symbol:
+
+#define ERI_FUNCTION(symbol) \
+  .align 16;								\
+  .type symbol, @function;						\
+symbol:
+
+#define ERI_GLOBAL_HIDDEN_FUNCTION(symbol) \
+  .align 16;								\
+  ERI_GLOBAL_HIDDEN (symbol);						\
+  .type symbol, @function;						\
+symbol:
 
 #define ERI_ASSERT_FALSE \
-  movq	$0, %r15;		\
+  movq	$0, %r15;							\
   movq	$0, (%r15)
 
 #else
@@ -31,17 +43,17 @@
 #endif
 
 #define eri_min(a, b) \
-  ({				\
-    typeof (a) __a = a;		\
-    typeof (b) __b = b;		\
-    __a < __b ? __a : __b;	\
+  ({									\
+    typeof (a) __a = a;							\
+    typeof (b) __b = b;							\
+    __a < __b ? __a : __b;						\
   })
 
 #define eri_max(a, b) \
-  ({				\
-    typeof (a) __a = a;		\
-    typeof (b) __b = b;		\
-    __a > __b ? __a : __b;	\
+  ({									\
+    typeof (a) __a = a;							\
+    typeof (b) __b = b;							\
+    __a > __b ? __a : __b;						\
   })
 
 void eri_memset (void *s, char c, uint64_t n);
@@ -59,10 +71,10 @@ const char *eri_strstr (const char *s, const char *d);
 const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 
 #define eri_round_up_mask(x, mask) \
-  ({						\
-    typeof (x) __x = x;				\
-    typeof (__x) __m = (typeof (__x)) (mask);	\
-    (__x + __m) & ~__m;				\
+  ({									\
+    typeof (x) __x = x;							\
+    typeof (__x) __m = (typeof (__x)) (mask);				\
+    (__x + __m) & ~__m;							\
   })
 #define eri_round_up(x, u) eri_round_up_mask (x, (u) - 1)
 #define eri_round_down(x, u) ((x) & ~((u) - 1))

@@ -4,17 +4,12 @@
 
   .text
 
-  .align 16
-  ERI_GLOBAL_HIDDEN (eri_start)
-  .type eri_start, @function
-eri_start:
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_start)
   subq	$16, %rsp
   jmp	eri_init
   .size start, . - start
 
-  .align 16
-  .type set_context, @function
-set_context:
+ERI_FUNCTION (set_context)
   movq	%rbx, ERI_INIT_CONTEXT_RBX(%rdi)
   movq	%rsp, ERI_INIT_CONTEXT_RSP(%rdi)
   movq	%rbp, ERI_INIT_CONTEXT_RBP(%rdi)
@@ -26,10 +21,7 @@ set_context:
   ret
   .size set_context, . - set_context
 
-  .align 16
-  ERI_GLOBAL_HIDDEN (eri_init_context)
-  .type eri_init_context, @function
-eri_init_context:
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_init_context)
 
   pushq	%rdi
   pushq	%rsi

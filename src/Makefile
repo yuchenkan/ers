@@ -11,11 +11,13 @@ all:
 	gcc -I . -Wall -O3 -S -o public/entry-offsets.s public/entry-offsets.c
 	grep __AS_DEFINE__ public/entry-offsets.s | sed 's/__AS_DEFINE__/#define/g' >public/entry-offsets.h
 	\
-	gcc -I . -Wall -O3 -S -o tst/tst-live-entry-offsets.s tst/tst-live-entry-offsets.c
-	grep __AS_DEFINE__ tst/tst-live-entry-offsets.s | sed 's/__AS_DEFINE__/#define/g' >tst/tst-live-entry-offsets.h
+	gcc -I . -Wall -O3 -S -o tst/tst-live-entry-common-offsets.s tst/tst-live-entry-common-offsets.c
+	grep __AS_DEFINE__ tst/tst-live-entry-common-offsets.s | sed 's/__AS_DEFINE__/#define/g' >tst/tst-live-entry-common-offsets.h
 	\
-	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry.c live-entry.c live-entry.S -o tst-live-entry -g -Wall -Wl,--no-undefined
+	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-common-start.S tst/tst-util.c tst/tst-live-entry-common.S tst/tst-live-entry-common.c tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry.c live-entry.c live-entry.S -o tst-live-entry -g -Wall -Wl,--no-undefined
 	\
-	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-live-entry-start.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry-start.c live-entry.c live-entry.S -o tst-live-entry-start -g -Wall -Wl,--no-undefined
+	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-live-entry-start.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry-start.c tst/tst-util.c tst/tst-live-entry-common.c live-entry.c live-entry.S -o tst-live-entry-start -g -Wall -Wl,--no-undefined
+	\
+	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-common-start.S tst/tst-util.c tst/tst-live-entry-common.S tst/tst-live-entry-common.c lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry-clone.S tst/tst-live-entry-clone.c live-entry.c live-entry.S -o tst-live-entry-clone -g -Wall -Wl,--no-undefined
 	\
 	bash make.sh

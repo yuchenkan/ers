@@ -19,7 +19,8 @@ eri_rtld (void **arg, uint64_t rdx)
   struct eri_sigset set;
   eri_sigfillset (&set);
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
-		      &rtld.sig_mask, ERI_SIG_SETSIZE);
+		      &rtld.sig_mask.mask, ERI_SIG_SETSIZE);
+  rtld.sig_mask.mask_all = eri_sigset_full (&rtld.sig_mask.mask);
 
 #ifdef ERI_TST_RTLD
   arg += 2;

@@ -4,10 +4,8 @@
 #include "lib/syscall.h"
 
   .text
-  .align 16
-  ERI_GLOBAL_HIDDEN (eri_sigreturn)
-  .type eri_sigreturn, @function
-eri_sigreturn:
+
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_sigreturn)
   movl	$__NR_rt_sigreturn, %eax
   syscall
   .size eri_sigreturn, .-eri_sigreturn

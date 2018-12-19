@@ -7,10 +7,7 @@
 
   .text
 
-  .align 16
-  ERI_GLOBAL_HIDDEN (start)
-  .type start, @function
-start:
+ERI_GLOBAL_HIDDEN_FUNCTION (start)
   pushq	$0x12345678
   pushq	$0x12345678
   movq	$0x12345678, %rdx

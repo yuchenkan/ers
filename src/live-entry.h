@@ -37,24 +37,29 @@
 #define ERI_R14(sz)		_ERS_PASTE (_ERI_R2_, sz) (r14)
 #define ERI_R15(sz)		_ERS_PASTE (_ERI_R2_, sz) (r15)
 
-#define ERI_LIVE_ENTRY_SAVED_REG_SIZE		80
+#define ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET		4
+#define ERI_LIVE_ENTRY_MARK_SEC_PART_BIT \
+  (1 << ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET)
+
+#define ERI_LIVE_ENTRY_SAVED_REG_SIZE16		80
 #define ERI_LIVE_SIG_STACK_SIZE			4096
 
-#define ERI_LIVE_ATOMIC_LABEL(sz, label) \
-  _ERS_PASTE2 (atomic_, label, sz)
+#define ERI_LIVE_ATOMIC_NAME(sz, name) \
+  _ERS_PASTE2 (atomic_, name, sz)
 
-#define ERI_TST_LIVE_COMPLETE_START_NAME(name) \
+#define ERI_TST_LIVE_COMPLETE_START_SYMBOL(name) \
   _ERS_PASTE2 (eri_tst_live_, name, _complete_start)
 
-#define ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME(sz, name) \
-  ERI_TST_LIVE_COMPLETE_START_NAME (ERI_LIVE_ATOMIC_LABEL (sz, name))
-
+#define ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL(sz, name) \
+  ERI_TST_LIVE_COMPLETE_START_SYMBOL (ERI_LIVE_ATOMIC_NAME (sz, name))
 
 #ifndef __ASSEMBLER__
 
 #include "entry.h"
 #include "rtld.h"
 #include "lib/syscall.h"
+
+extern uint64_t *eri_live_entry_atomic_mem_table;
 
 struct eri_live_thread_entry
 {
@@ -92,7 +97,14 @@ struct eri_live_thread_entry
   uint64_t restart;
   uint64_t restart_start;
 
+  uint64_t ext_rbp;
+  uint64_t ext_r12;
+  uint64_t ext_r13;
+  uint64_t ext_r14;
+  uint64_t ext_r15;
+
   uint64_t syscall_rsp;
+  uint64_t syscall_new_thread;
   uint64_t sync_repeat_trace;
 
   uint64_t sig_rbx;
@@ -108,12 +120,14 @@ struct eri_live_thread_entry
   uint64_t sig_r14;
   uint64_t sig_r15;
 
+  uint64_t sig_stack;
+
   void *thread;
 
+#ifndef ERI_NON_TST
   uint64_t tst_skip_ctf;
+#endif
 };
-
-extern uint64_t *eri_live_entry_atomic_mem_table;
 
 extern uint8_t eri_live_thread_entry_text[];
 extern uint8_t eri_live_thread_entry_text_resume[];
@@ -126,6 +140,10 @@ extern uint8_t eri_live_thread_entry_text_ret[];
 extern uint8_t eri_live_thread_entry_text_ret_end[];
 extern uint8_t eri_live_thread_entry_text_end[];
 
+#define ERI_LIVE_THREAD_ENTRY_SIZE \
+  (eri_size_of (struct eri_live_thread_entry, 16)			\
+	+ (eri_live_thread_entry_text_end - eri_live_thread_entry_text))
+
 void eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
 			       struct eri_ucontext *uctx);
 
@@ -136,35 +154,27 @@ void eri_live_entry_start (struct eri_live_thread_entry *entry,
 
 void eri_live_entry (void);
 
-extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (do_syscall)[];
-extern uint8_t ERI_TST_LIVE_COMPLETE_START_NAME (hold_syscall)[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall)[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (hold_syscall)[];
 
-#define ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS(name) \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (b, name)[]; \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (w, name)[]; \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (l, name)[]; \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_NAME (q, name)[];
+#define ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS(name) \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (b, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (w, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (l, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (q, name)[];
 
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (load)
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (stor)
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (inc)
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (dec)
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (xchg)
-ERI_TST_EXTERN_ATOMIC_COMPLETE_STARTS (cmpxchg)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (load)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (stor)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (inc)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (dec)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (xchg)
+ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (cmpxchg)
 
 void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 		void *thread, uint64_t stack_top, uint64_t stack_size,
 		void *sig_stack);
 
 void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
-
-struct eri_live_entry_syscall_info
-{
-  uint64_t rax;
-  uint64_t rsp; /* XXX */
-  uint64_t r11;
-  uint64_t rflags;
-};
 
 struct eri_live_entry_sigaction_info
 {
@@ -175,6 +185,39 @@ struct eri_live_entry_sigaction_info
 
   struct eri_sigmask mask;
 };
+
+struct eri_live_entry_syscall_info
+{
+  uint64_t rax;
+  uint64_t r11;
+  uint64_t rflags;
+
+#ifndef ERI_NON_TST
+  /* It's more convenient here than clone_info.  */
+  uint64_t tst_clone_tf;
+#endif
+};
+
+uint8_t eri_live_entry_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
+				   uint64_t a3, uint64_t a4, uint64_t a5,
+				   struct eri_live_entry_syscall_info *info,
+				   struct eri_live_thread_entry *entry);
+
+struct eri_live_entry_clone_info
+{
+  int32_t flags;
+  uint64_t child_stack;
+  int32_t *ptid;
+  int32_t *ctid;
+  void *newtls;
+
+  void (*start) (struct eri_live_entry_syscall_info *info, void *thread);
+};
+
+uint8_t eri_live_entry_clone (struct eri_live_thread_entry *entry,
+			      struct eri_live_thread_entry *child_entry,
+			      struct eri_live_entry_clone_info *clone_info,
+			      struct eri_live_entry_syscall_info *info);
 
 #endif
 

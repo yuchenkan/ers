@@ -27,7 +27,7 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
   entry->entry = (uint64_t) eri_live_entry;
 
   entry->top = stack_top;
-  entry->top_saved = stack_top - ERI_LIVE_ENTRY_SAVED_REG_SIZE;
+  entry->top_saved = stack_top - ERI_LIVE_ENTRY_SAVED_REG_SIZE16;
   entry->rsp = stack_top;
   entry->stack_size = stack_size;
 
@@ -47,6 +47,7 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
   entry->fix_restart = 0;
   entry->restart = 0;
 
+  entry->sig_stack = (uint64_t) sig_stack;
   entry->thread = thread;
 
   entry->tst_skip_ctf = 0;
@@ -95,4 +96,81 @@ eri_live_entry_start_sigaction (int32_t sig, struct eri_siginfo *info,
   act_info->rsi = rsp + (uint64_t) info - cur;
   act_info->rdx = rsp + (uint64_t) ctx - cur;
   act_info->rsp = rsp;
+}
+
+uint8_t
+eri_live_entry_do_clone (struct eri_live_thread_entry *entry,
+			 struct eri_sigmask *sig_mask,
+			 struct eri_live_entry_clone_info *clone_info,
+			 struct eri_live_entry_syscall_info *info);
+
+uint8_t
+eri_live_entry_clone (struct eri_live_thread_entry *entry,
+		      struct eri_live_thread_entry *child_entry,
+		      struct eri_live_entry_clone_info *clone_info,
+		      struct eri_live_entry_syscall_info *info)
+{
+  /* Block all signals for copied sigaltstack.  */
+  struct eri_sigset set;
+  eri_sigfillset (&set);
+  struct eri_sigmask mask;
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
+		      &mask.mask, ERI_SIG_SETSIZE);
+  mask.mask_all = eri_sigset_full (&mask.mask);
+
+#ifndef ERI_NON_TST
+  info->rflags &= ~info->tst_clone_tf;
+#endif
+
+  child_entry->public.mark
+		= ERI_LIVE_ENTRY_MARK_SEC_PART_BIT | entry->public.mark;
+  child_entry->public.op = entry->public.op;
+  child_entry->public.cont = entry->public.cont;
+  child_entry->public.rbx = entry->public.rbx;
+
+  child_entry->rsp = clone_info->child_stack;
+
+  child_entry->syscall_new_thread = 1;
+
+  eri_assert (entry->rflags_saved);
+  child_entry->rflags_saved = 1;
+  child_entry->tst_skip_ctf = entry->tst_skip_ctf;
+
+  eri_memcpy ((void *) child_entry->top_saved, (void *) entry->top_saved,
+	      ERI_LIVE_ENTRY_SAVED_REG_SIZE16);
+
+  child_entry->ext_rbp = entry->ext_rbp;
+  child_entry->ext_r12 = entry->ext_r12;
+  child_entry->ext_r13 = entry->ext_r13;
+  child_entry->ext_r14 = entry->ext_r14;
+  child_entry->ext_r15 = entry->ext_r15;
+
+  /* See eri_live_entry_do_clone for the child stack layout.  */
+
+  uint64_t info_size = eri_size_of (struct eri_live_entry_syscall_info, 16);
+  uint64_t stack_child_info = child_entry->top_saved - info_size;
+
+#ifndef ERI_NON_TST
+  ((struct eri_live_entry_syscall_info *) stack_child_info)->tst_clone_tf
+							= info->tst_clone_tf;
+#endif
+
+  uint64_t *stack_syscall_ret = (uint64_t *) (stack_child_info - 24);
+  *stack_syscall_ret = *(uint64_t *) (entry->top_saved - info_size - 24);
+
+  uint64_t *stack_start = stack_syscall_ret - 1;
+  *stack_start = (uint64_t) clone_info->start;
+
+  struct eri_sigmask *stack_child_mask
+		= (void *) ((uint64_t) stack_start - eri_size_of (mask, 16));
+  *stack_child_mask = mask;
+
+  uint64_t *stack_info = (uint64_t *) stack_child_mask - 2;
+  *stack_info = stack_child_info;
+
+  uint64_t *stack_rbx = stack_info - 2;
+  *stack_rbx = (uint64_t) child_entry;
+
+  clone_info->child_stack = (uint64_t) stack_rbx;
+  return eri_live_entry_do_clone (entry, &mask, clone_info, info);
 }

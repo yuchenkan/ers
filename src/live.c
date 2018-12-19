@@ -48,6 +48,7 @@ struct internal
 
   int32_t quit_lock;
 
+  uint64_t thread_id;
   int32_t threads_lock;
   ERI_LST_LIST_FIELDS (thread)
 };
@@ -61,10 +62,10 @@ alloc_thread_entry (struct thread *th)
 {
   struct internal *internal = th->internal;
 
-  struct eri_live_thread_entry *entry = eri_assert_cmalloc (MT (internal),
-					&internal->pool, sizeof *entry);
-  uint64_t stack_top = eri_assert_cmalloc (MT(internal), &internal->pool,
-					   internal->common->stack_size);
+  struct eri_live_thread_entry *entry = eri_assert_cmalloc (
+		MT (internal), &internal->pool, ERI_LIVE_THREAD_ENTRY_SIZE);
+  uint64_t stack_top = eri_assert_cmalloc (
+		MT(internal), &internal->pool, internal->common->stack_size);
   eri_live_init_thread_entry (entry, th, stack_top,
 			      internal->common->stack_size, th->sig_stack);
   return entry;
@@ -102,12 +103,7 @@ start_thread (struct thread *th)
 
   th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
 
-  struct eri_stack stack = { th->sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
-  ERI_ASSERT_SYSCALL (sigaltstack, &stack, 0);
-
   th->user_sig_stack.size = 0;
-
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 }
 
 static void
@@ -149,7 +145,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
       set_sigmask (&internal->sig_actions[sig - 1].mask, &old.mask);
 
       struct eri_sigaction new = {
-	eri_live_entry_sigaction, 
+	eri_live_entry_sigaction,
 	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
 	  | (old.flags & ERI_SA_RESTART),
 	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
@@ -160,6 +156,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
       ERI_ASSERT_SYSCALL (rt_sigaction, sig, &new, 0);
     }
 
+  internal->thread_id = 0;
   internal->threads_lock = 0;
   ERI_LST_INIT_LIST (thread, internal);
 
@@ -179,19 +176,72 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
   /* TODO */
 }
 
+static void
+clone_start_thread (struct eri_live_entry_syscall_info *info, void *thread)
+{
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+  /* TODO */
+  release_quit (&internal->quit_lock);
+}
+
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  struct eri_live_entry_syscall_info *info, void *thread)
 {
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+
   int32_t nr = (int32_t) info->rax;
   if (nr == __NR_clone)
     {
+      if (! try_hold_quit (&internal->quit_lock)) return -1;
+
+      int32_t flags = (int32_t) a0;
+      uint64_t user_child_stack = a1;
+      int32_t *ptid = (void *) a2;
+      int32_t *ctid = (void *) a3;
+      void *newtls = (void *) a4;
+
+      eri_assert (flags == ERI_SUPPORTED_CLONE_FLAGS);
+
+      struct thread *child_th = alloc_thread (internal, ctid);
+      child_th->id = eri_catomic_add_fetch (MT (internal),
+					    &internal->thread_id);
+
+      struct eri_live_entry_clone_info clone_info = {
+	flags, user_child_stack, ptid, &child_th->alive, newtls,
+	clone_start_thread
+      };
+
+      uint8_t done = eri_live_entry_clone (th->entry, child_th->entry,
+					   &clone_info, info);
+
+      if (ERI_SYSCALL_IS_ERROR (info->rax))
+	{
+	  free_thread (child_th);
+	  release_quit (&internal->quit_lock);
+	}
+      return done;
     }
   else if (nr == __NR_exit || nr == __NR_exit_group)
     {
+      int8_t group = (nr == __NR_exit && thread->id == 0)
+		     || nr == __NR_exit_group;
+      if (nr == __NR_exit && th->id != 0)
+	{
+	  if (! try_hold_quit (&internal->quit_lock)) return -1;
+	  release_quit (&internal->quit_lock);
+	}
+      else
+	{
+	  if (! try_quit (&internal->quit_lock)) return -1;
+	}
     }
-  return eri_live_do_syscall (a0, a1, a2, a3, a4, a5, info);
+  else
+    return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, info,
+				      th->entry);
 }
 
 void

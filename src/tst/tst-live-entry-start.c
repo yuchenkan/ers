@@ -75,9 +75,6 @@ tst_rtld (uint64_t rsp, uint64_t rdx, uint64_t rip)
   eri_live_init_thread_entry (&tst_entry, 0, (uint64_t) stack + sizeof stack,
 			      sizeof stack, sig_stack);
 
-  struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
-  ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
-
   struct eri_sigaction sa = {
     eri_live_entry_sigaction,
     ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK,
