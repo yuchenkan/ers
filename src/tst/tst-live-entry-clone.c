@@ -30,6 +30,8 @@ static uint8_t thread_started;
 
 static struct eri_live_thread_entry *child_entry;
 
+static uint8_t block_all;
+
 void
 tst_child (void *newtls, void *entry)
 {
@@ -40,6 +42,11 @@ tst_child (void *newtls, void *entry)
   eri_assert (tst_newtls == &tls);
 
   if (! tst_raw) eri_assert (entry == child_entry);
+
+  struct eri_sigset set;
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, 0, 0, &set, ERI_SIG_SETSIZE);
+  if (block_all) eri_assert (eri_sigset_full (&set));
+  else eri_assert (eri_sigset_empty (&set));
 }
 
 extern uint8_t tst_clone_raw_enter[];
@@ -421,11 +428,13 @@ tst_main (void)
   child_entry = tst_init_live_thread_entry (&rand, child_entry_buf,
 			child_stack, sizeof child_stack, child_sig_stack);
 
+  block_all = 1;
   tst_block_all_signals ();
   tst_live_entry (&ctx);
   eri_tst_live_assert_thread_entry (entry);
   eri_tst_live_assert_thread_entry (child_entry);
   tst_unblock_all_signals ();
+  block_all = 0;
 
   eri_assert_printf ("[raw] setup\n");
 

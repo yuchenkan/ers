@@ -7,6 +7,7 @@
 #include "live-entry.h"
 #include "live-entry-offsets.h"
 
+#include "lib/util.h"
 #include "lib/syscall.h"
 #include "lib/syscall-offsets.h"
 
@@ -1081,9 +1082,9 @@ RESTART_START_LABEL (sync_async):
 
 #define AT_LOCK(idx) \
   AT_LOAD_MEM_TABLE;							\
-1:									\
   movq	$16, AT_REG_LOCK_LP_CNT;					\
-  btsq	$0, AT_MEM (idx);						\
+1:									\
+  lock btsq	$0, AT_MEM (idx);					\
   jnc	2f;								\
   loop	1b;								\
 									\
@@ -1092,6 +1093,7 @@ RESTART_START_LABEL (sync_async):
   syscall;								\
   popq	%rax;								\
   AT_LOAD_MEM_TABLE;							\
+  movq	$16, AT_REG_LOCK_LP_CNT;					\
   jmp	1b;								\
 									\
 2:
@@ -1103,7 +1105,7 @@ RESTART_START_LABEL (sync_async):
   AT_LOCK (idx)
 
 #define AT_UNLOCK(idx) \
-  andb	$0xfe, AT_MEM (idx)
+  lock andb	$-2, AT_MEM (idx)
 
 #define AT_UNLOCK_LOAD(idx) \
   movq	AT_MEM (idx), AT_REG_VER;					\

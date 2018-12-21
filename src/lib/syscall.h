@@ -370,6 +370,13 @@ void eri_sigreturn (void);
     _eri_sigset_cmp (_s, _eri_sigset_full_to);				\
   })
 
+#define _eri_sigset_empty_to(word)	0
+#define eri_sigset_empty(set) \
+  ({									\
+    struct eri_sigset *_s = set;					\
+    _eri_sigset_cmp (_s, _eri_sigset_empty_to);				\
+  })
+
 #endif
 
 #define ERI_TRACE_FLAG_BIT_OFFSET	8

@@ -63,7 +63,7 @@ init_context (eri_file_t init, uint64_t start, uint64_t end)
   if (mode == LIVE)
     {
       eri_save_init_context (init, &ctx);
-      eri_assert (eri_fclose (init) == 0);
+      eri_assert_fclose (init);
     }
   else
     {

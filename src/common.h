@@ -20,13 +20,13 @@ struct eri_common
 
 struct eri_daemon
 {
-  int32_t sys_tid;
+  int32_t pid;
 };
 
 struct eri_daemon *eri_daemon_start (uint8_t mt, struct eri_mtpool *pool,
 				     uint64_t stack_size);
 void eri_daemon_invoke (struct eri_daemon *daemon,
 			void (*fn) (void *), void *data);
-void eri_daemon_stop (struct eri_daemon *daemon);
+void eri_daemon_stop (uint8_t mt, struct eri_daemon *daemon);
 
 #endif
