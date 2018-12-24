@@ -9,8 +9,8 @@
   ERI_GLOBAL_HIDDEN (eri_live_restart_sync_async)			\
   ERI_GLOBAL_HIDDEN (eri_live_atomic_hash_mem)				\
   ERI_GLOBAL_HIDDEN (eri_live_atomic_load)				\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_stor)				\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_load_stor)				\
+  ERI_GLOBAL_HIDDEN (eri_live_atomic_store)				\
+  ERI_GLOBAL_HIDDEN (eri_live_atomic_load_store)			\
   __VA_ARGS__								\
 .lerror:								\
   ERI_ASSERT_FALSE

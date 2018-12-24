@@ -4,6 +4,7 @@
 #include "lib/lock.h"
 #include "lib/util.h"
 #include "lib/list.h"
+#include "lib/atomic.h"
 
 struct evt
 {

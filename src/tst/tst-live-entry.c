@@ -131,21 +131,21 @@ eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *entry)
 }
 
 void
-eri_live_atomic_stor (uint64_t mem, uint64_t ver, void *entry)
+eri_live_atomic_store (uint64_t mem, uint64_t ver, void *entry)
 {
   silence = 1;
-  eri_assert_printf ("[%s] eri live atomic stor: mem = %lx, ver = %lx\n",
+  eri_assert_printf ("[%s] eri live atomic store: mem = %lx, ver = %lx\n",
 		     current->name, mem, ver);
   eri_assert (current_entry == entry);
   silence = 0;
 }
 
 void
-eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
-			   void *entry)
+eri_live_atomic_load_store (uint64_t mem, uint64_t ver, uint64_t val,
+			    void *entry)
 {
   silence = 1;
-  eri_assert_printf ("[%s] eri live atomic load stor: mem = %lx, "
+  eri_assert_printf ("[%s] eri live atomic load store: mem = %lx, "
 		     "ver = %lx, val = %lx\n",
 		     current->name, mem, ver, val);
   eri_assert (current_entry == entry);
@@ -694,7 +694,7 @@ AT_CHECK_LOAD (_ERS_PASTE (name, sz), mctx->rsp - ! (eq), CMP_REG_MEM)
 TST_ATOMIC_SIZES (CMP_CALLBACKS, cmp_eq, 1)
 TST_ATOMIC_SIZES (CMP_CALLBACKS, cmp_ne, 0)
 
-#define AT_CHECK_STOR(name, old_val, new_val, reg) \
+#define AT_CHECK_STORE(name, old_val, new_val, reg) \
 static void								\
 _ERS_PASTE (name, _check) (struct tst_case *caze,			\
 			   struct eri_mcontext *mctx, uint8_t type)	\
@@ -723,18 +723,18 @@ _ERS_PASTE (name, _check) (struct tst_case *caze,			\
     }									\
 }
 
-#define STOR_IMM_VAL		TST_LIVE_STOR_IMM_VAL
-#define STOR_REG_SRC		TST_LIVE_STOR_REG_SRC (q)
-#define STOR_REG_MEM		TST_LIVE_STOR_REG_MEM
+#define STORE_IMM_VAL		TST_LIVE_STORE_IMM_VAL
+#define STORE_REG_SRC		TST_LIVE_STORE_REG_SRC (q)
+#define STORE_REG_MEM		TST_LIVE_STORE_REG_MEM
 
-#define STOR_CALLBACKS(sz, name, reg) \
-AT_INIT (_ERS_PASTE (name, sz), 0, STOR_REG_MEM,			\
-	 ERI_PP_IF (reg, ctx->STOR_REG_SRC = STOR_IMM_VAL (sz);))	\
-AT_CHECK_STOR (_ERS_PASTE (name, sz),					\
-	       0, STOR_IMM_VAL (sz), STOR_REG_MEM)
+#define STORE_CALLBACKS(sz, name, reg) \
+AT_INIT (_ERS_PASTE (name, sz), 0, STORE_REG_MEM,			\
+	 ERI_PP_IF (reg, ctx->STORE_REG_SRC = STORE_IMM_VAL (sz);))	\
+AT_CHECK_STORE (_ERS_PASTE (name, sz),					\
+	       0, STORE_IMM_VAL (sz), STORE_REG_MEM)
 
-TST_ATOMIC_SIZES32 (STOR_CALLBACKS, stor_imm, 0)
-TST_ATOMIC_SIZES (STOR_CALLBACKS, stor_reg, 1)
+TST_ATOMIC_SIZES32 (STORE_CALLBACKS, store_imm, 0)
+TST_ATOMIC_SIZES (STORE_CALLBACKS, store_reg, 1)
 
 #define INC_DEC_VAL(sz)		TST_LIVE_VAL (sz, 0x01)
 #define INC_REG_MEM		TST_LIVE_INC_REG_MEM
@@ -743,8 +743,8 @@ TST_ATOMIC_SIZES (STOR_CALLBACKS, stor_reg, 1)
 #define INC_DEC_CALLBACKS(sz, uinc, inc, op) \
 AT_INIT (_ERS_PASTE (inc, sz), INC_DEC_VAL (sz),			\
 	 _ERS_PASTE (uinc, _REG_MEM))					\
-AT_CHECK_STOR (_ERS_PASTE (inc, sz), INC_DEC_VAL (sz),			\
-	       INC_DEC_VAL (sz) op 1, _ERS_PASTE (uinc, _REG_MEM))
+AT_CHECK_STORE (_ERS_PASTE (inc, sz), INC_DEC_VAL (sz),			\
+		INC_DEC_VAL (sz) op 1, _ERS_PASTE (uinc, _REG_MEM))
 
 TST_ATOMIC_SIZES (INC_DEC_CALLBACKS, INC, inc, +)
 TST_ATOMIC_SIZES (INC_DEC_CALLBACKS, DEC, dec, -)
@@ -757,8 +757,8 @@ TST_ATOMIC_SIZES (INC_DEC_CALLBACKS, DEC, dec, -)
 #define XCHG_CALLBACKS(sz) \
 AT_INIT (_ERS_PASTE (xchg, sz), XCHG_VAL_MEM (sz), XCHG_REG_MEM,	\
 	 ctx->XCHG_REG = XCHG_VAL (sz);)				\
-AT_CHECK_STOR (_ERS_PASTE (xchg, sz), XCHG_VAL_MEM (sz), XCHG_VAL (sz),	\
-	       XCHG_REG_MEM)
+AT_CHECK_STORE (_ERS_PASTE (xchg, sz), XCHG_VAL_MEM (sz),		\
+		XCHG_VAL (sz), XCHG_REG_MEM)
 
 TST_ATOMIC_SIZES (XCHG_CALLBACKS)
 
@@ -774,10 +774,10 @@ TST_ATOMIC_SIZES (XCHG_CALLBACKS)
 #define CMPXCHG_CALLBACKS(sz, name, eq) \
 AT_INIT (_ERS_PASTE (name, sz), CMPXCHG_VAL (sz), CMPXCHG_REG,		\
 	 ctx->rax = CMPXCHG_VAL (sz) + ! (eq);)				\
-AT_CHECK_STOR (_ERS_PASTE (name, sz), CMPXCHG_VAL (sz),			\
-	       (eq) ? (TST_TYPE (sz)) (uint64_t) caze->data		\
-		    : CMPXCHG_VAL (sz),					\
-	       CMPXCHG_REG)
+AT_CHECK_STORE (_ERS_PASTE (name, sz), CMPXCHG_VAL (sz),		\
+	        (eq) ? (TST_TYPE (sz)) (uint64_t) caze->data		\
+		     : CMPXCHG_VAL (sz),				\
+		CMPXCHG_REG)
 
 TST_ATOMIC_SIZES (CMPXCHG_CALLBACKS, cmpxchg_eq, 1)
 TST_ATOMIC_SIZES (CMPXCHG_CALLBACKS, cmpxchg_ne, 0)
@@ -867,8 +867,8 @@ tst_main (void)
   TST_ATOMIC_SIZES (AT_TST, cmp_eq, load);
   TST_ATOMIC_SIZES (AT_TST, cmp_ne, load);
 
-  TST_ATOMIC_SIZES32 (AT_TST, stor_imm, stor);
-  TST_ATOMIC_SIZES (AT_TST, stor_reg, stor);
+  TST_ATOMIC_SIZES32 (AT_TST, store_imm, store);
+  TST_ATOMIC_SIZES (AT_TST, store_reg, store);
 
   TST_ATOMIC_SIZES (AT_TST, inc, inc);
   TST_ATOMIC_SIZES (AT_TST, dec, dec);

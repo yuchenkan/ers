@@ -83,9 +83,9 @@
   _ERS_ATOMIC_COMMON_LOAD (sz, mem, _ERS_LOAD_LOAD, reg)
 
 /* mov	imm8/16/32/r8/16/32/64, m8/16/32/64  */
-#define _ERS_ATOMIC_STOR(sz, imm_or_reg, mem) \
+#define _ERS_ATOMIC_STORE(sz, imm_or_reg, mem) \
 30:									\
-  _ERS_ENTER (INTERNAL_RET, _ERS_ATOMIC_OP (STOR, sz));			\
+  _ERS_ENTER (INTERNAL_RET, _ERS_ATOMIC_OP (STORE, sz));		\
   _ERS_ATOMIC_SAVE_VAL (sz, imm_or_reg);				\
   _ERS_ATOMIC_SAVE_MEM (mem);						\
   _ERS_SAVE_START (30b);						\

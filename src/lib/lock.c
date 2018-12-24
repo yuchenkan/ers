@@ -1,4 +1,5 @@
 #include "lib/syscall.h"
+#include "lib/atomic.h"
 
 void
 eri_lock (int32_t *lock)

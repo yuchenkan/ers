@@ -790,7 +790,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   je	ATOMIC_LABEL (name)
 
   IF_ATOMIC (LOAD, load)
-  IF_ATOMIC (STOR, stor)
+  IF_ATOMIC (STORE, store)
   IF_ATOMIC (INC, inc)
   IF_ATOMIC (DEC, dec)
   IF_ATOMIC (XCHG, xchg)
@@ -1100,7 +1100,7 @@ RESTART_START_LABEL (sync_async):
 
 #define AT_LOCK_LOAD		AT_LOCK
 
-#define AT_LOCK_STOR(idx) \
+#define AT_LOCK_STORE(idx) \
   movq	$2, AT_REG_VER;							\
   AT_LOCK (idx)
 
@@ -1112,7 +1112,7 @@ RESTART_START_LABEL (sync_async):
   AT_UNLOCK (idx);							\
   shrq	$1, AT_REG_VER
 
-#define AT_UNLOCK_STOR(idx) \
+#define AT_UNLOCK_STORE(idx) \
   xaddq	AT_REG_VER, AT_MEM (idx);					\
   AT_UNLOCK (idx);							\
   shrq	$1, AT_REG_VER
@@ -1150,31 +1150,31 @@ RESTART_START_LABEL (ATOMIC_NAME (sz, load)):				\
   RESTART_RESUME_RET
 
 /************************************************/
-/* eri_live_entry: atomic_stor			*/
+/* eri_live_entry: atomic_store			*/
 /************************************************/
 
-#define ATOMIC_STOR(sz) \
-ATOMIC_SIZE_LABEL (sz, stor):						\
-  SET_COMPLETE_RESTART_START (ATOMIC_NAME (sz, stor), %rax);		\
+#define ATOMIC_STORE(sz) \
+ATOMIC_SIZE_LABEL (sz, store):						\
+  SET_COMPLETE_RESTART_START (ATOMIC_NAME (sz, store), %rax);		\
 									\
   AT_HASH_MEM;								\
   AT_LOAD_VAL;								\
   AT_LOAD_MEM;								\
 									\
-  AT_LOCK_STOR (AT_REG_IDX);						\
+  AT_LOCK_STORE (AT_REG_IDX);						\
 									\
-  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_NAME (sz, stor));		\
+  MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_NAME (sz, store));		\
 									\
   PASTE (mov, sz)	AT_REG_VAL_SZ (sz), (AT_REG_MEM);		\
-COMPLETE_START_LABEL (ATOMIC_NAME (sz, stor)):				\
-  TST_MARK_ATOMIC_COMPLETE_START (sz, stor)				\
+COMPLETE_START_LABEL (ATOMIC_NAME (sz, store)):				\
+  TST_MARK_ATOMIC_COMPLETE_START (sz, store)				\
 									\
-  AT_UNLOCK_STOR (AT_REG_IDX);						\
-  TH_CALL (%rdx, eri_live_atomic_stor);					\
+  AT_UNLOCK_STORE (AT_REG_IDX);						\
+  TH_CALL (%rdx, eri_live_atomic_store);				\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
-RESTART_START_LABEL (ATOMIC_NAME (sz, stor)):				\
+RESTART_START_LABEL (ATOMIC_NAME (sz, store)):				\
   AT_UNLOCK (AT_REG_IDX);						\
   RESTART_RESUME_RET
 
@@ -1192,7 +1192,7 @@ ATOMIC_SIZE_LABEL (sz, op):						\
   AT_LOAD_MEM;								\
 									\
   addq	$8, %rsp;							\
-  AT_LOCK_STOR (AT_REG_IDX);						\
+  AT_LOCK_STORE (AT_REG_IDX);						\
 									\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_NAME (sz, op));		\
 									\
@@ -1203,8 +1203,8 @@ COMPLETE_START_LABEL (ATOMIC_NAME (sz, op)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, op)				\
   SAVE_NEW_RFLAGS (%rcx);						\
 									\
-  AT_UNLOCK_STOR (AT_REG_IDX);						\
-  TH_CALL (%rcx, eri_live_atomic_load_stor);				\
+  AT_UNLOCK_STORE (AT_REG_IDX);						\
+  TH_CALL (%rcx, eri_live_atomic_load_store);				\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1228,7 +1228,7 @@ ATOMIC_SIZE_LABEL (sz, xchg):						\
   AT_LOAD_VAL;								\
   AT_LOAD_MEM;								\
 									\
-  AT_LOCK_STOR (AT_REG_IDX);						\
+  AT_LOCK_STORE (AT_REG_IDX);						\
 									\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_NAME (sz, xchg));		\
 									\
@@ -1236,10 +1236,10 @@ ATOMIC_SIZE_LABEL (sz, xchg):						\
 COMPLETE_START_LABEL (ATOMIC_NAME (sz, xchg)):				\
   TST_MARK_ATOMIC_COMPLETE_START (sz, xchg)				\
 									\
-  AT_UNLOCK_STOR (AT_REG_IDX);						\
+  AT_UNLOCK_STORE (AT_REG_IDX);						\
   movq	AT_REG_VAL, PTE_VAR0(%rbx);					\
   movq	AT_REG_VAL, AT_REG_LD_RES;					\
-  TH_CALL (%rcx, eri_live_atomic_load_stor);				\
+  TH_CALL (%rcx, eri_live_atomic_load_store);				\
 									\
   EXTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1264,7 +1264,7 @@ ATOMIC_SIZE_LABEL (sz, cmpxchg):					\
   addq	$8, %rsp;							\
   movq	%rax, %r10;							\
   movq	8 + STACK_RAX(%rsp), %rax;					\
-  AT_LOCK_STOR (%r10);							\
+  AT_LOCK_STORE (%r10);							\
 									\
   MARK_SEC_PART_AND_CHECK_RESTART (ATOMIC_NAME (sz, cmpxchg));		\
 									\
@@ -1275,9 +1275,9 @@ COMPLETE_START_LABEL (ATOMIC_NAME (sz, cmpxchg)):			\
   TST_MARK_ATOMIC_COMPLETE_START (sz, cmpxchg)				\
   SAVE_NEW_RFLAGS (%rcx);						\
 									\
-  AT_UNLOCK_STOR (%r10);						\
+  AT_UNLOCK_STORE (%r10);						\
   movq	%rax, STACK_RAX(%rsp);						\
-  TH_CALL (%rcx, eri_live_atomic_load_stor);				\
+  TH_CALL (%rcx, eri_live_atomic_load_store);				\
 									\
   INTERNAL_RET_DIR (%rdi);						\
 									\
@@ -1312,7 +1312,7 @@ ATOMIC_LABEL (name):							\
   ATOMIC_OP (op)
 
   ATOMIC (LOAD, load)
-  ATOMIC (STOR, stor)
+  ATOMIC (STORE, store)
   ATOMIC (INC, inc)
   ATOMIC (DEC, dec)
   ATOMIC (XCHG, xchg)

@@ -3,6 +3,7 @@
 
 #include "lib/list.h"
 #include "lib/malloc.h"
+#include "lib/atomic.h"
 
 struct internal;
 
@@ -272,7 +273,7 @@ quit_thread (void *thread)
 
       eri_atomic_and (internal->atomic_mem_table + idx, -2);
 
-      eri_live_atomic_stor ((uint64_t) clear_tid, ver, th);
+      eri_live_atomic_store ((uint64_t) clear_tid, ver, th);
 
       ERI_ASSERT_SYSCALL (futex, clear_tid, ERI_FUTEX_WAKE, 1);
     }
@@ -406,8 +407,8 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 
 	  eri_daemon_stop (0, internal->daemon);
 
-	  /* As there should be no one else allocate memory, freeing
-	     the stack still in use is safe.
+	  /* As there should be no one else allocating memory, freeing
+	     the stack still in use is safe here.
 	  */
 	  free_thread (0, th);
           struct eri_mtpool *pool = internal->pool;
@@ -452,12 +453,12 @@ eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *thread)
 
 /* Pre-incremented version.  */
 void
-eri_live_atomic_stor (uint64_t mem, uint64_t ver, void *thread)
+eri_live_atomic_store (uint64_t mem, uint64_t ver, void *thread)
 {
 }
 
 void
-eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
+eri_live_atomic_load_store (uint64_t mem, uint64_t ver, uint64_t val,
 			   void *thread)
 {
 }

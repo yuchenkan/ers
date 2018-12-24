@@ -18,7 +18,7 @@
 #define _ERS_OP_SYNC_ASYNC	2
 
 #define _ERS_OP_ATOMIC_LOAD	3
-#define _ERS_OP_ATOMIC_STOR	4
+#define _ERS_OP_ATOMIC_STORE	4
 #define _ERS_OP_ATOMIC_INC	5
 #define _ERS_OP_ATOMIC_DEC	6
 #define _ERS_OP_ATOMIC_XCHG	7
@@ -40,7 +40,7 @@
 #if 0
 
 #define _ERS_ATOMIC_LOAD	0x1000
-#define _ERS_ATOMIC_STOR	0x1001
+#define _ERS_ATOMIC_STORE	0x1001
 
 #define _ERS_ATOMIC_INC		0x1002
 #define _ERS_ATOMIC_DEC		0x1003

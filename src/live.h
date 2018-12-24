@@ -25,7 +25,7 @@ void eri_live_restart_sync_async (uint64_t cnt, void *thread);
 uint64_t eri_live_atomic_hash_mem (uint64_t mem, void *thread);
 void eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val,
 			   void *thread);
-void eri_live_atomic_stor (uint64_t mem, uint64_t ver, void *thread);
-void eri_live_atomic_load_stor (uint64_t mem, uint64_t ver, uint64_t val,
-				void *thread);
+void eri_live_atomic_store (uint64_t mem, uint64_t ver, void *thread);
+void eri_live_atomic_load_store (uint64_t mem, uint64_t ver, uint64_t val,
+				 void *thread);
 #endif
