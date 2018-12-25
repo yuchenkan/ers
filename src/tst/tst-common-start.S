@@ -11,4 +11,3 @@ ERI_GLOBAL_HIDDEN_FUNCTION (tst_start)
   movl	$__NR_exit, %eax
   syscall
   .size tst_start, . - tst_start
-

@@ -4,17 +4,17 @@
 #include "lib/list.h"
 #include "lib/printf.h"
 
-struct list
-{
-  int8_t a;
-  ERI_LST_LIST_FIELDS (x);
-};
-
 struct node
 {
   int32_t a;
   int8_t b;
   ERI_LST_NODE_FIELDS (x);
+};
+
+struct list
+{
+  int8_t a;
+  ERI_LST_LIST_FIELDS (x);
 };
 
 ERI_DECLARE_LIST (static, x, struct list, struct node)

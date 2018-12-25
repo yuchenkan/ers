@@ -2,24 +2,26 @@
 #define TST_TST_LIVE_ENTRY_COMMON_H
 
 #include "lib/util.h"
+#include "tst/tst-util.h"
+
+#ifdef __ASSEMBLER__
 
 #define TST_ERI_LIVE_NULL_STUBS(...) \
   .align 16;								\
-  ERI_GLOBAL_HIDDEN (eri_live_sync_async)				\
-  ERI_GLOBAL_HIDDEN (eri_live_restart_sync_async)			\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_hash_mem)				\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_load)				\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_store)				\
-  ERI_GLOBAL_HIDDEN (eri_live_atomic_load_store)			\
-  __VA_ARGS__								\
-.lerror:								\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_start_thread)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_syscall)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_sync_async)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_restart_sync_async)			\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_hash_mem)			\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_store)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load_store)			\
+__VA_ARGS__								\
   ERI_ASSERT_FALSE
 
-#ifndef __ASSEMBLER__
+#else
 
 #include <stdint.h>
-
-#include "tst/tst-util.h"
 
 #include "lib/syscall.h"
 

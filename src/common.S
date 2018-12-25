@@ -6,6 +6,9 @@
   .text
 
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_daemon_clone)
+
+  movl	$__NR_clone, %eax
+
   movq	%rsi, %r10
   movq	%rdi, %rsi
   movq	%rdx, -8(%rsi)
@@ -18,6 +21,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_daemon_clone)
   xorq	%rdx, %rdx
   xorq	%r8, %r8
   syscall
+  testq	%rax, %rax
   jz	.ldaemon
   jl	.lerror
   ret

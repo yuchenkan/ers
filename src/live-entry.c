@@ -158,11 +158,8 @@ eri_live_entry_clone (struct eri_live_thread_entry *entry,
   uint64_t *stack_syscall_ret = (uint64_t *) (stack_child_info - 24);
   *stack_syscall_ret = *(uint64_t *) (entry->top_saved - info_size - 24);
 
-  uint64_t *stack_start = stack_syscall_ret - 1;
-  *stack_start = (uint64_t) clone_info->start;
-
   struct eri_sigmask *stack_child_mask
-		= (void *) ((uint64_t) stack_start - eri_size_of (mask, 16));
+    = (void *) ((uint64_t) stack_syscall_ret - 8 - eri_size_of (mask, 16));
   *stack_child_mask = mask;
 
   uint64_t *stack_info = (uint64_t *) stack_child_mask - 2;

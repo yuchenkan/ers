@@ -94,20 +94,15 @@
 #define eri_atomic_exchange(m, v) \
   ({									\
     typeof (m) __m = m;							\
-    typeof (*__m) __v = (typeof (*__m)) v;				\
-    typeof (*__m) __r;							\
+    typeof (*__m) __r = (typeof (*__m)) v;				\
     if (sizeof *__m == 1)						\
-      asm volatile ("xchgb\t%b0, %1"					\
-		    : "=r" (__r), "+m" (*__m) : "0" (__v));		\
+      asm volatile ("xchgb\t%b0, %1" : "+r" (__r), "+m" (*__m));	\
     else if (sizeof *__m == 2)						\
-      asm volatile ("xchgw\t%w0, %1"					\
-		    : "=r" (__r), "+m" (*__m) : "0" (__v));		\
+      asm volatile ("xchgw\t%w0, %1" : "+r" (__r), "+m" (*__m));	\
     else if (sizeof *__m == 4)						\
-      asm volatile ("xchgl\t%0, %1"					\
-		    : "=r" (__r), "+m" (*__m) : "0" (__v));		\
+      asm volatile ("xchgl\t%0, %1" : "+r" (__r), "+m" (*__m));		\
     else if (sizeof *__m == 8)						\
-      asm volatile ("xchgq\t%q0, %1"					\
-		    : "=r" (__r), "+m" (*__m) : "0" (__v));		\
+      asm volatile ("xchgq\t%q0, %1" : "+r" (__r), "+m" (*__m));	\
     else eri_assert (0);						\
     __r;								\
   })

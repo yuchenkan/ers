@@ -47,6 +47,7 @@ eri_daemon_stop (uint8_t mt, struct eri_daemon *daemon)
   struct daemon *da = (void *) daemon;
   eri_loop_exit (da->loop, 0);
   eri_lock (&da->alive);
+  eri_loop_destory (mt, da->loop);
   eri_assert_cfree (mt, da->pool, da->stack);
   eri_assert_cfree (mt, da->pool, da);
 }

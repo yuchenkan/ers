@@ -5,6 +5,9 @@ set -ex
 ./tst-live-entry-clone
 ./tst-live-entry
 
+./tst-live-quit
+./tst-live-quit-clone
+
 ./tst-atomic
 ./tst-list
 ./tst-malloc

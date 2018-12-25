@@ -67,5 +67,3 @@ ERI_GLOBAL_HIDDEN (tst_clone_raw_nop)
   movq	$0, %rdi
   syscall
   .size tst_clone, . - tst_clone
-
-TST_ERI_LIVE_NULL_STUBS ()

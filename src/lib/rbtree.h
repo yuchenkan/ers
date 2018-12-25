@@ -53,9 +53,9 @@ ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 #define _RBT_BLACK	1
 
 #ifndef NO_CHECK
-#define _RBT_CHECK(...) __VA_ARGS__
+# define _RBT_CHECK(...) __VA_ARGS__
 #else
-#define _RBT_CHECK(...)
+# define _RBT_CHECK(...)
 #endif
 
 #define ERI_DEFINE_RBTREE(attr, pfx, tree_type, \
@@ -63,10 +63,12 @@ ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, key_type)		\
 									\
 static int32_t								\
-pfx##_rbt_check_recurse (tree_type *tree, node_type *n, node_type **v)	\
+pfx##_rbt_check_recurse (tree_type *tree, node_type *n,			\
+			 node_type **v, uint64_t *size)			\
 {									\
   if (! n) return 0;							\
 									\
+  eri_assert (++*size <= tree->pfx##_rbt_size);				\
   if (n->pfx##_rbt_color == _RBT_RED)					\
     {									\
       eri_assert (! n->pfx##_rbt_left					\
@@ -75,12 +77,13 @@ pfx##_rbt_check_recurse (tree_type *tree, node_type *n, node_type **v)	\
 		|| n->pfx##_rbt_right->pfx##_rbt_color == _RBT_BLACK);	\
     }									\
 									\
-  int32_t h = pfx##_rbt_check_recurse (tree, n->pfx##_rbt_left, v);	\
+  int32_t h = pfx##_rbt_check_recurse (tree, n->pfx##_rbt_left,		\
+				       v, size);			\
   eri_assert (! *v							\
-	     || less_than (tree, (key_type *) *v, (key_type *) n));	\
+	      || less_than (tree, (key_type *) *v, (key_type *) n));	\
   v = &n;								\
-  eri_assert (h == pfx##_rbt_check_recurse (tree,			\
-					     n->pfx##_rbt_right, v));	\
+  eri_assert (h == pfx##_rbt_check_recurse (tree, n->pfx##_rbt_right,	\
+					    v, size));			\
   eri_assert (*v == n							\
 	      || less_than (tree, (key_type *) n, (key_type *)*v));	\
 									\
@@ -94,9 +97,9 @@ pfx##_rbt_check (tree_type *tree)					\
     eri_assert (tree->pfx##_rbt_root->pfx##_rbt_color == _RBT_BLACK);	\
 									\
   node_type *v = 0;							\
-  pfx##_rbt_check_recurse (tree, tree->pfx##_rbt_root, &v);		\
+  uint64_t size = 0;							\
+  pfx##_rbt_check_recurse (tree, tree->pfx##_rbt_root, &v, &size);	\
 }									\
-									\
 									\
 static inline node_type *						\
 pfx##_rbt_parent (node_type *n)						\

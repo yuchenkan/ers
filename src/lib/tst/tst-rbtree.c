@@ -4,12 +4,6 @@
 #include "lib/rbtree.h"
 #include "lib/printf.h"
 
-struct tree
-{
-  uint8_t a;
-  ERI_RBT_TREE_FIELDS (x, struct node)
-};
-
 struct node
 {
   int32_t k;
@@ -17,13 +11,19 @@ struct node
   ERI_RBT_NODE_FIELDS (x, struct node)
 };
 
-ERI_DECLARE_RBTREE(static, x, struct tree, struct node, int32_t)
+struct tree
+{
+  uint8_t a;
+  ERI_RBT_TREE_FIELDS (x, struct node)
+};
 
-#define x_rbt_less_than(x, a, b) (*(a) < *(b))
-ERI_DEFINE_RBTREE(static, x, struct tree, struct node, int32_t, x_rbt_less_than)
+ERI_DECLARE_RBTREE (static, x, struct tree, struct node, int32_t)
+
+#define x_rbt_less_than(x, a, b)	(*(a) < *(b))
+ERI_DEFINE_RBTREE (static, x, struct tree, struct node, int32_t, x_rbt_less_than)
 
 int32_t
-main(void)
+main (void)
 {
   struct tree t = { 0 };
   ERI_RBT_INIT_TREE (x, &t);

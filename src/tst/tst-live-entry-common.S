@@ -3,6 +3,7 @@
 #include "lib/util.h"
 #include "lib/syscall.h"
 
+#include "tst/tst-live-entry-common.h"
 #include "tst/tst-live-entry-common-offsets.h"
 
   .text
@@ -76,3 +77,5 @@ ERI_GLOBAL_HIDDEN_FUNCTION (tst_sig_step_int_trigger)
 .lno_trigger:
   ret
   .size tst_sig_step_int_trigger, . - tst_sig_step_int_trigger
+
+TST_ERI_LIVE_NULL_STUBS ()

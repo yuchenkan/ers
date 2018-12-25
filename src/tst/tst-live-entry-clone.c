@@ -274,8 +274,8 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     trap_trace = child_trap_trace = 1;
 }
 
-static void
-start_thread (struct eri_live_entry_syscall_info *info, void *thread)
+void
+eri_live_start_thread (void *thread)
 {
   ++thread_started;
   eri_assert_lprintf (&lock, "[start_thread]\n");
@@ -309,7 +309,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
   silence = 0;
 
   struct eri_live_entry_clone_info clone_info = {
-    flags, user_child_stack, ptid, ctid, newtls, start_thread
+    flags, user_child_stack, ptid, ctid, newtls
   };
 
   uint8_t done = eri_live_entry_clone (entry, child_entry, &clone_info, info);

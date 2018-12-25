@@ -210,8 +210,6 @@ struct eri_live_entry_clone_info
   int32_t *ptid;
   int32_t *ctid;
   void *newtls;
-
-  void (*start) (struct eri_live_entry_syscall_info *info, void *thread);
 };
 
 uint8_t eri_live_entry_clone (struct eri_live_thread_entry *entry,

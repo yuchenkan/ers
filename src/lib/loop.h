@@ -8,6 +8,8 @@
 struct eri_loop;
 
 struct eri_loop *eri_loop_create (uint8_t mt, struct eri_mtpool *pool);
+void eri_loop_destory (uint8_t mt, struct eri_loop *l);
+
 void *eri_loop_loop (struct eri_loop *l);
 void eri_loop_exit (struct eri_loop *l, void *data);
 

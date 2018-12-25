@@ -55,6 +55,7 @@ struct internal
   uint8_t quitting;
   int32_t quit_lock;
 
+  uint32_t live_count;
   uint32_t multi_threading;
 
   uint64_t thread_id;
@@ -174,6 +175,9 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 {
   uint64_t atomic_mem_table_size = 2 * 1024 * 1024;
 
+  ERI_ASSERT_SYSCALL (mprotect, common->buf, common->buf_size,
+		      ERI_PROT_READ | ERI_PROT_WRITE);
+
   struct eri_mtpool *pool = (void *) common->buf;
   eri_assert_init_pool (&pool->pool,
 			(void *) common->buf + eri_size_of (*pool, 16),
@@ -219,6 +223,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 
   internal->daemon = eri_daemon_start (0, pool, 256 * 1024);
 
+  internal->live_count = 1;
   internal->multi_threading = 0;
 
   internal->thread_id = 0;
@@ -228,6 +233,9 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   struct thread *th = alloc_thread (0, internal, 0);
   th->id = 0;
 
+  append_thread (0, th);
+
+  ERI_ASSERT_SYSCALL (set_tid_address, &th->alive);
   start_thread (0, th);
 
   eri_live_entry_start (th->entry, rtld);
@@ -311,14 +319,16 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
       eri_live_quit (&th->alive);
     }
 
+  eri_assert (0);
+
 #if 0
   struct eri_ucontext *ctx = (void *) info->rdx;
 #endif
   /* TODO fix stack sp */
 }
 
-static void
-clone_start_thread (struct eri_live_entry_syscall_info *info, void *thread)
+void
+eri_live_start_thread (void *thread)
 {
   struct thread *th = thread;
   struct internal *internal = th->internal;
@@ -364,8 +374,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       child_th->id = eri_catomic_inc_fetch (mt, &internal->thread_id);
 
       struct eri_live_entry_clone_info clone_info = {
-	flags, user_child_stack, ptid, &child_th->alive, newtls,
-	clone_start_thread
+	flags, user_child_stack, ptid, &child_th->alive, newtls
       };
 
       if (! try_hold_quit (mt, &internal->quit_lock))
@@ -374,6 +383,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	  return -1;
 	}
       append_thread (mt, child_th);
+      eri_catomic_inc (mt, &internal->live_count);
       eri_catomic_inc (mt, &internal->multi_threading);
 
       uint8_t done = eri_live_entry_clone (th->entry, child_th->entry,
@@ -382,6 +392,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       if (ERI_SYSCALL_IS_ERROR (info->rax))
 	{
 	  eri_catomic_dec (mt, &internal->multi_threading);
+	  eri_catomic_dec (mt, &internal->live_count);
 	  remove_thread (mt, child_th);
 	  unhold_quit (mt, &internal->quit_lock);
 
@@ -391,7 +402,8 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
     }
   else if (nr == __NR_exit || nr == __NR_exit_group)
     {
-      if (nr == __NR_exit && th->id != 0)
+      if (nr == __NR_exit
+	  && eri_catomic_dec_fetch (mt, &internal->live_count))
 	{
 	  stop_thread (1, th);
 
@@ -403,12 +415,14 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	}
       else
 	{
-	  if (! try_quit (mt, internal)) return -1;
+	  if (nr == __NR_exit_group)
+	    {
+	      if (! try_quit (mt, internal)) return -1;
+	      eri_daemon_invoke (internal->daemon, inform_quit, th);
+	    }
 
-	  eri_daemon_invoke (internal->daemon, inform_quit, th);
-
-	  stop_thread (mt, th);
-	  remove_thread (mt, th);
+	  stop_thread (1, th);
+	  remove_thread (1, th);
 
 	  while (mt)
 	    {
@@ -422,9 +436,12 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	     the stack still in use is safe here.
 	  */
 	  free_thread (0, th);
-          struct eri_mtpool *pool = internal->pool;
-	  eri_assert_free (&pool->pool, internal);
-	  eri_assert (pool->pool.used == 0);
+          struct eri_pool *pool = &internal->pool->pool;
+	  eri_assert_free (pool, internal->atomic_mem_table);
+	  eri_assert_free (pool, internal);
+#if 0
+	  eri_assert (pool->used == 0);
+#endif
 	}
 
       /* XXX: quit even if we are to restart in the sigaction.  */

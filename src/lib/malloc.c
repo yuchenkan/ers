@@ -2,6 +2,8 @@
 #include "lib/malloc.h"
 #include "lib/rbtree.h"
 
+#include "lib/printf.h"
+
 #define BLK_FREE	0
 #define BLK_NOTFREE	1
 

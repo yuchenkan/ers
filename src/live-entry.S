@@ -1384,9 +1384,9 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 		    eri_syscall args (16)
 	eri_syscall ---		after start:	eri_syscall ---
 		    ret					    ret
-		    start				    start
+		    padding (8)				    padding (8)
 		    sig_mask (ERI_SIGMASK_SIZE16)	    sig_mask
-		    padding (8)			      start ---
+		    padding (8)			  eri_start ---
 		    info
      eri_do_syscall ---
 		    .lchild_return
@@ -1395,7 +1395,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 
      eri_syscall_info:	eri_live_entry_syscall_info
      eri_syscall:	eri_live_syscall
-     start:		eri_live_entry_clone_info.start
+     eri_start:		eri_live_start_thread
      sig_mask:		eri_sigmask
      info:		eri_live_entry_syscall_info *
      eri_do_syscall:	eri_live_entry_do_syscall
@@ -1459,7 +1459,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
   SIGALTSTACK_NO_RESTORE
 
   addq	$ERI_STACK_SIZE16 + 16, %rsp
-  call	*ERI_SIGMASK_SIZE16(%rsp)
+  movq	TE_THREAD(%rbx), %rdi
+  call	eri_live_start_thread	
   cmpb	$1, ERI_SIGMASK_MASK_ALL(%rsp)
   je	.lfast_child_return
 

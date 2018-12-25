@@ -76,16 +76,16 @@ int32_t eri_mtfree (struct eri_mtpool *pool, void *p);
   eri_assert (eri_mtfree (mtp, p) == 0)
 
 #define eri_assert_cmalloc(mt, mtp, s) \
-  ((mt) ? eri_assert_malloc (&(mtp)->pool, s)			\
-	: eri_assert_mtmalloc (mtp, s))
+  (! (mt) ? eri_assert_malloc (&(mtp)->pool, s)			\
+	  : eri_assert_mtmalloc (mtp, s))
 
 #define eri_assert_ccalloc(mt, mtp, s) \
-  ((mt) ? eri_assert_calloc (&(mtp)->pool, s)			\
-	: eri_assert_mtcalloc (mtp, s))
+  (! (mt) ? eri_assert_calloc (&(mtp)->pool, s)			\
+	  : eri_assert_mtcalloc (mtp, s))
 
 #define eri_assert_cfree(mt, mtp, p) \
   do {								\
-    if (mt) eri_assert_free (&(mtp)->pool, p);			\
+    if (! (mt)) eri_assert_free (&(mtp)->pool, p);		\
     else eri_assert_mtfree (mtp, p);				\
   } while (0)
 
