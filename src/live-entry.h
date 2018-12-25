@@ -144,10 +144,26 @@ extern uint8_t eri_live_thread_entry_text_end[];
   (eri_size_of (struct eri_live_thread_entry, 16)			\
 	+ (eri_live_thread_entry_text_end - eri_live_thread_entry_text))
 
+void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
+		void *thread, uint64_t stack_top, uint64_t stack_size,
+		void *sig_stack);
+
+void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
+
 void eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
 			       struct eri_ucontext *uctx);
 
 extern uint8_t eri_live_resume_ret[];
+
+struct eri_live_entry_sigaction_info
+{
+  uint64_t rsi;
+  uint64_t rdx;
+  uint64_t rsp;
+  uint64_t rip;
+
+  struct eri_sigmask mask;
+};
 
 void eri_live_entry_start (struct eri_live_thread_entry *entry,
 			   struct eri_rtld *rtld) __attribute__ ((noreturn));
@@ -169,22 +185,6 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (inc)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (dec)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (xchg)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (cmpxchg)
-
-void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
-		void *thread, uint64_t stack_top, uint64_t stack_size,
-		void *sig_stack);
-
-void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
-
-struct eri_live_entry_sigaction_info
-{
-  uint64_t rsi;
-  uint64_t rdx;
-  uint64_t rsp;
-  uint64_t rip;
-
-  struct eri_sigmask mask;
-};
 
 struct eri_live_entry_syscall_info
 {

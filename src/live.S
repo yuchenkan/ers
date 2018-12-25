@@ -5,7 +5,7 @@
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_daemon_clone)
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_quit)
   movq	$0, (%rdi)
 
   movl	$__NR_futex, %eax
@@ -18,4 +18,4 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_daemon_clone)
   jmp	1b
 .lerror:
   ERI_ASSERT_FALSE
-  .size eri_daemon_clone, . - eri_daemon_clone
+  .size eri_live_quit, . - eri_live_quit

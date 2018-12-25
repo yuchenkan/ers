@@ -1,33 +1,36 @@
-#include "util.h"
-#include "list.h"
-#include "printf.h"
+#include <stdint.h>
+
+#include "lib/util.h"
+#include "lib/list.h"
+#include "lib/printf.h"
 
 struct list
 {
-  char a;
+  int8_t a;
   ERI_LST_LIST_FIELDS (x);
 };
 
 struct node
 {
-  int a;
-  char b;
+  int32_t a;
+  int8_t b;
   ERI_LST_NODE_FIELDS (x);
 };
 
 ERI_DECLARE_LIST (static, x, struct list, struct node)
 ERI_DEFINE_LIST (static, x, struct list, struct node)
 
-int main ()
+int32_t
+main (void)
 {
   struct list l = { '1' };
   ERI_LST_INIT_LIST (x, &l);
   struct node n[6];
-  int i;
+  int32_t i;
   for (i = 0; i < eri_length_of (n); ++i)
     {
       n[i].a = i;
-      n[i].b = (char) i;
+      n[i].b = (int8_t) i;
       x_lst_append (&l, n + i);
     }
 

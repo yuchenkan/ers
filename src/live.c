@@ -4,6 +4,7 @@
 #include "lib/list.h"
 #include "lib/malloc.h"
 #include "lib/atomic.h"
+#include "lib/printf.h"
 
 struct internal;
 
@@ -69,11 +70,11 @@ alloc_thread_entry (uint8_t mt, struct thread *th)
   struct internal *internal = th->internal;
 
   struct eri_live_thread_entry *entry = eri_assert_cmalloc (
-		mt, &internal->pool, ERI_LIVE_THREAD_ENTRY_SIZE);
+		mt, internal->pool, ERI_LIVE_THREAD_ENTRY_SIZE);
 
-  uint64_t stack_size = internal->common->stack_size
+  uint64_t stack_size = internal->common->stack_size;
   uint64_t stack_top = (uint64_t) eri_assert_cmalloc (
-		mt, &internal->pool, stack_size) + stack_size;
+		mt, internal->pool, stack_size) + stack_size;
 
   eri_live_init_thread_entry (entry, th, stack_top, stack_size,
 			      th->sig_stack);
@@ -84,17 +85,18 @@ static void
 free_thread_entry (uint8_t mt, struct eri_live_thread_entry *entry)
 {
   struct internal *internal = ((struct thread *) entry->thread)->internal;
-  eri_assert_cfree (mt, &internal->pool, (void *) (th->top - th->stack_size));
-  eri_assert_cfree (mt, &internal->pool, entry);
+  eri_assert_cfree (mt, internal->pool,
+		    (void *) (entry->top - entry->stack_size));
+  eri_assert_cfree (mt, internal->pool, entry);
 }
 
 static struct thread *
 alloc_thread (uint8_t mt, struct internal *internal, int32_t *clear_tid)
 {
-  struct thread *th = eri_assert_cmalloc (mt, &internal->pool, sizeof *th);
+  struct thread *th = eri_assert_cmalloc (mt, internal->pool, sizeof *th);
 
   th->internal = internal;
-  th->entry = alloc_thread_entry (mt, internal);
+  th->entry = alloc_thread_entry (mt, th);
 
   th->alive = 1;
   th->clear_tid = clear_tid;
@@ -106,7 +108,7 @@ free_thread (uint8_t mt, struct thread *th)
 {
   struct internal *internal = th->internal;
   free_thread_entry (mt, th->entry);
-  eri_assert_cfree (mt, &internal->pool, th);
+  eri_assert_cfree (mt, internal->pool, th);
 }
 
 static void
@@ -132,10 +134,12 @@ start_thread (uint8_t mt, struct thread *th)
 {
   struct internal *internal = th->internal;
   uint64_t file_buf_size = internal->common->file_buf_size;
-  th->file_buf = eri_assert_cmalloc (mt, &internal->pool,
+  th->file_buf = eri_assert_cmalloc (mt, internal->pool,
 				     file_buf_size);
+#if 0
   th->file = eri_open_path (internal->path, "thread-", ERI_OPEN_WITHID,
 			    th->id, th->file_buf, file_buf_size);
+#endif
 
   th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
 
@@ -146,8 +150,10 @@ static void
 stop_thread (uint8_t mt, struct thread *th)
 {
   struct internal *internal = th->internal;
+#if 0
   eri_assert_fclose (th->file);
-  eri_assert_cfree (mt, &internal->pool, th->file_buf);
+#endif
+  eri_assert_cfree (mt, internal->pool, th->file_buf);
 
   /* Mark the thread stopped. This is required because stop_thread in
      non group exit is called before hold_quit, so if hold_quit failed,
@@ -169,7 +175,8 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   uint64_t atomic_mem_table_size = 2 * 1024 * 1024;
 
   struct eri_mtpool *pool = (void *) common->buf;
-  eri_assert_init_pool (&pool->pool, common->buf + eri_size_of (*pool, 16),
+  eri_assert_init_pool (&pool->pool,
+			(void *) common->buf + eri_size_of (*pool, 16),
 			common->buf_size - eri_size_of (*pool, 16));
 
   struct internal *internal = eri_assert_malloc (&pool->pool,
@@ -199,7 +206,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
 	  | (old.flags & ERI_SA_RESTART),
 	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
-	  ? eri_sigreturn : old.restorer;
+	  ? eri_sigreturn : old.restorer
       };
       eri_sigfillset (&new.mask);
 
@@ -218,7 +225,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   internal->threads_lock = 0;
   ERI_LST_INIT_LIST (thread, internal);
 
-  struct thread *th = alloc_thread (internal, 0);
+  struct thread *th = alloc_thread (0, internal, 0);
   th->id = 0;
 
   start_thread (0, th);
@@ -247,7 +254,11 @@ try_quit (uint8_t mt, struct internal *internal)
 
   while (! eri_atomic_compare_exchange (&internal->quit_lock, 0, -2147483647))
     ERI_ASSERT_SYSCALL (sched_yield);
+  return 1;
 }
+
+uint64_t eri_live_atomic_hash_mem (uint64_t mem, void *thread);
+void eri_live_atomic_store (uint64_t mem, uint64_t ver, void *thread);
 
 static void
 quit_thread (void *thread)
@@ -296,11 +307,13 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
       remove_thread (1, th);
 
       th->clear_tid = 0;
-      eri_daemon_invoke (intenral->daemon, quit_thread, th);
+      eri_daemon_invoke (internal->daemon, quit_thread, th);
       eri_live_quit (&th->alive);
     }
 
+#if 0
   struct eri_ucontext *ctx = (void *) info->rdx;
+#endif
   /* TODO fix stack sp */
 }
 
@@ -347,7 +360,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 
       eri_assert (flags == ERI_SUPPORTED_CLONE_FLAGS);
 
-      struct thread *child_th = alloc_thread (internal, ctid);
+      struct thread *child_th = alloc_thread (mt, internal, ctid);
       child_th->id = eri_catomic_inc_fetch (mt, &internal->thread_id);
 
       struct eri_live_entry_clone_info clone_info = {
@@ -378,8 +391,6 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
     }
   else if (nr == __NR_exit || nr == __NR_exit_group)
     {
-      int8_t group = (nr == __NR_exit && thread->id == 0)
-		     || nr == __NR_exit_group;
       if (nr == __NR_exit && th->id != 0)
 	{
 	  stop_thread (1, th);
@@ -388,13 +399,13 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	  remove_thread (1, th);
 	  unhold_quit (1, &internal->quit_lock);
 
-	  eri_daemon_invoke (intenral->daemon, quit_thread, th);
+	  eri_daemon_invoke (internal->daemon, quit_thread, th);
 	}
       else
 	{
 	  if (! try_quit (mt, internal)) return -1;
 
-	  eri_daemon_invoke (inform_quit, th);
+	  eri_daemon_invoke (internal->daemon, inform_quit, th);
 
 	  stop_thread (mt, th);
 	  remove_thread (mt, th);
@@ -417,7 +428,8 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	}
 
       /* XXX: quit even if we are to restart in the sigaction.  */
-      ERI_ASSERT_SYSCALL (nr, a0);
+      ERI_ASSERT_SYSCALL_NCS (nr, a0);
+      __builtin_unreachable ();
     }
   else
     return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, info,

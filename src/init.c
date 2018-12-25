@@ -52,7 +52,10 @@ proc_init_map_entry (const struct eri_map_entry *ent, void *data)
     eri_save_init_map_data (d->init, start, end - start);
 }
 
-static uint8_t __attribute__ ((noinline))
+static uint8_t init_context (eri_file_t init,
+		uint64_t start, uint64_t end)  __attribute__ ((noinline));
+
+static uint8_t
 init_context (eri_file_t init, uint64_t start, uint64_t end)
 {
   struct eri_context ctx;

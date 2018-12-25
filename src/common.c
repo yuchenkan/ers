@@ -12,7 +12,7 @@ struct daemon
   struct eri_loop *loop;
 };
 
-struct void
+void
 eri_daemon_loop (struct daemon *da)
 {
   eri_loop_loop (da->loop);
@@ -45,8 +45,8 @@ void
 eri_daemon_stop (uint8_t mt, struct eri_daemon *daemon)
 {
   struct daemon *da = (void *) daemon;
-  eri_loop_exit (da->loop, fn, 0);
+  eri_loop_exit (da->loop, 0);
   eri_lock (&da->alive);
-  eri_assert_cfree (mt, pool, da->stack);
-  eri_assert_cfree (mt, pool, da);
+  eri_assert_cfree (mt, da->pool, da->stack);
+  eri_assert_cfree (mt, da->pool, da);
 }

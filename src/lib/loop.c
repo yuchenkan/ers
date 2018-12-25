@@ -50,7 +50,7 @@ eri_loop_loop (struct eri_loop *l)
   while (1)
     {
       int64_t res = ERI_SYSCALL (futex, &l->version, ERI_FUTEX_WAIT_PRIVATE, version, 0);
-      eri_assert (! ERI_SYSCALL_ERROR_P (res) || -res == ERI_EAGAIN);
+      eri_assert (! ERI_SYSCALL_IS_ERROR (res) || -res == ERI_EAGAIN);
 
       uint32_t v;
       while ((v = eri_atomic_load (&l->version)) != version)

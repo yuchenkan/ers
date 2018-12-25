@@ -98,6 +98,16 @@
 #define ERI_ASSERT_SYSCALL(...) \
   (void) ERI_ASSERT_SYSCALL_RES (__VA_ARGS__)
 
+#define ERI_ASSERT_SYSCALL_NCS_RES(...) \
+  ({								\
+    uint64_t _result = ERI_SYSCALL_NCS (__VA_ARGS__);		\
+    eri_assert (! ERI_SYSCALL_IS_ERROR (_result));		\
+    _result;							\
+  })
+
+#define ERI_ASSERT_SYSCALL_NCS(...) \
+  (void) ERI_ASSERT_SYSCALL_NCS_RES (__VA_ARGS__)
+
 #endif
 
 #define ERI_EINTR	4
@@ -359,21 +369,21 @@ void eri_sigreturn (void);
 #define _eri_sigset_eq_to(word, b)	((b)->val[word])
 #define eri_sigset_eq(a, b) \
   ({									\
-    struct eri_sigset *_a = a, *_b = b;					\
+    const struct eri_sigset *_a = a, *_b = b;				\
     _eri_sigset_cmp (_a, _eri_sigset_eq_to, _b);			\
   })
 
 #define _eri_sigset_full_to(word)	(~0)
 #define eri_sigset_full(set) \
   ({									\
-    struct eri_sigset *_s = set;					\
+    const struct eri_sigset *_s = set;					\
     _eri_sigset_cmp (_s, _eri_sigset_full_to);				\
   })
 
 #define _eri_sigset_empty_to(word)	0
 #define eri_sigset_empty(set) \
   ({									\
-    struct eri_sigset *_s = set;					\
+    const struct eri_sigset *_s = set;					\
     _eri_sigset_cmp (_s, _eri_sigset_empty_to);				\
   })
 

@@ -1,5 +1,6 @@
 #include "lib/util.h"
 #include "lib/malloc.h"
+#include "lib/rbtree.h"
 
 #define BLK_FREE	0
 #define BLK_NOTFREE	1
@@ -30,7 +31,6 @@ less_than (struct eri_pool *pool, struct block *b1, struct block *b2)
   return b1 < b2;
 }
 
-#include "lib/rbtree.h"
 ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 
 #define ALIGN(x) eri_round_up (x, 16)
@@ -77,11 +77,11 @@ eri_malloc (struct eri_pool *pool, uint64_t size, void **p)
   uint64_t s = eri_max (MIN_BLOCK_SIZE, ALIGN (size + ALLOC_OFFSET));
 
   struct block k = {
-    (struct block *) ((uint8_t *) &k + s), NULL, BLK_NOTFREE
+    (struct block *) ((uint8_t *) &k + s), 0, BLK_NOTFREE
   };
   struct block *b = block_rbt_get (pool, &k, ERI_RBT_GT);
 
-  *p = NULL;
+  *p = 0;
   if (! b)
     {
       if (pool->cb_malloc)

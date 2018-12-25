@@ -1,9 +1,12 @@
-#include "util.h"
-#include "malloc.h"
+#include <stdint.h>
 
-int main ()
+#include "lib/util.h"
+#include "lib/malloc.h"
+
+int32_t
+main (void)
 {
-  char buf[1024];
+  uint8_t buf[1024];
   struct eri_pool pool;
   eri_assert (eri_init_pool (&pool, buf, sizeof buf) == 0);
   void *p[4];

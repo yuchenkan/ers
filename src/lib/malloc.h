@@ -39,7 +39,7 @@ int32_t eri_free (struct eri_pool *pool, void *p);
 #define eri_assert_calloc(p, s) \
   ({								\
     uint64_t _s2 = s;						\
-    void *_p2 = eri_assert_malloc (mtp, _s2);			\
+    void *_p2 = eri_assert_malloc (p, _s2);			\
     eri_memset (_p2, 0, _s2);					\
     _p2;							\
   })
@@ -76,7 +76,7 @@ int32_t eri_mtfree (struct eri_mtpool *pool, void *p);
   eri_assert (eri_mtfree (mtp, p) == 0)
 
 #define eri_assert_cmalloc(mt, mtp, s) \
-  ((mt) ? eri_assert_malloc ((mtp)->pool, s)			\
+  ((mt) ? eri_assert_malloc (&(mtp)->pool, s)			\
 	: eri_assert_mtmalloc (mtp, s))
 
 #define eri_assert_ccalloc(mt, mtp, s) \
