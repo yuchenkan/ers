@@ -262,6 +262,7 @@ try_quit (uint8_t mt, struct internal *internal)
 
   while (! eri_atomic_compare_exchange (&internal->quit_lock, 0, -2147483647))
     ERI_ASSERT_SYSCALL (sched_yield);
+  eri_atomic_barrier ();
   return 1;
 }
 
@@ -284,12 +285,14 @@ quit_thread (void *thread)
 
       while (eri_atomic_bit_test_set (internal->atomic_mem_table + idx, 0))
 	if (++i % 16 == 0) ERI_ASSERT_SYSCALL (sched_yield);
+      eri_atomic_barrier ();
 
       /* XXX: handle sigsegv.  */
       *clear_tid = 0;
       uint64_t ver = internal->atomic_mem_table[idx] >> 1;
       internal->atomic_mem_table[idx] += 2;
 
+      eri_atomic_barrier ();
       eri_atomic_and (internal->atomic_mem_table + idx, -2);
 
       eri_live_atomic_store ((uint64_t) clear_tid, ver, th);
@@ -298,6 +301,7 @@ quit_thread (void *thread)
     }
 
   free_thread (1, th);
+  eri_atomic_barrier ();
   eri_atomic_dec (&internal->multi_threading);
 }
 
