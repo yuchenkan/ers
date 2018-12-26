@@ -572,8 +572,7 @@ eri_live_resume_ret:
 #define SIGACTION_SIZE16	ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16
 
 .ldo_invoke:
-  movq	UCTX_SS_SP(%rdx), %rcx
-  movq	%rsp, %r8
+  movq	%rsp, %rcx
   subq	$SIGACTION_SIZE16 + 8, %rsp
   call	eri_live_entry_start_sigaction
 

@@ -5,9 +5,7 @@
 
 #ifndef __ASSEMBLER__
 
-#if 0
-void *tst_live_quit_get_thread (void);
-#endif
+#include "lib/syscall.h"
 
 extern int32_t tst_live_quit_printf_lock;
 
@@ -17,7 +15,14 @@ extern int32_t tst_live_quit_printf_lock;
     for (_i = 0; _i < 32; ++_i) ERI_ASSERT_SYSCALL (sched_yield);	\
   } while (0)
 
-void tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
+struct tst_live_quit_child
+{
+  int32_t ctid;
+  int32_t ptid;
+  uint8_t stack[TST_LIVE_QUIT_STACK_SIZE];
+};
+
+void tst_live_quit_clone (struct tst_live_quit_child *child,
 			  void (*fn) (void *), void *data);
 
 void tst_live_quit_exit (int32_t status) __attribute__ ((noreturn));

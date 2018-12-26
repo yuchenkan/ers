@@ -25,7 +25,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (tst_main)
 
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_start)
   pushq	%rsi
-  call	tst_live_quit_insert_thread
+  call	tst_live_quit_set_thread
+  movb	$1, %dil
   call	tst_live_quit_block_signals
   popq	%rsi
   movq	ERI_RTLD_RSP(%rsi), %rsp
@@ -39,8 +40,15 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
   cmpq	$__NR_clone, ERI_LIVE_ENTRY_SYSCALL_INFO_RAX(%rcx)
   jne	.lerror
 
-  movq	%rsi, %rcx
-  movq	%rdx, %r8
+  pushq	%rsi
+  pushq	%rdx
+  pushq	%rcx
+  call	tst_live_quit_sig_pending
+  testb	%al, %al
+  jnz	.lsig_ret
+  popq	%r9
+  popq	%r8
+  popq	%rcx
 
   movl	$__NR_clone, %eax
   movq	ERI_LIVE_ENTRY_CLONE_INFO_FLAGS(%r8), %rdi
@@ -56,17 +64,28 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
   jz	.lchild
   jl	.lerror
 
+  movq	%rax, ERI_LIVE_ENTRY_SYSCALL_INFO_RAX(%r9)
+
   movb	$1, %al
+  ret
+
+.lsig_ret:
+  addq	$24, %rsp
+  movb	$0, %al
   ret
 
 .lchild:
   subq	$16, %rsp
   movq	8(%rsp), %rdi
-  call	tst_live_quit_insert_thread
+  call	tst_live_quit_set_thread
   addq	$8, %rsp
   popq	%rdi
   movq	ERI_LIVE_THREAD_ENTRY_THREAD(%rdi), %rdi
   call	eri_live_start_thread
+
+  movb	$1, %dil
+  call	tst_live_quit_block_signals
+
   movq	-TST_LIVE_QUIT_STACK_SIZE + 8(%rsp), %rdi
   pushq	$0
   jmp	*-TST_LIVE_QUIT_STACK_SIZE + 8(%rsp)

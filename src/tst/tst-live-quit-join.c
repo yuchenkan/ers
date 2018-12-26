@@ -3,23 +3,31 @@
 #include "tst/tst-live-quit-common.h"
 
 #include "lib/printf.h"
+#include "lib/lock.h"
+#include "lib/syscall.h"
+
+static int32_t ctid;
 
 static void
 start_child (void *data)
 {
-  eri_assert ((uint64_t) data == 0xff);
+  ctid = ERI_ASSERT_SYSCALL_RES (gettid);
+
   TST_LIVE_QUIT_YIELD;
   eri_assert_lprintf (&tst_live_quit_printf_lock, "child\n");
   tst_live_quit_exit (0);
 }
 
-static struct tst_live_quit_child child;
+static struct tst_live_quit_child child = { 1 };
 
 void
 tst_live_quit_main (void)
 {
   eri_assert_printf ("main\n");
-  tst_live_quit_clone (&child, start_child, (void *) 0xff);
+  tst_live_quit_clone (&child, start_child, 0);
   TST_LIVE_QUIT_YIELD;
-  tst_live_quit_exit (0);
+  eri_lock (&child.ctid);
+  eri_assert (ctid == child.ptid);
+
+  tst_live_quit_exit_group (0);
 }

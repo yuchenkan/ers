@@ -14,62 +14,22 @@
 
 int32_t tst_live_quit_printf_lock;
 
-struct tst_thread
+void
+tst_live_quit_set_thread (struct eri_live_thread_entry *entry)
 {
-  int32_t tid;
-  void *thread;
-
-  ERI_RBT_NODE_FIELDS (tst_thread, struct tst_thread)
-};
-
-static struct tst_threads
-{
-  int32_t lock;
-  ERI_RBT_TREE_FIELDS (tst_thread, struct tst_thread)
-} threads;
-
-ERI_DEFINE_RBTREE (static, tst_thread, struct tst_threads, struct tst_thread,
-		   int32_t, eri_less_than)
-
-static void *get_thread (void) __attribute__ ((unused));
+  eri_assert_lprintf (&tst_live_quit_printf_lock,
+		      "tid = %lu\n", ERI_ASSERT_SYSCALL_RES (gettid));
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_FS, entry);
+}
 
 static void *
 get_thread (void)
 {
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
-  eri_lock (&threads.lock);
-  void *t = tst_thread_rbt_get (&threads, &tid, ERI_RBT_EQ)->thread;
-  eri_unlock (&threads.lock);
-  return t;
-}
-
-void
-tst_live_quit_insert_thread (struct eri_live_thread_entry *entry)
-{
-  uint8_t *buf = (void *) (entry->top - entry->stack_size);
-  struct eri_pool *pool = (void *) buf;
-  eri_assert_init_pool (pool, buf + eri_size_of (*pool, 16),
-			entry->stack_size - eri_size_of (*pool, 16));
-
-  struct tst_thread *t = eri_assert_malloc (pool, sizeof *t);
-  t->tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
-  eri_assert_lprintf (&tst_live_quit_printf_lock,
-		      "insert thread %u\n", t->tid);
-  t->thread = entry->thread;
-  eri_lock (&threads.lock);
-  tst_thread_rbt_insert (&threads, t);
-  eri_unlock (&threads.lock);
-}
-
-static void *
-remove_thread (void)
-{
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
-  eri_lock (&threads.lock);
-  struct tst_thread *t = tst_thread_rbt_get (&threads, &tid, ERI_RBT_EQ);
-  tst_thread_rbt_remove (&threads, t);
-  eri_unlock (&threads.lock);
-  return t->thread;
+  void *thread;
+  asm ("movq	%%fs:%c1, %q0"
+       : "=r" (thread)
+       : "i" (__builtin_offsetof (struct eri_live_thread_entry, thread)));
+  return thread;
 }
 
 void
@@ -81,16 +41,15 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
   entry->stack_size = stack_size;
 
   entry->thread = thread;
-  *(struct eri_live_thread_entry **) sig_stack = entry;
 }
 
 void
-tst_live_quit_block_signals (void)
+tst_live_quit_block_signals (uint8_t allow_quit)
 {
   struct eri_sigset set;
   eri_sigfillset (&set);
 #ifdef TST_LIVE_QUIT_GROUP
-  eri_sigdelset (&set, ERI_SIGRTMIN);
+  if (allow_quit) eri_sigdelset (&set, ERI_SIGRTMIN);
 #endif
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK,
 		      &set, 0, ERI_SIG_SETSIZE);
@@ -99,8 +58,9 @@ tst_live_quit_block_signals (void)
 #ifdef TST_LIVE_QUIT_GROUP
 void
 eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
-			  struct eri_ucontext *uctx)
+			  struct eri_ucontext *ctx)
 {
+  eri_live_start_sigaction (0, 0, 0, get_thread ());
   eri_assert (0);
 }
 #endif
@@ -122,27 +82,39 @@ tst_live_quit_init (uint64_t rsp)
 
   struct eri_rtld rtld = { 0, rsp - 8 };
 
+  tst_live_quit_block_signals (0);
+
   eri_live_init (&common, &rtld);
 }
 
 #ifdef TST_LIVE_QUIT_CLONE
 
+uint8_t
+tst_live_quit_sig_pending (void)
+{
+  struct eri_sigset set;
+  ERI_ASSERT_SYSCALL (rt_sigpending, &set, ERI_SIG_SETSIZE);
+  return ! eri_sigset_empty (&set);
+}
+
 void
-tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
+tst_live_quit_clone (struct tst_live_quit_child *child,
 		     void (*fn) (void *), void *data)
 {
-  *(uint64_t *) stack = (uint64_t) fn;
-  *(uint64_t *) (stack + 8) = (uint64_t) data;
+  *(uint64_t *) child->stack = (uint64_t) fn;
+  *(uint64_t *) (child->stack + 8) = (uint64_t) data;
 
   struct eri_live_entry_syscall_info info = { __NR_clone };
   int8_t done = 0;
   while (done != 1)
     {
+      tst_live_quit_block_signals (0);
       done = eri_live_syscall (ERI_SUPPORTED_CLONE_FLAGS,
-			       (uint64_t) stack + TST_LIVE_QUIT_STACK_SIZE,
-			       (uint64_t) ptid, (uint64_t) ctid, 0, 0,
-			       &info, get_thread ());
+		(uint64_t) child->stack + TST_LIVE_QUIT_STACK_SIZE,
+		(uint64_t) &child->ptid, (uint64_t) &child->ctid, 0, 0,
+		&info, get_thread ());
       eri_assert_lprintf (&tst_live_quit_printf_lock, "done = %x\n", done);
+      tst_live_quit_block_signals (1);
     }
 }
 
@@ -155,8 +127,12 @@ do_exit (int32_t nr, int32_t status)
 {
   struct eri_live_entry_syscall_info info = { nr };
   while (1)
-    eri_assert (eri_live_syscall (status, 0, 0, 0, 0, 0, &info,
-				  remove_thread ()) != 0);
+    {
+      tst_live_quit_block_signals (0);
+      eri_assert (eri_live_syscall (status, 0, 0, 0, 0, 0, &info,
+				    get_thread ()) != 0);
+      tst_live_quit_block_signals (1);
+    }
 }
 
 void

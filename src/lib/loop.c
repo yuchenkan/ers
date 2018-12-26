@@ -61,7 +61,7 @@ eri_loop_loop (struct eri_loop *l)
       uint32_t v;
       while ((v = eri_atomic_load (&l->version)) != version)
 	{
-	  eri_atomic_barrier ();
+	  eri_barrier ();
 
 	  struct evts *evts = l->pending;
 	  eri_lock (&l->evts_lock);
@@ -102,7 +102,7 @@ eri_loop_trigger (struct eri_loop *l, void (*fn) (void *), void *data)
   evt_lst_append (l->pending, e);
   eri_unlock (&l->evts_lock);
 
-  eri_atomic_barrier ();
+  eri_barrier ();
   eri_atomic_inc (&l->version);
   ERI_ASSERT_SYSCALL (futex, &l->version, ERI_FUTEX_WAKE_PRIVATE, 1);
 }

@@ -7,6 +7,8 @@ set -ex
 
 ./tst-live-quit
 ./tst-live-quit-clone
+./tst-live-quit-join
+./tst-live-quit-group
 
 ./tst-atomic
 ./tst-list

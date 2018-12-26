@@ -6,7 +6,7 @@
 #include "public/common.h"
 #include "lib/util.h"
 
-#define eri_atomic_barrier()		asm volatile ("" : : : "memory");
+#define eri_barrier()			asm volatile ("" : : : "memory");
 
 #define eri_atomic_load(m)		(*(m))
 #define eri_atomic_store(m, v)		do { *(m) = v; } while (0)

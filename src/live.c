@@ -142,8 +142,6 @@ start_thread (uint8_t mt, struct thread *th)
 			    th->id, th->file_buf, file_buf_size);
 #endif
 
-  th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
-
   th->user_sig_stack.size = 0;
 }
 
@@ -151,6 +149,10 @@ static void
 stop_thread (uint8_t mt, struct thread *th)
 {
   struct internal *internal = th->internal;
+
+  /* See below.  */
+  if (! th->file_buf) return;
+
 #if 0
   eri_assert_fclose (th->file);
 #endif
@@ -236,6 +238,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   append_thread (0, th);
 
   ERI_ASSERT_SYSCALL (set_tid_address, &th->alive);
+  th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
   start_thread (0, th);
 
   eri_live_entry_start (th->entry, rtld);
@@ -244,12 +247,16 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 static uint8_t
 try_hold_quit (uint8_t mt, int32_t *lock)
 {
-  return eri_catomic_inc_fetch (mt, lock) > 0;
+  uint8_t hold = eri_catomic_inc_fetch (mt, lock) > 0;
+  eri_barrier ();
+  if (! hold) eri_catomic_dec (mt, lock);
+  return hold;
 }
 
 static void
 unhold_quit (uint8_t mt, int32_t *lock)
 {
+  eri_barrier ();
   eri_catomic_dec (mt, lock);
 }
 
@@ -259,10 +266,11 @@ try_quit (uint8_t mt, struct internal *internal)
   if (! mt) return 1;
 
   if (eri_atomic_exchange (&internal->quitting, 1) == 1) return 0;
+  eri_barrier ();
 
   while (! eri_atomic_compare_exchange (&internal->quit_lock, 0, -2147483647))
     ERI_ASSERT_SYSCALL (sched_yield);
-  eri_atomic_barrier ();
+  eri_barrier ();
   return 1;
 }
 
@@ -285,14 +293,14 @@ quit_thread (void *thread)
 
       while (eri_atomic_bit_test_set (internal->atomic_mem_table + idx, 0))
 	if (++i % 16 == 0) ERI_ASSERT_SYSCALL (sched_yield);
-      eri_atomic_barrier ();
+      eri_barrier ();
 
       /* XXX: handle sigsegv.  */
       *clear_tid = 0;
       uint64_t ver = internal->atomic_mem_table[idx] >> 1;
       internal->atomic_mem_table[idx] += 2;
 
-      eri_atomic_barrier ();
+      eri_barrier ();
       eri_atomic_and (internal->atomic_mem_table + idx, -2);
 
       eri_live_atomic_store ((uint64_t) clear_tid, ver, th);
@@ -301,7 +309,7 @@ quit_thread (void *thread)
     }
 
   free_thread (1, th);
-  eri_atomic_barrier ();
+  eri_barrier ();
   eri_atomic_dec (&internal->multi_threading);
 }
 
@@ -315,6 +323,7 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
   struct internal *internal = th->internal;
   if (eri_atomic_load (&internal->quitting))
     {
+      eri_barrier ();
       stop_thread (1, th);
       remove_thread (1, th);
 
@@ -336,6 +345,8 @@ eri_live_start_thread (void *thread)
 {
   struct thread *th = thread;
   struct internal *internal = th->internal;
+
+  th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
   unhold_quit (1, &internal->quit_lock);
 
   start_thread (1, th);
@@ -362,11 +373,12 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
   struct thread *th = thread;
   struct internal *internal = th->internal;
   uint8_t mt = !! eri_atomic_load (&internal->multi_threading);
+  eri_barrier ();
 
-  int32_t nr = (int32_t) info->rax;
+  int32_t nr = info->rax;
   if (nr == __NR_clone)
     {
-      int32_t flags = (int32_t) a0;
+      int32_t flags = a0;
       uint64_t user_child_stack = a1;
       int32_t *ptid = (void *) a2;
       int32_t *ctid = (void *) a3;
@@ -389,12 +401,14 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       append_thread (mt, child_th);
       eri_catomic_inc (mt, &internal->live_count);
       eri_catomic_inc (mt, &internal->multi_threading);
+      eri_barrier ();
 
       uint8_t done = eri_live_entry_clone (th->entry, child_th->entry,
 					   &clone_info, info);
 
-      if (ERI_SYSCALL_IS_ERROR (info->rax))
+      if (! done || ERI_SYSCALL_IS_ERROR (info->rax))
 	{
+	  eri_barrier ();
 	  eri_catomic_dec (mt, &internal->multi_threading);
 	  eri_catomic_dec (mt, &internal->live_count);
 	  remove_thread (mt, child_th);
@@ -409,9 +423,15 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       if (nr == __NR_exit
 	  && eri_catomic_dec_fetch (mt, &internal->live_count))
 	{
+	  eri_barrier ();
 	  stop_thread (1, th);
 
-	  if (! try_hold_quit (1, &internal->quit_lock)) return -1;
+	  if (! try_hold_quit (1, &internal->quit_lock))
+	    {
+	      eri_catomic_inc (mt, &internal->live_count);
+	      return -1;
+	    }
+
 	  remove_thread (1, th);
 	  unhold_quit (1, &internal->quit_lock);
 
@@ -433,6 +453,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 	      ERI_ASSERT_SYSCALL (sched_yield);
 	      mt = !! eri_atomic_load (&internal->multi_threading);
 	    }
+	  eri_barrier ();
 
 	  eri_daemon_stop (0, internal->daemon);
 
