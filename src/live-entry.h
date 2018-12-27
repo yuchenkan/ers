@@ -151,7 +151,7 @@ void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
 
 void eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
-			       struct eri_ucontext *uctx);
+			       struct eri_ucontext *ctx);
 
 extern uint8_t eri_live_resume_ret[];
 

@@ -52,7 +52,7 @@ ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 #define _RBT_RED	0
 #define _RBT_BLACK	1
 
-#ifndef NO_CHECK
+#ifndef ERI_NO_CHECK
 # define _RBT_CHECK(...) __VA_ARGS__
 #else
 # define _RBT_CHECK(...)

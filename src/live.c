@@ -65,6 +65,44 @@ struct internal
 
 ERI_DEFINE_LIST (static, thread, struct internal, struct thread)
 
+static void
+set_sigmask (struct eri_sigmask *mask, const struct eri_sigset *set)
+{
+  mask->mask_all = eri_sigset_full (set);
+  mask->mask = *set;
+}
+
+static void
+daemon_sigaction (int32_t sig, struct eri_siginfo *info,
+		  struct eri_ucontext *ctx)
+{
+  eri_assert (sig == ERI_SIGSEGV);
+  extern uint8_t segv_quit_thread_clear_tid[];
+  extern uint8_t segv_quit_thread_skip_clear_tid[];
+  if (info->code > 0 && ctx->mctx.rip == (uint64_t) segv_quit_thread_clear_tid)
+    /* XXX: add a warning.  */
+    ctx->mctx.rip = (uint64_t) segv_quit_thread_skip_clear_tid;
+  else eri_assert (0);
+}
+
+static void
+init_daemon (void *lock)
+{
+  struct eri_sigset set;
+  eri_sigfillset (&set);
+  eri_sigdelset (&set, ERI_SIGSEGV);
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
+		      0, ERI_SIG_SETSIZE);
+
+  struct eri_sigaction act = {
+    daemon_sigaction, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
+  };
+  eri_sigfillset (&act.mask);
+  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &act, 0, ERI_SIG_SETSIZE);
+
+  eri_unlock (lock);
+}
+
 static struct eri_live_thread_entry *
 alloc_thread_entry (uint8_t mt, struct thread *th)
 {
@@ -165,13 +203,6 @@ stop_thread (uint8_t mt, struct thread *th)
   th->file_buf = 0;
 }
 
-static void
-set_sigmask (struct eri_sigmask *mask, const struct eri_sigset *set)
-{
-  mask->mask_all = eri_sigset_full (set);
-  mask->mask = *set;
-}
-
 void
 eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 {
@@ -224,6 +255,8 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   internal->atomic_mem_table_size = atomic_mem_table_size;
 
   internal->daemon = eri_daemon_start (0, pool, 256 * 1024);
+  int32_t init_daemon_lock = 1;
+  eri_daemon_invoke (internal->daemon, init_daemon, &init_daemon_lock);
 
   internal->live_count = 1;
   internal->multi_threading = 0;
@@ -232,14 +265,16 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
   internal->threads_lock = 0;
   ERI_LST_INIT_LIST (thread, internal);
 
-  struct thread *th = alloc_thread (0, internal, 0);
+  struct thread *th = alloc_thread (1, internal, 0);
   th->id = 0;
 
   append_thread (0, th);
 
   ERI_ASSERT_SYSCALL (set_tid_address, &th->alive);
   th->sys_tid = ERI_ASSERT_SYSCALL_RES (gettid);
-  start_thread (0, th);
+  start_thread (1, th);
+
+  eri_lock (&init_daemon_lock);
 
   eri_live_entry_start (th->entry, rtld);
 }
@@ -289,21 +324,33 @@ quit_thread (void *thread)
   if (clear_tid)
     {
       uint64_t idx = eri_live_atomic_hash_mem ((uint64_t) clear_tid, th);
-      uint32_t i = 0;
 
+      uint8_t segv = 0;
+      uint64_t ver;
+
+      uint32_t i = 0;
       while (eri_atomic_bit_test_set (internal->atomic_mem_table + idx, 0))
 	if (++i % 16 == 0) ERI_ASSERT_SYSCALL (sched_yield);
+
       eri_barrier ();
 
-      /* XXX: handle sigsegv.  */
-      *clear_tid = 0;
-      uint64_t ver = internal->atomic_mem_table[idx] >> 1;
-      internal->atomic_mem_table[idx] += 2;
+      asm ("segv_quit_thread_clear_tid:\n"
+	   "  movl\t$0, %0\n"
+	   "  jmp\t1f\n"
+	   "segv_quit_thread_skip_clear_tid:\n"
+	   "  movb\t$1, %b1\n"
+	   "1:" : "=m" (*clear_tid), "=r" (segv));
+
+      if (! segv)
+	{
+	  ver = internal->atomic_mem_table[idx] >> 1;
+	  internal->atomic_mem_table[idx] += 2;
+	}
 
       eri_barrier ();
       eri_atomic_and (internal->atomic_mem_table + idx, -2);
 
-      eri_live_atomic_store ((uint64_t) clear_tid, ver, th);
+      if (! segv) eri_live_atomic_store ((uint64_t) clear_tid, ver, th);
 
       ERI_ASSERT_SYSCALL (futex, clear_tid, ERI_FUTEX_WAKE, 1);
     }
@@ -338,6 +385,7 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
   struct eri_ucontext *ctx = (void *) info->rdx;
 #endif
   /* TODO fix stack sp */
+  /* TODO SA_NODEFER */
 }
 
 void
@@ -477,6 +525,17 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
     return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, info,
 				      th->entry);
 }
+
+#ifndef ERI_NON_TST
+
+uint8_t
+eri_tst_live_multi_threading (void *thread)
+{
+  struct thread *th = thread;
+  return !! eri_atomic_load (&th->internal->multi_threading);
+}
+
+#endif
 
 void
 eri_live_sync_async (uint64_t cnt, void *thread)

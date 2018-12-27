@@ -98,11 +98,11 @@ tst_live_quit_sig_pending (void)
 }
 
 void
-tst_live_quit_clone (struct tst_live_quit_child *child,
+tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
 		     void (*fn) (void *), void *data)
 {
-  *(uint64_t *) child->stack = (uint64_t) fn;
-  *(uint64_t *) (child->stack + 8) = (uint64_t) data;
+  *(uint64_t *) stack = (uint64_t) fn;
+  *(uint64_t *) (stack + 8) = (uint64_t) data;
 
   struct eri_live_entry_syscall_info info = { __NR_clone };
   int8_t done = 0;
@@ -110,12 +110,27 @@ tst_live_quit_clone (struct tst_live_quit_child *child,
     {
       tst_live_quit_block_signals (0);
       done = eri_live_syscall (ERI_SUPPORTED_CLONE_FLAGS,
-		(uint64_t) child->stack + TST_LIVE_QUIT_STACK_SIZE,
-		(uint64_t) &child->ptid, (uint64_t) &child->ctid, 0, 0,
+		(uint64_t) stack + TST_LIVE_QUIT_STACK_SIZE,
+		(uint64_t) ptid, (uint64_t) ctid, 0, 0,
 		&info, get_thread ());
       eri_assert_lprintf (&tst_live_quit_printf_lock, "done = %x\n", done);
       tst_live_quit_block_signals (1);
     }
+}
+
+void
+tst_live_quit_clone_child (struct tst_live_quit_child *child,
+			   void (*fn) (void *), void *data)
+{
+  tst_live_quit_clone (child->stack, &child->ptid, &child->ctid, fn, data);
+}
+
+uint8_t eri_tst_live_multi_threading (void *thread);
+
+uint8_t
+tst_live_quit_multi_threading (void)
+{
+  return eri_tst_live_multi_threading (get_thread ());
 }
 
 #endif

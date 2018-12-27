@@ -19,7 +19,7 @@ void
 tst_live_quit_main (void)
 {
   eri_assert_printf ("main\n");
-  tst_live_quit_clone (&child, start_child, (void *) 0xff);
+  tst_live_quit_clone_child (&child, start_child, (void *) 0xff);
   TST_LIVE_QUIT_YIELD;
   tst_live_quit_exit (0);
 }

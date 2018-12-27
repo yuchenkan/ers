@@ -19,7 +19,7 @@ tst_live_quit_main (void)
 {
   uint64_t i;
   for (i = 0; i < eri_length_of (children); ++i)
-    tst_live_quit_clone (children + i, start_child, (void *) i);
+    tst_live_quit_clone_child (children + i, start_child, (void *) i);
 
   TST_LIVE_QUIT_YIELD;
   tst_live_quit_exit_group (0);

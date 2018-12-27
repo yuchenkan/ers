@@ -2,8 +2,6 @@
 #include "lib/malloc.h"
 #include "lib/rbtree.h"
 
-#include "lib/printf.h"
-
 #define BLK_FREE	0
 #define BLK_NOTFREE	1
 
@@ -123,7 +121,7 @@ eri_calloc (struct eri_pool *pool, uint64_t size, void **p)
 static void
 guard (void *b, uint64_t s)
 {
-#ifndef NO_CHECK
+#ifndef ERI_NO_CHECK
   eri_memset (b, 0xfc, s);
 #endif
 }
