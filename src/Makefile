@@ -24,6 +24,8 @@ all:
 	\
 	gcc -I . -Wall -O3 -fno-tree-loop-distribute-patterns -nostdlib -Wl,-e,tst_start -Wl,--no-undefined -g tst/tst-common-start.S tst/tst-live-quit-group.c tst/tst-live-quit-common.c tst/tst-live-quit-common.S live.c live.S common.S common.c lib/malloc.c lib/loop.c lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c -o tst-live-quit-group -D TST_LIVE_QUIT_CLONE -D TST_LIVE_QUIT_GROUP
 	\
+	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-common-start.S tst/tst-util.c tst/tst-live-entry-common.S tst/tst-live-entry-common.c tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry-sig-ignore.c live-entry.c live-entry.S -o tst-live-entry-sig-ignore -g -Wall -Wl,--no-undefined -O3 -fno-tree-loop-distribute-patterns
+	\
 	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-common-start.S tst/tst-util.c tst/tst-live-entry-common.S tst/tst-live-entry-common.c tst/tst-live-entry.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry.c live-entry.c live-entry.S -o tst-live-entry -g -Wall -Wl,--no-undefined -O3 -fno-tree-loop-distribute-patterns
 	\
 	gcc -I . -nostdlib -Wl,-e,tst_start tst/tst-live-entry-start.S lib/syscall.S lib/util.c lib/printf.c lib/lock.c lib/buf.c tst/tst-live-entry-start.c tst/tst-util.c tst/tst-live-entry-common.c live-entry.c live-entry.S -o tst-live-entry-start -g -Wall -Wl,--no-undefined -O3 -fno-tree-loop-distribute-patterns

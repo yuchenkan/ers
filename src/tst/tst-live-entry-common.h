@@ -16,6 +16,7 @@ TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_hash_mem)			\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_store)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load_store)			\
+TST_WEAK_GLOBAL_HIDDEN (tst_sig_step_int_check_trigger)			\
 __VA_ARGS__								\
   ERI_ASSERT_FALSE
 

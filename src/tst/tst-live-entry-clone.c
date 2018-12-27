@@ -226,9 +226,10 @@ sig_step_int_act (int32_t sig, struct eri_siginfo *info,
 
 static void *sig_action;
 
-void eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			       struct eri_live_entry_sigaction_info *info,
-			       void *entry)
+void
+eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
+			  struct eri_live_entry_sigaction_info *info,
+			  void *entry)
 {
   int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
   eri_assert_lprintf (&lock, "[start_sigaction:%u] sig = %u\n",

@@ -243,7 +243,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
 	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
 	  | (old.flags & ERI_SA_RESTART),
 	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
-	  ? eri_sigreturn : old.restorer
+	  ? 0 : old.restorer
       };
       eri_sigfillset (&new.mask);
 
@@ -364,7 +364,8 @@ void eri_live_quit (int32_t *alive) __attribute__ ((noreturn));
 
 void
 eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-		struct eri_live_entry_sigaction_info *info, void *thread)
+			  struct eri_live_entry_sigaction_info *info,
+			  void *thread)
 {
   struct thread *th = thread;
   struct internal *internal = th->internal;

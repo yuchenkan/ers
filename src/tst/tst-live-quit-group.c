@@ -2,6 +2,8 @@
 
 #include "tst/tst-live-quit-common.h"
 
+#include "lib/printf.h"
+
 static void
 start_child (void *data)
 {
@@ -14,9 +16,12 @@ start_child (void *data)
 }
 
 static struct tst_live_quit_child children[8];
+
 void
 tst_live_quit_main (void)
 {
+  eri_assert_printf ("main\n");
+
   uint64_t i;
   for (i = 0; i < eri_length_of (children); ++i)
     tst_live_quit_clone_child (children + i, start_child, (void *) i);

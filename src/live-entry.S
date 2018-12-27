@@ -576,6 +576,8 @@ eri_live_resume_ret:
   subq	$SIGACTION_SIZE16 + 8, %rsp
   call	eri_live_entry_start_sigaction
 
+  cmpq	$0, SIGACTION_RIP(%rsp)
+  je	.lignore_signal
   cmpb	$1, SIGACTION_MASK_ALL(%rsp)
   je	.lfast_invoke
 
@@ -606,6 +608,10 @@ eri_live_resume_ret:
   movq	SIGACTION_RIP(%rsp), %rax
   movq	SIGACTION_RSP(%rsp), %rsp
   jmp	*%rax
+
+.lignore_signal:
+  addq	$SIGACTION_SIZE16 + 8, %rsp
+  SIGRETURN
 
 .lerror:
   ERI_ASSERT_FALSE

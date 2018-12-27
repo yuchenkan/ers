@@ -9,10 +9,10 @@ tst_init_live_thread_entry (struct tst_rand *rand,
 			    uint8_t *buf, uint8_t *stack, uint64_t stack_size,
 			    uint8_t *sig_stack)
 {
-  tst_rand_fill (rand, buf, ERI_LIVE_THREAD_ENTRY_SIZE);
+  if (rand) tst_rand_fill (rand, buf, ERI_LIVE_THREAD_ENTRY_SIZE);
   struct eri_live_thread_entry *entry = (void *) buf;
-  tst_rand_fill (rand, stack, stack_size);
-  tst_rand_fill (rand, sig_stack, ERI_LIVE_SIG_STACK_SIZE);
+  if (rand) tst_rand_fill (rand, stack, stack_size);
+  if (rand) tst_rand_fill (rand, sig_stack, ERI_LIVE_SIG_STACK_SIZE);
 
   eri_live_init_thread_entry (entry, entry,
 		(uint64_t) stack + stack_size, stack_size, sig_stack);
