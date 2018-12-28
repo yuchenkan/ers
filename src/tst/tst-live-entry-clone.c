@@ -1,11 +1,12 @@
 #include "tst/tst-live-entry-clone.h"
 
-#include "tst/tst-util.h"
 #include "tst/tst-live-entry-common.h"
 
 #include <stdint.h>
 
 #include "live-entry.h"
+
+#include "lib/tst/tst-util.h"
 
 #include "lib/util.h"
 #include "lib/syscall.h"

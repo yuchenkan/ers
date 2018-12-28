@@ -2,10 +2,10 @@
 
 #include "tst/tst-live-quit-common.h"
 
-#include "tst/tst-util.h"
-
 #include "rtld-offsets.h"
 #include "live-entry-offsets.h"
+
+#include "lib/tst/tst-util.h"
 
 #include "lib/util.h"
 #include "lib/syscall.h"
@@ -33,9 +33,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_start)
   ret
   .size eri_live_entry_start, . - eri_live_entry_start
 
-#ifdef TST_LIVE_QUIT_CLONE
-
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
+
+  cmpb	$1, tst_live_quit_allow_clone
+  jne	.lerror
 
   cmpq	$__NR_clone, ERI_LIVE_ENTRY_SYSCALL_INFO_RAX(%rcx)
   jne	.lerror
@@ -92,15 +93,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
 
   .size eri_live_entry_clone, . - eri_live_entry_clone
 
-#else
-
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
-  ERI_ASSERT_FALSE
-
-#endif
-
   .align 16
-TST_WEAK_GLOBAL_HIDDEN (eri_live_entry_sigaction)
 TST_WEAK_GLOBAL_HIDDEN (eri_live_entry_do_syscall)
 .lerror:
   ERI_ASSERT_FALSE

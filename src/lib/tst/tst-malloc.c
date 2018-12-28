@@ -1,10 +1,10 @@
 #include <stdint.h>
 
+#include "lib/tst/tst-util.h"
+
 #include "lib/util.h"
 #include "lib/malloc.h"
 #include "lib/syscall.h"
-
-#include "tst/tst-util.h"
 
 static uint8_t buf2[64 * 1024 * 1024];
 

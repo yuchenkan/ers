@@ -4,7 +4,7 @@
 
 #include "lib/util.h"
 #include "lib/syscall.h"
-#include "tst/tst-live-entry.h"
+#include "tst/tst-live-entry-basic.h"
 #include "tst/tst-live-entry-common-offsets.h"
 
   .text

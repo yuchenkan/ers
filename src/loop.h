@@ -1,5 +1,5 @@
-#ifndef ERI_LIB_LOOP_H
-#define ERI_LIB_LOOP_H
+#ifndef ERI_LOOP_H
+#define ERI_LOOP_H
 
 #include <stdint.h>
 

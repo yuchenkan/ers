@@ -21,6 +21,8 @@ void
 tst_live_quit_main (void)
 {
   eri_assert_printf ("main\n");
+  tst_live_quit_allow_clone = 1;
+  tst_live_quit_allow_group = 1;
 
   uint64_t i;
   for (i = 0; i < eri_length_of (children); ++i)

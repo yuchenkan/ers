@@ -1,8 +1,9 @@
 #ifndef TST_TST_LIVE_ENTRY_COMMON_H
 #define TST_TST_LIVE_ENTRY_COMMON_H
 
+#include "lib/tst/tst-util.h"
+
 #include "lib/util.h"
-#include "tst/tst-util.h"
 
 #ifdef __ASSEMBLER__
 

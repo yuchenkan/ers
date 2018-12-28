@@ -24,6 +24,8 @@ void
 tst_live_quit_main (void)
 {
   eri_assert_printf ("main\n");
+  tst_live_quit_allow_clone = 1;
+
   tst_live_quit_clone_child (&child, start_child, 0);
   TST_LIVE_QUIT_YIELD;
   eri_lock (&child.ctid);

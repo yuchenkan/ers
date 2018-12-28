@@ -1,5 +1,5 @@
-#ifndef ERI_TST_TST_LIVE_ENTRY_H
-#define ERI_TST_TST_LIVE_ENTRY_H
+#ifndef ERI_TST_TST_LIVE_ENTRY_BASIC_H
+#define ERI_TST_TST_LIVE_ENTRY_BASIC_H
 
 #include "public/common.h"
 

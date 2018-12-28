@@ -1,9 +1,10 @@
-#include "tst/tst-live-entry.h"
+#include "tst/tst-live-entry-basic.h"
 #include "tst/tst-live-entry-common.h"
-#include "tst/tst-util.h"
 
 #include "live.h"
 #include "live-entry.h"
+
+#include "lib/tst/tst-util.h"
 
 #include "lib/syscall.h"
 #include "lib/printf.h"

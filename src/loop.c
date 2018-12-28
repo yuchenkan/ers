@@ -1,4 +1,4 @@
-#include "lib/loop.h"
+#include "loop.h"
 
 #include "lib/syscall.h"
 #include "lib/lock.h"

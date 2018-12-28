@@ -4,7 +4,7 @@
 #ifndef ERI_TST_RTLD
 # include "recorder-binary.h"
 #else
-# include "tst-rtld-recorder-binary.h"
+# include "tst/tst-rtld-recorder-binary.h"
 #endif
 
 #include "lib/util.h"

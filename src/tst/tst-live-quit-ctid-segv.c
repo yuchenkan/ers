@@ -16,6 +16,8 @@ static uint8_t stack[TST_LIVE_QUIT_STACK_SIZE];
 void
 tst_live_quit_main (void)
 {
+  tst_live_quit_allow_clone = 1;
+
   tst_live_quit_clone (stack, &ptid, 0, start_child, 0);
   while (tst_live_quit_multi_threading ()) continue;
   eri_barrier ();

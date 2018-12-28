@@ -1,5 +1,6 @@
-#include "tst/tst-util.h"
 #include "tst/tst-live-entry-common.h"
+
+#include "lib/tst/tst-util.h"
 
 #include "live-entry.h"
 #include "lib/syscall.h"

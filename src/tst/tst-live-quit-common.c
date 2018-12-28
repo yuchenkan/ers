@@ -12,6 +12,9 @@
 #include "lib/syscall.h"
 #include "lib/malloc.h"
 
+uint8_t tst_live_quit_allow_clone;
+uint8_t tst_live_quit_allow_group;
+
 int32_t tst_live_quit_printf_lock;
 
 void
@@ -48,22 +51,20 @@ tst_live_quit_block_signals (uint8_t allow_quit)
 {
   struct eri_sigset set;
   eri_sigfillset (&set);
-#ifdef TST_LIVE_QUIT_GROUP
   if (allow_quit) eri_sigdelset (&set, ERI_SIGRTMIN);
-#endif
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK,
 		      &set, 0, ERI_SIG_SETSIZE);
 }
 
-#ifdef TST_LIVE_QUIT_GROUP
 void
 eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
 			  struct eri_ucontext *ctx)
 {
+  eri_assert (tst_live_quit_allow_group);
+
   eri_live_start_sigaction (0, 0, 0, get_thread ());
   eri_assert (0);
 }
-#endif
 
 void tst_live_quit_init (uint64_t rsp) __attribute__ ((noreturn));
 
@@ -86,8 +87,6 @@ tst_live_quit_init (uint64_t rsp)
 
   eri_live_init (&common, &rtld);
 }
-
-#ifdef TST_LIVE_QUIT_CLONE
 
 uint8_t
 tst_live_quit_sig_pending (void)
@@ -132,8 +131,6 @@ tst_live_quit_multi_threading (void)
 {
   return eri_tst_live_multi_threading (get_thread ());
 }
-
-#endif
 
 static void do_exit (int32_t nr, int32_t status) __attribute__ ((noreturn));
 

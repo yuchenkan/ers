@@ -5,7 +5,7 @@
 #ifndef ERI_TST_RTLD
 /* # include "public/rtld.h" */
 #else
-# include "public/tst-rtld.h"
+# include "tst/rtld/public/rtld.h"
 #endif
 #include "public/entry-offsets.h"
 

@@ -1,6 +1,6 @@
 #include "common.h"
+#include "loop.h"
 #include "lib/lock.h"
-#include "lib/loop.h"
 
 struct daemon
 {

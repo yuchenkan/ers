@@ -22,6 +22,9 @@ struct tst_live_quit_child
   uint8_t stack[TST_LIVE_QUIT_STACK_SIZE];
 };
 
+extern uint8_t tst_live_quit_allow_clone;
+extern uint8_t tst_live_quit_allow_group;
+
 void tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
 			  void (*fn) (void *), void *data);
 void tst_live_quit_clone_child (struct tst_live_quit_child *child,

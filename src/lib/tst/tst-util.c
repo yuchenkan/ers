@@ -1,4 +1,4 @@
-#include "tst/tst-util.h"
+#include "lib/tst/tst-util.h"
 
 #include "lib/util.h"
 

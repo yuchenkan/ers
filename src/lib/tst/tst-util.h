@@ -1,5 +1,5 @@
-#ifndef TST_TST_UTIL_H
-#define TST_TST_UTIL_H
+#ifndef TST_LIB_TST_UTIL_H
+#define TST_LIB_TST_UTIL_H
 
 #include "lib/util.h"
 

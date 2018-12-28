@@ -513,9 +513,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
           struct eri_pool *pool = &internal->pool->pool;
 	  eri_assert_free (pool, internal->atomic_mem_table);
 	  eri_assert_free (pool, internal);
-#if 0
 	  eri_assert (pool->used == 0);
-#endif
 	}
 
       /* XXX: quit even if we are to restart in the sigaction.  */

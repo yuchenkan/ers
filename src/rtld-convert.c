@@ -74,10 +74,10 @@ convert_recorder (const char *elf, const char *bin, const char *header)
 
   fprintf (hf, "#define ERI_RECORDER_BINARY_SEGMENTS\t{ ");
   for (i = 0; i < nsegs; ++i)
-    fprintf (hf, "{ %d, %llu, %llu, %llu, %llu }, ", segs[i].prot,
+    fprintf (hf, "{ %d, %lu, %lu, %lu, %lu }, ", segs[i].prot,
 	     segs[i].offset, segs[i].filesz, segs[i].vaddr, segs[i].memsz);
   fprintf (hf, " }\n");
-  fprintf (hf, "#define ERI_RECORDER_BINARY_ENTRY\t%llu\n", entry);
+  fprintf (hf, "#define ERI_RECORDER_BINARY_ENTRY\t%lu\n", entry);
 
   fclose (hf);
   fclose (bf);
