@@ -11,9 +11,9 @@
 static uint8_t triggered;
 
 void
-eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			  struct eri_live_entry_sigaction_info *info,
-			  void *entry)
+eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
+			   struct eri_live_entry_sigaction_info *info,
+			   void *entry)
 {
   eri_assert_printf ("triggered\n");
   eri_atomic_store (&triggered, 1);

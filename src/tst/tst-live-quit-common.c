@@ -62,7 +62,7 @@ eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
 {
   eri_assert (tst_live_quit_allow_group);
 
-  eri_live_start_sigaction (0, 0, 0, get_thread ());
+  eri_live_start_sig_action (0, 0, 0, get_thread ());
   eri_assert (0);
 }
 

@@ -20,6 +20,16 @@ tst_init_live_thread_entry (struct tst_rand *rand,
   return entry;
 }
 
+int8_t eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
+		struct eri_ucontext *ctx, int32_t syscall) __attribute__ ((weak));
+
+int8_t
+eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
+			struct eri_ucontext *ctx, int32_t syscall)
+{
+  return 0;
+}
+
 void
 tst_assert_mctx_eq (struct eri_mcontext *ctx1,
 		    struct eri_mcontext *ctx2, uint32_t flags)

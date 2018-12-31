@@ -11,7 +11,9 @@ BUILD_TST_TSTS := $(patsubst %,$(BUILD_TST)/tst-%,$(TST_TSTS))
 BUILD_TST_OUTS := $(patsubst %,%.out,$(BUILD_TST_TSTS))
 BUILD_TST_RE_CHECKS := $(patsubst %,%.re-check,$(BUILD_TST_TSTS))
 
-all: check
+all: tests
+
+tests: $(BUILD_TST_TSTS)
 
 check full-check: $(BUILD_TST_TSTS) $(BUILD_TST_OUTS)
 
@@ -45,4 +47,4 @@ $(BUILD)/tst-printf: $(BUILD)/tst/tst-printf.c.o \
 
 -include $(patsubst %,%.d,$(DEPS))
 
-.PHONY: all check full-check re-check full-re-check
+.PHONY: all tests check full-check re-check full-re-check

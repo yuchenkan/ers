@@ -50,4 +50,6 @@ declare (void)
   UCONTEXT_OFFSET (MCTX_RSP, mctx.rsp);
   UCONTEXT_OFFSET (MCTX_RIP, mctx.rip);
   UCONTEXT_OFFSET (MCTX_RFLAGS, mctx.rflags);
+
+  UCONTEXT_OFFSET (SIG_MASK, sig_mask);
 }

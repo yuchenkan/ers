@@ -360,16 +360,25 @@ quit_thread (void *thread)
   eri_atomic_dec (&internal->multi_threading);
 }
 
+int8_t
+eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
+			struct eri_ucontext *ctx, int32_t syscall)
+{
+  /* TODO */
+  return 0;
+}
+
 void eri_live_quit (int32_t *alive) __attribute__ ((noreturn));
 
 void
-eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			  struct eri_live_entry_sigaction_info *info,
-			  void *thread)
+eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
+			   struct eri_live_entry_sigaction_info *info,
+			   void *thread)
 {
   struct thread *th = thread;
   struct internal *internal = th->internal;
-  if (eri_atomic_load (&internal->quitting))
+  uint8_t mt = !! eri_atomic_load (&internal->multi_threading);
+  if (mt && eri_atomic_load (&internal->quitting))
     {
       eri_barrier ();
       stop_thread (1, th);
@@ -380,7 +389,32 @@ eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
       eri_live_quit (&th->alive);
     }
 
-  eri_assert (0);
+#if 0
+  struct sig_action *action = internal->sig_actions[sig - 1];
+
+  void *act;
+  int32_t flags;
+  struct eri_sigmask mask;
+
+  eri_clock (mt, &action->lock);
+  act = action->act;
+  flags = action->flags;
+  mask = action->mask;
+  eri_cunlock (mt, &action->lock);
+
+  if (act == ERI_SIG_IGN)
+    {
+      info->rip = 0;
+      return;
+    }
+
+  if (act == ERI_SIG_DFL)
+    {
+      if (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX)
+	{
+	}
+    }
+#endif
 
 #if 0
   struct eri_ucontext *ctx = (void *) info->rdx;

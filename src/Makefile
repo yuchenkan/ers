@@ -1,5 +1,5 @@
 BUILD := ../build/src
-MAKE_FILES := Makefile $(BUILD)/O $(BUILD)/D
+MAKE_FILES := Makefile common.mk $(BUILD)/O $(BUILD)/D
 
 include common.mk
 
@@ -16,32 +16,33 @@ CFLAGS = $O $D -I . -I $(BUILD) -g -Wall -Werror \
 LDFLAGS = -nostdlib -Wl,--no-undefined -Wl,--fatal-warnings
 
 define PROG =
-DEPS += $2
+DEPS += $(call EXP_OBJS,$2)
 $1: $(call EXP_OBJS,$2) $$(LIB_OBJS)
 	gcc $$(LDFLAGS) -o $$@ $$^
 endef
 
 DEPS := $(LIB_OBJS)
 
-all: $(BUILD)/rtld-convert check
+all: $(BUILD)/rtld-convert tests
 
 DEPS += $(BUILD)/rtld-convert.c.o
 $(BUILD)/rtld-convert: % : %.c.o
 	gcc $^ -o $@
 
-PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h
+PUBLIC_IMPL_H_PRES := $(BUILD)/public/entry-offsets.h
+PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h.s
 
 $(BUILD)/rtld-convert.c.o: private CFLAGS := $O -I . -Wall -Werror -g -c
 
-$(BUILD)/%-offsets.h: $(BUILD)/%-offsets.s
+$(BUILD)/%-offsets.h: $(BUILD)/%-offsets.h.s
 	grep __AS_DEFINE__ $< | sed 's/__AS_DEFINE__/#define/g' >$@
 
-$(BUILD)/%-offsets.s: private CFLAGS := -I . -Wall -Werror -O3 -S 
-$(BUILD)/%-offsets.s: %-offsets.c Makefile
+$(BUILD)/%-offsets.h.s: private CFLAGS := -I . -Wall -Werror -O3 -S
+$(BUILD)/%-offsets.h.s: %-offsets.c Makefile
 	$(COMPILE)
 
 TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group
-TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore
+TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart
 
 TST_TSTS := rtld $(patsubst %,live-quit-%,$(TST_LIVE_QUIT_TSTS)) \
 	$(patsubst %,live-entry-%,$(TST_LIVE_ENTRY_TSTS))
@@ -49,15 +50,22 @@ TST_TSTS := rtld $(patsubst %,live-quit-%,$(TST_LIVE_QUIT_TSTS)) \
 BUILD_TST := $(BUILD)/tst
 BUILD_TST_TSTS := $(patsubst %,$(BUILD_TST)/tst-%,$(TST_TSTS)) \
 
-check: $(BUILD_TST_EXES) \
+tests: $(BUILD_TST_TSTS)
+
+check: $(BUILD_TST_TSTS) \
 	$(filter-out %/tst-live-entry-basic.out,$(BUILD_TST_OUTS))
+	echo done
 
-full-check: $(BUILD_TST_EXES) $(BUILD_TST_OUTS)
+full-check: $(BUILD_TST_TSTS) $(BUILD_TST_OUTS)
+	echo done
 
-re-check: $(BUILD_TST_EXES) \
+
+re-check: $(BUILD_TST_TSTS) \
 	$(filter-out %/tst-live-entry-basic.re-check,$(BUILD_TST_RE_CHECKS))
+	echo done
 
-full-re-check: $(BUILD_TST_EXES) $(BUILD_TST_RE_CHECKS)
+full-re-check: $(BUILD_TST_TSTS) $(BUILD_TST_RE_CHECKS)
+	echo done
 
 # tst-rtld
 
@@ -68,14 +76,16 @@ $(BUILD_TST)/tst-rtld.out: $(BUILD_TST)/tst-rtld-recorder
 $(BUILD_TST)/tst-rtld: % : %.S.o
 	gcc -nostdlib -pie -Wl,-e,start -o $@ $<
 
-TST_RTLD_PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h \
+TST_RTLD_PUBLIC_IMPL_H_PRES := $(BUILD)/public/entry-offsets.h \
 				$(BUILD_TST_RTLD)/public/rtld.h
+TST_RTLD_PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h.s \
+				$(BUILD_TST)/tst-rtld.S.o
 
-DEPS += $(BUILD_TST)/tst-rtld.S.o $(BUILD)/public/entry-offsets.h
+DEPS += $(TST_RTLD_PUBLIC_IMPL_H_DEPS)
 $(BUILD_TST)/tst-rtld.S.o: private CFLAGS += -D ERI_TST_RTLD -fPIE
-$(BUILD_TST)/tst-rtld.S.o: $(TST_RTLD_PUBLIC_IMPL_H_DEPS)
+$(BUILD_TST)/tst-rtld.S.o: $(TST_RTLD_PUBLIC_IMPL_H_PRES)
 
-$(BUILD_TST_RTLD)/public/rtld.h: $(BUILD_TST_RTLD)/rtld $(BUILD)/rtld-convert 
+$(BUILD_TST_RTLD)/public/rtld.h: $(BUILD_TST_RTLD)/rtld $(BUILD)/rtld-convert
 	mkdir -p $(@D)
 	$(BUILD)/rtld-convert rtld $< $@
 
@@ -111,7 +121,7 @@ $(BUILD_TST)/tst-rtld-recorder.S.os: $(BUILD)/rtld-offsets.h
 
 # tst
 
-$(BUILD_TST)/tst-%: private LDFLAGS += -Wl,-e,tst_start 
+$(BUILD_TST)/tst-%: private LDFLAGS += -Wl,-e,tst_start
 
 # tst-live-quit
 
@@ -130,7 +140,7 @@ $(BUILD_TST)/tst-live-quit-common.S.os: $(BUILD)/rtld-offsets.h \
 
 TST_LIVE_ENTRY_START_SRCS := tst/tst-live-entry-common.c \
 		tst/tst-live-entry-start.S tst/tst-live-entry-start.c \
-		live-entry.c live-entry.S lib/tst/tst-util.c 
+		live-entry.c live-entry.S lib/tst/tst-util.c
 
 TST_LIVE_ENTRY_COMMON_SRCS := tst/tst-common-start.S \
 		tst/tst-live-entry-common.S tst/tst-live-entry-common.c \
@@ -145,6 +155,9 @@ TST_LIVE_ENTRY_CLONE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 TST_LIVE_ENTRY_SIG_IGNORE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 		tst/tst-live-entry-sig-ignore.c
 
+TST_LIVE_ENTRY_RESTART_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
+		tst/tst-live-entry-restart.S tst/tst-live-entry-restart.c
+
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-start,\
 		$(TST_LIVE_ENTRY_START_SRCS)))
 
@@ -157,6 +170,15 @@ $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-clone,\
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-sig-ignore,\
 		$(TST_LIVE_ENTRY_SIG_IGNORE_SRCS)))
 
+$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart,\
+		$(TST_LIVE_ENTRY_RESTART_SRCS)))
+
+DEPS += $(BUILD)/public/entry-offsets.h.s \
+	$(BUILD)/rtld-offsets.h.s $(BUILD)/live-entry-offsets.h.s \
+	$(BUILD)/lib/syscall-offsets.h.s \
+	$(BUILD_TST)/tst-live-entry-common-offsets.h.s \
+	$(PUBLIC_IMPL_H_DEPS)
+
 $(BUILD)/live-entry.S.os: $(BUILD)/public/entry-offsets.h \
 		$(BUILD)/rtld-offsets.h $(BUILD)/live-entry-offsets.h \
 		$(BUILD)/lib/syscall-offsets.h
@@ -166,18 +188,20 @@ $(BUILD_TST)/tst-live-entry-common.S.os: \
 
 $(BUILD_TST)/tst-live-entry-basic.S.os: \
 		$(BUILD_TST)/tst-live-entry-common-offsets.h \
-		$(PUBLIC_IMPL_H_DEPS)
+		$(PUBLIC_IMPL_H_PRES)
 
 $(BUILD_TST)/tst-live-entry-clone.S.os: $(BUILD)/live-entry-offsets.h \
-		$(PUBLIC_IMPL_H_DEPS)
+		$(PUBLIC_IMPL_H_PRES)
+
+$(BUILD_TST)/tst-live-entry-restart.S.os: $(PUBLIC_IMPL_H_DEPS)
 
 $(BUILD)/%.so: private LDFLAGS += -shared
 
 -include $(patsubst %,%.d,$(DEPS))
 
-check full-check re-check full-re-check clean: lib
+all tests check full-check re-check full-re-check clean: lib
 
 lib:
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY: all check full-check re-check full-re-check lib
+.PHONY: all tests check full-check re-check full-re-check lib

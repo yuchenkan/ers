@@ -45,9 +45,9 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 }
 
 void
-eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			  struct eri_live_entry_sigaction_info *info,
-			  void *thread)
+eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
+			   struct eri_live_entry_sigaction_info *info,
+			   void *thread)
 {
   static uint8_t user_stack[4096];
   stack->sp = (uint64_t) user_stack;

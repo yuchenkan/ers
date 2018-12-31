@@ -71,7 +71,7 @@ sig_raw (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       && ctx->mctx.rip != (uint64_t) tst_clone_raw_nop)
     return;
 
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
   eri_assert_lprintf (&lock, "[raw:%u] sig raw: rip = %lx\n",
 		      pid != tid, ctx->mctx.rip);
   if (ctx->mctx.rip == (uint64_t) tst_clone_raw_enter)
@@ -106,7 +106,7 @@ sig_step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (silence) return;
 
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
   if (ctx->mctx.rip == (uint64_t) eri_live_entry_clone)
     {
       eri_assert (pid == tid);
@@ -171,7 +171,7 @@ tst_sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
 {
   if (silence) return 0;
 
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
 #if 0
   eri_assert_lprintf (&lock, "[step_int:%u] sig check trigger: step = %u, "
 		      "trigger = %u rip = %lx\n",
@@ -204,7 +204,7 @@ static void
 sig_step_int_act (int32_t sig, struct eri_siginfo *info,
 		  struct eri_ucontext *ctx)
 {
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
   eri_assert_lprintf (&lock,
 		      "[step_int:%u] sig trigger act: trigger_child = %u\n",
 		      pid != tid, trigger_child);
@@ -228,12 +228,12 @@ sig_step_int_act (int32_t sig, struct eri_siginfo *info,
 static void *sig_action;
 
 void
-eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			  struct eri_live_entry_sigaction_info *info,
-			  void *entry)
+eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
+			   struct eri_live_entry_sigaction_info *info,
+			   void *entry)
 {
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
-  eri_assert_lprintf (&lock, "[start_sigaction:%u] sig = %u\n",
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
+  eri_assert_lprintf (&lock, "[start_sig_action:%u] sig = %u\n",
 		      pid != tid, sig);
 
   stack->size = 0;
@@ -248,7 +248,7 @@ static uint8_t child_trap_trace;
 static void
 sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  int32_t tid = (int32_t) ERI_ASSERT_SYSCALL_RES (gettid);
+  int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
   eri_assert_lprintf (&lock, "[trap:%u]: rip = %lx\n",
 		      pid != tid, ctx->mctx.rip);
 
@@ -391,7 +391,7 @@ step_int (uint8_t child)
 uint64_t
 tst_main (void)
 {
-  pid = (int32_t) ERI_ASSERT_SYSCALL_RES (getpid);
+  pid = ERI_ASSERT_SYSCALL_RES (getpid);
 
   static int32_t ptid, ctid = 1;
   tst_ptid = &ptid;

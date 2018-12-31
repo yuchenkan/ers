@@ -19,7 +19,8 @@ BUILD_TST_OUTS = $(patsubst %,%.out,$(BUILD_TST_TSTS))
 BUILD_TST_RE_CHECKS = $(patsubst %,%.re-check,$(BUILD_TST_TSTS))
 
 $(BUILD)/%.out: $(BUILD)/%
-	cd $(@D) && ./$(<F) 2>&1 | tee $(<F).log && touch $(@F)
+	cd $(@D) && ./$(<F) 2>&1 | tee $(<F).log; \
+		test $${PIPESTATUS[0]} -eq 0 && touch $(@F)
 
 tst-re-check:
 

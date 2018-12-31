@@ -103,8 +103,23 @@ struct eri_live_thread_entry
   uint64_t ext_r14;
   uint64_t ext_r15;
 
+  uint64_t restart_syscall;
+  uint64_t restart_syscall_rbx;
+  uint64_t restart_syscall_rsp;
+  uint64_t restart_syscall_rdi;
+  uint64_t restart_syscall_rsi;
+  uint64_t restart_syscall_rdx;
+  uint64_t restart_syscall_rcx;
+  uint64_t restart_syscall_r10;
+  uint64_t restart_syscall_r11;
+  uint64_t restart_syscall_rip;
+  uint64_t restart_syscall_rflags;
+  uint64_t thread_restart_syscall;
+
+  uint64_t syscall_rax;
   uint64_t syscall_rsp;
   uint64_t syscall_new_thread;
+
   uint64_t sync_repeat_trace;
 
   uint64_t sig_rbx;
@@ -130,14 +145,15 @@ struct eri_live_thread_entry
 };
 
 extern uint8_t eri_live_thread_entry_text[];
-extern uint8_t eri_live_thread_entry_text_resume[];
 extern uint8_t eri_live_thread_entry_text_entry[];
-extern uint8_t eri_live_thread_entry_text_resume_ret[];
 extern uint8_t eri_live_thread_entry_text_internal_cont[];
 extern uint8_t eri_live_thread_entry_text_external_cont[];
 extern uint8_t eri_live_thread_entry_text_cont_end[];
 extern uint8_t eri_live_thread_entry_text_ret[];
 extern uint8_t eri_live_thread_entry_text_ret_end[];
+extern uint8_t eri_live_thread_entry_text_resume[];
+extern uint8_t eri_live_thread_entry_text_resume_ret[];
+extern uint8_t eri_live_thread_entry_text_restart_syscall[];
 extern uint8_t eri_live_thread_entry_text_end[];
 
 #define ERI_LIVE_THREAD_ENTRY_SIZE \

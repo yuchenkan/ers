@@ -224,9 +224,9 @@ static struct eri_sigset sig_mask;
 static void *sig_action;
 
 void
-eri_live_start_sigaction (int32_t sig, struct eri_stack *stack,
-			  struct eri_live_entry_sigaction_info *info,
-			  void *entry)
+eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
+			   struct eri_live_entry_sigaction_info *info,
+			   void *entry)
 {
   eri_assert (current_entry == entry);
   stack->size = 0;

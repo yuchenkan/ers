@@ -47,6 +47,9 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
   entry->fix_restart = 0;
   entry->restart = 0;
 
+  entry->restart_syscall = 0;
+  SET_ENTRY_RELA (thread_restart_syscall, text_restart_syscall);
+
   entry->sig_stack = (uint64_t) sig_stack;
   entry->thread = thread;
 
@@ -63,10 +66,11 @@ eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry)
   eri_assert (entry->rsp == entry->top);
   eri_assert (entry->fix_restart == 0);
   eri_assert (entry->restart == 0);
+  eri_assert (entry->restart_syscall == 0);
 }
 
 void
-eri_live_entry_start_sigaction (int32_t sig, struct eri_siginfo *info,
+eri_live_entry_start_sig_action (int32_t sig, struct eri_siginfo *info,
 			struct eri_ucontext *ctx, uint64_t cur)
 {
   /* TODO: fix ctx->stack */
@@ -77,8 +81,8 @@ eri_live_entry_start_sigaction (int32_t sig, struct eri_siginfo *info,
   struct eri_stack stack;
   act_info->rsi = (uint64_t) info;
   act_info->rdx = (uint64_t) ctx;
-  eri_live_start_sigaction (sig, &stack, act_info,
-			    (*(struct eri_live_thread_entry **) bot)->thread);
+  eri_live_start_sig_action (sig, &stack, act_info,
+			     (*(struct eri_live_thread_entry **) bot)->thread);
 
   uint8_t switch_stack = stack.size
 			 && ! (ctx->mctx.rsp > stack.sp
