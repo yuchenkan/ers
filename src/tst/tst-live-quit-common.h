@@ -9,12 +9,6 @@
 
 extern int32_t tst_live_quit_printf_lock;
 
-#define TST_LIVE_QUIT_YIELD \
-  do {									\
-    uint8_t _i;								\
-    for (_i = 0; _i < 32; ++_i) ERI_ASSERT_SYSCALL (sched_yield);	\
-  } while (0)
-
 struct tst_live_quit_child
 {
   int32_t ctid;

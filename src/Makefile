@@ -42,7 +42,7 @@ $(BUILD)/%-offsets.h.s: %-offsets.c Makefile
 	$(COMPILE)
 
 TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group
-TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart \
+TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart restart-poll \
 			user nested-invoke
 
 TST_TSTS := rtld $(patsubst %,live-quit-%,$(TST_LIVE_QUIT_TSTS)) \
@@ -159,6 +159,11 @@ TST_LIVE_ENTRY_SIG_IGNORE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 TST_LIVE_ENTRY_RESTART_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 		tst/tst-live-entry-restart.S tst/tst-live-entry-restart.c
 
+TST_LIVE_ENTRY_RESTART_POLL_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
+		lib/tst/tst-util.S \
+		tst/tst-live-entry-restart-poll.S \
+		tst/tst-live-entry-restart-poll.c
+
 TST_LIVE_ENTRY_USER_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 		tst/tst-live-entry-user.c
 
@@ -179,6 +184,9 @@ $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-sig-ignore,\
 
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart,\
 		$(TST_LIVE_ENTRY_RESTART_SRCS)))
+
+$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart-poll,\
+		$(TST_LIVE_ENTRY_RESTART_POLL_SRCS)))
 
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-user,\
 		$(TST_LIVE_ENTRY_USER_SRCS)))
@@ -207,6 +215,7 @@ $(BUILD_TST)/tst-live-entry-clone.S.os: $(BUILD)/live-entry-offsets.h \
 		$(PUBLIC_IMPL_H_PRES)
 
 $(BUILD_TST)/tst-live-entry-restart.S.os: $(PUBLIC_IMPL_H_PRES)
+$(BUILD_TST)/tst-live-entry-restart-poll.S.os: $(PUBLIC_IMPL_H_PRES)
 
 $(BUILD)/%.so: private LDFLAGS += -shared
 
