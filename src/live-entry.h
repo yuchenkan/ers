@@ -114,7 +114,9 @@ struct eri_live_thread_entry
   uint64_t restart_syscall_r11;
   uint64_t restart_syscall_rip;
   uint64_t restart_syscall_rflags;
+
   uint64_t thread_restart_syscall;
+  uint64_t thread_restart_syscall_end;
 
   uint64_t syscall_rax;
   uint64_t syscall_rsp;
@@ -147,15 +149,6 @@ struct eri_live_thread_entry
 };
 
 extern uint8_t eri_live_thread_entry_text[];
-extern uint8_t eri_live_thread_entry_text_entry[];
-extern uint8_t eri_live_thread_entry_text_internal_cont[];
-extern uint8_t eri_live_thread_entry_text_external_cont[];
-extern uint8_t eri_live_thread_entry_text_cont_end[];
-extern uint8_t eri_live_thread_entry_text_ret[];
-extern uint8_t eri_live_thread_entry_text_ret_end[];
-extern uint8_t eri_live_thread_entry_text_resume[];
-extern uint8_t eri_live_thread_entry_text_resume_ret[];
-extern uint8_t eri_live_thread_entry_text_restart_syscall[];
 extern uint8_t eri_live_thread_entry_text_end[];
 
 #define ERI_LIVE_THREAD_ENTRY_SIZE \

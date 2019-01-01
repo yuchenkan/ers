@@ -10,8 +10,21 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 		 void *sig_stack)
 {
   uint8_t *text = (uint8_t *) entry + eri_size_of (*entry, 16);
+
 #define TEXT(text)	_ERS_PASTE (eri_live_thread_entry_, text)
   eri_memcpy (text, TEXT (text), TEXT (text_end) - TEXT (text));
+
+  extern uint8_t eri_live_thread_entry_text_entry[];
+  extern uint8_t eri_live_thread_entry_text_internal_cont[];
+  extern uint8_t eri_live_thread_entry_text_external_cont[];
+  extern uint8_t eri_live_thread_entry_text_cont_end[];
+  extern uint8_t eri_live_thread_entry_text_ret[];
+  extern uint8_t eri_live_thread_entry_text_ret_end[];
+  extern uint8_t eri_live_thread_entry_text_resume[];
+  extern uint8_t eri_live_thread_entry_text_resume_ret[];
+  extern uint8_t eri_live_thread_entry_text_restart_syscall[];
+  extern uint8_t eri_live_thread_entry_text_restart_syscall_end[];
+
 #define SET_ENTRY_RELA(field, val) \
   do {									\
     entry->field = (uint64_t) text + (TEXT (val) - TEXT (text));	\
@@ -49,6 +62,7 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 
   entry->restart_syscall = 0;
   SET_ENTRY_RELA (thread_restart_syscall, text_restart_syscall);
+  SET_ENTRY_RELA (thread_restart_syscall_end, text_restart_syscall_end);
 
   entry->sig_stack = (uint64_t) sig_stack;
   entry->thread = thread;

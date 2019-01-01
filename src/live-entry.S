@@ -101,6 +101,8 @@
   ERI_LIVE_THREAD_ENTRY_RESTART_SYSCALL_RFLAGS
 #define TE_THREAD_RESTART_SYSCALL \
   ERI_LIVE_THREAD_ENTRY_THREAD_RESTART_SYSCALL
+#define TE_THREAD_RESTART_SYSCALL_END \
+  ERI_LIVE_THREAD_ENTRY_THREAD_RESTART_SYSCALL_END
 
 #define TE_SYSCALL_RAX		ERI_LIVE_THREAD_ENTRY_SYSCALL_RAX
 #define TE_SYSCALL_RSP		ERI_LIVE_THREAD_ENTRY_SYSCALL_RSP
@@ -219,6 +221,7 @@ ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_resume_ret)
 ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_restart_syscall)
   movq	RIP_RELA (TE_RESTART_SYSCALL_RBX), %rbx
   jmp	*RIP_RELA (TE_RESTART_SYSCALL_RIP)
+ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_restart_syscall_end)
 
   .align 16
 ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_end)
@@ -234,8 +237,6 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   /* %rax is the interrupted rip.  */
   movq	UCTX_RIP(%rdx), %rax
 
-#define CMP_RIP_F(field) \
-  cmpq	field(%rbx), %rax
 #define CMP_RIP_L(label) \
   leaq	label(%rip), %r11;						\
   cmpq	%r11, %rax
@@ -265,10 +266,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
   LOAD_ENTRY (%r11, ERI_OMIT)
 
-  /* Check nested signal when restarting syscall.  */
-  IF_RIP_IN_RANGE_LL (.lnested_signal_start_restart,
-		      .lnested_signal_end_restart,
-		      .lnested_signal_restart)
+#define CMP_RIP_F(field) \
+  cmpq	field(%rbx), %rax
 
 #define IF_RIP_IN_RANGE_FF(min, max, in_range) \
   IF_RIP_IN_RANGE (F, min, F, max, in_range)
@@ -276,6 +275,14 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   IF_RIP_IN_RANGE (F, min, L, max, in_range)
 #define IF_RIP_IN_RANGE_LF(min, max, in_range) \
   IF_RIP_IN_RANGE (L, min, F, max, in_range)
+
+  /* Check nested signal when restarting syscall.  */
+  IF_RIP_IN_RANGE_LL (.lnested_signal_start_restart,
+		      .lnested_signal_end_restart,
+		      .lnested_signal_restart)
+  IF_RIP_IN_RANGE_FF (TE_THREAD_RESTART_SYSCALL,
+		      TE_THREAD_RESTART_SYSCALL_END,
+		      .lnested_signal_restart)
 
   movq	PTE_MARK(%rbx), %r11
   testq	%r11, %r11

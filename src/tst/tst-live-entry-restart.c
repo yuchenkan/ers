@@ -11,20 +11,34 @@
 
 static uint8_t restart_no_handler;
 
+static uint32_t nested;
+static uint32_t cur_nested;
+
 int8_t
 eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
 			struct eri_ucontext *ctx, int32_t syscall)
 {
-  eri_assert_printf ("[eri_live_ignore_signal] rip = %lx, syscall = %x\n",
-		     ctx->mctx.rip, syscall);
+  eri_assert_printf ("[eri_live_ignore_signal] sig = %u "
+		     "rip = %lx, syscall = %x\n",
+		     sig, ctx->mctx.rip, syscall);
 
-  if (syscall == __NR_gettid) return 0;
+  if (syscall == __NR_gettid)
+    {
+      eri_assert (sig == ERI_SIGINT);
+      return 0;
+    }
+
+  if (! nested) eri_assert (sig == ERI_SIGINT);
 
   if (syscall != -1)
     {
+      uint8_t right_pass = ! nested || sig == ERI_SIGSYS;
+      if (! restart_no_handler && right_pass)
+	 return -1;
+
       ctx->mctx.rip -= 2;
-      ctx->mctx.rax = __NR_gettid;
-      return restart_no_handler ? 1 : -1;
+      if (right_pass) ctx->mctx.rax = __NR_gettid;
+      return 1;
     }
 
   return 1;
@@ -61,6 +75,8 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
 	}
       else
 	{
+	  eri_assert (sig == ERI_SIGINT);
+
 	  eri_assert (triggered == (restart_no_handler ? 1 : 2));
 	  tst_assert_mctx_eq (&after, mctx, TST_MEQ_NRIP | TST_MEQ_NRCX);
 	  eri_assert (mctx->rip == (uint64_t) tst_syscall_leave);
@@ -96,6 +112,8 @@ eri_live_sync_async (uint64_t cnt, void *entry)
 
 static struct eri_live_thread_entry *entry;
 
+static int8_t nested_remaining;
+
 int32_t
 tst_sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
 				struct eri_ucontext *ctx)
@@ -107,11 +125,35 @@ tst_sig_step_int_check_trigger (int32_t sig, struct eri_siginfo *info,
   int32_t res = 0;
   if (syscall)
     {
-      if (stepping
-	  && (! entry->restart_syscall
-	      || ctx->mctx.rip == (uint64_t)
-			ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall)))
-	res = ERI_SIGINT;
+      if (stepping)
+	{
+#define do_syscall \
+  ((uint64_t) ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall))
+
+	  if (! entry->restart_syscall
+	      || ctx->mctx.rip == do_syscall)
+	    {
+	      eri_assert_printf ("[tst_sig_step_int_check_trigger] sigint\n");
+
+	      res = ERI_SIGINT;
+	    }
+	  else if (nested)
+	    {
+	      eri_assert_printf ("[tst_sig_step_int_check_trigger] "
+				 "cur_nested = %lu nested = %lu\n",
+				 cur_nested, nested);
+
+	      if (cur_nested != nested && ++cur_nested == nested)
+		{
+		  eri_assert_printf ("[tst_sig_step_int_check_trigger] "
+				     "sigsys\n");
+		  res = ERI_SIGSYS;
+
+		  if (ctx->mctx.rip == do_syscall - 2)
+		    nested_remaining = 0;
+		}
+	    }
+	}
 
       if (ctx->mctx.rip == (uint64_t) tst_syscall_enter) stepping = 1;
     }
@@ -136,6 +178,10 @@ static uint8_t sig_stack[ERI_LIVE_SIG_STACK_SIZE];
 static void
 tst (struct tst_rand *rand)
 {
+  eri_assert_printf ("[tst] syscall = %u restart_no_handler = %u nested = %u\n",
+		     syscall, restart_no_handler, nested);
+
+
   struct tst_context ctx;
   tst_rand_fill_tctx (rand, &ctx, user_stack + sizeof user_stack);
   ctx.rflags |= ERI_TRACE_FLAG_MASK;
@@ -192,27 +238,47 @@ tst (struct tst_rand *rand)
   eri_tst_live_assert_thread_entry (entry);
 }
 
+static void
+tst_nested (struct tst_rand *rand)
+{
+  for (nested = 1; ; ++nested)
+    {
+      nested_remaining = 1;
+
+      tst (rand);
+      eri_assert (triggered == (restart_no_handler ? 1 : 2));
+      triggered = 0;
+      cur_nested = 0;
+
+      if (! nested_remaining) break;
+    }
+  eri_assert (nested != 1);
+}
+
 uint64_t
 tst_main (void)
 {
   struct tst_rand rand;
   tst_rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (getpid));
 
-  eri_assert_printf ("[tst] syscall = 1 restart_no_handler = 1\n");
   syscall = 1;
   restart_no_handler = 1;
   tst (&rand);
   eri_assert (triggered == 1);
   triggered = 0;
 
-  eri_assert_printf ("[tst] syscall = 1 restart_no_handler = 0\n");
+  tst_nested (&rand);
+
   restart_no_handler = 0;
+  nested = 0;
   tst (&rand);
   eri_assert (triggered == 2);
   triggered = 0;
 
-  eri_assert_printf ("[tst] syscall = 0\n");
+  tst_nested (&rand);
+
   syscall = 0;
+  nested = 0;
   tst (&rand);
   eri_assert (triggered == 1);
 

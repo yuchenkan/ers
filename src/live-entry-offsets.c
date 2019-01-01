@@ -70,7 +70,10 @@ declare (void)
   THREAD_ENTRY_OFFSET (RESTART_SYSCALL_R11, restart_syscall_r11);
   THREAD_ENTRY_OFFSET (RESTART_SYSCALL_RIP, restart_syscall_rip);
   THREAD_ENTRY_OFFSET (RESTART_SYSCALL_RFLAGS, restart_syscall_rflags);
+
   THREAD_ENTRY_OFFSET (THREAD_RESTART_SYSCALL, thread_restart_syscall);
+  THREAD_ENTRY_OFFSET (THREAD_RESTART_SYSCALL_END,
+		       thread_restart_syscall_end);
 
   THREAD_ENTRY_OFFSET (SYSCALL_RAX, syscall_rax);
   THREAD_ENTRY_OFFSET (SYSCALL_RSP, syscall_rsp);
