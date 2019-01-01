@@ -42,7 +42,8 @@ $(BUILD)/%-offsets.h.s: %-offsets.c Makefile
 	$(COMPILE)
 
 TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group
-TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart nested-invoke
+TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart \
+			user nested-invoke
 
 TST_TSTS := rtld $(patsubst %,live-quit-%,$(TST_LIVE_QUIT_TSTS)) \
 	$(patsubst %,live-entry-%,$(TST_LIVE_ENTRY_TSTS))
@@ -158,6 +159,9 @@ TST_LIVE_ENTRY_SIG_IGNORE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 TST_LIVE_ENTRY_RESTART_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 		tst/tst-live-entry-restart.S tst/tst-live-entry-restart.c
 
+TST_LIVE_ENTRY_USER_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
+		tst/tst-live-entry-user.c
+
 TST_LIVE_ENTRY_NESTED_INVOKE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
 		tst/tst-live-entry-nested-invoke.c
 
@@ -175,6 +179,9 @@ $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-sig-ignore,\
 
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart,\
 		$(TST_LIVE_ENTRY_RESTART_SRCS)))
+
+$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-user,\
+		$(TST_LIVE_ENTRY_USER_SRCS)))
 
 $(eval $(call PROG,$(BUILD_TST)/tst-live-entry-nested-invoke,\
 		$(TST_LIVE_ENTRY_NESTED_INVOKE_SRCS)))
