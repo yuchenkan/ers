@@ -6,9 +6,9 @@
   ERI_DECLARE_OFFSET (ERI_LIVE_THREAD_ENTRY_, name,			\
 		      struct eri_live_thread_entry, member)
 
-#define SIGACTION_INFO_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SIGACTION_INFO_, name,		\
-		      struct eri_live_entry_sigaction_info, member)
+#define SIG_ACTION_INFO_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SIG_ACTION_INFO_, name,		\
+		      struct eri_live_entry_sig_action_info, member)
 
 #define SYSCALL_INFO_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SYSCALL_INFO_, name,		\
@@ -87,6 +87,7 @@ declare (void)
   THREAD_ENTRY_OFFSET (SIG_R13, sig_r13);
   THREAD_ENTRY_OFFSET (SIG_R14, sig_r14);
   THREAD_ENTRY_OFFSET (SIG_R15, sig_r15);
+  THREAD_ENTRY_OFFSET (SIG_RIP, sig_rip);
 
   THREAD_ENTRY_OFFSET (SIG_STACK, sig_stack);
 
@@ -108,15 +109,15 @@ declare (void)
   ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SYSCALL_INFO_SIZE16,
 		      eri_size_of (struct eri_live_entry_syscall_info, 16));
 
-  SIGACTION_INFO_OFFSET (RSI, rsi);
-  SIGACTION_INFO_OFFSET (RDX, rdx);
-  SIGACTION_INFO_OFFSET (RSP, rsp);
-  SIGACTION_INFO_OFFSET (RIP, rip);
-  SIGACTION_INFO_OFFSET (MASK_ALL, mask.mask_all);
-  SIGACTION_INFO_OFFSET (MASK, mask.mask);
+  SIG_ACTION_INFO_OFFSET (RSI, rsi);
+  SIG_ACTION_INFO_OFFSET (RDX, rdx);
+  SIG_ACTION_INFO_OFFSET (RSP, rsp);
+  SIG_ACTION_INFO_OFFSET (RIP, rip);
+  SIG_ACTION_INFO_OFFSET (MASK_ALL, mask.mask_all);
+  SIG_ACTION_INFO_OFFSET (MASK, mask.mask);
 
-  ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16,
-		      eri_size_of (struct eri_live_entry_sigaction_info, 16));
+  ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SIG_ACTION_INFO_SIZE16,
+		      eri_size_of (struct eri_live_entry_sig_action_info, 16));
 
   CLONE_INFO_OFFSET (FLAGS, flags);
   CLONE_INFO_OFFSET (CHILD_STACK, child_stack);

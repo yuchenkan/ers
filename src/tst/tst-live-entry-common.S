@@ -72,10 +72,17 @@ ERI_GLOBAL_HIDDEN_FUNCTION (tst_sig_step_int_trigger)
   jz	.lno_trigger
 
   movl	%eax, %edi
-  jmp	eri_live_entry_sigaction
+  jmp	eri_live_entry_sig_action
 
 .lno_trigger:
   ret
   .size tst_sig_step_int_trigger, . - tst_sig_step_int_trigger
+
+ERI_GLOBAL_HIDDEN_FUNCTION (tst_nop)
+ERI_GLOBAL_HIDDEN (tst_nop_enter)
+  nop
+ERI_GLOBAL_HIDDEN (tst_nop_leave)
+  ret
+  .size tst_nop, . - tst_nop
 
 TST_ERI_LIVE_NULL_STUBS ()

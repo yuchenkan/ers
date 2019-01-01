@@ -25,6 +25,7 @@ __VA_ARGS__								\
 
 #include <stdint.h>
 
+#include "lib/tst/tst-util.h"
 #include "lib/syscall.h"
 
 struct tst_context
@@ -55,6 +56,11 @@ struct eri_live_thread_entry *tst_init_live_thread_entry (
 			struct tst_rand *radn, uint8_t *buf, uint8_t *stack,
 			uint64_t stack_size, uint8_t *sig_stack);
 
+struct eri_live_thread_entry *tst_init_start_live_thread_entry (
+			struct tst_rand *radn, uint8_t *buf, uint8_t *stack,
+			uint64_t stack_size, uint8_t *sig_stack);
+
+
 #define TST_MEQ_NR8		(1 << 1)
 #define TST_MEQ_NR9		(1 << 2)
 #define TST_MEQ_NR10		(1 << 3)
@@ -74,14 +80,32 @@ struct eri_live_thread_entry *tst_init_live_thread_entry (
 #define TST_MEQ_NRIP		(1 << 17)
 #define TST_MEQ_NRFLAGS		(1 << 18)
 
+inline void
+tst_rand_fill_tctx (struct tst_rand *rand,
+		    struct tst_context *ctx, uint8_t *rsp)
+{
+  tst_rand_fill (rand, ctx, sizeof *ctx);
+  ctx->rflags &= TST_RFLAGS_STATUS_MASK;
+  ctx->rsp = (uint64_t) rsp;
+}
+
 void tst_assert_mctx_eq (struct eri_mcontext *ctx1,
 			 struct eri_mcontext *ctx2, uint32_t flags);
 
-void tst_sig_step_int_trigger (int32_t sig, struct eri_siginfo *info,
-			       struct eri_ucontext *ctx);
-
 void tst_block_all_signals (void);
 void tst_unblock_all_signals (void);
+
+struct tst_rip_record
+{
+  uint64_t rip;
+  struct eri_mcontext *ctx;
+};
+
+void tst_sig_record_mctxs (struct tst_context *ctx,
+			   struct tst_rip_record *recs);
+
+void tst_sig_step_int_trigger (int32_t sig, struct eri_siginfo *info,
+			       struct eri_ucontext *ctx);
 
 struct tst_step
 {
@@ -92,6 +116,26 @@ struct tst_step
 
 int32_t tst_sig_step_int_check (struct tst_step *step, uint64_t rip,
 				uint64_t enter, uint64_t leave);
+
+extern uint8_t tst_nop_enter[];
+extern uint8_t tst_nop_leave[];
+void tst_nop (void);
+
+inline void
+tst_sig_record_nop (struct tst_context *ctx,
+		    struct eri_mcontext *before,
+		    struct eri_mcontext *after)
+{
+  struct tst_rip_record recs[] = {
+    { (uint64_t) tst_nop_enter, before },
+    { (uint64_t) tst_nop_leave, after },
+    { 0, 0 }
+  };
+  uint64_t rip = ctx->rip;
+  ctx->rip = (uint64_t) tst_nop;
+  tst_sig_record_mctxs (ctx, recs);
+  ctx->rip = rip;
+}
 
 #endif
 

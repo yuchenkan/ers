@@ -135,6 +135,8 @@ struct eri_live_thread_entry
   uint64_t sig_r14;
   uint64_t sig_r15;
 
+  uint64_t sig_rip;
+
   uint64_t sig_stack;
 
   void *thread;
@@ -166,12 +168,12 @@ void eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 
 void eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry);
 
-void eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
-			       struct eri_ucontext *ctx);
+void eri_live_entry_sig_action (int32_t sig, struct eri_siginfo *info,
+				struct eri_ucontext *ctx);
 
 extern uint8_t eri_live_resume_ret[];
 
-struct eri_live_entry_sigaction_info
+struct eri_live_entry_sig_action_info
 {
   uint64_t rsi;
   uint64_t rdx;

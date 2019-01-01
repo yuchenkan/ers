@@ -20,6 +20,22 @@ tst_init_live_thread_entry (struct tst_rand *rand,
   return entry;
 }
 
+struct eri_live_thread_entry *
+tst_init_start_live_thread_entry (struct tst_rand *rand, uint8_t *buf,
+				  uint8_t *stack, uint64_t stack_size,
+				  uint8_t *sig_stack)
+{
+  struct eri_live_thread_entry *entry = tst_init_live_thread_entry (
+				rand, buf, stack, stack_size, sig_stack);
+
+  struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
+  ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
+
+  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, entry);
+
+  return entry;
+}
+
 int8_t eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
 		struct eri_ucontext *ctx, int32_t syscall) __attribute__ ((weak));
 
@@ -77,6 +93,44 @@ tst_unblock_all_signals (void)
   eri_sigemptyset (&set);
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
 		      0, ERI_SIG_SETSIZE);
+}
+
+static void
+sig_record (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  struct tst_rip_record *recs = *(void **) ctx->stack.sp;
+  struct tst_rip_record *rec;
+  for (rec = recs; rec->rip; ++rec)
+    if (ctx->mctx.rip == rec->rip) *rec->ctx = ctx->mctx;
+}
+
+void
+tst_sig_record_mctxs (struct tst_context *ctx,
+		      struct tst_rip_record *recs)
+{
+  uint64_t rflags = ctx->rflags;
+  ctx->rflags |= ERI_TRACE_FLAG_MASK;
+
+  uint8_t sig_stack[8192];
+  *(struct tst_rip_record **) sig_stack = recs;
+
+  struct eri_stack st = { (uint64_t) sig_stack, 0, sizeof sig_stack };
+  struct eri_stack old_st;
+  ERI_ASSERT_SYSCALL (sigaltstack, &st, &old_st);
+
+  struct eri_sigaction sa = {
+    sig_record, ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK,
+    eri_sigreturn
+  };
+  struct eri_sigaction old_sa;
+  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, &old_sa, ERI_SIG_SETSIZE);
+
+  tst_live_entry (ctx);
+
+  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &old_sa, 0, ERI_SIG_SETSIZE);
+  ERI_ASSERT_SYSCALL (sigaltstack, &old_st, 0);
+
+  ctx->rflags = rflags;
 }
 
 int32_t

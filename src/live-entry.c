@@ -74,7 +74,7 @@ eri_live_entry_start_sig_action (int32_t sig, struct eri_siginfo *info,
 			struct eri_ucontext *ctx, uint64_t cur)
 {
   /* TODO: fix ctx->stack */
-  struct eri_live_entry_sigaction_info *act_info
+  struct eri_live_entry_sig_action_info *act_info
 			= (void *) (cur - eri_size_of (*act_info, 16) - 8);
   uint64_t bot = ctx->stack.sp;
 

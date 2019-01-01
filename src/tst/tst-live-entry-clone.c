@@ -229,7 +229,7 @@ static void *sig_action;
 
 void
 eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sigaction_info *info,
+			   struct eri_live_entry_sig_action_info *info,
 			   void *entry)
 {
   int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
@@ -401,23 +401,16 @@ tst_main (void)
 
   tst_rand_seed (&rand, pid);
 
-  tst_rand_fill (&rand, &ctx, sizeof ctx);
-  ctx.rflags &= TST_RFLAGS_STATUS_MASK;
-  ctx.rflags &= ~ERI_TRACE_FLAG_MASK;
   uint8_t user_stack[8192];
-  ctx.rsp = (uint64_t) user_stack + sizeof user_stack;
+  tst_rand_fill_tctx (&rand, &ctx, user_stack + sizeof user_stack);
+  ctx.rflags &= ~ERI_TRACE_FLAG_MASK;
   ctx.rip = (uint64_t) clone;
 
   uint8_t bufs[2][ERI_LIVE_THREAD_ENTRY_SIZE];
   child_entry_buf = bufs[0];
   entry_buf = bufs[1];
-  entry = tst_init_live_thread_entry (&rand, entry_buf,
-				      stack, sizeof stack, sig_stack);
-
-  struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
-  ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
-
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, entry);
+  entry = tst_init_start_live_thread_entry (
+			&rand, entry_buf, stack, sizeof stack, sig_stack);
 
   child_entry = tst_init_live_thread_entry (&rand, child_entry_buf,
 			child_stack, sizeof child_stack, child_sig_stack);
@@ -483,7 +476,7 @@ tst_main (void)
   entry->tst_skip_ctf = 0;
   child_entry->tst_skip_ctf = 0;
 
-  sa.act = eri_live_entry_sigaction;
+  sa.act = eri_live_entry_sig_action;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   sig_action = sigtrap_act;

@@ -57,8 +57,8 @@ tst_live_quit_block_signals (uint8_t allow_quit)
 }
 
 void
-eri_live_entry_sigaction (int32_t sig, struct eri_siginfo *info,
-			  struct eri_ucontext *ctx)
+eri_live_entry_sig_action (int32_t sig, struct eri_siginfo *info,
+			   struct eri_ucontext *ctx)
 {
   eri_assert (tst_live_quit_allow_group);
 

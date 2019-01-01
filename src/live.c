@@ -73,8 +73,8 @@ set_sigmask (struct eri_sigmask *mask, const struct eri_sigset *set)
 }
 
 static void
-daemon_sigaction (int32_t sig, struct eri_siginfo *info,
-		  struct eri_ucontext *ctx)
+daemon_sig_action (int32_t sig, struct eri_siginfo *info,
+		   struct eri_ucontext *ctx)
 {
   eri_assert (sig == ERI_SIGSEGV);
   extern uint8_t segv_quit_thread_clear_tid[];
@@ -95,7 +95,7 @@ init_daemon (void *lock)
 		      0, ERI_SIG_SETSIZE);
 
   struct eri_sigaction act = {
-    daemon_sigaction, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
+    daemon_sig_action, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
   };
   eri_sigfillset (&act.mask);
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGSEGV, &act, 0, ERI_SIG_SETSIZE);
@@ -239,7 +239,7 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
       set_sigmask (&internal->sig_actions[sig - 1].mask, &old.mask);
 
       struct eri_sigaction new = {
-	eri_live_entry_sigaction,
+	eri_live_entry_sig_action,
 	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
 	  | (old.flags & ERI_SA_RESTART),
 	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
@@ -372,7 +372,7 @@ void eri_live_quit (int32_t *alive) __attribute__ ((noreturn));
 
 void
 eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sigaction_info *info,
+			   struct eri_live_entry_sig_action_info *info,
 			   void *thread)
 {
   struct thread *th = thread;

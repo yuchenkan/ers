@@ -13,6 +13,14 @@
 
 #include <stdint.h>
 
+#include "lib/printf.h"
+
+#ifdef TST_VERBOSE
+# define tst_printf(...)	eri_assert_printf (__VA_ARGS__)
+#else
+# define tst_printf(...)
+#endif
+
 struct tst_rand
 {
   uint64_t val;

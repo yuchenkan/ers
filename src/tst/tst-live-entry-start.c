@@ -46,7 +46,7 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
 void
 eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sigaction_info *info,
+			   struct eri_live_entry_sig_action_info *info,
 			   void *thread)
 {
   static uint8_t user_stack[4096];
@@ -76,7 +76,7 @@ tst_rtld (uint64_t rsp, uint64_t rdx, uint64_t rip)
 			      sizeof stack, sig_stack);
 
   struct eri_sigaction sa = {
-    eri_live_entry_sigaction,
+    eri_live_entry_sig_action,
     ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK,
     eri_sigreturn
   };

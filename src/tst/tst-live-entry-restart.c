@@ -43,7 +43,7 @@ extern uint8_t tst_sync_async_leave[];
 
 void
 eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sigaction_info *info,
+			   struct eri_live_entry_sig_action_info *info,
 			   void *entry)
 {
   eri_assert_printf ("[eri_live_start_sig_action]\n");
@@ -94,24 +94,6 @@ eri_live_sync_async (uint64_t cnt, void *entry)
 {
 }
 
-void
-sig_raw (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
-{
-  extern uint8_t tst_raw_syscall_enter[];
-  extern uint8_t tst_raw_syscall_leave[];
-  extern uint8_t tst_raw_sync_async_leave[];
-
-  if (syscall)
-    {
-      if (ctx->mctx.rip == (uint64_t) tst_raw_syscall_enter)
-        before = ctx->mctx;
-      else if (ctx->mctx.rip == (uint64_t) tst_raw_syscall_leave)
-        after = ctx->mctx;
-    }
-  else if (ctx->mctx.rip == (uint64_t) tst_raw_sync_async_leave)
-    after = ctx->mctx;
-}
-
 static struct eri_live_thread_entry *entry;
 
 int32_t
@@ -147,7 +129,7 @@ void tst_raw_sync_async (void);
 void tst_syscall (void);
 void tst_sync_async (void);
 
-static uint8_t user_stack[1024 * 1024];
+static uint8_t user_stack[1024];
 static uint8_t stack[1024 * 1024];
 static uint8_t sig_stack[ERI_LIVE_SIG_STACK_SIZE];
 
@@ -155,36 +137,40 @@ static void
 tst (struct tst_rand *rand)
 {
   struct tst_context ctx;
-  tst_rand_fill (rand, &ctx, sizeof ctx);
-  ctx.rflags &= TST_RFLAGS_STATUS_MASK;
+  tst_rand_fill_tctx (rand, &ctx, user_stack + sizeof user_stack);
   ctx.rflags |= ERI_TRACE_FLAG_MASK;
-  ctx.rsp = (uint64_t) user_stack + sizeof user_stack;
   if (syscall)
     {
       ctx.rax = __NR_gettid;
       ctx.rip = (uint64_t) tst_raw_syscall;
+
+      extern uint8_t tst_raw_syscall_enter[];
+      extern uint8_t tst_raw_syscall_leave[];
+
+      struct tst_rip_record recs[] = {
+	{ (uint64_t) tst_raw_syscall_enter, &before },
+	{ (uint64_t) tst_raw_syscall_leave, &after },
+	{ 0, 0 }
+      };
+      tst_sig_record_mctxs (&ctx, recs);
     }
   else
-    ctx.rip = (uint64_t) tst_raw_sync_async;
+    {
+      ctx.rip = (uint64_t) tst_raw_sync_async;
 
-  struct eri_sigaction sa = {
-    sig_raw, ERI_SA_RESTORER | ERI_SA_SIGINFO, eri_sigreturn
-  };
-  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
+      extern uint8_t tst_raw_sync_async_leave[];
 
-  tst_live_entry (&ctx);
-
-  tst_rand_fill (rand, stack, sizeof stack);
-  tst_rand_fill (rand, sig_stack, ERI_LIVE_SIG_STACK_SIZE);
+      struct tst_rip_record recs[] = {
+	{ (uint64_t) tst_raw_sync_async_leave, &after },
+	{ 0, 0 }
+      };
+      tst_sig_record_mctxs (&ctx, recs);
+    }
 
   uint8_t entry_buf[ERI_LIVE_THREAD_ENTRY_SIZE];
-  entry = tst_init_live_thread_entry (rand, entry_buf,
-				      stack, sizeof stack, sig_stack);
+  entry = tst_init_start_live_thread_entry (
+			rand, entry_buf, stack, sizeof stack, sig_stack);
 
-  struct eri_stack st = { (uint64_t) sig_stack, 0, ERI_LIVE_SIG_STACK_SIZE };
-  ERI_ASSERT_SYSCALL (sigaltstack, &st, 0);
-
-  ERI_ASSERT_SYSCALL (arch_prctl, ERI_ARCH_SET_GS, entry);
   entry->tst_skip_ctf = 1;
 
   if (syscall)
@@ -195,8 +181,10 @@ tst (struct tst_rand *rand)
   else
     ctx.rip = (uint64_t) tst_sync_async;
 
-  sa.act = tst_sig_step_int_trigger,
-  sa.flags |= ERI_SA_ONSTACK;
+  struct eri_sigaction sa = {
+    tst_sig_step_int_trigger,
+    ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK, eri_sigreturn
+  };
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   tst_live_entry (&ctx);

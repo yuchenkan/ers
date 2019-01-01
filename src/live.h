@@ -14,7 +14,7 @@ void eri_live_init (struct eri_common *common,
 int8_t eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
 			       struct eri_ucontext *ctx, int32_t syscall);
 void eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-				struct eri_live_entry_sigaction_info *info,
+				struct eri_live_entry_sig_action_info *info,
 				void *thread);
 
 void eri_live_start_thread (void *thread);

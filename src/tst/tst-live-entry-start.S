@@ -73,4 +73,4 @@ ERI_GLOBAL_HIDDEN (tst_continue)
   syscall
   .size tst_start, . - tst_start
 
-TST_ERI_LIVE_NULL_STUBS (.lerror:)
+TST_ERI_LIVE_NULL_STUBS (TST_WEAK_GLOBAL_HIDDEN (tst_live_entry) .lerror:)

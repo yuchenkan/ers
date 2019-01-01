@@ -117,6 +117,7 @@
 #define TE_SIG_R13		ERI_LIVE_THREAD_ENTRY_SIG_R13
 #define TE_SIG_R14		ERI_LIVE_THREAD_ENTRY_SIG_R14
 #define TE_SIG_R15		ERI_LIVE_THREAD_ENTRY_SIG_R15
+#define TE_SIG_RIP		ERI_LIVE_THREAD_ENTRY_SIG_RIP
 
 #define TE_SIG_STACK		ERI_LIVE_THREAD_ENTRY_SIG_STACK
 
@@ -225,16 +226,10 @@ ERI_GLOBAL_HIDDEN (eri_live_thread_entry_text_end)
   .text
 
 /************************************************/
-/* eri_live_entry_sigaction			*/
+/* eri_live_entry_sig_action			*/
 /************************************************/
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sigaction)
-
-  movq	UCTX_SS_SP(%rdx), %rax
-  movq	(%rax), %rax
-  movq	%rbx, TE_SIG_RBX(%rax)
-  /* %rbx is &live_thread.  */
-  movq	%rax, %rbx
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
   /* %rax is the interrupted rip.  */
   movq	UCTX_RIP(%rdx), %rax
@@ -252,24 +247,35 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sigaction)
   jb	in_range;							\
 1:
 
-#define IF_RIP_IN_RANGE_FF(min, max, in_range) \
-  IF_RIP_IN_RANGE (F, min, F, max, in_range)
-#define IF_RIP_IN_RANGE_FL(min, max, in_range) \
-  IF_RIP_IN_RANGE (F, min, L, max, in_range)
-#define IF_RIP_IN_RANGE_LF(min, max, in_range) \
-  IF_RIP_IN_RANGE (L, min, F, max, in_range)
 #define IF_RIP_IN_RANGE_LL(min, max, in_range) \
   IF_RIP_IN_RANGE (L, min, L, max, in_range)
+
+  /* Check nested signal when invoking sig action.  */
+  IF_RIP_IN_RANGE_LL (.lnested_signal_start_invoke,
+		      .lnested_signal_end_invoke,
+		      .lnested_signal_invoke)
+
+/* Set %rbx to live_thread_entry.  */
+#define LOAD_ENTRY(tmp, save, ...) \
+  movq	UCTX_SS_SP(%rdx), tmp;						\
+  movq	(tmp), tmp;							\
+  save (TE_SIG_RBX(tmp), ##__VA_ARGS__)					\
+  movq	%rbx, TE_SIG_RBX(tmp);						\
+  movq	tmp, %rbx
+
+  LOAD_ENTRY (%r11, ERI_OMIT)
 
   /* Check nested signal when restarting syscall.  */
   IF_RIP_IN_RANGE_LL (.lnested_signal_start_restart,
 		      .lnested_signal_end_restart,
 		      .lnested_signal_restart)
 
-  /* Check nested signal when invoking sig action.  */
-  IF_RIP_IN_RANGE_LL (.lnested_signal_start_invoke,
-		      .lnested_signal_end_invoke,
-		      .lnested_signal_invoke)
+#define IF_RIP_IN_RANGE_FF(min, max, in_range) \
+  IF_RIP_IN_RANGE (F, min, F, max, in_range)
+#define IF_RIP_IN_RANGE_FL(min, max, in_range) \
+  IF_RIP_IN_RANGE (F, min, L, max, in_range)
+#define IF_RIP_IN_RANGE_LF(min, max, in_range) \
+  IF_RIP_IN_RANGE (L, min, F, max, in_range)
 
   movq	PTE_MARK(%rbx), %r11
   testq	%r11, %r11
@@ -428,13 +434,17 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sigaction)
 
 .lnested_signal_invoke:
 
+#define SAVE_TE_SIG_RBX(val)	MOV_MM (val, UCTX_RBX(%rdx), %r11);
+
+  LOAD_ENTRY (%rax, SAVE_TE_SIG_RBX)
+
 #define FIX_NESTED_INVOKE(reg) \
   MOV_MM (PASTE (TE_SIG_, reg)(%rbx), PASTE (UCTX_, reg)(%rdx), %rax)
 
-  FIX_NESTED_INVOKE (RBX)
   FIX_NESTED_INVOKE (RDI)
   FIX_NESTED_INVOKE (RSI)
   FIX_NESTED_INVOKE (RDX)
+  FIX_NESTED_INVOKE (RIP)
   jmp	.linvoke
 
   /* 1. we are in user code.
@@ -463,7 +473,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sigaction)
   */
   je	.lrestart_fix_sync_async_inst_check_trace
 
-  /* Invoke user sigaction without further check. when op is sync_async
+  /* Invoke user sig_action without further check. when op is sync_async
      it can't be inside thread_entry_*_cont and dir also must
      be zero.
   */
@@ -484,7 +494,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sigaction)
   */
   movq	PTE_DIR(%rbx), %r11
   testq	%r11, %r11
-  /* Invoke sigaction if continue address is zero.  */
+  /* Invoke sig_action if continue address is zero.  */
   jz	.linvoke
   cmpq	TE_THREAD_INTERNAL_CONT(%rbx), %r11
   /* Fix cont-internally if is thread_entry_internal_cont.  */
@@ -716,31 +726,31 @@ eri_live_resume_ret:
 .linvoke:
   movq	%rdi, TE_SIG_RDI(%rbx)
 
-#define SIGACTION_RSI		ERI_LIVE_ENTRY_SIGACTION_INFO_RSI
-#define SIGACTION_RDX		ERI_LIVE_ENTRY_SIGACTION_INFO_RDX
-#define SIGACTION_RSP		ERI_LIVE_ENTRY_SIGACTION_INFO_RSP
-#define SIGACTION_RIP		ERI_LIVE_ENTRY_SIGACTION_INFO_RIP
-#define SIGACTION_MASK_ALL	ERI_LIVE_ENTRY_SIGACTION_INFO_MASK_ALL
-#define SIGACTION_MASK		ERI_LIVE_ENTRY_SIGACTION_INFO_MASK
-#define SIGACTION_SIZE16	ERI_LIVE_ENTRY_SIGACTION_INFO_SIZE16
+#define SIG_ACTION_RSI		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RSI
+#define SIG_ACTION_RDX		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RDX
+#define SIG_ACTION_RSP		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RSP
+#define SIG_ACTION_RIP		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RIP
+#define SIG_ACTION_MASK_ALL	ERI_LIVE_ENTRY_SIG_ACTION_INFO_MASK_ALL
+#define SIG_ACTION_MASK		ERI_LIVE_ENTRY_SIG_ACTION_INFO_MASK
+#define SIG_ACTION_SIZE16	ERI_LIVE_ENTRY_SIG_ACTION_INFO_SIZE16
 
 .ldo_invoke:
   movq	%rsp, %rcx
-  subq	$SIGACTION_SIZE16 + 8, %rsp
+  subq	$SIG_ACTION_SIZE16 + 8, %rsp
   call	eri_live_entry_start_sig_action
 
-  cmpq	$0, SIGACTION_RIP(%rsp)
+  cmpq	$0, SIG_ACTION_RIP(%rsp)
   je	.lignore_signal
-  cmpb	$1, SIGACTION_MASK_ALL(%rsp)
+  cmpb	$1, SIG_ACTION_MASK_ALL(%rsp)
   je	.lfast_invoke
 
-  MOV_MM (SIGACTION_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
-  MOV_MM (SIGACTION_RDX(%rsp), TE_SIG_RDX(%rbx), %rax)
+  MOV_MM (SIG_ACTION_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
+  MOV_MM (SIG_ACTION_RDX(%rsp), TE_SIG_RDX(%rbx), %rax)
 
-  movq	SIGACTION_RIP(%rsp), %r8
+  MOV_MM (SIG_ACTION_RIP(%rsp), TE_SIG_RIP(%rbx), %r8)
 
-  leaq	SIGACTION_MASK(%rsp), %rsi
-  movq	SIGACTION_RSP(%rsp), %rsp
+  leaq	SIG_ACTION_MASK(%rsp), %rsi
+  movq	SIG_ACTION_RSP(%rsp), %rsp
 
   RESTORE_SIG_MASK /* XXX: pending queue */
 .lnested_signal_start_invoke:
@@ -756,19 +766,19 @@ eri_live_resume_ret:
 .lfast_invoke:
   movq	TE_SIG_RDI(%rbx), %rdi
   movq	TE_SIG_RBX(%rbx), %rbx
-  movq	SIGACTION_RSI(%rsp), %rsi
-  movq	SIGACTION_RDX(%rsp), %rdx
-  movq	SIGACTION_RIP(%rsp), %rax
-  movq	SIGACTION_RSP(%rsp), %rsp
+  movq	SIG_ACTION_RSI(%rsp), %rsi
+  movq	SIG_ACTION_RDX(%rsp), %rdx
+  movq	SIG_ACTION_RIP(%rsp), %rax
+  movq	SIG_ACTION_RSP(%rsp), %rsp
   jmp	*%rax
 
 .lignore_signal:
-  addq	$SIGACTION_SIZE16 + 8, %rsp
+  addq	$SIG_ACTION_SIZE16 + 8, %rsp
   SIGRETURN
 
 .lerror:
   ERI_ASSERT_FALSE
-  .size eri_live_entry_sigaction, . - eri_live_entry_sigaction
+  .size eri_live_entry_sig_action, . - eri_live_entry_sig_action
 
 /************************************************/
 /* eri_live_entry_start				*/
@@ -1594,7 +1604,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 
 #ifndef ERI_NON_TST
 # define TST_RESTORE_CLONE_TF \
-  /* Set by sigaction from the test.  */				\
+  /* Set by sig_action from the test.  */				\
   movq	-16(%rsp), %rax;						\
   movq	SYSCALL_TST_CLONE_TF(%rax), %r11;				\
   testq	%r11, %r11;							\

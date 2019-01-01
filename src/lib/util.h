@@ -11,6 +11,8 @@
 #define _ERI_PP_IIF_1(t, ...)	t
 #define ERI_PP_IIF(c, t, ...)	_ERS_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
+#define ERI_OMIT(...)
+
 #ifdef __ASSEMBLER__
 
 #define ERI_GLOBAL_HIDDEN(symbol) \
