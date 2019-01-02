@@ -55,7 +55,8 @@ eri_loop_loop (struct eri_loop *l)
   uint32_t version = 0;
   while (1)
     {
-      uint64_t res = ERI_SYSCALL (futex, &l->version, ERI_FUTEX_WAIT_PRIVATE, version, 0);
+      uint64_t res = ERI_SYSCALL (futex, &l->version,
+				  ERI_FUTEX_WAIT_PRIVATE, version, 0);
       eri_assert (! ERI_SYSCALL_IS_ERROR (res) || -res == ERI_EAGAIN);
 
       uint32_t v;

@@ -5,16 +5,18 @@
 
 #include "lib/util.h"
 
-/* tree_type { ERI_RBT_TREE_FIELDS (pfx, node_type) ... };
-   node_type { key_type key; ERI_RBT_NODE_FIELDS (pfx, node_type) ... };
-   int8_t less_than (tree_type *tree, key_type *k1, key_type *k2);
-
-   Zero out the ERI_RBT_TREE_FIELDS or call ERI_RBT_INIT_TREE before use.
-
-   The key has to be the first field or the node to allow casting.
-   The order of all other fields are irrelevant.
-
-   Bit fileds of ERI_RBT_NODE_FIELDS are at the beginning. */
+/*
+ * tree_type { ERI_RBT_TREE_FIELDS (pfx, node_type) ... };
+ * node_type { key_type key; ERI_RBT_NODE_FIELDS (pfx, node_type) ... };
+ * int8_t less_than (tree_type *tree, key_type *k1, key_type *k2);
+ *
+ * Zero out the ERI_RBT_TREE_FIELDS or call ERI_RBT_INIT_TREE before use.
+ *
+ * The key has to be the first field or the node to allow casting.
+ * The order of all other fields are irrelevant.
+ *
+ * Bit fileds of ERI_RBT_NODE_FIELDS are at the beginning.
+ */
 
 #define ERI_RBT_INIT_TREE(pfx, tree) \
   do {									\

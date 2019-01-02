@@ -143,7 +143,7 @@ struct eri_live_thread_entry
 
   void *thread;
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   uint64_t tst_skip_ctf;
 #endif
 };
@@ -185,9 +185,9 @@ extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall)[];
 extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (hold_syscall)[];
 
 #define ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS(name) \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (b, name)[]; \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (w, name)[]; \
-extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (l, name)[]; \
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (b, name)[];	\
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (w, name)[];	\
+extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (l, name)[];	\
 extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (q, name)[];
 
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (load)
@@ -203,7 +203,7 @@ struct eri_live_entry_syscall_info
   uint64_t r11;
   uint64_t rflags;
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   /* It's more convenient here than clone_info.  */
   uint64_t tst_clone_tf;
 #endif

@@ -15,7 +15,9 @@ void
 eri_rtld (void **arg, uint64_t rdx)
 {
   extern uint8_t eri_binary_end[];
-  struct eri_rtld rtld = { rdx, (uint64_t) arg - 8, (uint64_t) eri_binary_end };
+  struct eri_rtld rtld = {
+    rdx, (uint64_t) arg - 8, (uint64_t) eri_binary_end
+  };
   struct eri_sigset set;
   eri_sigfillset (&set);
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,

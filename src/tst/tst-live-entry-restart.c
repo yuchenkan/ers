@@ -178,7 +178,8 @@ static uint8_t sig_stack[ERI_LIVE_SIG_STACK_SIZE];
 static void
 tst (struct tst_rand *rand)
 {
-  eri_assert_printf ("[tst] syscall = %u restart_no_handler = %u nested = %u\n",
+  eri_assert_printf ("[tst] syscall = %u restart_no_handler = %u "
+		     "nested = %u\n",
 		     syscall, restart_no_handler, nested);
 
 
@@ -221,7 +222,7 @@ tst (struct tst_rand *rand)
 
   if (syscall)
     {
-      ctx.rax = __NR_restart_syscall; /* always return EINTR */
+      ctx.rax = __NR_restart_syscall; /* Always return EINTR.  */
       ctx.rip = (uint64_t) tst_syscall;
     }
   else

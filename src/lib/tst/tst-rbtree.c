@@ -20,7 +20,8 @@ struct tree
 ERI_DECLARE_RBTREE (static, x, struct tree, struct node, int32_t)
 
 #define x_rbt_less_than(x, a, b)	(*(a) < *(b))
-ERI_DEFINE_RBTREE (static, x, struct tree, struct node, int32_t, x_rbt_less_than)
+ERI_DEFINE_RBTREE (static, x, struct tree, struct node,
+		   int32_t, x_rbt_less_than)
 
 int32_t
 main (void)

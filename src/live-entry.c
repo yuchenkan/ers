@@ -137,7 +137,7 @@ eri_live_entry_clone (struct eri_live_thread_entry *entry,
 		      &mask.mask, ERI_SIG_SETSIZE);
   mask.mask_all = eri_sigset_full (&mask.mask);
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   info->rflags &= ~info->tst_clone_tf;
 #endif
 
@@ -169,7 +169,7 @@ eri_live_entry_clone (struct eri_live_thread_entry *entry,
   uint64_t info_size = eri_size_of (struct eri_live_entry_syscall_info, 16);
   uint64_t stack_child_info = child_entry->top_saved - info_size;
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   ((struct eri_live_entry_syscall_info *) stack_child_info)->tst_clone_tf
 							= info->tst_clone_tf;
 #endif

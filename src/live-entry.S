@@ -312,10 +312,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 		      COMPLETE_START_LABEL (do_syscall),
 		      .lrestart_fix_check_trace)
 
-  /* Check if we are to restart syscall:
-     1. signal with handler shall be restarted.
-     2. signal shall be ignored.
-  */
+  /*
+   * Check if we are to restart syscall:
+   * 1. signal with handler shall be restarted.
+   * 2. signal shall be ignored.
+   */
   CMP_RIP_L (COMPLETE_START_LABEL (do_syscall))
   jne	.lcheck_common_complete
   cmpq	$-ERI_EINTR, UCTX_RAX(%rdx)
@@ -335,9 +336,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   testb	%al, %al
 
 .lcheck_ignore_signal:
-  /* Context shall be fixed by CHECK_IGNORE_SIGNAL(eri_live_ignore_signal)
-     if the syscall is to be restarted.
-  */
+  /*
+   * Context shall be fixed by CHECK_IGNORE_SIGNAL(eri_live_ignore_signal)
+   * if the syscall is to be restarted.
+   */
   CHECK_IGNORE_SIGNAL (TE_SYSCALL_RAX(%rbx))
   /* Signal with handler shall be restarted.  */
   jl	.lrestart_syscall_handler
@@ -374,9 +376,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   SAVE_RESTART_SYSCALL_UCTX (R11)
   SAVE_RESTART_SYSCALL_UCTX (RIP)
   SAVE_RESTART_SYSCALL_UCTX (RFLAGS)
-  /* Keep %rsp out of sigaltstack before unblock signal
-     to ensure the clean use of the stack.
-  */
+  /*
+   * Keep %rsp out of sigaltstack before unblock signal
+   * to ensure the clean use of the stack.
+   */
   leaq	TE_RESTART_SYSCALL_RFLAGS(%rbx), %rsp
 
   leaq	UCTX_SIG_MASK(%rdx), %rsi
@@ -400,9 +403,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 .lnested_signal_end_restart:
 
 .lcheck_common_complete:
-  /* Restart if we are inside eri_live_entry but not done the
-     target instruction.
-  */
+  /*
+   * Restart if we are inside eri_live_entry but not done the
+   * target instruction.
+   */
   IF_RIP_IN_RANGE_LF (eri_live_entry, TE_COMPLETE_START,
 		      .lrestart_fix_check_trace)
 
@@ -418,9 +422,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   MOV_LM (eri_live_resume_ret, PTE_DIR(%rbx), %rax)
   jmp	.lresume
 
-  /* Nested signal, complete the context for the old signal
-     and invoke.
-  */
+  /*
+   * Nested signal, complete the context for the old signal
+   * and invoke.
+   */
 .lnested_signal_restart:
 
 #define FIX_NESTED_RESTART(reg) \
@@ -454,10 +459,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   FIX_NESTED_INVOKE (RIP)
   jmp	.linvoke
 
-  /* 1. we are in user code.
-     2. we need to fix restart sync_async and restart.
-     3. we need to fix context and return.
-  */
+  /*
+   * 1. we are in user code.
+   * 2. we need to fix restart sync_async and restart.
+   * 3. we need to fix context and return.
+   */
 .lzero_mark:
   /* Restart if we are inside sync_async.  */
   IF_RIP_IN_RANGE_LL (.lsync_async, RESTART_START_LABEL (sync_async),
@@ -467,23 +473,26 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   IF_RIP_IN_RANGE_FF (TE_THREAD_RET, TE_THREAD_RET_END,
 		      .lrestart_fix_check_trace)
 
-  /* Continue check if we are about to run the sync_async instruction when we
-     are not inside thread_entry_ret.
-  */
+  /*
+   * Continue check if we are about to run the sync_async instruction when we
+   * are not inside thread_entry_ret.
+   */
   LOAD_OP_OP (%r11)
   cmpq	$_ERS_OP_SYNC_ASYNC, %r11
   /* Check if we are inside continue when op is not sync_async.  */
   jne	.lcheck_continue
   cmpq	PTE_RET(%rbx), %rax
-  /* Restart if op is sync_async and we are at the sync_async
-     instruction.
-  */
+  /*
+   * Restart if op is sync_async and we are at the sync_async
+   * instruction.
+   */
   je	.lrestart_fix_sync_async_inst_check_trace
 
-  /* Invoke user sig_action without further check. when op is sync_async
-     it can't be inside thread_entry_*_cont and dir also must
-     be zero.
-  */
+  /*
+   * Invoke user sig_action without further check. when op is sync_async
+   * it can't be inside thread_entry_*_cont and dir also must
+   * be zero.
+   */
   jmp	.linvoke
 
 .lcheck_continue:
@@ -491,14 +500,16 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   /* Fix context of cont-internally if at thread_entry_internal_cont.  */
   je	.linternal_fix
 
-  /* Fix context of cont-externally if in thread_entry_external_cont, which
-     equals to (thread_entry_internal_cont, thread_entry_cont_end).
-  */
+  /*
+   * Fix context of cont-externally if in thread_entry_external_cont, which
+   * equals to (thread_entry_internal_cont, thread_entry_cont_end).
+   */
   IF_RIP_IN_RANGE_FF (TE_THREAD_INTERNAL_CONT, TE_THREAD_CONT_END, .lfix)
 
-  /* Check remainging code from mark zero to continue by checking dir
-     field.
-  */
+  /*
+   * Check remainging code from mark zero to continue by checking dir
+   * field.
+   */
   movq	PTE_DIR(%rbx), %r11
   testq	%r11, %r11
   /* Invoke sig_action if continue address is zero.  */
@@ -532,11 +543,12 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   IF_NOT_TRACE (not_trace);						\
   SIGRETURN
 
-  /* We are in the second part while the instrcution is not reached.
-     We still restart the instruction but we need to manully fix the
-     context to let the interrupted code know where they are before
-     we resume those code.
-  */
+  /*
+   * We are in the second part while the instrcution is not reached.
+   * We still restart the instruction but we need to manully fix the
+   * context to let the interrupted code know where they are before
+   * we resume those code.
+   */
 .lrestart_fix_check_trace:
   IGNORE_IGNORED
 .lrestart_syscall_handler:
@@ -555,9 +567,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   IGNORE_TRACE (.lrestart)
 
 .lrestart:
-  /* We are in the safe place, just mark and let the interrupted code
-     do the restart.
-  */
+  /*
+   * We are in the safe place, just mark and let the interrupted code
+   * do the restart.
+   */
   movq	$1, TE_RESTART(%rbx)
   jmp	.lresume
 
@@ -573,9 +586,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   /* Resume to the restarter.  */
   MOV_MM (TE_RESTART_START(%rbx), UCTX_RIP(%rdx), %rax)
 
-  /* Save the current context and return to the (possibly fixed)
-     interrupted context.
-  */
+  /*
+   * Save the current context and return to the (possibly fixed)
+   * interrupted context.
+   */
 .lresume:
   movq	%rdi, TE_SIG_RDI(%rbx)
   movq	%rsi, TE_SIG_RSI(%rbx)
@@ -590,9 +604,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
   MOV_MM (UCTX_RIP(%rdx), TE_RESUME(%rbx), %rax)
 
-  /* We are trying to reset the trace flag saved on the stack so tracing
-     won't be restored by popfq to avoid recursive sigtrap.
-  */
+  /*
+   * We are trying to reset the trace flag saved on the stack so tracing
+   * won't be restored by popfq to avoid recursive sigtrap.
+   */
   movq	$0, TE_TRACE_FLAG(%rbx)
 
   cmpq	$1, TE_RFLAGS_SAVED(%rbx)
@@ -638,10 +653,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
   jmp	*TE_THREAD_RESUME(%rbx)
 
-  /* %rbx is live_thread_entry, the interrupted %rbx is saved in RBX.
-     %rip is saved in CNT. %rflags is the interrupted %rflags & ~tf,
-     All other regs are not modified.
-  */
+  /*
+   * %rbx is live_thread_entry, the interrupted %rbx is saved in RBX.
+   * %rip is saved in CNT. %rflags is the interrupted %rflags & ~tf,
+   * All other regs are not modified.
+   */
   ERI_GLOBAL_HIDDEN (eri_live_resume_ret)
 eri_live_resume_ret:
   /* Update the context based on the new register values.  */
@@ -666,11 +682,12 @@ eri_live_resume_ret:
   movq	%r14, UCTX_R14(%rdx)
   movq	%r15, UCTX_R15(%rdx)
 
-  /* Set the trace flag in context if it's set originally.
-     The internal code won't set the trace flag, so if either the
-     tf is set in the saved %rflags or the interrupted %rflags,
-     we set it back.
-  */
+  /*
+   * Set the trace flag in context if it's set originally.
+   * The internal code won't set the trace flag, so if either the
+   * tf is set in the saved %rflags or the interrupted %rflags,
+   * we set it back.
+   */
   movq	UCTX_RFLAGS(%rdx), %rax
   pushfq
   popq	UCTX_RFLAGS(%rdx)
@@ -679,9 +696,10 @@ eri_live_resume_ret:
   /* Set if it's set in the saved %rflags.  */
   orq	TE_TRACE_FLAG(%rbx), %rax
   orq	%rax, UCTX_RFLAGS(%rdx)
-  /* Set trace flag in r11 accordingly if op is syscall, and
-     we are not restarting or holding (see lsyscall).
-  */
+  /*
+   * Set trace flag in r11 accordingly if op is syscall, and
+   * we are not restarting or holding (see lsyscall).
+   */
   LOAD_OP_OP (%r11)
   cmpq	$_ERS_OP_SYSCALL, %r11
   jne	.ldone_restore_trace_flag
@@ -718,11 +736,12 @@ eri_live_resume_ret:
   SIGRETURN
 
 .linternal_fix:
-  /* The only difference between internal and external is %rbx
-     is restored if we run externally to make modifing %rbx is
-     visible, internally we keep %rbx &live_thread to make jumps
-     possible.
-  */
+  /*
+   * The only difference between internal and external is %rbx
+   * is restored if we run externally to make modifing %rbx is
+   * visible, internally we keep %rbx &live_thread to make jumps
+   * possible.
+   */
   MOV_MM (PTE_RBX(%rbx), UCTX_RBX(%rdx), %rax)
 
 .lfix:
@@ -878,17 +897,18 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_start)
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   xchgq	%rsp, TE_RSP(%rbx)
 
-  /* top ---
-	 rflags
-	 rax/rdi/rsi/rdx/rcx/r8/r9/r10/r11
-     rsp ---
-	 rflags w/o tf
-  */
+  /*
+   * top ---
+   *	 rflags
+   *	 rax/rdi/rsi/rdx/rcx/r8/r9/r10/r11
+   * rsp ---
+   *	 rflags w/o tf
+   */
 
   pushfq
 
   pushfq
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   /* We need to keep tf for same test.  */
   cmpq	$1, PTE_TST_SKIP_CTF(%rbx)
   je	.ltst_skip_ctf
@@ -896,7 +916,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   andq	$~ERI_TRACE_FLAG_MASK, (%rsp)
   popfq
   subq	$8, %rsp
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
 .ltst_skip_ctf:
 #endif
 
@@ -999,10 +1019,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
 #define TST_MARK_COMPLETE_START(name) \
   ERI_GLOBAL_HIDDEN (ERI_TST_LIVE_COMPLETE_START_SYMBOL (name))
 
-/* If not TST, it's not required as tf is already cleared in new_rflags,
-   so when tst_skip_ctf is 0.
-*/
-#ifndef ERI_NON_TST
+/*
+ * If not TST, it's not required as tf is already cleared in new_rflags,
+ * so when tst_skip_ctf is 0.
+ */
+#ifndef ERI_NO_TST
 # define TST_NEW_RFLAGS_CTF(reg_or_mem) \
   cmpq	$0, PTE_TST_SKIP_CTF(%rbx);					\
   je	1f;								\
@@ -1012,11 +1033,13 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
 # define TST_NEW_RFLAGS_CTF(reg_or_mem)
 #endif
 
-/* Fix tf:
-   rflags = (rflags & TF_MASK) | new_rflags
-
-   Setting rflags has to be like this. We can't move rflags out of stack
-   as by so clear tf code in lresume may not work.  */
+/*
+ * Fix tf:
+ * rflags = (rflags & TF_MASK) | new_rflags
+ *
+ * Setting rflags has to be like this. We can't move rflags out of stack
+ * as by so clear tf code in lresume may not work.
+ */
 #define SAVE_NEW_RFLAGS_FROM_REG(reg) \
   andq	$ERI_TRACE_FLAG_MASK, STACK_RFLAGS(%rsp);			\
   TST_NEW_RFLAGS_CTF (reg)						\
@@ -1028,13 +1051,14 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   popq	tmp;								\
   SAVE_NEW_RFLAGS_FROM_REG (tmp)
 
-/* Destory %rax.
-   We have to atomically set dir to cont if no signal yet, because signal
-   can happen between any two instructions. Using atomic cmpxchg means we
-   have to clear dir when we return. There are three possible ways return:
-   1, no signal, dir is cleared in cont, 2, signal before setting mark to
-   0, dir is cleared in resume_ret, 3, signal after, dir is cleared in fix.
-*/
+/*
+ * Destory %rax.
+ * We have to atomically set dir to cont if no signal yet, because signal
+ * can happen between any two instructions. Using atomic cmpxchg means we
+ * have to clear dir when we return. There are three possible ways return:
+ * 1, no signal, dir is cleared in cont, 2, signal before setting mark to
+ * 0, dir is cleared in resume_ret, 3, signal after, dir is cleared in fix.
+ */
 #define CHECK_SET_DIR(cont, tmp) \
   xorq	%rax, %rax;							\
   movq	PASTE2 (TE_THREAD_, cont, _CONT)(%rbx), tmp;			\
@@ -1099,7 +1123,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   subq	$SYSCALL_SIZE16, %rsp
   movq	%rax, SYSCALL_RAX(%rsp)
   movq	%r11, SYSCALL_RFLAGS(%rsp)
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   movq	$0, SYSCALL_TST_CLONE_TF(%rsp)
 #endif
 
@@ -1111,9 +1135,10 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   addq	$16, %rsp
   testb	%al, %al
   jz	.lrestart_syscall
-  /* Essentially 1: jmp	1b; to hold the thread state (waiting for e.g.
-     the incoming signal).
-  */
+  /*
+   * Essentially 1: jmp	1b; to hold the thread state (waiting for e.g.
+   * the incoming signal).
+   */
   jl	.lhold_syscall
 
   movq	%rsp, %rax
@@ -1559,30 +1584,31 @@ RESTART_START_LABEL (do_syscall):
 
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 
-  /* Stack for the child:
-		top ---
-		    rflags/rax/rdi/rsi... (SAVED_REG_SIZE16)
-	  top_saved ---
-		    eri_syscall_info (SYSCALL_SIZE16)
-		    eri_syscall args (16)
-	eri_syscall ---		after start:	eri_syscall ---
-		    ret					    ret
-		    padding (8)				    padding (8)
-		    sig_mask (ERI_SIGMASK_SIZE16)	    sig_mask
-		    padding (8)			  eri_start ---
-		    info
-     eri_do_syscall ---
-		    .lchild_return
-		    rbx, child_entry
-	    syscall --- CLONE_CHILD_STACK
-
-     eri_syscall_info:	eri_live_entry_syscall_info
-     eri_syscall:	eri_live_syscall
-     eri_start:		eri_live_start_thread
-     sig_mask:		eri_sigmask
-     info:		eri_live_entry_syscall_info *
-     eri_do_syscall:	eri_live_entry_do_syscall
-  */
+  /*
+   * Stack for the child:
+   *		top ---
+   *		    rflags/rax/rdi/rsi... (SAVED_REG_SIZE16)
+   *	  top_saved ---
+   *		    eri_syscall_info (SYSCALL_SIZE16)
+   *		    eri_syscall args (16)
+   *	eri_syscall ---		after start:	eri_syscall ---
+   *		    ret					    ret
+   *		    padding (8)				    padding (8)
+   *		    sig_mask (ERI_SIGMASK_SIZE16)	    sig_mask
+   *		    padding (8)			  eri_start ---
+   *		    info
+   * eri_do_syscall ---
+   *		    .lchild_return
+   *		    rbx, child_entry
+   *	    syscall --- CLONE_CHILD_STACK
+   *
+   * eri_syscall_info:	eri_live_entry_syscall_info
+   * eri_syscall:	eri_live_syscall
+   * eri_start:		eri_live_start_thread
+   * sig_mask:		eri_sigmask
+   * info:		eri_live_entry_syscall_info *
+   * eri_do_syscall:	eri_live_entry_do_syscall
+   */
 
   movq	CLONE_CHILD_STACK(%rdx), %rax
   leaq	.lchild_return(%rip), %r11
@@ -1609,7 +1635,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
   leaq	ERI_SIGMASK_MASK(%rsi), %rsi
   CHECK_RESTORE_SIG_MASK
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
 # define TST_RESTORE_CLONE_TF \
   /* Set by sig_action from the test.  */				\
   movq	-16(%rsp), %rax;						\

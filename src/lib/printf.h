@@ -8,14 +8,16 @@
 #include "lib/buf.h"
 
 typedef uint64_t eri_file_t;
-#define eri_file_buf_t uint8_t __attribute__ ((aligned (16)))
+#define eri_file_buf_t			uint8_t __attribute__ ((aligned (16)))
 
-#define _ERI_FILE_RAW		1
+#define _ERI_FILE_RAW			1
 
-#define _ERI_RAW_FILE_FROM_FD(fd)	((eri_file_t) ((fd) << 4 | _ERI_FILE_RAW))
-#define ERI_STDIN		_ERI_RAW_FILE_FROM_FD (0)
-#define ERI_STDOUT		_ERI_RAW_FILE_FROM_FD (1)
-#define ERI_STDERR		_ERI_RAW_FILE_FROM_FD (2)
+#define _ERI_RAW_FILE_FROM_FD(fd) \
+  ((eri_file_t) ((fd) << 4 | _ERI_FILE_RAW))
+
+#define ERI_STDIN			_ERI_RAW_FILE_FROM_FD (0)
+#define ERI_STDOUT			_ERI_RAW_FILE_FROM_FD (1)
+#define ERI_STDERR			_ERI_RAW_FILE_FROM_FD (2)
 
 int32_t eri_fopen (const char *path, uint8_t r, eri_file_t *file,
 		   void *buf, uint64_t buf_size);
@@ -23,8 +25,7 @@ int32_t eri_fclose (eri_file_t file);
 
 #define eri_assert_fopen(path, r, file, buf, buf_size) \
   eri_assert (eri_fopen (path, r, file, buf, buf_size) == 0)
-#define eri_assert_fclose(file) \
-  eri_assert (eri_fclose (file) == 0)
+#define eri_assert_fclose(file)		 eri_assert (eri_fclose (file) == 0)
 
 #if 0
 int32_t eri_frelease (eri_file_t file, int32_t *fd);
@@ -35,7 +36,8 @@ int32_t eri_frelease (eri_file_t file, int32_t *fd);
 int32_t eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
 		   uint64_t *res_offset);
 
-int32_t eri_fwrite (eri_file_t file, const void *buf, uint64_t size, uint64_t *len);
+int32_t eri_fwrite (eri_file_t file,
+		    const void *buf, uint64_t size, uint64_t *len);
 int32_t eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len);
 
 #define eri_assert_fwrite(f, buf, sz, len) \
@@ -77,16 +79,16 @@ int32_t eri_lprintf (int32_t *lock, const char *fmt, ...);
   eri_assert (eri_lprintf (l, fmt, ##__VA_ARGS__) == 0)
 
 #define eri_assert_clvfprintf(mt, l, f, fmt, arg) \
-  eri_assert ((mt) ? eri_lvfprintf (l, f, fmt, arg)		\
+  eri_assert ((mt) ? eri_lvfprintf (l, f, fmt, arg)			\
 		   : eri_vfprintf (f, fmt, arg) == 0)
 #define eri_assert_clfprintf(mt, l, f, fmt, ...) \
-  eri_assert ((mt) ? eri_lfprintf (l, f, fmt, ##__VA_ARGS__)	\
+  eri_assert ((mt) ? eri_lfprintf (l, f, fmt, ##__VA_ARGS__)		\
 		   : eri_fprintf (f, fmt, ##__VA_ARGS__) == 0)
 #define eri_assert_clvprintf(mt, l, fmt, arg) \
-  eri_assert ((mt) ? eri_lvprintf (l, fmt, arg)			\
+  eri_assert ((mt) ? eri_lvprintf (l, fmt, arg)				\
 		   : eri_vprintf (fmt, arg))
 #define eri_assert_clprintf(mt, l, fmt, ...) \
-  eri_assert ((mt) ? eri_lprintf (l, fmt, ##__VA_ARGS__)	\
+  eri_assert ((mt) ? eri_lprintf (l, fmt, ##__VA_ARGS__)		\
 		   : eri_printf (fmt, ##__VA_ARGS__))
 
 int32_t eri_file_foreach_line (const char *path, struct eri_buf *buf,

@@ -4,12 +4,14 @@
 #include "public/common.h"
 
 #define _ERI_PP_IF_0(...)
-#define _ERI_PP_IF_1(...)	__VA_ARGS__
-#define ERI_PP_IF(c, ...)	_ERS_PASTE (_ERI_PP_IF_, c) (__VA_ARGS__)
+#define _ERI_PP_IF_1(...)		__VA_ARGS__
+#define ERI_PP_IF(c, ...) \
+  _ERS_PASTE (_ERI_PP_IF_, c) (__VA_ARGS__)
 
-#define _ERI_PP_IIF_0(t, ...)	__VA_ARGS__
-#define _ERI_PP_IIF_1(t, ...)	t
-#define ERI_PP_IIF(c, t, ...)	_ERS_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
+#define _ERI_PP_IIF_0(t, ...)		__VA_ARGS__
+#define _ERI_PP_IIF_1(t, ...)		t
+#define ERI_PP_IIF(c, t, ...) \
+  _ERS_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
 #define ERI_OMIT(...)
 

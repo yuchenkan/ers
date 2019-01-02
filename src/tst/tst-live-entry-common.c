@@ -123,7 +123,8 @@ tst_sig_record_mctxs (struct tst_context *ctx,
     eri_sigreturn
   };
   struct eri_sigaction old_sa;
-  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, &old_sa, ERI_SIG_SETSIZE);
+  ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP,
+		      &sa, &old_sa, ERI_SIG_SETSIZE);
 
   tst_live_entry (ctx);
 

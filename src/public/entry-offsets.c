@@ -2,7 +2,7 @@
 #include "entry.h"
 
 #define THREAD_ENTRY_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (_ERS_THREAD_ENTRY_, name,			\
+  ERI_DECLARE_OFFSET (_ERS_THREAD_ENTRY_, name,				\
 		      struct eri_public_thread_entry, member)
 
 void

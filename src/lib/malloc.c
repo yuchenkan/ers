@@ -17,7 +17,8 @@ struct block
 static inline uint64_t
 block_size (struct eri_pool *pool, struct block *b)
 {
-  return (b->next ? (uint8_t *) b->next : pool->buf + pool->size) - (uint8_t *) b;
+  return (b->next
+	    ? (uint8_t *) b->next : pool->buf + pool->size) - (uint8_t *) b;
 }
 
 static uint8_t
@@ -27,16 +28,18 @@ less_than (struct eri_pool *pool, struct block *b1, struct block *b2)
   uint64_t s2 = block_size (pool, b2);
 
   if (s1 != s2) return s1 < s2;
-  if (b1->type != b2->type) return b1->type > b2->type; // sort reversely, for search
+  /* Sort reversely, for search.  */
+  if (b1->type != b2->type) return b1->type > b2->type;
   return b1 < b2;
 }
 
 ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 
-#define ALIGN(x) eri_round_up (x, 16)
+#define ALIGN(x)	eri_round_up (x, 16)
 
-#define MIN_BLOCK_SIZE ALIGN (sizeof (struct block))
-#define ALLOC_OFFSET ALIGN (__builtin_offsetof (struct block, block_rbt_parent))
+#define MIN_BLOCK_SIZE	ALIGN (sizeof (struct block))
+#define ALLOC_OFFSET \
+  ALIGN (__builtin_offsetof (struct block, block_rbt_parent))
 
 int32_t
 eri_init_pool (struct eri_pool *pool, uint8_t *buf, uint64_t size)

@@ -196,9 +196,10 @@ stop_thread (uint8_t mt, struct thread *th)
 #endif
   eri_assert_cfree (mt, internal->pool, th->file_buf);
 
-  /* Mark the thread stopped. This is required because stop_thread in
-     non group exit is called before hold_quit, so if hold_quit failed,
-     there will be another try to stop_thread.
+  /*
+   * Mark the thread stopped. This is required because stop_thread in
+   * non group exit is called before hold_quit, so if hold_quit failed,
+   * there will be another try to stop_thread.
   */
   th->file_buf = 0;
 }
@@ -419,8 +420,8 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
 #if 0
   struct eri_ucontext *ctx = (void *) info->rdx;
 #endif
-  /* TODO fix stack sp */
-  /* TODO SA_NODEFER */
+  /* TODO: fix stack sp */
+  /* TODO: SA_NODEFER */
 }
 
 void
@@ -540,9 +541,10 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 
 	  eri_daemon_stop (0, internal->daemon);
 
-	  /* As there should be no one else allocating memory, freeing
-	     the stack still in use is safe here.
-	  */
+	  /*
+	   * As there should be no one else allocating memory, freeing
+	   * the stack still in use is safe here.
+	   */
 	  free_thread (0, th);
           struct eri_pool *pool = &internal->pool->pool;
 	  eri_assert_free (pool, internal->atomic_mem_table);
@@ -559,7 +561,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 				      th->entry);
 }
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
 
 uint8_t
 eri_tst_live_multi_threading (void *thread)

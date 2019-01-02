@@ -96,7 +96,7 @@ declare (void)
 
   THREAD_ENTRY_OFFSET (THREAD, thread);
 
-#ifndef ERI_NON_TST
+#ifndef ERI_NO_TST
   THREAD_ENTRY_OFFSET (TST_SKIP_CTF, tst_skip_ctf);
 #endif
 
