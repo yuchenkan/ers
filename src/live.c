@@ -378,6 +378,93 @@ sig_quit_thread (int32_t sig, struct eri_siginfo *info,
   eri_live_quit (&th->alive);
 }
 
+static void
+inform_quit (void *thread)
+{
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+
+  struct thread *t;
+  ERI_LST_FOREACH (thread, internal, t)
+    if (t != th)
+      ERI_ASSERT_SYSCALL (tgkill, internal->sys_pid,
+			  t->sys_tid, ERI_SIGRTMIN);
+}
+
+static uint8_t
+final_quit (uint8_t mt, struct thread *th, uint8_t group)
+{
+  struct internal *internal = th->internal;
+
+  if (group)
+    {
+      if (! try_quit (mt, internal)) return 0;
+      eri_daemon_invoke (internal->daemon, inform_quit, th);
+    }
+
+  stop_thread (1, th);
+  remove_thread (1, th);
+
+  while (mt)
+    {
+      ERI_ASSERT_SYSCALL (sched_yield);
+      mt = !! eri_atomic_load (&internal->multi_threading);
+    }
+  eri_barrier ();
+
+  eri_daemon_stop (0, internal->daemon);
+
+  /*
+   * As there should be no one else allocating memory, freeing the stack
+   * still in use is safe here.
+   */
+  free_thread (0, th);
+  struct eri_pool *pool = &internal->pool->pool;
+  eri_assert_free (pool, internal->atomic_mem_table);
+  eri_assert_free (pool, internal);
+  eri_assert (pool->used == 0);
+
+  return 1;
+}
+
+static void
+sig_final_quit (int32_t sig, struct eri_siginfo *info,
+		struct eri_ucontext *ctx, void *thread)
+{
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+  uint8_t mt = eri_atomic_load (&internal->multi_threading);
+
+  if (! final_quit (mt, th, 1)) eri_live_quit (&th->alive);
+
+  struct eri_sigaction act = { ERI_SIG_DFL };
+  ERI_ASSERT_SYSCALL (rt_sigaction, sig, &act, 0, ERI_SIG_SETSIZE);
+  ERI_ASSERT_SYSCALL (tgkill, internal->sys_pid, th->sys_tid, sig);
+}
+
+static void
+sig_term (int32_t sig, struct eri_siginfo *info,
+	  struct eri_ucontext *ctx, void *thread)
+{
+  sig_final_quit (sig, info, ctx, thread);
+}
+
+static void
+sig_core (int32_t sig, struct eri_siginfo *info,
+	  struct eri_ucontext *ctx, void *thread)
+{
+  sig_final_quit (sig, info, ctx, thread);
+}
+
+static void
+sig_stop (int32_t sig, struct eri_siginfo *info,
+	  struct eri_ucontext *ctx, void *thread)
+{
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+  ERI_ASSERT_SYSCALL (kill, internal->sys_pid, ERI_SIGSTOP);
+}
+
 void
 eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx, int32_t intr,
@@ -453,7 +540,21 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
   if (act == ERI_SIG_DFL)
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL;
-      /* TODO: default */
+      if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
+	  || sig == ERI_SIGPIPE || sig == ERI_SIGALRM || sig == ERI_SIGTERM
+	  || sig == ERI_SIGUSR1 || sig == ERI_SIGUSR2 || sig == ERI_SIGIO
+	  || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
+	  || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
+	  || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
+	act_info->rip = (uint64_t) sig_term;
+      else if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
+	       || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
+	       || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
+	       || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
+	act_info->rip = (uint64_t) sig_core;
+      else if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
+	act_info->rip = (uint64_t) sig_stop;
+      else eri_assert (0);
       return;
     }
 
@@ -487,19 +588,6 @@ eri_live_start_thread (void *thread)
   unhold_quit (1, &internal->quit_lock);
 
   start_thread (1, th);
-}
-
-static void
-inform_quit (void *thread)
-{
-  struct thread *th = thread;
-  struct internal *internal = th->internal;
-
-  struct thread *t;
-  ERI_LST_FOREACH (thread, internal, t)
-    if (t != th)
-      ERI_ASSERT_SYSCALL (tgkill, internal->sys_pid,
-			  t->sys_tid, ERI_SIGRTMIN);
 }
 
 int8_t
@@ -574,36 +662,8 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 
 	  eri_daemon_invoke (internal->daemon, quit_thread, th);
 	}
-      else
-	{
-	  if (nr == __NR_exit_group)
-	    {
-	      if (! try_quit (mt, internal)) return -1;
-	      eri_daemon_invoke (internal->daemon, inform_quit, th);
-	    }
-
-	  stop_thread (1, th);
-	  remove_thread (1, th);
-
-	  while (mt)
-	    {
-	      ERI_ASSERT_SYSCALL (sched_yield);
-	      mt = !! eri_atomic_load (&internal->multi_threading);
-	    }
-	  eri_barrier ();
-
-	  eri_daemon_stop (0, internal->daemon);
-
-	  /*
-	   * As there should be no one else allocating memory, freeing
-	   * the stack still in use is safe here.
-	   */
-	  free_thread (0, th);
-          struct eri_pool *pool = &internal->pool->pool;
-	  eri_assert_free (pool, internal->atomic_mem_table);
-	  eri_assert_free (pool, internal);
-	  eri_assert (pool->used == 0);
-	}
+      else if (! final_quit (mt, th, nr == __NR_exit_group))
+	return -1;
 
       /* XXX: quit even if we are to restart in the sigaction.  */
       ERI_ASSERT_SYSCALL_NCS (nr, a0);
