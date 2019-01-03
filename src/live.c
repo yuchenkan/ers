@@ -396,64 +396,7 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       return;
     }
 
-  uint8_t no_action = 0;
-  if (no_action)
-    {
-      act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
-      if (intr)
-	{
-	  /* TODO: Fix context to restart.  */
-	}
-      return;
-    }
-
-  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
-  uint8_t restart_syscall = 0;
-  if (intr && restart_syscall)
-    {
-      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
-      /* TODO: Fix context to restart.  */
-    }
-
-  /* TODO: rip, mask */
-}
-
-uint64_t
-eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
-			void *thread)
-{
-  /* TODO */
-#if 0
-  uint8_t switch_stack = stack.size
-			 && ! (ctx->mctx.rsp > stack.sp
-			       && ctx->mctx.rsp - stack.sp <= stack.size);
-#endif
-  return 0;
-}
-
-#if 0
-
-void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *thread)
-{
-  struct thread *th = thread;
-  struct internal *internal = th->internal;
-  uint8_t mt = !! eri_atomic_load (&internal->multi_threading);
-  if (mt && eri_atomic_load (&internal->quitting))
-    {
-      eri_barrier ();
-      stop_thread (1, th);
-      remove_thread (1, th);
-
-      th->clear_tid = 0;
-      eri_daemon_invoke (internal->daemon, quit_thread, th);
-      eri_live_quit (&th->alive);
-    }
-
-#if 0
-  struct sig_action *action = internal->sig_actions[sig - 1];
+  struct sig_action *action = &internal->sig_actions[sig - 1];
 
   void *act;
   int32_t flags;
@@ -463,29 +406,76 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
   act = action->act;
   flags = action->flags;
   mask = action->mask;
+  if (act != ERI_SIG_DFL && act != ERI_SIG_IGN
+      && (flags & ERI_SA_RESETHAND))
+    action->act = ERI_SIG_DFL;
   eri_cunlock (mt, &action->lock);
 
-  if (act == ERI_SIG_IGN)
+  if ((act == ERI_SIG_DFL
+       && (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
+	   || sig == ERI_SIGURG || sig == ERI_SIGWINCH))
+      || act == ERI_SIG_IGN)
     {
-      info->rip = 0;
+      act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
+      if (intr)
+	{
+	  /* TODO: Fix context to restart.  */
+	}
+      return;
+    }
+
+  /* XXX */
+  if ((intr == __NR_read || intr == __NR_readv
+       || intr == __NR_write || intr == __NR_writev
+       || intr == __NR_ioctl || intr == __NR_open
+       || intr == __NR_wait4 || intr == __NR_waitid
+
+       /* TODO: Check timeout. */
+       || intr == __NR_accept || intr == __NR_accept4 || intr == __NR_connect
+       || intr == __NR_recvfrom || intr == __NR_recvmsg
+       || intr == __NR_recvmmsg
+       || intr == __NR_sendto || intr == __NR_sendmsg
+       || intr == __NR_sendmmsg
+
+       || intr == __NR_flock
+       /* TODO: Check operation. */
+       || intr == __NR_fcntl
+       || intr == __NR_mq_timedsend || intr == __NR_mq_timedreceive
+       || intr == __NR_futex
+       || intr == __NR_getrandom)
+      && (flags & ERI_SA_RESTART))
+    {
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
+      /* TODO: Fix context to restart.  */
       return;
     }
 
   if (act == ERI_SIG_DFL)
     {
-      if (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX)
-	{
-	}
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL;
+      /* TODO: default */
+      return;
     }
-#endif
 
-#if 0
-  struct eri_ucontext *ctx = (void *) info->rdx;
-#endif
-  /* TODO: fix stack sp */
-  /* TODO: SA_NODEFER */
+  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  act_info->rip = (uint64_t) act;
+
+  /* XXX: SA_NODEFER */
+  act_info->mask = mask;
 }
+
+uint64_t
+eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
+			void *thread)
+{
+  /* TODO: Fix stack sp.  */
+#if 0
+  uint8_t switch_stack = stack.size
+			 && ! (ctx->mctx.rsp > stack.sp
+			       && ctx->mctx.rsp - stack.sp <= stack.size);
 #endif
+  return 0;
+}
 
 void
 eri_live_start_thread (void *thread)

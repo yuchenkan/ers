@@ -87,7 +87,6 @@ void
 eri_live_entry_setup_sig_stack (int32_t sig, struct eri_siginfo *info,
 				struct eri_ucontext *ctx, uint64_t cur)
 {
-  /* TODO: fix ctx->stack */
   struct eri_live_entry_sig_stack_info *stack_info
 			= (void *) (cur - eri_size_of (*stack_info, 16) - 8);
   uint64_t bot = ctx->stack.sp;

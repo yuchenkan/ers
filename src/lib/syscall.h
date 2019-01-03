@@ -122,31 +122,31 @@
 #define ERI_FUTEX_WAIT_PRIVATE	(ERI_FUTEX_WAIT | ERI_FUTEX_PRIVATE_FLAG)
 #define ERI_FUTEX_WAKE_PRIVATE	(ERI_FUTEX_WAKE | ERI_FUTEX_PRIVATE_FLAG)
 
-#define ERI_PROT_READ			0x1
-#define ERI_PROT_WRITE			0x2
-#define ERI_PROT_EXEC			0x4
+#define ERI_PROT_READ		0x1
+#define ERI_PROT_WRITE		0x2
+#define ERI_PROT_EXEC		0x4
 
-#define ERI_MAP_PRIVATE			0x2
-#define ERI_MAP_FIXED			0x10
-#define ERI_MAP_ANONYMOUS		0x20
-#define ERI_MAP_GROWSDOWN		0x100
-#define ERI_MAP_DENYWRITE		0x0800
+#define ERI_MAP_PRIVATE		0x2
+#define ERI_MAP_FIXED		0x10
+#define ERI_MAP_ANONYMOUS	0x20
+#define ERI_MAP_GROWSDOWN	0x100
+#define ERI_MAP_DENYWRITE	0x0800
 
-#define ERI_ARCH_SET_GS			0x1001
-#define ERI_ARCH_SET_FS			0x1002
-#define ERI_ARCH_GET_FS			0x1003
-#define ERI_ARCH_GET_GS			0x1004
+#define ERI_ARCH_SET_GS		0x1001
+#define ERI_ARCH_SET_FS		0x1002
+#define ERI_ARCH_GET_FS		0x1003
+#define ERI_ARCH_GET_GS		0x1004
 
-#define ERI_S_IRUSR			0400	/* Read by owner.  */
-#define ERI_S_IWUSR			0200	/* Write by owner.  */
-#define ERI_S_IXUSR			0100	/* Execute by owner.  */
+#define ERI_S_IRUSR		0400	/* Read by owner.  */
+#define ERI_S_IWUSR		0200	/* Write by owner.  */
+#define ERI_S_IXUSR		0100	/* Execute by owner.  */
 #define ERI_S_IRWXU \
   (ERI_S_IRUSR | ERI_S_IWUSR | ERI_S_IXUSR)
 
-#define ERI_O_RDONLY			00
-#define ERI_O_WRONLY			01
-#define ERI_O_CREAT			0100
-#define ERI_O_TRUNC			01000
+#define ERI_O_RDONLY		00
+#define ERI_O_WRONLY		01
+#define ERI_O_CREAT		0100
+#define ERI_O_TRUNC		01000
 
 #define ERI_CLONE_VM			0x00000100
 #define ERI_CLONE_FS			0x00000200
@@ -163,41 +163,45 @@
    | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
    | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
 
-#define ERI_SEEK_SET			0
-#define ERI_SEEK_CUR			1
+#define ERI_SEEK_SET		0
+#define ERI_SEEK_CUR		1
 
-#define ERI_SA_SIGINFO			4
-#define ERI_SA_RESTORER			0x04000000
-#define ERI_SA_ONSTACK			0x08000000
-#define ERI_SA_RESTART			0x10000000
+#define ERI_SA_SIGINFO		4
+#define ERI_SA_RESTORER		0x04000000
+#define ERI_SA_ONSTACK		0x08000000
+#define ERI_SA_RESTART		0x10000000
+#define ERI_SA_NODEFER		0x40000000
+#define ERI_SA_RESETHAND	0x80000000
 
-#define ERI_SIGINT			2
-#define ERI_SIGILL			4
-#define ERI_SIGFPE			8
-#define ERI_SIGTRAP			5
-#define ERI_SIGKILL			9
-#define ERI_SIGBUS			10
-#define ERI_SIGSEGV			11
-#define ERI_SIGSYS			12
-#define ERI_SIGCHLD			17
-#define ERI_SIGSTOP			19
-#define ERI_SIGURG			23
-#define ERI_SIGRTMIN			32
-#define ERI_SIGRTMAX			64
-#define ERI_NSIG			(ERI_SIGRTMAX + 1)
+#define ERI_SIGINT		2
+#define ERI_SIGILL		4
+#define ERI_SIGFPE		8
+#define ERI_SIGTRAP		5
+#define ERI_SIGKILL		9
+#define ERI_SIGBUS		10
+#define ERI_SIGSEGV		11
+#define ERI_SIGSYS		12
+#define ERI_SIGCHLD		17
+#define ERI_SIGCONT		18
+#define ERI_SIGSTOP		19
+#define ERI_SIGURG		23
+#define ERI_SIGWINCH		28
+#define ERI_SIGRTMIN		32
+#define ERI_SIGRTMAX		64
+#define ERI_NSIG		(ERI_SIGRTMAX + 1)
 
-#define ERI_SIG_SETMASK			2
-#define ERI_SIG_SETSIZE			(ERI_NSIG / 8)
+#define ERI_SIG_SETMASK		2
+#define ERI_SIG_SETSIZE		(ERI_NSIG / 8)
 
-#define ERI_SS_ONSTACK			1
-#define ERI_SS_DISABLE			2
+#define ERI_SS_ONSTACK		1
+#define ERI_SS_DISABLE		2
 
-#define ERI_TRAP_TRACE			2
+#define ERI_TRAP_TRACE		2
 
 #ifdef __ASSEMBLER__
 
-#define ERI_SIG_DFL			0
-#define ERI_SIG_IGN			1
+#define ERI_SIG_DFL		0
+#define ERI_SIG_IGN		1
 
 #else
 
@@ -227,8 +231,8 @@ struct eri_stat
 };
 #endif
 
-#define ERI_SIG_DFL			((void *) 0)
-#define ERI_SIG_IGN			((void *) 1)
+#define ERI_SIG_DFL		((void *) 0)
+#define ERI_SIG_IGN		((void *) 1)
 
 struct eri_sigset
 {
@@ -317,8 +321,8 @@ void eri_sigreturn (void);
 #define eri_sigemptyset(set) \
   eri_memset (set, 0, sizeof (struct eri_sigset))
 
-#define _eri_sigword(sig)		(((sig) - 1) / 64)
-#define _eri_sigmask(sig)		(((uint64_t) 1) << ((sig) - 1) % 64)
+#define _eri_sigword(sig)	(((sig) - 1) / 64)
+#define _eri_sigmask(sig)	(((uint64_t) 1) << ((sig) - 1) % 64)
 
 #define eri_sigaddset(set, sig) \
   do {									\
