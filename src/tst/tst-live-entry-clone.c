@@ -228,18 +228,22 @@ sig_step_int_act (int32_t sig, struct eri_siginfo *info,
 static void *sig_action;
 
 void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
 {
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+  eri_assert (intr == -1);
+
   int32_t tid = ERI_ASSERT_SYSCALL_RES (gettid);
   eri_assert_lprintf (&lock, "[start_sig_action:%u] sig = %u\n",
 		      pid != tid, sig);
 
-  stack->size = 0;
-  info->rip = (uint64_t) sig_action;
-  info->mask.mask_all = 1;
-  eri_sigfillset (&info->mask.mask);
+  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  act_info->rip = (uint64_t) sig_action;
+  act_info->mask.mask_all = 1;
+  eri_sigfillset (&act_info->mask.mask);
 }
 
 static uint8_t trap_trace;

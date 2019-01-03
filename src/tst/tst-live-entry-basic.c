@@ -77,77 +77,77 @@ int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  struct eri_live_entry_syscall_info *info,
-		  void *entry)
+		  void *thread)
 {
   if (hold_syscall) return -1;
 
   silence = 1;
   tst_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
 	      current->name, info->rax, info->rflags);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
-  return tst_do_syscall (a0, a1, a2, a3, a4, a5, info, entry);
+  return tst_do_syscall (a0, a1, a2, a3, a4, a5, info, current_entry);
 }
 
 void
-eri_live_sync_async (uint64_t cnt, void *entry)
+eri_live_sync_async (uint64_t cnt, void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live sync async: cnt = %lx\n",
 	      current->name, cnt);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
 }
 
 void
-eri_live_restart_sync_async (uint64_t cnt, void *entry)
+eri_live_restart_sync_async (uint64_t cnt, void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live restart sync async: cnt = %lx\n",
 	      current->name, cnt);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
 }
 
 uint64_t
-eri_live_atomic_hash_mem (uint64_t mem, void *entry)
+eri_live_atomic_hash_mem (uint64_t mem, void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live atomic hash mem: mem = %lx\n",
 	      current->name, mem);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
   return 0;
 }
 
 void
-eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *entry)
+eri_live_atomic_load (uint64_t mem, uint64_t ver, uint64_t val, void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live atomic load: mem = %lx, "
 	      "ver = %lx, val = %lx\n", current->name, mem, ver, val);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
 }
 
 void
-eri_live_atomic_store (uint64_t mem, uint64_t ver, void *entry)
+eri_live_atomic_store (uint64_t mem, uint64_t ver, void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live atomic store: mem = %lx, ver = %lx\n",
 	      current->name, mem, ver);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
 }
 
 void
 eri_live_atomic_load_store (uint64_t mem, uint64_t ver, uint64_t val,
-			    void *entry)
+			    void *thread)
 {
   silence = 1;
   tst_printf ("[%s] eri live atomic load store: mem = %lx, "
 	      "ver = %lx, val = %lx\n", current->name, mem, ver, val);
-  eri_assert (current_entry == entry);
+  eri_assert (current_entry == thread);
   silence = 0;
 }
 
@@ -221,15 +221,21 @@ static struct eri_sigset sig_mask;
 static void *sig_action;
 
 void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
 {
-  eri_assert (current_entry == entry);
-  stack->size = 0;
-  info->rip = (uint64_t) sig_action;
-  info->mask.mask_all = 0;
-  info->mask.mask = sig_mask;
+  tst_printf ("[eri_live_get_sig_action] sig_action = %lx\n", sig_action);
+
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+  eri_assert (intr == -1);
+
+  eri_assert (current_entry == thread);
+  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  act_info->rip = (uint64_t) sig_action;
+  act_info->mask.mask_all = 0;
+  act_info->mask.mask = sig_mask;
 }
 
 int32_t
@@ -255,7 +261,6 @@ sig_step_int_act (int32_t sig, struct eri_siginfo *info,
 		  struct eri_ucontext *ctx)
 {
   tst_printf ("[%s:step_int] sig trigger act\n", current->name);
-
 
   eri_assert (sig == ERI_SIGINT);
   eri_assert (++current->triggered == 1);

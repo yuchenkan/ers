@@ -87,6 +87,18 @@
 #define TE_EXT_R14		ERI_LIVE_THREAD_ENTRY_EXT_R14
 #define TE_EXT_R15		ERI_LIVE_THREAD_ENTRY_EXT_R15
 
+#define TE_SYSCALL_RAX		ERI_LIVE_THREAD_ENTRY_SYSCALL_RAX
+#define TE_SYSCALL_RSP		ERI_LIVE_THREAD_ENTRY_SYSCALL_RSP
+#define TE_SYSCALL_NEW_THREAD	ERI_LIVE_THREAD_ENTRY_SYSCALL_NEW_THREAD
+#define TE_SYNC_REPEAT_TRACE	ERI_LIVE_THREAD_ENTRY_SYNC_REPEAT_TRACE
+
+#define TE_SIG_ACTION_INFO_TYPE	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_TYPE
+#define TE_SIG_ACTION_INFO_RIP	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_RIP
+#define TE_SIG_ACTION_INFO_MASK_ALL \
+  ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_MASK_ALL
+#define TE_SIG_ACTION_INFO_MASK	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_MASK
+#define TE_SIG_ACTION_INFO	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO
+
 #define TE_RESTART_SYSCALL	ERI_LIVE_THREAD_ENTRY_RESTART_SYSCALL
 #define TE_RESTART_SYSCALL_RBX	ERI_LIVE_THREAD_ENTRY_RESTART_SYSCALL_RBX
 #define TE_RESTART_SYSCALL_RSP	ERI_LIVE_THREAD_ENTRY_RESTART_SYSCALL_RSP
@@ -104,11 +116,6 @@
 #define TE_THREAD_RESTART_SYSCALL_END \
   ERI_LIVE_THREAD_ENTRY_THREAD_RESTART_SYSCALL_END
 
-#define TE_SYSCALL_RAX		ERI_LIVE_THREAD_ENTRY_SYSCALL_RAX
-#define TE_SYSCALL_RSP		ERI_LIVE_THREAD_ENTRY_SYSCALL_RSP
-#define TE_SYSCALL_NEW_THREAD	ERI_LIVE_THREAD_ENTRY_SYSCALL_NEW_THREAD
-#define TE_SYNC_REPEAT_TRACE	ERI_LIVE_THREAD_ENTRY_SYNC_REPEAT_TRACE
-
 #define TE_SIG_RBX		ERI_LIVE_THREAD_ENTRY_SIG_RBX
 #define TE_SIG_RDI		ERI_LIVE_THREAD_ENTRY_SIG_RDI
 #define TE_SIG_RSI		ERI_LIVE_THREAD_ENTRY_SIG_RSI
@@ -119,7 +126,6 @@
 #define TE_SIG_R13		ERI_LIVE_THREAD_ENTRY_SIG_R13
 #define TE_SIG_R14		ERI_LIVE_THREAD_ENTRY_SIG_R14
 #define TE_SIG_R15		ERI_LIVE_THREAD_ENTRY_SIG_R15
-#define TE_SIG_RIP		ERI_LIVE_THREAD_ENTRY_SIG_RIP
 
 #define TE_SIG_STACK		ERI_LIVE_THREAD_ENTRY_SIG_STACK
 
@@ -128,6 +134,12 @@
 #define PTE_TST_SKIP_CTF	ERI_LIVE_THREAD_ENTRY_TST_SKIP_CTF
 
 #define TE_SIZE16		ERI_LIVE_THREAD_ENTRY_SIZE16
+
+#define SIG_NO_ACTION		ERI_LIVE_ENTRY_SIG_NO_ACTION
+#define SIG_ACTION		ERI_LIVE_ENTRY_SIG_ACTION
+#define SIG_ACTION_RESTART	ERI_LIVE_ENTRY_SIG_ACTION_RESTART
+#define SIG_ACTION_INTERNAL	ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL
+#define SIG_ACTION_UNKNOWN	ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN
 
 #define PASTE			_ERS_PASTE
 #define PASTE2			_ERS_PASTE2
@@ -257,14 +269,15 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 		      .lnested_signal_invoke)
 
 /* Set %rbx to live_thread_entry.  */
-#define LOAD_ENTRY(tmp, save, ...) \
+#define SIG_LOAD_ENTRY(tmp, save, ...) \
   movq	UCTX_SS_SP(%rdx), tmp;						\
   movq	(tmp), tmp;							\
   save (TE_SIG_RBX(tmp), ##__VA_ARGS__)					\
   movq	%rbx, TE_SIG_RBX(tmp);						\
-  movq	tmp, %rbx
+  movq	tmp, %rbx;							\
+  movq	$SIG_ACTION_UNKNOWN, TE_SIG_ACTION_INFO_TYPE(%rbx)
 
-  LOAD_ENTRY (%r11, ERI_OMIT)
+  SIG_LOAD_ENTRY (%r11, ERI_OMIT)
 
 #define CMP_RIP_F(field) \
   cmpq	field(%rbx), %rax
@@ -322,29 +335,34 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   cmpq	$-ERI_EINTR, UCTX_RAX(%rdx)
   jne	.lcheck_common_complete
 
-#define CHECK_IGNORE_SIGNAL(syscall) \
+#define GET_SIG_ACTION(intr) \
   pushq	%rdi;								\
   pushq	%rsi;								\
   pushq	%rdx;								\
+  subq	$8, %rsp;							\
 									\
-  movq	syscall, %rcx;							\
-  call	eri_live_ignore_signal;						\
+  movq	intr, %rcx;							\
+  leaq	TE_SIG_ACTION_INFO(%rbx), %r8;					\
+  movq	TE_THREAD(%rbx), %r9;						\
+  call	eri_live_get_sig_action;					\
 									\
+  addq	$8, %rsp;							\
   popq	%rdx;								\
   popq	%rsi;								\
-  popq	%rdi;								\
-  testb	%al, %al
+  popq	%rdi
 
 .lcheck_ignore_signal:
   /*
-   * Context shall be fixed by CHECK_IGNORE_SIGNAL(eri_live_ignore_signal)
-   * if the syscall is to be restarted.
+   * Context shall be fixed by GET_SIG_ACTION if the syscall is to be
+   * restarted.
    */
-  CHECK_IGNORE_SIGNAL (TE_SYSCALL_RAX(%rbx))
-  /* Signal with handler shall be restarted.  */
-  jl	.lrestart_syscall_handler
+  GET_SIG_ACTION (TE_SYSCALL_RAX(%rbx))
+  cmpq	$SIG_NO_ACTION, TE_SIG_ACTION_INFO_TYPE(%rbx)
   /* Signal shall be ignored.  */
-  jg	.lrestart_syscall_no_handler
+  je	.lrestart_syscall_no_handler
+  cmpq	$SIG_ACTION_RESTART, TE_SIG_ACTION_INFO_TYPE(%rbx)
+  /* Signal with handler shall be restarted.  */
+  je	.lrestart_syscall_handler
 
   movq	UCTX_RIP(%rdx), %rax
   jmp	.lcheck_internal_complete
@@ -448,7 +466,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
 #define SAVE_TE_SIG_RBX(val)	MOV_MM (val, UCTX_RBX(%rdx), %r11);
 
-  LOAD_ENTRY (%rax, SAVE_TE_SIG_RBX)
+  SIG_LOAD_ENTRY (%rax, SAVE_TE_SIG_RBX)
 
 #define FIX_NESTED_INVOKE(reg) \
   MOV_MM (PASTE (TE_SIG_, reg)(%rbx), PASTE (UCTX_, reg)(%rdx), %rax)
@@ -456,7 +474,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   FIX_NESTED_INVOKE (RDI)
   FIX_NESTED_INVOKE (RSI)
   FIX_NESTED_INVOKE (RDX)
-  FIX_NESTED_INVOKE (RIP)
+  MOV_MM (TE_SIG_ACTION_INFO_RIP(%rbx), UCTX_RIP(%rdx), %rax)
   jmp	.linvoke
 
   /*
@@ -521,14 +539,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   /* Fix cont-externally if is thread_entry_external_cont.  */
   jmp	.lfix
 
-#define SIGRETURN \
-  addq	$8, %rsp;							\
-  jmp	eri_sigreturn
-
 #define IGNORE_IGNORED \
-  CHECK_IGNORE_SIGNAL ($-1);						\
-  jz	1f;								\
-  SIGRETURN;								\
+  GET_SIG_ACTION ($-1);							\
+  cmpq	$SIG_NO_ACTION, TE_SIG_ACTION_INFO_TYPE(%rbx);			\
+  jne	1f;								\
+  jmp	.lsig_return;							\
 1:
 
 /* Check sigtrap from single step tracing.  */
@@ -541,7 +556,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 /* Ignore sigtrap from single step tracing.  */
 #define IGNORE_TRACE(not_trace) \
   IF_NOT_TRACE (not_trace);						\
-  SIGRETURN
+  jmp	.lsig_return
 
   /*
    * We are in the second part while the instrcution is not reached.
@@ -560,7 +575,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   cmpq	$0, TE_SYNC_REPEAT_TRACE(%rbx)
   jne	.lfix_restart
   movq	$1, TE_SYNC_REPEAT_TRACE(%rbx)
-  SIGRETURN
+  jmp	.lsig_return
 
 .lrestart_check_trace:
   IGNORE_IGNORED
@@ -727,13 +742,13 @@ eri_live_resume_ret:
   movq	$0, PTE_DIR(%rbx)
 
   /* Ignore the fisrt trace of new threads.  */
-  IF_NOT_TRACE (.ldo_invoke)
+  IF_NOT_TRACE (.linvoke)
   LOAD_OP_OP (%rax)
   cmpq	$_ERS_OP_SYSCALL, %rax
-  jne	.ldo_invoke
+  jne	.linvoke
   cmpq	$1, TE_SYSCALL_NEW_THREAD(%rbx)
-  jne	.ldo_invoke
-  SIGRETURN
+  jne	.linvoke
+  jmp	.lsig_return
 
 .linternal_fix:
   /*
@@ -750,33 +765,39 @@ eri_live_resume_ret:
   MOV_MM (PTE_CONT(%rbx), UCTX_RIP(%rdx), %rax)
 
 .linvoke:
-  movq	%rdi, TE_SIG_RDI(%rbx)
+  cmpq	$SIG_ACTION_UNKNOWN, TE_SIG_ACTION_INFO_TYPE(%rbx)
+  jne	.linvoke_sig_act
 
-#define SIG_ACTION_RSI		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RSI
-#define SIG_ACTION_RDX		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RDX
-#define SIG_ACTION_RSP		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RSP
-#define SIG_ACTION_RIP		ERI_LIVE_ENTRY_SIG_ACTION_INFO_RIP
-#define SIG_ACTION_MASK_ALL	ERI_LIVE_ENTRY_SIG_ACTION_INFO_MASK_ALL
-#define SIG_ACTION_MASK		ERI_LIVE_ENTRY_SIG_ACTION_INFO_MASK
-#define SIG_ACTION_SIZE16	ERI_LIVE_ENTRY_SIG_ACTION_INFO_SIZE16
+  GET_SIG_ACTION ($-1)
 
-.ldo_invoke:
+.linvoke_sig_act:
+  cmpq	$SIG_NO_ACTION, TE_SIG_ACTION_INFO_TYPE(%rbx)
+  je	.lsig_return
+  cmpq	$SIG_ACTION_INTERNAL, TE_SIG_ACTION_INFO_TYPE(%rbx)
+  je	.linvoke_internal
+
+  /* Setup stack.  */
+#define SIG_STACK_INFO_RSI	ERI_LIVE_ENTRY_SIG_STACK_INFO_RSI
+#define SIG_STACK_INFO_RDX	ERI_LIVE_ENTRY_SIG_STACK_INFO_RDX
+#define SIG_STACK_INFO_RSP	ERI_LIVE_ENTRY_SIG_STACK_INFO_RSP
+#define SIG_STACK_INFO_SIZE16	ERI_LIVE_ENTRY_SIG_STACK_INFO_SIZE16
+
   movq	%rsp, %rcx
-  subq	$SIG_ACTION_SIZE16 + 8, %rsp
-  call	eri_live_entry_start_sig_action
+  pushq	%rdi
+  subq	$SIG_STACK_INFO_SIZE16, %rsp
+  call	eri_live_entry_setup_sig_stack
+  movq	SIG_STACK_INFO_SIZE16(%rsp), %rdi
 
-  cmpq	$0, SIG_ACTION_RIP(%rsp)
-  je	.lignore_signal
-  cmpb	$1, SIG_ACTION_MASK_ALL(%rsp)
+  cmpb	$1, TE_SIG_ACTION_INFO_MASK_ALL(%rbx)
   je	.lfast_invoke
 
-  MOV_MM (SIG_ACTION_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
-  MOV_MM (SIG_ACTION_RDX(%rsp), TE_SIG_RDX(%rbx), %rax)
+  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %r8
+  leaq	TE_SIG_ACTION_INFO_MASK(%rbx), %rsi
 
-  MOV_MM (SIG_ACTION_RIP(%rsp), TE_SIG_RIP(%rbx), %r8)
-
-  leaq	SIG_ACTION_MASK(%rsp), %rsi
-  movq	SIG_ACTION_RSP(%rsp), %rsp
+  movq	%rdi, TE_SIG_RDI(%rbx)
+  MOV_MM (SIG_STACK_INFO_RSI(%rsp), TE_SIG_RSI(%rbx), %rax)
+  MOV_MM (SIG_STACK_INFO_RDX(%rsp), TE_SIG_RDX(%rbx), %rax)
+  movq	SIG_STACK_INFO_RSP(%rsp), %rsp
 
   RESTORE_SIG_MASK /* XXX: pending queue */
 .lnested_signal_start_invoke:
@@ -789,18 +810,24 @@ eri_live_resume_ret:
   jmp	*%r8
 .lnested_signal_end_invoke:
 
-.lfast_invoke:
-  movq	TE_SIG_RDI(%rbx), %rdi
+.linvoke_internal:
+  movq	%rbx, %rcx
+  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %rax
   movq	TE_SIG_RBX(%rbx), %rbx
-  movq	SIG_ACTION_RSI(%rsp), %rsi
-  movq	SIG_ACTION_RDX(%rsp), %rdx
-  movq	SIG_ACTION_RIP(%rsp), %rax
-  movq	SIG_ACTION_RSP(%rsp), %rsp
   jmp	*%rax
 
-.lignore_signal:
-  addq	$SIG_ACTION_SIZE16 + 8, %rsp
-  SIGRETURN
+.lfast_invoke:
+  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %rax
+  movq	TE_SIG_RBX(%rbx), %rbx
+
+  movq	SIG_STACK_INFO_RSI(%rsp), %rsi
+  movq	SIG_STACK_INFO_RDX(%rsp), %rdx
+  movq	SIG_STACK_INFO_RSP(%rsp), %rsp
+  jmp	*%rax
+
+.lsig_return:
+  addq	$8, %rsp
+  jmp	eri_sigreturn
 
 .lerror:
   ERI_ASSERT_FALSE

@@ -36,12 +36,12 @@ tst_init_start_live_thread_entry (struct tst_rand *rand, uint8_t *buf,
   return entry;
 }
 
-int8_t eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
-		struct eri_ucontext *ctx, int32_t syscall) __attribute__ ((weak));
+int32_t eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
+				void *thread) __attribute__ ((weak));
 
-int8_t
-eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
-			struct eri_ucontext *ctx, int32_t syscall)
+int32_t
+eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
+			void *thread)
 {
   return 0;
 }

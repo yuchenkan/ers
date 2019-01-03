@@ -361,15 +361,77 @@ quit_thread (void *thread)
   eri_atomic_dec (&internal->multi_threading);
 }
 
-int8_t
-eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
-			struct eri_ucontext *ctx, int32_t syscall)
+void eri_live_quit (int32_t *alive) __attribute__ ((noreturn));
+
+static void
+sig_quit_thread (int32_t sig, struct eri_siginfo *info,
+		  struct eri_ucontext *ctx, void *thread)
+{
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+
+  stop_thread (1, th);
+  remove_thread (1, th);
+
+  th->clear_tid = 0;
+  eri_daemon_invoke (internal->daemon, quit_thread, th);
+  eri_live_quit (&th->alive);
+}
+
+void
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
+{
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+
+  struct thread *th = thread;
+  struct internal *internal = th->internal;
+  uint8_t mt = !! eri_atomic_load (&internal->multi_threading);
+  if (mt && eri_atomic_load (&internal->quitting))
+    {
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL;
+      act_info->rip = (uint64_t) sig_quit_thread;
+      return;
+    }
+
+  uint8_t no_action = 0;
+  if (no_action)
+    {
+      act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
+      if (intr)
+	{
+	  /* TODO: Fix context to restart.  */
+	}
+      return;
+    }
+
+  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  uint8_t restart_syscall = 0;
+  if (intr && restart_syscall)
+    {
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
+      /* TODO: Fix context to restart.  */
+    }
+
+  /* TODO: rip, mask */
+}
+
+uint64_t
+eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
+			void *thread)
 {
   /* TODO */
+#if 0
+  uint8_t switch_stack = stack.size
+			 && ! (ctx->mctx.rsp > stack.sp
+			       && ctx->mctx.rsp - stack.sp <= stack.size);
+#endif
   return 0;
 }
 
-void eri_live_quit (int32_t *alive) __attribute__ ((noreturn));
+#if 0
 
 void
 eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
@@ -423,6 +485,7 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
   /* TODO: fix stack sp */
   /* TODO: SA_NODEFER */
 }
+#endif
 
 void
 eri_live_start_thread (void *thread)

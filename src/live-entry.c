@@ -84,37 +84,31 @@ eri_tst_live_assert_thread_entry (struct eri_live_thread_entry *entry)
 }
 
 void
-eri_live_entry_start_sig_action (int32_t sig, struct eri_siginfo *info,
-			struct eri_ucontext *ctx, uint64_t cur)
+eri_live_entry_setup_sig_stack (int32_t sig, struct eri_siginfo *info,
+				struct eri_ucontext *ctx, uint64_t cur)
 {
   /* TODO: fix ctx->stack */
-  struct eri_live_entry_sig_action_info *act_info
-			= (void *) (cur - eri_size_of (*act_info, 16) - 8);
+  struct eri_live_entry_sig_stack_info *stack_info
+			= (void *) (cur - eri_size_of (*stack_info, 16) - 8);
   uint64_t bot = ctx->stack.sp;
 
-  struct eri_stack stack;
-  act_info->rsi = (uint64_t) info;
-  act_info->rdx = (uint64_t) ctx;
-  eri_live_start_sig_action (sig, &stack, act_info,
-			     (*(struct eri_live_thread_entry **) bot)->thread);
-
-  uint8_t switch_stack = stack.size
-			 && ! (ctx->mctx.rsp > stack.sp
-			       && ctx->mctx.rsp - stack.sp <= stack.size);
+  stack_info->rsi = (uint64_t) info;
+  stack_info->rdx = (uint64_t) ctx;
+  uint64_t alt = eri_live_get_sig_stack (stack_info,
+			(*(struct eri_live_thread_entry **) bot)->thread);
 
   uint64_t size = bot + ERI_LIVE_SIG_STACK_SIZE - cur;
-  uint64_t rsp = eri_round_down (
-	(switch_stack ? stack.sp + stack.size : ctx->mctx.rsp - 128) - size,
-	16) - 8;
+  uint64_t rsp = eri_round_down ((alt ? : ctx->mctx.rsp - 128) - size, 16);
+  rsp -= 8; /* return address */
 
   eri_memcpy ((void *) rsp, (void *) cur, size);
 
   if (ctx->mctx.fpstate)
     ctx->mctx.fpstate = (void *) (rsp + (uint64_t) ctx->mctx.fpstate - cur);
 
-  act_info->rsi = rsp + (uint64_t) info - cur;
-  act_info->rdx = rsp + (uint64_t) ctx - cur;
-  act_info->rsp = rsp;
+  stack_info->rsi = rsp + (uint64_t) info - cur;
+  stack_info->rdx = rsp + (uint64_t) ctx - cur;
+  stack_info->rsp = rsp;
 }
 
 uint8_t

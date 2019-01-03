@@ -37,29 +37,34 @@ tst_child (void *data)
   eri_assert (triggered == 2);
 }
 
-int8_t
-eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
-			struct eri_ucontext *ctx, int32_t syscall)
+void
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
 {
-  eri_assert_lprintf (&printf_lock,
-		      "[eri_live_ignore_signal] syscall = %x\n", syscall);
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
 
-  if (syscall == __NR_poll)
+  eri_assert_lprintf (&printf_lock,
+		      "[eri_live_get_sig_action] intr = %x\n", intr);
+
+  act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
+
+  if (intr == __NR_poll)
     {
       eri_assert (++triggered == 1);
       eri_assert (ctx->mctx.rax == -ERI_EINTR);
       ctx->mctx.rax = __NR_restart_syscall;
       ctx->mctx.rip -= 2;
     }
-  else if (syscall == __NR_restart_syscall)
+  else if (intr == __NR_restart_syscall)
     {
       eri_assert (++triggered == 2);
       eri_assert (ctx->mctx.rax == -ERI_EINTR);
     }
-  else eri_assert (syscall == -1);
+  else eri_assert (intr == -1);
 
   eri_unlock (&lock);
-  return 1;
 }
 
 void

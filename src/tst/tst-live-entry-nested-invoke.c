@@ -18,6 +18,8 @@ static void
 sig_trap_action (int32_t sig, struct eri_siginfo *info,
 		 struct eri_ucontext *ctx)
 {
+  eri_assert_printf ("[sig_trap_action]\n");
+
   eri_assert (sig == ERI_SIGTRAP);
   eri_assert (eri_memcmp (&trap_info, info, sizeof *info) == 0);
   tst_assert_mctx_eq (&before, &ctx->mctx, 0);
@@ -29,6 +31,8 @@ static void
 sig_int_action (int32_t sig, struct eri_siginfo *info,
 		struct eri_ucontext *ctx)
 {
+  eri_assert_printf ("[sig_int_action]\n");
+
   eri_assert (sig == ERI_SIGINT);
   eri_assert (ctx->mctx.rdi == ERI_SIGTRAP);
   struct eri_siginfo *nested_info = (void *) ctx->mctx.rsi;
@@ -40,48 +44,51 @@ sig_int_action (int32_t sig, struct eri_siginfo *info,
 }
 
 void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
 {
-  struct eri_ucontext *ctx = (void *) info->rdx;
-  eri_assert_printf ("[eri_live_start_sig_action] rip = %lx\n",
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+  eri_assert (intr == -1);
+
+  eri_assert_printf ("[eri_live_get_sig_action] rip = %lx\n",
 		     ctx->mctx.rip);
 
   if (ctx->mctx.rip == (uint64_t) tst_nop_enter)
     {
-      eri_assert_printf ("[eri_live_start_sig_action] tst_nop_enter\n");
+      eri_assert_printf ("[eri_live_get_sig_action] tst_nop_enter\n");
 
       eri_assert (++triggered == 1);
-      trap_info = *(struct eri_siginfo *) info->rsi;
+      trap_info = *info;
 
       ERI_ASSERT_SYSCALL (kill, ERI_ASSERT_SYSCALL_RES (getpid), ERI_SIGINT);
 
-      stack->size = 0;
-      info->rip = (uint64_t) sig_trap_action;
-      info->mask.mask_all = 0;
-      eri_sigemptyset (&info->mask.mask);
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+      act_info->rip = (uint64_t) sig_trap_action;
+      act_info->mask.mask_all = 0;
+      eri_sigemptyset (&act_info->mask.mask);
     }
   else if (ctx->mctx.rip == (uint64_t) sig_trap_action)
     {
-      eri_assert_printf ("[eri_live_start_sig_action] sig_trap_action\n");
+      eri_assert_printf ("[eri_live_get_sig_action] sig_trap_action\n");
 
       eri_assert (++triggered == 2);
 
-      stack->size = 0;
-      info->rip = (uint64_t) sig_int_action;
-      info->mask.mask_all = 0;
-      eri_sigemptyset (&info->mask.mask);
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+      act_info->rip = (uint64_t) sig_int_action;
+      act_info->mask.mask_all = 0;
+      eri_sigemptyset (&act_info->mask.mask);
     }
   else if (ctx->mctx.rip == (uint64_t) tst_nop_leave)
     {
-      eri_assert_printf ("[eri_live_start_sig_action] tst_nop_leave\n");
+      eri_assert_printf ("[eri_live_get_sig_action] tst_nop_leave\n");
 
       eri_assert (++triggered == 3);
       tst_assert_mctx_eq (&after, &ctx->mctx, 0);
-      info->rip = 0;
+      act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
     }
-  else info->rip = 0;
+  else act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
 }
 
 static uint8_t stack[1024 * 1024];

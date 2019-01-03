@@ -14,36 +14,6 @@ static uint8_t restart_no_handler;
 static uint32_t nested;
 static uint32_t cur_nested;
 
-int8_t
-eri_live_ignore_signal (int32_t sig, struct eri_siginfo *info,
-			struct eri_ucontext *ctx, int32_t syscall)
-{
-  eri_assert_printf ("[eri_live_ignore_signal] sig = %u "
-		     "rip = %lx, syscall = %x\n",
-		     sig, ctx->mctx.rip, syscall);
-
-  if (syscall == __NR_gettid)
-    {
-      eri_assert (sig == ERI_SIGINT);
-      return 0;
-    }
-
-  if (! nested) eri_assert (sig == ERI_SIGINT);
-
-  if (syscall != -1)
-    {
-      uint8_t right_pass = ! nested || sig == ERI_SIGSYS;
-      if (! restart_no_handler && right_pass)
-	 return -1;
-
-      ctx->mctx.rip -= 2;
-      if (right_pass) ctx->mctx.rax = __NR_gettid;
-      return 1;
-    }
-
-  return 1;
-}
-
 static uint8_t syscall;
 static uint8_t stepping;
 static uint8_t triggered;
@@ -55,14 +25,13 @@ extern uint8_t tst_syscall_leave[];
 extern uint8_t tst_sync_async_enter[];
 extern uint8_t tst_sync_async_leave[];
 
-void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
+static void
+sig_action (int32_t sig, struct eri_siginfo *info,
+	    struct eri_ucontext *ctx)
 {
-  eri_assert_printf ("[eri_live_start_sig_action]\n");
+  eri_assert_printf ("[sig_action]\n");
 
-  struct eri_mcontext *mctx = &((struct eri_ucontext *) info->rdx)->mctx;
+  struct eri_mcontext *mctx = &ctx->mctx;
   ++triggered;
   if (syscall)
     {
@@ -91,8 +60,53 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
       eri_assert (mctx->rip == (uint64_t) tst_sync_async_leave);
       stepping = 0;
     }
+}
 
-  info->rip = 0;
+void
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
+{
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+
+  eri_assert_printf ("[eri_live_get_sig_action] sig = %u "
+		     "rip = %lx, intr = %x\n",
+		     sig, ctx->mctx.rip, intr);
+
+  eri_assert (intr != __NR_gettid);
+
+  if (ctx->mctx.rip == (uint64_t) tst_syscall_leave
+      || ctx->mctx.rip == (uint64_t) tst_sync_async_leave)
+    {
+      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+      act_info->rip = (uint64_t) sig_action;
+      act_info->mask.mask_all = 0;
+      eri_sigemptyset (&act_info->mask);
+      return;
+    }
+
+  if (! nested) eri_assert (sig == ERI_SIGINT);
+
+  if (intr != -1)
+    {
+      uint8_t right_pass = ! nested || sig == ERI_SIGSYS;
+      if (! restart_no_handler && right_pass)
+	{
+	  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
+	  act_info->rip = (uint64_t) sig_action;
+	  act_info->mask.mask_all = 0;
+	  eri_sigemptyset (&act_info->mask);
+	  return;
+	}
+
+      act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
+      ctx->mctx.rip -= 2;
+      if (right_pass) ctx->mctx.rax = __NR_gettid;
+      return;
+    }
+
+  act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
 }
 
 int8_t

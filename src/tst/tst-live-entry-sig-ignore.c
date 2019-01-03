@@ -11,13 +11,17 @@
 static uint8_t triggered;
 
 void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
 {
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+  eri_assert (intr == -1);
+
   eri_assert_printf ("triggered\n");
   eri_atomic_store (&triggered, 1);
-  info->rip = 0;
+  act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
 }
 
 uint64_t

@@ -42,6 +42,7 @@ eri_live_init_thread_entry (struct eri_live_thread_entry *entry,
 {
   entry->top = stack_top;
   entry->stack_size = stack_size;
+  entry->stack_size = stack_size;
 
   entry->thread = thread;
 }
@@ -62,7 +63,19 @@ eri_live_entry_sig_action (int32_t sig, struct eri_siginfo *info,
 {
   eri_assert (tst_live_quit_allow_group);
 
-  eri_live_start_sig_action (0, 0, 0, get_thread ());
+  void *thread = get_thread ();
+
+  struct eri_live_entry_sig_action_info act_info = {
+    ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN
+  };
+  eri_live_get_sig_action (sig, info, ctx, -1, &act_info, thread);
+
+  eri_assert (act_info.type == ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL);
+
+  void (*act) (int32_t, struct eri_siginfo *, struct eri_ucontext *, void *)
+	= (void *) act_info.rip;
+  act (sig, info, ctx, thread);
+
   eri_assert (0);
 }
 

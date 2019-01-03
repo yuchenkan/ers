@@ -37,6 +37,20 @@
 #define ERI_R14(sz)		_ERS_PASTE (_ERI_R2_, sz) (r14)
 #define ERI_R15(sz)		_ERS_PASTE (_ERI_R2_, sz) (r15)
 
+/*
+ * No signal handler. Ignore, while the context may be fixed by live.c
+ * to restart syscall.
+ */
+#define ERI_LIVE_ENTRY_SIG_NO_ACTION			0
+#define ERI_LIVE_ENTRY_SIG_ACTION			1
+/*
+ * Restart syscall under SA_RESTART, context is to be restored by
+ * live-entry.S.
+ */
+#define ERI_LIVE_ENTRY_SIG_ACTION_RESTART		2
+#define ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL		3
+#define ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN		-1
+
 #define ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET		4
 #define ERI_LIVE_ENTRY_MARK_SEC_PART_BIT \
   (1 << ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET)
@@ -60,6 +74,13 @@
 #include "lib/syscall.h"
 
 extern uint64_t *eri_live_entry_atomic_mem_table;
+
+struct eri_live_entry_sig_action_info
+{
+  uint64_t type;
+  uint64_t rip;
+  struct eri_sigmask mask;
+};
 
 struct eri_live_thread_entry
 {
@@ -103,6 +124,17 @@ struct eri_live_thread_entry
   uint64_t ext_r14;
   uint64_t ext_r15;
 
+  uint64_t thread_restart_syscall;
+  uint64_t thread_restart_syscall_end;
+
+  uint64_t syscall_rax;
+  uint64_t syscall_rsp;
+  uint64_t syscall_new_thread;
+
+  uint64_t sync_repeat_trace;
+
+  struct eri_live_entry_sig_action_info sig_action_info;
+
   uint64_t restart_syscall;
   uint64_t restart_syscall_rbx;
   uint64_t restart_syscall_rsp;
@@ -114,15 +146,6 @@ struct eri_live_thread_entry
   uint64_t restart_syscall_r11;
   uint64_t restart_syscall_rip;
   uint64_t restart_syscall_rflags;
-
-  uint64_t thread_restart_syscall;
-  uint64_t thread_restart_syscall_end;
-
-  uint64_t syscall_rax;
-  uint64_t syscall_rsp;
-  uint64_t syscall_new_thread;
-
-  uint64_t sync_repeat_trace;
 
   uint64_t sig_rbx;
   uint64_t sig_rdi;
@@ -137,7 +160,6 @@ struct eri_live_thread_entry
   uint64_t sig_r14;
   uint64_t sig_r15;
 
-  uint64_t sig_rip;
 
   uint64_t sig_stack;
 
@@ -166,14 +188,11 @@ void eri_live_entry_sig_action (int32_t sig, struct eri_siginfo *info,
 
 extern uint8_t eri_live_resume_ret[];
 
-struct eri_live_entry_sig_action_info
+struct eri_live_entry_sig_stack_info
 {
   uint64_t rsi;
   uint64_t rdx;
   uint64_t rsp;
-  uint64_t rip;
-
-  struct eri_sigmask mask;
 };
 
 void eri_live_entry_start (struct eri_live_thread_entry *entry,

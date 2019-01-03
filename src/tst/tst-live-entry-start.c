@@ -45,17 +45,26 @@ sigtrap_act (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 }
 
 void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *thread)
+eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx, int32_t intr,
+			 struct eri_live_entry_sig_action_info *act_info,
+			 void *thread)
+{
+  eri_assert (act_info->type == ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN);
+  eri_assert (intr == -1);
+
+  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  act_info->rip = (uint64_t) sigtrap_act;
+  act_info->mask.mask_all = 0;
+  eri_sigemptyset (&act_info->mask.mask);
+}
+
+uint64_t
+eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
+			void *thread)
 {
   static uint8_t user_stack[4096];
-  stack->sp = (uint64_t) user_stack;
-  stack->size = 4096;
-
-  info->rip = (uint64_t) sigtrap_act;
-  info->mask.mask_all = 0;
-  eri_sigemptyset (&info->mask.mask);
+  return (uint64_t) user_stack + sizeof user_stack;
 }
 
 static uint8_t stack[2 * 1024 * 1024];
