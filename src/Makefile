@@ -1,3 +1,5 @@
+# XXX: Handle -D with different suffix
+
 BUILD := ../build/src
 MAKE_FILES := Makefile common.mk $(BUILD)/O $(BUILD)/D
 
@@ -41,7 +43,8 @@ $(BUILD)/%-offsets.h.s: private CFLAGS := -I . -Wall -Werror -O3 -S
 $(BUILD)/%-offsets.h.s: %-offsets.c Makefile
 	$(COMPILE)
 
-TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group
+TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group sig-term \
+			sig-group-core
 TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart restart-poll \
 			user nested-invoke
 
@@ -55,11 +58,12 @@ tests: $(BUILD_TST_TSTS)
 
 check: $(BUILD_TST_TSTS) \
 	$(filter-out %/tst-live-entry-basic.out,$(BUILD_TST_OUTS))
+	cp loop.sh $(BUILD_TST)
 	echo done
 
 full-check: $(BUILD_TST_TSTS) $(BUILD_TST_OUTS)
+	cp loop.sh $(BUILD_TST)
 	echo done
-
 
 re-check: $(BUILD_TST_TSTS) \
 	$(filter-out %/tst-live-entry-basic.re-check,$(BUILD_TST_RE_CHECKS))

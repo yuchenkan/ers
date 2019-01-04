@@ -13,7 +13,7 @@
 #include "lib/malloc.h"
 
 uint8_t tst_live_quit_allow_clone;
-uint8_t tst_live_quit_allow_group;
+int32_t tst_live_quit_allow_group;
 
 int32_t tst_live_quit_printf_lock;
 
@@ -52,7 +52,11 @@ tst_live_quit_block_signals (uint8_t allow_quit)
 {
   struct eri_sigset set;
   eri_sigfillset (&set);
-  if (allow_quit) eri_sigdelset (&set, ERI_SIGRTMIN);
+  if (allow_quit)
+    {
+      eri_sigdelset (&set, ERI_SIGRTMIN);
+      eri_sigdelset (&set, tst_live_quit_allow_group);
+    }
   ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK,
 		      &set, 0, ERI_SIG_SETSIZE);
 }

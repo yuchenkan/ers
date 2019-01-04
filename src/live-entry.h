@@ -42,13 +42,22 @@
  * to restart syscall.
  */
 #define ERI_LIVE_ENTRY_SIG_NO_ACTION			0
-#define ERI_LIVE_ENTRY_SIG_ACTION			1
+/*
+ * Internal handler, e.g. quit and default signal handler. No user stack,
+ * all signals blocked.
+ */
+#define ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL		1
+#define ERI_LIVE_ENTRY_SIG_ACTION			2
 /*
  * Restart syscall under SA_RESTART, context is to be restored by
  * live-entry.S.
  */
-#define ERI_LIVE_ENTRY_SIG_ACTION_RESTART		2
-#define ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL		3
+#define ERI_LIVE_ENTRY_SIG_ACTION_RESTART		3
+/*
+ * Possibly ORed with SIG_ACTION or SIG_ACTION_RESTART to indicate using
+ * user alt sig stack.
+ */
+#define ERI_LIVE_ENTRY_SIG_ACTION_ON_STACK		16
 #define ERI_LIVE_ENTRY_SIG_ACTION_UNKNOWN		-1
 
 #define ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET		4

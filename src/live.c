@@ -427,6 +427,11 @@ final_quit (uint8_t mt, struct thread *th, uint8_t group)
   return 1;
 }
 
+#ifndef ERI_NO_TST
+void tst_live_sig_final_quit (int32_t sig, struct eri_siginfo *info,
+			      struct eri_ucontext *ctx);
+#endif
+
 static void
 sig_final_quit (int32_t sig, struct eri_siginfo *info,
 		struct eri_ucontext *ctx, void *thread)
@@ -435,11 +440,27 @@ sig_final_quit (int32_t sig, struct eri_siginfo *info,
   struct internal *internal = th->internal;
   uint8_t mt = eri_atomic_load (&internal->multi_threading);
 
-  if (! final_quit (mt, th, 1)) eri_live_quit (&th->alive);
+  int32_t pid = internal->sys_pid;
+  int32_t tid = th->sys_tid;
 
-  struct eri_sigaction act = { ERI_SIG_DFL };
+  if (! final_quit (mt, th, 1)) sig_quit_thread (sig, info, ctx, th);
+
+  struct eri_sigaction act = {
+#ifdef ERI_NO_TST
+    ERI_SIG_DFL
+#else
+    tst_live_sig_final_quit, ERI_SA_RESTORER, 0
+#endif
+  };
   ERI_ASSERT_SYSCALL (rt_sigaction, sig, &act, 0, ERI_SIG_SETSIZE);
-  ERI_ASSERT_SYSCALL (tgkill, internal->sys_pid, th->sys_tid, sig);
+
+  ERI_ASSERT_SYSCALL (tgkill, pid, tid, sig);
+
+  struct eri_sigset set;
+  eri_sigfillset (&set);
+  eri_sigdelset (&set, sig);
+  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set, 0,
+		      ERI_SIG_SETSIZE);
 }
 
 static void
@@ -504,36 +525,10 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       || act == ERI_SIG_IGN)
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
-      if (intr)
+      if (intr != -1)
 	{
 	  /* TODO: Fix context to restart.  */
 	}
-      return;
-    }
-
-  /* XXX */
-  if ((intr == __NR_read || intr == __NR_readv
-       || intr == __NR_write || intr == __NR_writev
-       || intr == __NR_ioctl || intr == __NR_open
-       || intr == __NR_wait4 || intr == __NR_waitid
-
-       /* TODO: Check timeout. */
-       || intr == __NR_accept || intr == __NR_accept4 || intr == __NR_connect
-       || intr == __NR_recvfrom || intr == __NR_recvmsg
-       || intr == __NR_recvmmsg
-       || intr == __NR_sendto || intr == __NR_sendmsg
-       || intr == __NR_sendmmsg
-
-       || intr == __NR_flock
-       /* TODO: Check operation. */
-       || intr == __NR_fcntl
-       || intr == __NR_mq_timedsend || intr == __NR_mq_timedreceive
-       || intr == __NR_futex
-       || intr == __NR_getrandom)
-      && (flags & ERI_SA_RESTART))
-    {
-      act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
-      /* TODO: Fix context to restart.  */
       return;
     }
 
@@ -558,7 +553,36 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       return;
     }
 
-  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+  /* XXX */
+  if ((intr == __NR_read || intr == __NR_readv
+       || intr == __NR_write || intr == __NR_writev
+       || intr == __NR_ioctl || intr == __NR_open
+       || intr == __NR_wait4 || intr == __NR_waitid
+
+       /* TODO: Check timeout. */
+       || intr == __NR_accept || intr == __NR_accept4 || intr == __NR_connect
+       || intr == __NR_recvfrom || intr == __NR_recvmsg
+       || intr == __NR_recvmmsg
+       || intr == __NR_sendto || intr == __NR_sendmsg
+       || intr == __NR_sendmmsg
+
+       || intr == __NR_flock
+       /* TODO: Check operation. */
+       || intr == __NR_fcntl
+       || intr == __NR_mq_timedsend || intr == __NR_mq_timedreceive
+       || intr == __NR_futex
+       || intr == __NR_getrandom)
+      && (flags & ERI_SA_RESTART)
+      && ! (act_info->type & ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL))
+    {
+      act_info->type |= ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
+      /* TODO: Fix context to restart.  */
+    }
+  else act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
+
+  if (flags & ERI_SA_ONSTACK)
+    act_info->type |= ERI_LIVE_ENTRY_SIG_ACTION_ON_STACK;
+
   act_info->rip = (uint64_t) act;
 
   /* XXX: SA_NODEFER */

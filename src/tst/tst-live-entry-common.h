@@ -10,6 +10,7 @@
 #define TST_ERI_LIVE_NULL_STUBS(...) \
   .align 16;								\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_start_thread)				\
+TST_WEAK_GLOBAL_HIDDEN (eri_live_get_sig_stack)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_syscall)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_sync_async)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_restart_sync_async)			\
@@ -17,6 +18,7 @@ TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_hash_mem)			\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_store)				\
 TST_WEAK_GLOBAL_HIDDEN (eri_live_atomic_load_store)			\
+TST_WEAK_GLOBAL_HIDDEN (tst_live_sig_final_quit)			\
 TST_WEAK_GLOBAL_HIDDEN (tst_sig_step_int_check_trigger)			\
 __VA_ARGS__								\
   ERI_ASSERT_FALSE

@@ -36,16 +36,6 @@ tst_init_start_live_thread_entry (struct tst_rand *rand, uint8_t *buf,
   return entry;
 }
 
-int32_t eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
-				void *thread) __attribute__ ((weak));
-
-int32_t
-eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
-			void *thread)
-{
-  return 0;
-}
-
 void
 tst_assert_mctx_eq (struct eri_mcontext *ctx1,
 		    struct eri_mcontext *ctx2, uint32_t flags)
@@ -56,23 +46,23 @@ tst_assert_mctx_eq (struct eri_mcontext *ctx1,
       eri_assert (ctx1->r == ctx2->r);					\
   } while (0)
 
-  CHECK_ASSERT_EQ(R8, r8);
-  CHECK_ASSERT_EQ(R9, r9);
-  CHECK_ASSERT_EQ(R10, r10);
-  CHECK_ASSERT_EQ(R11, r11);
-  CHECK_ASSERT_EQ(R12, r12);
-  CHECK_ASSERT_EQ(R13, r13);
-  CHECK_ASSERT_EQ(R14, r14);
-  CHECK_ASSERT_EQ(R15, r15);
-  CHECK_ASSERT_EQ(RDI, rdi);
-  CHECK_ASSERT_EQ(RSI, rsi);
-  CHECK_ASSERT_EQ(RBP, rbp);
-  CHECK_ASSERT_EQ(RBX, rbx);
-  CHECK_ASSERT_EQ(RDX, rdx);
-  CHECK_ASSERT_EQ(RAX, rax);
-  CHECK_ASSERT_EQ(RCX, rcx);
-  CHECK_ASSERT_EQ(RSP, rsp);
-  CHECK_ASSERT_EQ(RIP, rip);
+  CHECK_ASSERT_EQ (R8, r8);
+  CHECK_ASSERT_EQ (R9, r9);
+  CHECK_ASSERT_EQ (R10, r10);
+  CHECK_ASSERT_EQ (R11, r11);
+  CHECK_ASSERT_EQ (R12, r12);
+  CHECK_ASSERT_EQ (R13, r13);
+  CHECK_ASSERT_EQ (R14, r14);
+  CHECK_ASSERT_EQ (R15, r15);
+  CHECK_ASSERT_EQ (RDI, rdi);
+  CHECK_ASSERT_EQ (RSI, rsi);
+  CHECK_ASSERT_EQ (RBP, rbp);
+  CHECK_ASSERT_EQ (RBX, rbx);
+  CHECK_ASSERT_EQ (RDX, rdx);
+  CHECK_ASSERT_EQ (RAX, rax);
+  CHECK_ASSERT_EQ (RCX, rcx);
+  CHECK_ASSERT_EQ (RSP, rsp);
+  CHECK_ASSERT_EQ (RIP, rip);
   if (! (flags & TST_MEQ_NRFLAGS))
     eri_assert ((ctx1->rflags & ~0x10000) == (ctx2->rflags & ~0x10000));
 }

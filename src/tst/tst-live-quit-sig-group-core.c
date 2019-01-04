@@ -4,32 +4,40 @@
 
 #include "lib/tst/tst-util.h"
 
+#include "lib/syscall.h"
 #include "lib/printf.h"
 
 static void
 start_child (void *data)
 {
   TST_YIELD (32);
-
-  if ((uint64_t) data % 2 == 0)
-    tst_live_quit_exit (0);
-  else
-    tst_live_quit_exit_group (0);
+  *(uint8_t *) 0 = 0;
 }
 
-static struct tst_live_quit_child children[8];
+void
+tst_live_sig_final_quit (int32_t sig)
+{
+  eri_assert_printf ("[tst_live_sig_final_quit]\n");
+
+  eri_assert (sig == ERI_SIGSEGV);
+
+  ERI_ASSERT_SYSCALL (exit_group, 0);
+}
+
+static struct tst_live_quit_child children[4];
 
 void
 tst_live_quit_main (void)
 {
   eri_assert_printf ("main\n");
   tst_live_quit_allow_clone = 1;
-  tst_live_quit_allow_group = ERI_SIGRTMIN;
+  tst_live_quit_allow_group = ERI_SIGSEGV;
 
   uint64_t i;
   for (i = 0; i < eri_length_of (children); ++i)
     tst_live_quit_clone_child (children + i, start_child, (void *) i);
 
   TST_YIELD (32);
-  tst_live_quit_exit_group (0);
+
+  while (1) TST_YIELD (32);
 }

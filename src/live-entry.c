@@ -90,11 +90,13 @@ eri_live_entry_setup_sig_stack (int32_t sig, struct eri_siginfo *info,
   struct eri_live_entry_sig_stack_info *stack_info
 			= (void *) (cur - eri_size_of (*stack_info, 16) - 8);
   uint64_t bot = ctx->stack.sp;
+  struct eri_live_thread_entry *entry = *(void **) bot;
 
   stack_info->rsi = (uint64_t) info;
   stack_info->rdx = (uint64_t) ctx;
-  uint64_t alt = eri_live_get_sig_stack (stack_info,
-			(*(struct eri_live_thread_entry **) bot)->thread);
+  uint64_t alt = entry->sig_action_info.type
+		 & ERI_LIVE_ENTRY_SIG_ACTION_ON_STACK
+		   ? eri_live_get_sig_stack (stack_info, entry->thread) : 0;
 
   uint64_t size = bot + ERI_LIVE_SIG_STACK_SIZE - cur;
   uint64_t rsp = eri_round_down ((alt ? : ctx->mctx.rsp - 128) - size, 16);
