@@ -70,18 +70,27 @@ uint8_t tst_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		        uint64_t a3, uint64_t a4, uint64_t a5,
 		        uint64_t *rax, void *entry);
 
-static uint8_t hold_syscall;
+static uint8_t syscall_hold_syscall;
+static uint8_t syscall_mark_complete;
 
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
 		  uint64_t *rax, void *thread)
 {
-  if (hold_syscall) return -1;
+  eri_assert (current_entry == thread);
+
+  if (syscall_hold_syscall) return -1;
+
+  if (syscall_mark_complete)
+    {
+      int8_t res = eri_live_entry_mark_complete (current_entry);
+      if (res) *rax = ERI_ASSERT_SYSCALL_RES (gettid);
+      return res;
+    }
 
   silence = 1;
   tst_printf ("[%s] eri live syscall: rax = %lx\n", current->name, *rax);
-  eri_assert (current_entry == thread);
   silence = 0;
   return tst_do_syscall (a0, a1, a2, a3, a4, a5, rax, current_entry);
 }
@@ -230,7 +239,8 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
 
   eri_assert (current_entry == thread);
   act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
-  act_info->rip = (uint64_t) sig_action;
+  act_info->act = (uint64_t) sig_action;
+  act_info->restorer = (uint64_t) eri_sigreturn;
   act_info->mask.mask_all = 0;
   act_info->mask.mask = sig_mask;
 }
@@ -365,6 +375,7 @@ tst (struct tst_rand *rand, struct tst_case *caze)
   eri_assert_printf ("[%s:step_int] trigger at each step\n", caze->name);
 
   sa.act = tst_sig_step_int_trigger;
+  sa.restorer = 0;
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 
   sig_action = sig_step_int_act;
@@ -526,6 +537,9 @@ hold_syscall_check (struct tst_case *caze,
       mctx->rip = caze->leave;
     }
 }
+
+#define mark_complete_init	do_syscall_init
+#define mark_complete_check	do_syscall_check
 
 #define SYNC_JMP_REG	TST_LIVE_SYNC_JMP_REG
 #define SYNC_JMP_UREG	TST_LIVE_SYNC_JMP_UREG
@@ -804,13 +818,22 @@ tst_main (void)
 
   tst (&rand, &do_syscall);
 
-  hold_syscall = 1;
+  syscall_hold_syscall = 1;
   struct tst_case hold_syscall = {
     ENTRY_FIELDS (hold_syscall),
     (uint64_t) ERI_TST_LIVE_COMPLETE_START_SYMBOL (hold_syscall)
   };
 
   tst (&rand, &hold_syscall);
+
+  syscall_hold_syscall = 0;
+  syscall_mark_complete = 1;
+  struct tst_case mark_complete = {
+    ENTRY_FIELDS (mark_complete),
+    (uint64_t) ERI_TST_LIVE_COMPLETE_START_SYMBOL (mark_complete)
+  };
+
+  tst (&rand, &mark_complete);
 
   struct tst_case sync_jmp = {
     ENTRY_FIELDS (sync_jmp),

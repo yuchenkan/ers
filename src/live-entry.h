@@ -87,7 +87,8 @@ extern uint64_t *eri_live_entry_atomic_mem_table;
 struct eri_live_entry_sig_action_info
 {
   uint64_t type;
-  uint64_t rip;
+  uint64_t act;
+  uint64_t restorer;
   struct eri_sigmask mask;
 };
 
@@ -210,6 +211,7 @@ void eri_live_entry (void);
 
 extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (do_syscall)[];
 extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (hold_syscall)[];
+extern uint8_t ERI_TST_LIVE_COMPLETE_START_SYMBOL (mark_complete)[];
 
 #define ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS(name) \
 extern uint8_t ERI_TST_LIVE_ATOMIC_COMPLETE_START_SYMBOL (b, name)[];	\

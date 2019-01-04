@@ -33,9 +33,8 @@ struct sig_action
 {
   int32_t lock;
 
-  void *act;
-  int32_t flags;
-  struct eri_sigmask mask;
+  uint8_t mask_all;
+  struct eri_sigaction act;
 };
 
 struct internal
@@ -64,13 +63,6 @@ struct internal
 };
 
 ERI_DEFINE_LIST (static, thread, struct internal, struct thread)
-
-static void
-set_sigmask (struct eri_sigmask *mask, const struct eri_sigset *set)
-{
-  mask->mask_all = eri_sigset_full (set);
-  mask->mask = *set;
-}
 
 static void
 daemon_sig_action (int32_t sig, struct eri_siginfo *info,
@@ -230,21 +222,17 @@ eri_live_init (struct eri_common *common, struct eri_rtld *rtld)
     {
       if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
 
-      internal->sig_actions[sig - 1].lock = 0;
+      struct sig_action *action = &internal->sig_actions[sig - 1];
+      action->lock = 0;
 
-      struct eri_sigaction old;
-      ERI_ASSERT_SYSCALL (rt_sigaction, sig, 0, &old, ERI_SIG_SETSIZE);
-
-      internal->sig_actions[sig - 1].act = old.act;
-      internal->sig_actions[sig - 1].flags = old.flags;
-      set_sigmask (&internal->sig_actions[sig - 1].mask, &old.mask);
+      ERI_ASSERT_SYSCALL (rt_sigaction, sig, 0,
+			  &action->act, ERI_SIG_SETSIZE);
+      action->mask_all = eri_sigset_full (&action->act.mask);
 
       struct eri_sigaction new = {
 	eri_live_entry_sig_action,
-	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK
-	  | (old.flags & ERI_SA_RESTART),
-	old.act == ERI_SIG_DFL || old.act == ERI_SIG_IGN
-	  ? 0 : old.restorer
+	ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK,
+	0
       };
       eri_sigfillset (&new.mask);
 
@@ -500,29 +488,26 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
   if (mt && eri_atomic_load (&internal->quitting))
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL;
-      act_info->rip = (uint64_t) sig_quit_thread;
+      act_info->act = (uint64_t) sig_quit_thread;
       return;
     }
 
   struct sig_action *action = &internal->sig_actions[sig - 1];
 
-  void *act;
-  int32_t flags;
-  struct eri_sigmask mask;
+  struct eri_sigaction act;
 
   eri_clock (mt, &action->lock);
+  uint8_t mask_all = action->mask_all;
   act = action->act;
-  flags = action->flags;
-  mask = action->mask;
-  if (act != ERI_SIG_DFL && act != ERI_SIG_IGN
-      && (flags & ERI_SA_RESETHAND))
-    action->act = ERI_SIG_DFL;
+  if (act.act != ERI_SIG_DFL && act.act != ERI_SIG_IGN
+      && (act.flags & ERI_SA_RESETHAND))
+    action->act.act = ERI_SIG_DFL;
   eri_cunlock (mt, &action->lock);
 
-  if ((act == ERI_SIG_DFL
+  if ((act.act == ERI_SIG_DFL
        && (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
 	   || sig == ERI_SIGURG || sig == ERI_SIGWINCH))
-      || act == ERI_SIG_IGN)
+      || act.act == ERI_SIG_IGN)
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_NO_ACTION;
       if (intr != -1)
@@ -532,7 +517,7 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       return;
     }
 
-  if (act == ERI_SIG_DFL)
+  if (act.act == ERI_SIG_DFL)
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL;
       if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
@@ -541,14 +526,14 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
 	  || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
 	  || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
 	  || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
-	act_info->rip = (uint64_t) sig_term;
+	act_info->act = (uint64_t) sig_term;
       else if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
 	       || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
 	       || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
 	       || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
-	act_info->rip = (uint64_t) sig_core;
+	act_info->act = (uint64_t) sig_core;
       else if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
-	act_info->rip = (uint64_t) sig_stop;
+	act_info->act = (uint64_t) sig_stop;
       else eri_assert (0);
       return;
     }
@@ -572,7 +557,7 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
        || intr == __NR_mq_timedsend || intr == __NR_mq_timedreceive
        || intr == __NR_futex
        || intr == __NR_getrandom)
-      && (flags & ERI_SA_RESTART)
+      && (act.flags & ERI_SA_RESTART)
       && ! (act_info->type & ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL))
     {
       act_info->type |= ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
@@ -580,13 +565,15 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
     }
   else act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
 
-  if (flags & ERI_SA_ONSTACK)
+  if (act.flags & ERI_SA_ONSTACK)
     act_info->type |= ERI_LIVE_ENTRY_SIG_ACTION_ON_STACK;
 
-  act_info->rip = (uint64_t) act;
+  act_info->act = (uint64_t) act.act;
+  act_info->restorer = (uint64_t) act.restorer;
 
   /* XXX: SA_NODEFER */
-  act_info->mask = mask;
+  act_info->mask.mask_all = mask_all;
+  act_info->mask.mask = act.mask;
 }
 
 uint64_t
@@ -702,6 +689,8 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       struct eri_sigaction *act = (void *) a1;
       struct eri_sigaction *old_act = (void *) a2;
       if (sig == 0 || sig >= ERI_SIGRTMAX)
+	*rax = -ERI_EINVAL;
+      else
 	{
 	}
 

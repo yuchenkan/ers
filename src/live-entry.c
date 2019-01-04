@@ -98,18 +98,21 @@ eri_live_entry_setup_sig_stack (int32_t sig, struct eri_siginfo *info,
 		 & ERI_LIVE_ENTRY_SIG_ACTION_ON_STACK
 		   ? eri_live_get_sig_stack (stack_info, entry->thread) : 0;
 
-  uint64_t size = bot + ERI_LIVE_SIG_STACK_SIZE - cur;
-  uint64_t rsp = eri_round_down ((alt ? : ctx->mctx.rsp - 128) - size, 16);
-  rsp -= 8; /* return address */
+  uint64_t frame = cur + 8;
+  uint64_t size = bot + ERI_LIVE_SIG_STACK_SIZE - frame;
+  uint64_t new_frame = eri_round_down ((alt ? : ctx->mctx.rsp - 128) - size, 16);
 
-  eri_memcpy ((void *) rsp, (void *) cur, size);
+  eri_memcpy ((void *) new_frame, (void *) frame, size);
 
+  uint64_t delta = new_frame - frame;
   if (ctx->mctx.fpstate)
-    ctx->mctx.fpstate = (void *) (rsp + (uint64_t) ctx->mctx.fpstate - cur);
+    ctx->mctx.fpstate = (void *) ((uint64_t) ctx->mctx.fpstate + delta);
 
-  stack_info->rsi = rsp + (uint64_t) info - cur;
-  stack_info->rdx = rsp + (uint64_t) ctx - cur;
-  stack_info->rsp = rsp;
+  stack_info->rsi = (uint64_t) info + delta;
+  stack_info->rdx = (uint64_t) ctx + delta;
+
+  *(uint64_t *) (new_frame - 8) = entry->sig_action_info.restorer;
+  stack_info->rsp = new_frame - 8;
 }
 
 uint8_t

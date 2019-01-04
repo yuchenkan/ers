@@ -80,7 +80,8 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       || ctx->mctx.rip == (uint64_t) tst_sync_async_leave)
     {
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
-      act_info->rip = (uint64_t) sig_action;
+      act_info->act = (uint64_t) sig_action;
+      act_info->restorer = (uint64_t) eri_sigreturn;
       act_info->mask.mask_all = 0;
       eri_sigemptyset (&act_info->mask);
       return;
@@ -94,7 +95,8 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       if (! restart_no_handler && right_pass)
 	{
 	  act_info->type = ERI_LIVE_ENTRY_SIG_ACTION_RESTART;
-	  act_info->rip = (uint64_t) sig_action;
+	  act_info->act = (uint64_t) sig_action;
+	  act_info->restorer = (uint64_t) eri_sigreturn;
 	  act_info->mask.mask_all = 0;
 	  eri_sigemptyset (&act_info->mask);
 	  return;
@@ -243,7 +245,7 @@ tst (struct tst_rand *rand)
 
   struct eri_sigaction sa = {
     tst_sig_step_int_trigger,
-    ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK, eri_sigreturn
+    ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK, 0
   };
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);
 

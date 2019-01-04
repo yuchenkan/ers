@@ -65,7 +65,8 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       ERI_ASSERT_SYSCALL (kill, ERI_ASSERT_SYSCALL_RES (getpid), ERI_SIGINT);
 
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
-      act_info->rip = (uint64_t) sig_trap_action;
+      act_info->act = (uint64_t) sig_trap_action;
+      act_info->restorer = (uint64_t) eri_sigreturn;
       act_info->mask.mask_all = 0;
       eri_sigemptyset (&act_info->mask.mask);
     }
@@ -76,7 +77,8 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
       eri_assert (++triggered == 2);
 
       act_info->type = ERI_LIVE_ENTRY_SIG_ACTION;
-      act_info->rip = (uint64_t) sig_int_action;
+      act_info->act = (uint64_t) sig_int_action;
+      act_info->restorer = (uint64_t) eri_sigreturn;
       act_info->mask.mask_all = 0;
       eri_sigemptyset (&act_info->mask.mask);
     }
@@ -117,7 +119,7 @@ tst_main (void)
 
   struct eri_sigaction sa = {
     eri_live_entry_sig_action,
-    ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK, eri_sigreturn
+    ERI_SA_RESTORER | ERI_SA_SIGINFO | ERI_SA_ONSTACK, 0
   };
   eri_sigfillset (&sa.mask);
   ERI_ASSERT_SYSCALL (rt_sigaction, ERI_SIGTRAP, &sa, 0, ERI_SIG_SETSIZE);

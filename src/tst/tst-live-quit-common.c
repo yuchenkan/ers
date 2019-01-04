@@ -77,7 +77,7 @@ eri_live_entry_sig_action (int32_t sig, struct eri_siginfo *info,
   eri_assert (act_info.type == ERI_LIVE_ENTRY_SIG_ACTION_INTERNAL);
 
   void (*act) (int32_t, struct eri_siginfo *, struct eri_ucontext *, void *)
-	= (void *) act_info.rip;
+	= (void *) act_info.act;
   act (sig, info, ctx, thread);
 
   eri_assert (0);

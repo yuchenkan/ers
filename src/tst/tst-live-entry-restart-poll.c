@@ -67,14 +67,6 @@ eri_live_get_sig_action (int32_t sig, struct eri_siginfo *info,
   eri_unlock (&lock);
 }
 
-void
-eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
-			   struct eri_live_entry_sig_action_info *info,
-			   void *entry)
-{
-  info->rip = 0;
-}
-
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,

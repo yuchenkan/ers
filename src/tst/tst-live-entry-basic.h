@@ -49,6 +49,7 @@ extern uint8_t _ERS_PASTE (tst_live_entry_leave_, entry)[];
 
 TST_LIVE_ENTRY_ADDRS (do_syscall)
 TST_LIVE_ENTRY_ADDRS (hold_syscall)
+TST_LIVE_ENTRY_ADDRS (mark_complete)
 
 TST_LIVE_ENTRY_ADDRS (sync_jmp)
 

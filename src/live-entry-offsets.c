@@ -60,7 +60,8 @@ declare (void)
   THREAD_ENTRY_OFFSET (SYNC_REPEAT_TRACE, sync_repeat_trace);
 
   THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_TYPE, sig_action_info.type);
-  THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_RIP, sig_action_info.rip);
+  THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_ACT, sig_action_info.act);
+  THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_RESTORER, sig_action_info.restorer);
   THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_MASK_ALL,
 		       sig_action_info.mask.mask_all);
   THREAD_ENTRY_OFFSET (SIG_ACTION_INFO_MASK, sig_action_info.mask.mask);

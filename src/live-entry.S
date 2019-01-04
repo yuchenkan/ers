@@ -92,7 +92,7 @@
 #define TE_SYNC_REPEAT_TRACE	ERI_LIVE_THREAD_ENTRY_SYNC_REPEAT_TRACE
 
 #define TE_SIG_ACTION_INFO_TYPE	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_TYPE
-#define TE_SIG_ACTION_INFO_RIP	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_RIP
+#define TE_SIG_ACTION_INFO_ACT	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_ACT
 #define TE_SIG_ACTION_INFO_MASK_ALL \
   ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_MASK_ALL
 #define TE_SIG_ACTION_INFO_MASK	ERI_LIVE_THREAD_ENTRY_SIG_ACTION_INFO_MASK
@@ -420,6 +420,11 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 .lnested_signal_end_restart:
 
 .lcheck_common_complete:
+  /* Restart if we are inside mark_complete but not done the mark  */
+  IF_RIP_IN_RANGE_LL (eri_live_entry_mark_complete,
+		      COMPLETE_START_LABEL (mark_complete),
+		      .lrestart_fix_check_trace)
+
   /*
    * Restart if we are inside eri_live_entry but not done the
    * target instruction.
@@ -473,7 +478,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
   FIX_NESTED_INVOKE (RDI)
   FIX_NESTED_INVOKE (RSI)
   FIX_NESTED_INVOKE (RDX)
-  MOV_MM (TE_SIG_ACTION_INFO_RIP(%rbx), UCTX_RIP(%rdx), %rax)
+  MOV_MM (TE_SIG_ACTION_INFO_ACT(%rbx), UCTX_RIP(%rdx), %rax)
   jmp	.linvoke
 
   /*
@@ -620,7 +625,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_sig_action)
 
   /*
    * We are trying to reset the trace flag saved on the stack so tracing
-   * won't be restored by popfq to avoid recursive sigtrap.
+   * won't be restored by popfq, and recursive sigtrap is avoided.
    */
   movq	$0, TE_TRACE_FLAG(%rbx)
 
@@ -790,7 +795,7 @@ eri_live_resume_ret:
   cmpb	$1, TE_SIG_ACTION_INFO_MASK_ALL(%rbx)
   je	.lfast_invoke
 
-  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %r8
+  movq	TE_SIG_ACTION_INFO_ACT(%rbx), %r8
   leaq	TE_SIG_ACTION_INFO_MASK(%rbx), %rsi
 
   movq	%rdi, TE_SIG_RDI(%rbx)
@@ -811,12 +816,12 @@ eri_live_resume_ret:
 
 .linvoke_internal:
   movq	%rbx, %rcx
-  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %rax
+  movq	TE_SIG_ACTION_INFO_ACT(%rbx), %rax
   movq	TE_SIG_RBX(%rbx), %rbx
   jmp	*%rax
 
 .lfast_invoke:
-  movq	TE_SIG_ACTION_INFO_RIP(%rbx), %rax
+  movq	TE_SIG_ACTION_INFO_ACT(%rbx), %rax
   movq	TE_SIG_RBX(%rbx), %rbx
 
   movq	SIG_STACK_INFO_RSI(%rsp), %rsi
@@ -1046,8 +1051,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   ERI_GLOBAL_HIDDEN (ERI_TST_LIVE_COMPLETE_START_SYMBOL (name))
 
 /*
- * If not TST, it's not required as tf is already cleared in new_rflags,
- * so when tst_skip_ctf is 0.
+ * If it's not TST or tst_skip_ctf is 0, it's not required as tf is already
+ * cleared when enter the eri_live_entry.
  */
 #ifndef ERI_NO_TST
 # define TST_NEW_RFLAGS_CTF(reg_or_mem) \
@@ -1651,12 +1656,19 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 
   .size eri_live_entry_do_clone, . - eri_live_entry_do_clone
 
-#if 0
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_mark_complete)
   pushq	%rbx
   movq	%rdi, %rbx
   movq	$0, TE_COMPLETE_START(%rbx)
   SET_RESTART_START (mark_complete, %rax)
+  MARK_SEC_PART_AND_CHECK_RESTART (mark_complete)
+COMPLETE_START_LABEL (mark_complete):
+TST_MARK_COMPLETE_START (mark_complete)
   popq	%rbx
+  movb	$1, %al
+  ret
+RESTART_START_LABEL (mark_complete):
+  popq	%rbx
+  movb	$0, %al
+  ret
   .size eri_live_entry_mark_complete, . - eri_live_entry_mark_complete
-#endif

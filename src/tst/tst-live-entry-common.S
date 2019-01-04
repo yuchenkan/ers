@@ -75,6 +75,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (tst_sig_step_int_trigger)
   jmp	eri_live_entry_sig_action
 
 .lno_trigger:
+  leaq	eri_sigreturn, %r11
+  movq	%r11, (%rsp)
   ret
   .size tst_sig_step_int_trigger, . - tst_sig_step_int_trigger
 
