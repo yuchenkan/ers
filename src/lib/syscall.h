@@ -108,6 +108,8 @@
 
 #define ERI_EINTR			4
 #define ERI_EAGAIN			11
+#define ERI_EFAULT			14
+#define ERI_EINVAL			22
 
 #define ERI_FUTEX_WAIT			0
 #define ERI_FUTEX_WAKE			1

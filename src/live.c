@@ -33,8 +33,8 @@ struct sig_action
 {
   int32_t lock;
 
-  uint8_t mask_all;
   struct eri_sigaction act;
+  uint8_t mask_all;
 };
 
 struct internal
@@ -680,7 +680,6 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       ERI_ASSERT_SYSCALL_NCS (nr, a0);
       __builtin_unreachable ();
     }
-#if 0
   else if (nr == __NR_rt_sigaction)
     {
       if (! eri_live_entry_mark_complete (th->entry)) return 0;
@@ -689,14 +688,29 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       struct eri_sigaction *act = (void *) a1;
       struct eri_sigaction *old_act = (void *) a2;
       if (sig == 0 || sig >= ERI_SIGRTMAX)
-	*rax = -ERI_EINVAL;
-      else
 	{
+	  *rax = -ERI_EINVAL;
+	  return 1;
 	}
 
+      if (act || old_act)
+	{
+	  struct sig_action *action = &internal->sig_actions[sig - 1];
+	  /* TODO: Handle EFAULT.  */
+	  eri_clock (mt, &action->lock);
+	  if (old_act)
+	    *old_act = action->act;
+	  if (act)
+	    {
+	      action->act = *act;
+	      action->mask_all = eri_sigset_full (&action->act.mask);
+	    }
+	  eri_cunlock (mt, &action->lock);
+	}
+
+      *rax = 0;
       return 1;
     }
-#endif
   else
     return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, rax,
 				      th->entry);

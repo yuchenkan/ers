@@ -95,6 +95,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
 
   .align 16
 TST_WEAK_GLOBAL_HIDDEN (eri_live_entry_do_syscall)
+TST_WEAK_GLOBAL_HIDDEN (eri_live_entry_mark_complete)
 TST_WEAK_GLOBAL_HIDDEN (tst_live_sig_final_quit)
 .lerror:
   ERI_ASSERT_FALSE
