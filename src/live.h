@@ -21,8 +21,7 @@ uint64_t eri_live_get_sig_stack (struct eri_live_entry_sig_stack_info *info,
 void eri_live_start_thread (void *thread);
 int8_t eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 			 uint64_t a3, uint64_t a4, uint64_t a5,
-			 struct eri_live_entry_syscall_info *info,
-			 void *thread);
+			 uint64_t *rax, void *thread);
 
 void eri_live_sync_async (uint64_t cnt, void *thread);
 void eri_live_restart_sync_async (uint64_t cnt, void *thread);

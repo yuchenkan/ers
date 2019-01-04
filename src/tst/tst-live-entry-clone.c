@@ -96,8 +96,6 @@ clear_trace_flag (struct eri_mcontext *mctx)
   eri_assert (mctx->rflags & ERI_TRACE_FLAG_MASK);
   eri_assert_printf ("[clear_trace_flag:0]\n");
 
-  struct eri_live_entry_syscall_info *info = (void *) mctx->rcx;
-  info->tst_clone_tf = ERI_TRACE_FLAG_MASK;
   mctx->rflags &= ~ERI_TRACE_FLAG_MASK;
 }
 
@@ -292,10 +290,9 @@ static struct tst_rand rand;
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
-		  struct eri_live_entry_syscall_info *info,
-		  void *entry)
+		  uint64_t *rax, void *entry)
 {
-  eri_assert (info->rax == __NR_clone);
+  eri_assert (*rax == __NR_clone);
   silence = 1;
   eri_assert_printf ("[syscall]\n");
 
@@ -314,11 +311,11 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 
   silence = 0;
 
-  struct eri_live_entry_clone_info clone_info = {
+  struct eri_live_entry_clone_info info = {
     flags, user_child_stack, ptid, ctid, newtls
   };
 
-  uint8_t done = eri_live_entry_clone (entry, child_entry, &clone_info, info);
+  uint8_t done = eri_live_entry_clone (entry, child_entry, &info, rax);
   eri_assert (done == 0 || done == 1);
   return done;
 }

@@ -78,11 +78,10 @@ eri_live_start_sig_action (int32_t sig, struct eri_stack *stack,
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
-		  struct eri_live_entry_syscall_info *info,
-		  void *entry)
+		  uint64_t *rax, void *entry)
 {
   return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5,
-				    info, entry);
+				    rax, entry);
 }
 
 static uint8_t stack[1024 * 1024];

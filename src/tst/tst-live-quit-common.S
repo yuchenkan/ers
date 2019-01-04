@@ -38,7 +38,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
   cmpb	$1, tst_live_quit_allow_clone
   jne	.lerror
 
-  cmpq	$__NR_clone, ERI_LIVE_ENTRY_SYSCALL_INFO_RAX(%rcx)
+  cmpq	$__NR_clone, (%rcx)
   jne	.lerror
 
   pushq	%rsi
@@ -65,7 +65,7 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_clone)
   jz	.lchild
   jl	.lerror
 
-  movq	%rax, ERI_LIVE_ENTRY_SYSCALL_INFO_RAX(%r9)
+  movq	%rax, (%r9)
 
   movb	$1, %al
   ret

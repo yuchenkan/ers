@@ -137,7 +137,6 @@ struct eri_live_thread_entry
   uint64_t thread_restart_syscall_end;
 
   uint64_t syscall_rax;
-  uint64_t syscall_rsp;
   uint64_t syscall_new_thread;
 
   uint64_t sync_repeat_trace;
@@ -225,21 +224,9 @@ ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (dec)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (xchg)
 ERI_TST_EXTERN_ATOMIC_COMPLETE_START_SYMBOLS (cmpxchg)
 
-struct eri_live_entry_syscall_info
-{
-  uint64_t rax;
-  uint64_t r11;
-  uint64_t rflags;
-
-#ifndef ERI_NO_TST
-  /* It's more convenient here than clone_info.  */
-  uint64_t tst_clone_tf;
-#endif
-};
-
 uint8_t eri_live_entry_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 				   uint64_t a3, uint64_t a4, uint64_t a5,
-				   struct eri_live_entry_syscall_info *info,
+				   uint64_t *rax,
 				   struct eri_live_thread_entry *entry);
 
 struct eri_live_entry_clone_info
@@ -253,8 +240,10 @@ struct eri_live_entry_clone_info
 
 uint8_t eri_live_entry_clone (struct eri_live_thread_entry *entry,
 			      struct eri_live_thread_entry *child_entry,
-			      struct eri_live_entry_clone_info *clone_info,
-			      struct eri_live_entry_syscall_info *info);
+			      struct eri_live_entry_clone_info *info,
+			      uint64_t *rax);
+
+uint8_t eri_live_entry_mark_complete (struct eri_live_thread_entry *entry);
 
 #endif
 

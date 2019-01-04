@@ -88,7 +88,6 @@
 #define TE_EXT_R15		ERI_LIVE_THREAD_ENTRY_EXT_R15
 
 #define TE_SYSCALL_RAX		ERI_LIVE_THREAD_ENTRY_SYSCALL_RAX
-#define TE_SYSCALL_RSP		ERI_LIVE_THREAD_ENTRY_SYSCALL_RSP
 #define TE_SYSCALL_NEW_THREAD	ERI_LIVE_THREAD_ENTRY_SYSCALL_NEW_THREAD
 #define TE_SYNC_REPEAT_TRACE	ERI_LIVE_THREAD_ENTRY_SYNC_REPEAT_TRACE
 
@@ -154,17 +153,17 @@
   ERI_LIVE_ENTRY_MARK_SEC_PART_BIT_OFFSET
 #define MARK_SEC_PART_BIT		ERI_LIVE_ENTRY_MARK_SEC_PART_BIT
 
-#define MOV_MM(src, dst, tmp) \
-  movq	src, tmp;							\
-  movq	tmp, dst
+#define MOV_MM(src, dst, reg) \
+  movq	src, reg;							\
+  movq	reg, dst
 
-#define MOV_LM(label, dst, tmp) \
-  leaq	label(%rip), tmp;						\
-  movq	tmp, dst
+#define MOV_LM(label, dst, reg) \
+  leaq	label(%rip), reg;						\
+  movq	reg, dst
 
-#define CMP_MM(src, dst, tmp) \
-  movq	src, tmp;							\
-  cmpq	tmp, dst
+#define CMP_MM(src, dst, reg) \
+  movq	src, reg;							\
+  cmpq	reg, dst
 
 #define LOAD_OP_OP(dst) \
   movq	PTE_OP(%rbx), dst;						\
@@ -1061,22 +1060,20 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
 #endif
 
 /*
+ * %rsp should be top - ERI_LIVE_ENTRY_SAVED_REG_SIZE16.
+ *
  * Fix tf:
  * rflags = (rflags & TF_MASK) | new_rflags
  *
  * Setting rflags has to be like this. We can't move rflags out of stack
  * as by so clear tf code in lresume may not work.
  */
-#define SAVE_NEW_RFLAGS_FROM_REG(reg) \
-  andq	$ERI_TRACE_FLAG_MASK, STACK_RFLAGS(%rsp);			\
-  TST_NEW_RFLAGS_CTF (reg)						\
-  orq	reg, STACK_RFLAGS(%rsp)
-
-/* %rsp should be top - ERI_LIVE_ENTRY_SAVED_REG_SIZE16.  */
 #define SAVE_NEW_RFLAGS(tmp) \
   pushfq;								\
   popq	tmp;								\
-  SAVE_NEW_RFLAGS_FROM_REG (tmp)
+  andq	$ERI_TRACE_FLAG_MASK, STACK_RFLAGS(%rsp);			\
+  TST_NEW_RFLAGS_CTF (tmp)						\
+  orq	tmp, STACK_RFLAGS(%rsp)
 
 /*
  * Destory %rax.
@@ -1121,19 +1118,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
 /* eri_live_entry: syscall			*/
 /************************************************/
 
-#define SYSCALL_RAX		ERI_LIVE_ENTRY_SYSCALL_INFO_RAX
-#define SYSCALL_R11		ERI_LIVE_ENTRY_SYSCALL_INFO_R11
-#define SYSCALL_RFLAGS		ERI_LIVE_ENTRY_SYSCALL_INFO_RFLAGS
-
-#define SYSCALL_TST_CLONE_TF	ERI_LIVE_ENTRY_SYSCALL_INFO_TST_CLONE_TF
-
-#define SYSCALL_SIZE16		ERI_LIVE_ENTRY_SYSCALL_INFO_SIZE16
-
 .lsyscall:
   movq	%r10, %rcx
-
-  /* For rflags w/o tf.  */
-  movq	-8(%rsp), %r11
 
   movq	$0, TE_SYSCALL_NEW_THREAD(%rbx)
 
@@ -1147,14 +1133,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
   movq	%r15, TE_EXT_R15(%rbx)
 
 .lsyscall_no_extra_save:
-  subq	$SYSCALL_SIZE16, %rsp
-  movq	%rax, SYSCALL_RAX(%rsp)
-  movq	%r11, SYSCALL_RFLAGS(%rsp)
-#ifndef ERI_NO_TST
-  movq	$0, SYSCALL_TST_CLONE_TF(%rsp)
-#endif
 
-  movq	%rsp, %rax
+  leaq	STACK_RAX(%rsp), %rax
   pushq	%rbx
   pushq	%rax
 
@@ -1168,21 +1148,8 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry)
    */
   jl	.lhold_syscall
 
-  movq	%rsp, %rax
-  addq	$SYSCALL_SIZE16, %rsp
-
-  MOV_MM (SYSCALL_RAX(%rax), STACK_RAX(%rsp), %r11)
-  MOV_MM (SYSCALL_R11(%rax), STACK_R11(%rsp), %r11)
-  movq	SYSCALL_RFLAGS(%rax), %r11
-  SAVE_NEW_RFLAGS_FROM_REG (%r11)
-
-  /* Reset tf for %r11: r11 = (rflags & TF_MASK) | r11  */
-  movq	STACK_RFLAGS(%rsp), %r11
-  andq	$ERI_TRACE_FLAG_MASK, %r11
-  TST_NEW_RFLAGS_CTF (STACK_R11(%rsp))
-  orq	%r11, STACK_R11(%rsp)
-
-  MOV_MM (PTE_CONT(%rbx), STACK_RCX(%rsp), %r11)
+  MOV_MM (STACK_RFLAGS(%rsp), STACK_R11(%rsp), %rax)
+  MOV_MM (PTE_CONT(%rbx), STACK_RCX(%rsp), %rax)
   jmp	.ldone_syscall
 
 .lhold_syscall:
@@ -1193,8 +1160,6 @@ TST_MARK_COMPLETE_START (hold_syscall)
 
   MOV_MM (PTE_START(%rbx), PTE_CONT(%rbx), %rax)
 
-  addq	$SYSCALL_SIZE16, %rsp
-
   movl	$__NR_sched_yield, %eax
   syscall
 
@@ -1203,7 +1168,6 @@ TST_MARK_COMPLETE_START (hold_syscall)
 
 .lrestart_syscall:
 RESTART_START_LABEL (hold_syscall):
-  addq	$SYSCALL_SIZE16, %rsp
 
   RESTART_RESUME_RET
 
@@ -1552,24 +1516,20 @@ ATOMIC_LABEL (name):							\
 /* eri_live_entry_do_syscall			*/
 /************************************************/
 
-#define ARG_INFO		16
+#define ARG_RAX			16
 #define ARG_ENTRY		24
 
 ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_syscall)
   pushq	%rbx
   movq	ARG_ENTRY(%rsp), %rbx
   movq	$0, TE_COMPLETE_START(%rbx)
-  SET_RESTART_START (do_syscall, %r11)
+  SET_RESTART_START (do_syscall, %rax)
 
   movq	%rcx, %r10
-  movq	ARG_INFO(%rsp), %r11
-  movq	SYSCALL_RAX(%r11), %rax
-  movq	%rax, TE_SYSCALL_RAX(%rbx)
-  movq	%rsp, TE_SYSCALL_RSP(%rbx)
-  pushq	SYSCALL_RFLAGS(%r11)
+  movq	ARG_RAX(%rsp), %rax
+  MOV_MM ((%rax), TE_SYSCALL_RAX(%rbx), %rax)
   MARK_SEC_PART_AND_CHECK_RESTART (do_syscall)
 
-  popfq
 .ldo_syscall:
   syscall
 COMPLETE_START_LABEL (do_syscall):
@@ -1577,11 +1537,8 @@ TST_MARK_COMPLETE_START (do_syscall)
 
   movq	$0, TE_RESTART_SYSCALL(%rbx)
 
-  movq	ARG_INFO(%rsp), %rcx
-  movq	%rax, SYSCALL_RAX(%rcx)
-  movq	%r11, SYSCALL_R11(%rcx)
-  pushfq
-  popq	SYSCALL_RFLAGS(%rcx)
+  movq	ARG_RAX(%rsp), %r11
+  movq	%rax, (%r11)
 
   popq	%rbx
   movb	$1, %al
@@ -1590,8 +1547,6 @@ TST_MARK_COMPLETE_START (do_syscall)
 RESTART_START_LABEL (do_syscall):
 
   movq	$0, TE_RESTART_SYSCALL(%rbx)
-
-  movq	TE_SYSCALL_RSP(%rbx), %rsp
 
   popq	%rbx
   movb	$0, %al
@@ -1616,28 +1571,30 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
    *		top ---
    *		    rflags/rax/rdi/rsi... (SAVED_REG_SIZE16)
    *	  top_saved ---
-   *		    eri_syscall_info (SYSCALL_SIZE16)
    *		    eri_syscall args (16)
    *	eri_syscall ---		after start:	eri_syscall ---
    *		    ret					    ret
    *		    padding (8)				    padding (8)
    *		    sig_mask (ERI_SIGMASK_SIZE16)	    sig_mask
-   *		    padding (8)			  eri_start ---
-   *		    info
+   *		    entry (not used)		  eri_start ---
+   *		    rax
    * eri_do_syscall ---
    *		    .lchild_return
    *		    rbx, child_entry
    *	    syscall --- CLONE_CHILD_STACK
    *
-   * eri_syscall_info:	eri_live_entry_syscall_info
    * eri_syscall:	eri_live_syscall
    * eri_start:		eri_live_start_thread
    * sig_mask:		eri_sigmask
-   * info:		eri_live_entry_syscall_info *
    * eri_do_syscall:	eri_live_entry_do_syscall
    */
 
   movq	CLONE_CHILD_STACK(%rdx), %rax
+
+  movq	(%rax), %r11
+  MOV_MM (TE_TOP_SAVED(%r11), 16(%rax), %r11)
+  addq	$STACK_RAX, 16(%rax)
+
   leaq	.lchild_return(%rip), %r11
   movq	%r11, 8(%rax)
 
@@ -1661,24 +1618,6 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
 
   leaq	ERI_SIGMASK_MASK(%rsi), %rsi
   CHECK_RESTORE_SIG_MASK
-
-#ifndef ERI_NO_TST
-# define TST_RESTORE_CLONE_TF \
-  /* Set by sig_action from the test.  */				\
-  movq	-16(%rsp), %rax;						\
-  movq	SYSCALL_TST_CLONE_TF(%rax), %r11;				\
-  testq	%r11, %r11;							\
-  jz	1f;								\
-  pushfq;								\
-  orq	%r11, (%rsp);							\
-  popfq;								\
-  orq	%r11, SYSCALL_R11(%rax);					\
-1:
-#else
-# define TST_RESTORE_CLONE_TF
-#endif
-
-  TST_RESTORE_CLONE_TF
 
   movb	%r8b, %al
 .lfast_do_clone_return:
@@ -1704,8 +1643,6 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
   leaq	ERI_SIGMASK_MASK(%rsp), %rsi
   CHECK_RESTORE_SIG_MASK
 
-  TST_RESTORE_CLONE_TF
-
 .lfast_child_return:
   addq	$ERI_SIGMASK_SIZE16 + 8, %rsp
 
@@ -1713,3 +1650,13 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_do_clone)
   ret
 
   .size eri_live_entry_do_clone, . - eri_live_entry_do_clone
+
+#if 0
+ERI_GLOBAL_HIDDEN_FUNCTION (eri_live_entry_mark_complete)
+  pushq	%rbx
+  movq	%rdi, %rbx
+  movq	$0, TE_COMPLETE_START(%rbx)
+  SET_RESTART_START (mark_complete, %rax)
+  popq	%rbx
+  .size eri_live_entry_mark_complete, . - eri_live_entry_mark_complete
+#endif

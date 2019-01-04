@@ -120,7 +120,7 @@ tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
   *(uint64_t *) stack = (uint64_t) fn;
   *(uint64_t *) (stack + 8) = (uint64_t) data;
 
-  struct eri_live_entry_syscall_info info = { __NR_clone };
+  uint64_t rax = __NR_clone;
   int8_t done = 0;
   while (done != 1)
     {
@@ -128,7 +128,7 @@ tst_live_quit_clone (uint8_t *stack, int32_t *ptid, int32_t *ctid,
       done = eri_live_syscall (ERI_SUPPORTED_CLONE_FLAGS,
 		(uint64_t) stack + TST_LIVE_QUIT_STACK_SIZE,
 		(uint64_t) ptid, (uint64_t) ctid, 0, 0,
-		&info, get_thread ());
+		&rax, get_thread ());
       eri_assert_lprintf (&tst_live_quit_printf_lock, "done = %x\n", done);
       tst_live_quit_block_signals (1);
     }
@@ -154,11 +154,11 @@ static void do_exit (int32_t nr, int32_t status) __attribute__ ((noreturn));
 static void
 do_exit (int32_t nr, int32_t status)
 {
-  struct eri_live_entry_syscall_info info = { nr };
+  uint64_t rax = nr;
   while (1)
     {
       tst_live_quit_block_signals (0);
-      eri_assert (eri_live_syscall (status, 0, 0, 0, 0, 0, &info,
+      eri_assert (eri_live_syscall (status, 0, 0, 0, 0, 0, &rax,
 				    get_thread ()) != 0);
       tst_live_quit_block_signals (1);
     }

@@ -10,10 +10,6 @@
   ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SIG_STACK_INFO_, name,		\
 		      struct eri_live_entry_sig_stack_info, member)
 
-#define SYSCALL_INFO_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_SYSCALL_INFO_, name,		\
-		      struct eri_live_entry_syscall_info, member)
-
 #define CLONE_INFO_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_LIVE_ENTRY_CLONE_INFO_, name,			\
 		      struct eri_live_entry_clone_info, member)
@@ -60,7 +56,6 @@ declare (void)
   THREAD_ENTRY_OFFSET (EXT_R15, ext_r15);
 
   THREAD_ENTRY_OFFSET (SYSCALL_RAX, syscall_rax);
-  THREAD_ENTRY_OFFSET (SYSCALL_RSP, syscall_rsp);
   THREAD_ENTRY_OFFSET (SYSCALL_NEW_THREAD, syscall_new_thread);
   THREAD_ENTRY_OFFSET (SYNC_REPEAT_TRACE, sync_repeat_trace);
 
@@ -108,15 +103,6 @@ declare (void)
 
   ERI_DECLARE_SYMBOL (ERI_LIVE_THREAD_ENTRY_SIZE16,
 		      eri_size_of (struct eri_live_thread_entry, 16));
-
-  SYSCALL_INFO_OFFSET (RAX, rax);
-  SYSCALL_INFO_OFFSET (R11, r11);
-  SYSCALL_INFO_OFFSET (RFLAGS, rflags);
-
-  SYSCALL_INFO_OFFSET (TST_CLONE_TF, tst_clone_tf);
-
-  ERI_DECLARE_SYMBOL (ERI_LIVE_ENTRY_SYSCALL_INFO_SIZE16,
-		      eri_size_of (struct eri_live_entry_syscall_info, 16));
 
   SIG_STACK_INFO_OFFSET (RSI, rsi);
   SIG_STACK_INFO_OFFSET (RDX, rdx);

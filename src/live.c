@@ -617,14 +617,14 @@ eri_live_start_thread (void *thread)
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
-		  struct eri_live_entry_syscall_info *info, void *thread)
+		  uint64_t *rax, void *thread)
 {
   struct thread *th = thread;
   struct internal *internal = th->internal;
   uint8_t mt = !! eri_atomic_load (&internal->multi_threading);
   eri_barrier ();
 
-  int32_t nr = info->rax;
+  int32_t nr = *rax;
   if (nr == __NR_clone)
     {
       int32_t flags = a0;
@@ -638,7 +638,7 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       struct thread *child_th = alloc_thread (mt, internal, ctid);
       child_th->id = eri_catomic_inc_fetch (mt, &internal->thread_id);
 
-      struct eri_live_entry_clone_info clone_info = {
+      struct eri_live_entry_clone_info info = {
 	flags, user_child_stack, ptid, &child_th->alive, newtls
       };
 
@@ -653,9 +653,9 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       eri_barrier ();
 
       uint8_t done = eri_live_entry_clone (th->entry, child_th->entry,
-					   &clone_info, info);
+					   &info, rax);
 
-      if (! done || ERI_SYSCALL_IS_ERROR (info->rax))
+      if (! done || ERI_SYSCALL_IS_ERROR (*rax))
 	{
 	  eri_barrier ();
 	  eri_catomic_dec (mt, &internal->multi_threading);
@@ -693,8 +693,23 @@ eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
       ERI_ASSERT_SYSCALL_NCS (nr, a0);
       __builtin_unreachable ();
     }
+#if 0
+  else if (nr == __NR_rt_sigaction)
+    {
+      if (! eri_live_entry_mark_complete (th->entry)) return 0;
+
+      int32_t sig = a0;
+      struct eri_sigaction *act = (void *) a1;
+      struct eri_sigaction *old_act = (void *) a2;
+      if (sig == 0 || sig >= ERI_SIGRTMAX)
+	{
+	}
+
+      return 1;
+    }
+#endif
   else
-    return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, info,
+    return eri_live_entry_do_syscall (a0, a1, a2, a3, a4, a5, rax,
 				      th->entry);
 }
 

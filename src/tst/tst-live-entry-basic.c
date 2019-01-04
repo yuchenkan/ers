@@ -68,25 +68,22 @@ static uint8_t silence;
 
 uint8_t tst_do_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		        uint64_t a3, uint64_t a4, uint64_t a5,
-		        struct eri_live_entry_syscall_info *info,
-			void *entry);
+		        uint64_t *rax, void *entry);
 
 static uint8_t hold_syscall;
 
 int8_t
 eri_live_syscall (uint64_t a0, uint64_t a1, uint64_t a2,
 		  uint64_t a3, uint64_t a4, uint64_t a5,
-		  struct eri_live_entry_syscall_info *info,
-		  void *thread)
+		  uint64_t *rax, void *thread)
 {
   if (hold_syscall) return -1;
 
   silence = 1;
-  tst_printf ("[%s] eri live syscall: rax = %lx, rflags = %lx\n",
-	      current->name, info->rax, info->rflags);
+  tst_printf ("[%s] eri live syscall: rax = %lx\n", current->name, *rax);
   eri_assert (current_entry == thread);
   silence = 0;
-  return tst_do_syscall (a0, a1, a2, a3, a4, a5, info, current_entry);
+  return tst_do_syscall (a0, a1, a2, a3, a4, a5, rax, current_entry);
 }
 
 void
