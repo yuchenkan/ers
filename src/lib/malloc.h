@@ -12,6 +12,8 @@ struct eri_pool
   uint64_t size;
   uint64_t used;
 
+  uint8_t preserve;
+
   void (*cb_malloc) (struct eri_pool *, uint64_t, int32_t, void *, void *);
   void (*cb_free) (struct eri_pool *, void *, int32_t, void *);
   void *cb_data;
@@ -45,6 +47,8 @@ int32_t eri_free (struct eri_pool *pool, void *p);
   })
 #define eri_assert_free(p, pp)		eri_assert (eri_free (p, pp) == 0)
 
+void eri_preserve (struct eri_pool *pool);
+
 #include "lib/lock.h"
 
 struct eri_mtpool
@@ -72,19 +76,5 @@ int32_t eri_mtfree (struct eri_mtpool *pool, void *p);
   })
 
 #define eri_assert_mtfree(mtp, p)	eri_assert (eri_mtfree (mtp, p) == 0)
-
-#define eri_assert_cmalloc(mt, mtp, s) \
-  (! (mt) ? eri_assert_malloc (&(mtp)->pool, s)				\
-	  : eri_assert_mtmalloc (mtp, s))
-
-#define eri_assert_ccalloc(mt, mtp, s) \
-  (! (mt) ? eri_assert_calloc (&(mtp)->pool, s)				\
-	  : eri_assert_mtcalloc (mtp, s))
-
-#define eri_assert_cfree(mt, mtp, p) \
-  do {									\
-    if (! (mt)) eri_assert_free (&(mtp)->pool, p);			\
-    else eri_assert_mtfree (mtp, p);					\
-  } while (0)
 
 #endif

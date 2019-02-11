@@ -3,35 +3,48 @@
 
 #include "public/common.h"
 
-#define _ERI_PP_IF_0(...)
-#define _ERI_PP_IF_1(...)		__VA_ARGS__
-#define ERI_PP_IF(c, ...) \
-  _ERS_PASTE (_ERI_PP_IF_, c) (__VA_ARGS__)
+#define ERI_STR		_ERS_STR
+#define ERI_PASTE	_ERS_PASTE
+#define ERI_PASTE2	_ERS_PASTE2
 
+#define ERI_MOV_LM(label, dst, reg) \
+  leaq	label(%rip), reg;						\
+  movq	reg, dst
+
+#define ERI_MOV_MM(src, dst, reg) \
+  movq	src, reg;							\
+  movq	reg, dst
+
+#if 0
 #define _ERI_PP_IIF_0(t, ...)		__VA_ARGS__
 #define _ERI_PP_IIF_1(t, ...)		t
 #define ERI_PP_IIF(c, t, ...) \
-  _ERS_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
+  ERI_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
 #define ERI_OMIT(...)
+#endif
 
 #ifdef __ASSEMBLER__
 
-#define ERI_GLOBAL_HIDDEN(symbol) \
+#define ERI_SYMBOL(symbol) \
   .global symbol;							\
   .hidden symbol;							\
 symbol:
 
-#define ERI_FUNCTION(symbol) \
+#define ERI_FUNCTION(func) \
   .align 16;								\
-  .type symbol, @function;						\
-symbol:
+  .global func;								\
+  .hidden func;								\
+  .type func, @function;						\
+func:
 
-#define ERI_GLOBAL_HIDDEN_FUNCTION(symbol) \
+#define ERI_STATIC_FUNCTION(func) \
   .align 16;								\
-  ERI_GLOBAL_HIDDEN (symbol);						\
-  .type symbol, @function;						\
-symbol:
+  .type func, @function;						\
+func:
+
+#define ERI_END_FUNCTION(func) \
+  .size func, . - func
 
 #define ERI_ASSERT_FALSE \
   movq	$0, %r15;							\
@@ -45,6 +58,9 @@ symbol:
 # define eri_assert(exp) \
   do { if (! (exp)) asm ("movq $0, %r15; movl $0, (%r15);"); } while (0)
 #endif
+
+#define eri_assert_unreachable() \
+  do { eri_assert (0); __builtin_unreachable (); } while (0)
 
 #define eri_min(a, b) \
   ({									\
@@ -82,8 +98,6 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
   })
 #define eri_round_up(x, u) eri_round_up_mask (x, (u) - 1)
 #define eri_round_down(x, u) ((x) & ~((u) - 1))
-
-#define eri_less_than(x, a, b) (*(a) < *(b))
 
 #define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
 

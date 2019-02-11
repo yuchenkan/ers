@@ -7,16 +7,10 @@
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (start)
-  pushq	$0x12345678
-  pushq	$0x12345678
+ERI_FUNCTION (start)
   movq	$0x12345678, %rdx
   _ERS_INIT
   cmpq	$0x12345678, %rdx
-  jne	.lerror
-  cmpl	$0x12345678, (%rsp)
-  jne	.lerror
-  cmpl	$0x12345678, 8(%rsp)
   jne	.lerror
 
   movl	$__NR_exit, %eax
@@ -25,3 +19,4 @@ ERI_GLOBAL_HIDDEN_FUNCTION (start)
 
 .lerror:
   ERI_ASSERT_FALSE
+  ERI_END_FUNCTION (start)

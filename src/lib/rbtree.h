@@ -445,4 +445,6 @@ ERI_DEFINE_RBTREE (attr, pfx, tree_type, node_type, node_type, less_than)
   for (iter = pfx##_rbt_get_first (tree);				\
 	 iter && ({ next = pfx##_rbt_get_next (iter); 1; }); iter = next)
 
+#define eri_less_than(x, a, b) (*(a) < *(b))
+
 #endif

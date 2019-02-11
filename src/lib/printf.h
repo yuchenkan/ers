@@ -45,7 +45,7 @@ int32_t eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len);
 #define eri_assert_fread(f, buf, sz, len) \
   eri_assert (eri_fread (f, buf, sz, len) == 0)
 
-/* Support %u %lu %x %lx %s only */
+/* Support %u %lu %x %lx %s only.  */
 int32_t eri_vfprintf (eri_file_t file, const char *fmt, va_list arg);
 int32_t eri_fprintf (eri_file_t file, const char *fmd, ...);
 
@@ -78,18 +78,13 @@ int32_t eri_lprintf (int32_t *lock, const char *fmt, ...);
 #define eri_assert_lprintf(l, fmt, ...) \
   eri_assert (eri_lprintf (l, fmt, ##__VA_ARGS__) == 0)
 
-#define eri_assert_clvfprintf(mt, l, f, fmt, arg) \
-  eri_assert ((mt) ? eri_lvfprintf (l, f, fmt, arg)			\
-		   : eri_vfprintf (f, fmt, arg) == 0)
-#define eri_assert_clfprintf(mt, l, f, fmt, ...) \
-  eri_assert ((mt) ? eri_lfprintf (l, f, fmt, ##__VA_ARGS__)		\
-		   : eri_fprintf (f, fmt, ##__VA_ARGS__) == 0)
-#define eri_assert_clvprintf(mt, l, fmt, arg) \
-  eri_assert ((mt) ? eri_lvprintf (l, fmt, arg)				\
-		   : eri_vprintf (fmt, arg))
-#define eri_assert_clprintf(mt, l, fmt, ...) \
-  eri_assert ((mt) ? eri_lprintf (l, fmt, ##__VA_ARGS__)		\
-		   : eri_printf (fmt, ##__VA_ARGS__))
+int32_t eri_gvprintf (const char *fmt, va_list arg);
+int32_t eri_gprintf (const char *fmt, ...);
+
+#define eri_assert_gvprintf(fmt, arg) \
+  eri_assert (eri_gvprintf (fmt, arg) == 0)
+#define eri_assert_gprintf(fmt, ...) \
+  eri_assert (eri_gprintf (fmt, ##__VA_ARGS__) == 0)
 
 int32_t eri_file_foreach_line (const char *path, struct eri_buf *buf,
 			       void (*proc) (const char *, uint64_t, void *),

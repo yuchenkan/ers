@@ -1,15 +1,16 @@
 /* vim: set ft=gas: */
 
-#include "rtld-offsets.h"
+#include "generated/init-local-offsets.h"
+#include "generated/rtld-offsets.h"
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_start)
+ERI_FUNCTION (eri_start)
   subq	$16, %rsp
-  jmp	eri_init
-  .size start, . - start
+  jmp	init
+  ERI_END_FUNCTION (eri_start)
 
-ERI_FUNCTION (set_context)
+ERI_STATIC_FUNCTION (set_context)
   movq	%rbx, ERI_INIT_CONTEXT_RBX(%rdi)
   movq	%rsp, ERI_INIT_CONTEXT_RSP(%rdi)
   movq	%rbp, ERI_INIT_CONTEXT_RBP(%rdi)
@@ -19,9 +20,9 @@ ERI_FUNCTION (set_context)
   movq	%r15, ERI_INIT_CONTEXT_R15(%rdi)
   movb	$ERI_LIVE, %al
   ret
-  .size set_context, . - set_context
+  ERI_END_FUNCTION (set_context)
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_init_context)
+ERI_FUNCTION (init_context)
 
   pushq	%rdi
   pushq	%rsi
@@ -69,4 +70,4 @@ ERI_GLOBAL_HIDDEN_FUNCTION (eri_init_context)
 
 .lerror:
   ERI_ASSERT_FALSE
-  .size eri_init_context, . - eri_init_context
+  ERI_END_FUNCTION (init_context)

@@ -1,40 +1,31 @@
 #include <stdint.h>
 
 #include "rtld.h"
-#ifndef ERI_TST_RTLD
-# include "recorder-binary.h"
-#else
-# include "tst/tst-rtld-recorder-binary.h"
-#endif
+
+#include "generated/recorder-binary.h"
 
 #include "lib/util.h"
 #include "lib/syscall.h"
 #include "lib/printf.h"
 
 void
-eri_rtld (void **arg, uint64_t rdx)
+rtld (void **args, uint64_t rdx, uint64_t rflags)
 {
   extern uint8_t eri_binary_end[];
-  struct eri_rtld rtld = {
-    rdx, (uint64_t) arg - 8, (uint64_t) eri_binary_end
+  struct eri_rtld_args rtld = {
+    rdx, rflags, (uint64_t) args, (uint64_t) eri_binary_end
   };
   struct eri_sigset set;
-  eri_sigfillset (&set);
-  ERI_ASSERT_SYSCALL (rt_sigprocmask, ERI_SIG_SETMASK, &set,
-		      &rtld.sig_mask.mask, ERI_SIG_SETSIZE);
-  rtld.sig_mask.mask_all = eri_sigset_full (&rtld.sig_mask.mask);
+  eri_sig_fill_set (&set);
+  eri_assert_syscall (rt_sigprocmask, ERI_SIG_SETMASK, &set,
+		      &rtld.sig_mask, ERI_SIG_SETSIZE);
 
-#ifdef ERI_TST_RTLD
-  arg += 2;
-  const char *rec = "tst-rtld-recorder";
-#else
   const char *rec = "recorder";
-#endif
   uint64_t pagesz = 4096;
 
-  uint64_t argc = *(uint64_t *) arg;
+  uint64_t argc = *(uint64_t *) args;
   char **envp;
-  for (envp = (char **) arg + 1 + argc + 1; *envp; ++envp)
+  for (envp = (char **) args + 1 + argc + 1; *envp; ++envp)
     if (eri_strncmp (*envp, "ERS_RECORDER=",
 		     eri_strlen ("ERS_RECORDER=")) == 0)
       rec = *envp + eri_strlen ("ERS_RECORDER=");
@@ -44,9 +35,9 @@ eri_rtld (void **arg, uint64_t rdx)
   for (a = auxv; a->type != ERI_AT_NULL; ++a)
     if (a->type == ERI_AT_PAGESZ) pagesz = a->val;
 
-  uint64_t fd = ERI_ASSERT_SYSCALL_RES (open, rec, ERI_O_RDONLY);
+  uint64_t fd = eri_assert_syscall (open, rec, ERI_O_RDONLY);
 
-  struct eri_seg segs[] = ERI_RECORDER_BINARY_SEGMENTS;
+  struct eri_seg_args segs[] = ERI_RECORDER_BINARY_SEGMENTS;
   uint16_t nsegs = eri_length_of (segs);
 
   uint64_t base;
@@ -67,11 +58,11 @@ eri_rtld (void **arg, uint64_t rdx)
 	  uint64_t alloclastend = segs[nsegs - 1].vaddr
 				  + segs[nsegs - 1].memsz;
 	  uint64_t maplastend = eri_round_up (alloclastend, pagesz);
-	  base = ERI_ASSERT_SYSCALL_RES (
+	  base = eri_assert_syscall (
 			mmap, mapstart, maplastend - mapstart + 2 * pagesz,
 			0, ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0)
 		 - mapstart + pagesz;
-	  ERI_ASSERT_SYSCALL (mmap, base + mapstart, mapend - mapstart,
+	  eri_assert_syscall (mmap, base + mapstart, mapend - mapstart,
 			      prot, ERI_MAP_FIXED | ERI_MAP_PRIVATE,
 			      fd, offset);
 
@@ -79,7 +70,7 @@ eri_rtld (void **arg, uint64_t rdx)
 	  rtld.map_end = base + maplastend;
 	}
       else
-	ERI_ASSERT_SYSCALL (mmap, base + mapstart, mapend - mapstart,
+	eri_assert_syscall (mmap, base + mapstart, mapend - mapstart,
 			    prot, ERI_MAP_FIXED | ERI_MAP_PRIVATE,
 			    fd, offset);
 
@@ -89,7 +80,7 @@ eri_rtld (void **arg, uint64_t rdx)
 	  if (eri_round_down (dataend, pagesz) != mapend)
 	    {
 	      if (! (prot & ERI_PROT_WRITE))
-		ERI_ASSERT_SYSCALL (mprotect, base + mapend - pagesz,
+		eri_assert_syscall (mprotect, base + mapend - pagesz,
 				    pagesz, prot | ERI_PROT_WRITE);
 
 	      uint64_t c;
@@ -97,18 +88,18 @@ eri_rtld (void **arg, uint64_t rdx)
 		*(uint8_t *) c = 0;
 
 	      if (! (prot & ERI_PROT_WRITE))
-		ERI_ASSERT_SYSCALL (mprotect, base + mapend - pagesz,
+		eri_assert_syscall (mprotect, base + mapend - pagesz,
 				    pagesz, prot);
 	    }
 
 	  if (zeroend > mapend)
-	    ERI_ASSERT_SYSCALL (mmap, base + mapend, zeroend - mapend,
+	    eri_assert_syscall (mmap, base + mapend, zeroend - mapend,
 		prot, ERI_MAP_FIXED | ERI_MAP_ANONYMOUS | ERI_MAP_PRIVATE,
 		-1, 0);
 	}
     }
 
-  ERI_ASSERT_SYSCALL (close, fd);
+  eri_assert_syscall (close, fd);
 
-  ((void (*) (struct eri_rtld *)) (base + ERI_RECORDER_BINARY_ENTRY)) (&rtld);
+  ((void (*) (struct eri_rtld_args *)) (base + ERI_RECORDER_BINARY_ENTRY)) (&rtld);
 }

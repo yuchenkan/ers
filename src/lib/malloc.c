@@ -113,6 +113,7 @@ eri_malloc (struct eri_pool *pool, uint64_t size, void **p)
   return 0;
 }
 
+#if 0
 int32_t
 eri_calloc (struct eri_pool *pool, uint64_t size, void **p)
 {
@@ -120,22 +121,23 @@ eri_calloc (struct eri_pool *pool, uint64_t size, void **p)
   if (res == 0) eri_memset (*p, 0, size);
   return res;
 }
+#endif
 
 static void
-guard (void *b, uint64_t s)
+guard (struct eri_pool *pool, void *b, uint64_t s)
 {
 #ifndef ERI_NO_CHECK
-  eri_memset (b, 0xfc, s);
+  if (! pool->preserve) eri_memset (b, 0xfc, s);
 #endif
 }
 
 static void
-merge (struct block *b)
+merge (struct eri_pool *pool, struct block *b)
 {
   struct block *n = b->next;
   b->next = n->next;
   if (b->next) b->next->prev = b;
-  guard (n, sizeof *n);
+  guard (pool, n, sizeof *n);
 }
 
 int32_t
@@ -145,7 +147,7 @@ eri_free (struct eri_pool *pool, void *p)
 	      && (uint8_t *) p < pool->buf + pool->size);
 
   struct block *b = (struct block *) ((uint8_t *) p - ALLOC_OFFSET);
-  guard ((uint8_t *) b + sizeof *b, block_size (pool, b) - sizeof *b);
+  guard (pool, (uint8_t *) b + sizeof *b, block_size (pool, b) - sizeof *b);
 
   eri_assert (pool->used >= block_size (pool, b));
   pool->used -= block_size (pool, b);
@@ -154,20 +156,26 @@ eri_free (struct eri_pool *pool, void *p)
   if (b->next && b->next->type == BLK_FREE)
     {
       block_rbt_remove (pool, b->next);
-      merge (b);
+      merge (pool, b);
     }
 
   if (b->prev && b->prev->type == BLK_FREE)
     {
       block_rbt_remove (pool, b->prev);
       b = b->prev;
-      merge (b);
+      merge (pool, b);
     }
 
   block_rbt_insert (pool, b);
   if (pool->cb_free)
     pool->cb_free (pool, p, 0, pool->cb_data);
   return 0;
+}
+
+void
+eri_preserve (struct eri_pool *pool)
+{
+  pool->preserve = 1;
 }
 
 int32_t

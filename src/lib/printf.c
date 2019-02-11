@@ -25,10 +25,10 @@ int32_t
 eri_fopen (const char *path, uint8_t r, eri_file_t *file,
 	   void *buf, uint64_t buf_size)
 {
-  uint64_t res = ERI_SYSCALL (
+  uint64_t res = eri_syscall (
     open, path, r ? ERI_O_RDONLY : ERI_O_WRONLY | ERI_O_TRUNC | ERI_O_CREAT,
     ERI_S_IRUSR | ERI_S_IWUSR);
-  if (ERI_SYSCALL_IS_ERROR (res)) return 1;
+  if (eri_syscall_is_error (res)) return 1;
 
   if (! buf || ! buf_size)
     *file = _ERI_RAW_FILE_FROM_FD (res);
@@ -97,9 +97,9 @@ ifwrite (int32_t nr, int32_t fd,
   uint64_t wrote = 0;
   while (size)
     {
-      uint64_t res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + wrote);
-      if (ERI_SYSCALL_IS_ERROR (res)
-	  && res != -ERI_EAGAIN && res != -ERI_EINTR)
+      uint64_t res = eri_syscall_nr (nr, fd, buf, size, offset + wrote);
+      if (eri_syscall_is_error (res)
+	  && res != ERI_EAGAIN && res != ERI_EINTR)
 	{
 	  if (len) *len = wrote;
 	  return res;
@@ -156,7 +156,7 @@ eri_fclose (eri_file_t file)
   if (! file) return 1;
 
   if (FRAW_P (file))
-    return ERI_SYSCALL_IS_ERROR (ERI_SYSCALL (close, FRAW_FD (file)));
+    return eri_syscall_is_error (eri_syscall (close, FRAW_FD (file)));
 
   struct file *f = (struct file *) file;
   if (f->fd < 0) return 1;
@@ -167,7 +167,7 @@ eri_fclose (eri_file_t file)
       if (res != 0) return res;
     }
 
-  int32_t res = ERI_SYSCALL_IS_ERROR (ERI_SYSCALL (close, f->fd));
+  int32_t res = eri_syscall_is_error (eri_syscall (close, f->fd));
   if (res == 0)
     eri_memset (f, 0, sizeof *f);
   return res;
@@ -181,8 +181,8 @@ eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
 
   if (FRAW_P (file))
     {
-      uint64_t res = ERI_SYSCALL (lseek, FRAW_FD (file), offset, whence);
-      if (ERI_SYSCALL_IS_ERROR (res)) return 1;
+      uint64_t res = eri_syscall (lseek, FRAW_FD (file), offset, whence);
+      if (eri_syscall_is_error (res)) return 1;
       if (res_offset) *res_offset = res;
       return 0;
     }
@@ -260,9 +260,9 @@ ifread (int32_t nr, int32_t fd, uint64_t buf,
   uint64_t read = 0;
   while (size)
     {
-      uint64_t res = ERI_SYSCALL_NCS (nr, fd, buf, size, offset + read);
-      if (ERI_SYSCALL_IS_ERROR (res)
-	  && res != -ERI_EAGAIN && res != -ERI_EINTR)
+      uint64_t res = eri_syscall_nr (nr, fd, buf, size, offset + read);
+      if (eri_syscall_is_error (res)
+	  && res != ERI_EAGAIN && res != ERI_EINTR)
 	{
 	  if (len) *len = read;
 	  return 1;
@@ -489,6 +489,23 @@ eri_lprintf (int32_t *lock, const char *fmt, ...)
   va_list arg;
   va_start (arg, fmt);
   int32_t res = eri_lvprintf (lock, fmt, arg);
+  va_end (arg);
+  return res;
+}
+
+int32_t
+eri_gvprintf (const char *fmt, va_list arg)
+{
+  static int32_t gprintf_lock;
+  return eri_lvfprintf (&gprintf_lock, ERI_STDOUT, fmt, arg);
+}
+
+int32_t
+eri_gprintf (const char *fmt, ...)
+{
+  va_list arg;
+  va_start (arg, fmt);
+  int32_t res = eri_gvprintf (fmt, arg);
   va_end (arg);
   return res;
 }

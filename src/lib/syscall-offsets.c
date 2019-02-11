@@ -1,11 +1,5 @@
-#include "lib/offset.h"
 #include "lib/syscall.h"
-
-#define SIGMASK_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_SIGMASK_, name, struct eri_sigmask, member)
-
-#define STACK_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_STACK_, name, struct eri_stack, member)
+#include "lib/offset.h"
 
 #define SIGINFO_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_SIGINFO_, name, struct eri_siginfo, member)
@@ -13,43 +7,38 @@
 #define UCONTEXT_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_UCONTEXT_, name, struct eri_ucontext, member)
 
+#define SIGFRAME_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_SIGFRAME_, name, struct eri_sigframe, member)
+
 void
 declare (void)
 {
-  SIGMASK_OFFSET (MASK_ALL, mask_all);
-  SIGMASK_OFFSET (MASK, mask);
+  SIGINFO_OFFSET (SIG, sig);
 
-  ERI_DECLARE_SYMBOL (ERI_SIGMASK_SIZE16,
-		      eri_size_of (struct eri_sigmask, 16));
-
-  STACK_OFFSET (SP, sp);
-  STACK_OFFSET (FLAGS, flags);
-  STACK_OFFSET (SIZE, size);
-
-  ERI_DECLARE_SYMBOL (ERI_STACK_SIZE16, eri_size_of (struct eri_stack, 16));
-
-  SIGINFO_OFFSET (CODE, code);
-
-  UCONTEXT_OFFSET (STACK_SP, stack.sp);
-
-  UCONTEXT_OFFSET (MCTX_R8, mctx.r8);
-  UCONTEXT_OFFSET (MCTX_R9, mctx.r9);
-  UCONTEXT_OFFSET (MCTX_R10, mctx.r10);
-  UCONTEXT_OFFSET (MCTX_R11, mctx.r11);
-  UCONTEXT_OFFSET (MCTX_R12, mctx.r12);
-  UCONTEXT_OFFSET (MCTX_R13, mctx.r13);
-  UCONTEXT_OFFSET (MCTX_R14, mctx.r14);
-  UCONTEXT_OFFSET (MCTX_R15, mctx.r15);
-  UCONTEXT_OFFSET (MCTX_RDI, mctx.rdi);
-  UCONTEXT_OFFSET (MCTX_RSI, mctx.rsi);
-  UCONTEXT_OFFSET (MCTX_RBP, mctx.rbp);
-  UCONTEXT_OFFSET (MCTX_RBX, mctx.rbx);
-  UCONTEXT_OFFSET (MCTX_RDX, mctx.rdx);
-  UCONTEXT_OFFSET (MCTX_RAX, mctx.rax);
-  UCONTEXT_OFFSET (MCTX_RCX, mctx.rcx);
   UCONTEXT_OFFSET (MCTX_RSP, mctx.rsp);
   UCONTEXT_OFFSET (MCTX_RIP, mctx.rip);
-  UCONTEXT_OFFSET (MCTX_RFLAGS, mctx.rflags);
 
-  UCONTEXT_OFFSET (SIG_MASK, sig_mask);
+  SIGFRAME_OFFSET (INFO, info);
+  SIGFRAME_OFFSET (CTX, ctx);
+
+  SIGFRAME_OFFSET (CTX_MCTX_R8, ctx.mctx.r8);
+  SIGFRAME_OFFSET (CTX_MCTX_R9, ctx.mctx.r9);
+  SIGFRAME_OFFSET (CTX_MCTX_R10, ctx.mctx.r10);
+  SIGFRAME_OFFSET (CTX_MCTX_R11, ctx.mctx.r11);
+  SIGFRAME_OFFSET (CTX_MCTX_R12, ctx.mctx.r12);
+  SIGFRAME_OFFSET (CTX_MCTX_R13, ctx.mctx.r13);
+  SIGFRAME_OFFSET (CTX_MCTX_R14, ctx.mctx.r14);
+  SIGFRAME_OFFSET (CTX_MCTX_R15, ctx.mctx.r15);
+  SIGFRAME_OFFSET (CTX_MCTX_RDI, ctx.mctx.rdi);
+  SIGFRAME_OFFSET (CTX_MCTX_RSI, ctx.mctx.rsi);
+  SIGFRAME_OFFSET (CTX_MCTX_RBP, ctx.mctx.rbp);
+  SIGFRAME_OFFSET (CTX_MCTX_RBX, ctx.mctx.rbx);
+  SIGFRAME_OFFSET (CTX_MCTX_RDX, ctx.mctx.rdx);
+  SIGFRAME_OFFSET (CTX_MCTX_RAX, ctx.mctx.rax);
+  SIGFRAME_OFFSET (CTX_MCTX_RCX, ctx.mctx.rcx);
+  SIGFRAME_OFFSET (CTX_MCTX_RSP, ctx.mctx.rsp);
+  SIGFRAME_OFFSET (CTX_MCTX_RIP, ctx.mctx.rip);
+  SIGFRAME_OFFSET (CTX_MCTX_RFLAGS, ctx.mctx.rflags);
+
+  SIGFRAME_OFFSET (CTX_MCTX_RIP, ctx.mctx.rip);
 }

@@ -1,233 +1,141 @@
-# XXX: Handle -D with different suffix
-
 BUILD := ../build/src
-MAKE_FILES := Makefile common.mk $(BUILD)/O $(BUILD)/D
 
-include common.mk
+.DEFAULT_GOAL := all
+.SUFFIXES:
 
-EXP_OBJS = $(patsubst %,$(BUILD)/%.os,$1)
+MAKE_SCRIPTS := Makefile
 
-LIB_SRCS := buf.c lock.c malloc.c printf.c util.c syscall.S
-LIB_OBJS := $(call EXP_OBJS,$(patsubst %,lib/%,$(LIB_SRCS)))
-
-OBJS = $(call EXP_OBJS,$(SRCS))
-
-CFLAGS = $O $D -I . -I $(BUILD) -g -Wall -Werror \
-		-fno-tree-loop-distribute-patterns -fvisibility=hidden \
-		-mgeneral-regs-only -c
-LDFLAGS = -nostdlib -Wl,--no-undefined -Wl,--fatal-warnings
-
-define PROG =
-DEPS += $(call EXP_OBJS,$2)
-$1: $(call EXP_OBJS,$2) $$(LIB_OBJS)
-	gcc $$(LDFLAGS) -o $$@ $$^
+.PHONY: phony
+define TOP =
+ifeq ($(PASS),)
+$1: phony
+	mkdir -p $(BUILD)
+	rm -f $(BUILD)/deps.mk
+	+$(MAKE) $(MAKECMDGOALS) -B PASS=deps
+	+$(MAKE) $(MAKECMDGOALS) PASS=work
+	echo done
+else ifeq ($(PASS),work)
+$1: $2 $(MAKE_SCRIPTS)
+	$3
+.PRECIOUS: $1
+else
+$1: $2
+	$4
+endif
 endef
 
-DEPS := $(LIB_OBJS)
-
-all: $(BUILD)/rtld-convert tests
-
-DEPS += $(BUILD)/rtld-convert.c.o
-$(BUILD)/rtld-convert: % : %.c.o
-	gcc $^ -o $@
-
-PUBLIC_IMPL_H_PRES := $(BUILD)/public/entry-offsets.h
-PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h.s
-
-$(BUILD)/rtld-convert.c.o: private CFLAGS := $O -I . -Wall -Werror -g -c
-
-$(BUILD)/%-offsets.h: $(BUILD)/%-offsets.h.s
-	grep __AS_DEFINE__ $< | sed 's/__AS_DEFINE__/#define/g' >$@
-
-$(BUILD)/%-offsets.h.s: private CFLAGS := -I . -Wall -Werror -O3 -S
-$(BUILD)/%-offsets.h.s: %-offsets.c Makefile
-	$(COMPILE)
-
-TST_LIVE_QUIT_TSTS := basic clone join ctid-segv group sig-term \
-			sig-group-core
-TST_LIVE_ENTRY_TSTS := start basic clone sig-ignore restart restart-poll \
-			user nested-invoke
-
-TST_TSTS := rtld $(patsubst %,live-quit-%,$(TST_LIVE_QUIT_TSTS)) \
-	$(patsubst %,live-entry-%,$(TST_LIVE_ENTRY_TSTS))
+, := ,
+PREPS = $(filter-out $(MAKE_SCRIPTS),$^)
 
 BUILD_TST := $(BUILD)/tst
-BUILD_TST_TSTS := $(patsubst %,$(BUILD_TST)/tst-%,$(TST_TSTS)) \
+GENERATED := $(BUILD)/generated
 
-tests: $(BUILD_TST_TSTS)
+CFLAGS := $O -I . -I $(BUILD) -g -Wall -Werror -fno-tree-loop-distribute-patterns -mgeneral-regs-only -fno-builtin -fPIC -c -fvisibility=hidden
+LDFLAGS := -nostdlib -Wl,--no-undefined -Wl,--fatal-warnings
 
-check: $(BUILD_TST_TSTS) \
-	$(filter-out %/tst-live-entry-basic.out,$(BUILD_TST_OUTS))
-	cp loop.sh $(BUILD_TST)
-	echo done
+COMPILE = mkdir -p $(@D) && gcc $(CFLAGS) -MM -MQ $@ -MP -MF $@.d $< && gcc $(CFLAGS) -o $@ $<
+ADD_DEPS = echo -include $@.d >>$(BUILD)/deps.mk
 
-full-check: $(BUILD_TST_TSTS) $(BUILD_TST_OUTS)
-	cp loop.sh $(BUILD_TST)
-	echo done
+EXP_OBJS = $(patsubst %,$(BUILD)/%.o,$1)
 
-re-check: $(BUILD_TST_TSTS) \
-	$(filter-out %/tst-live-entry-basic.re-check,$(BUILD_TST_RE_CHECKS))
-	echo done
+LIB_SRCS := buf.c lock.c malloc.c printf.c util.c syscall.l
+LIB_OBJS := $(call EXP_OBJS,$(patsubst %,lib/%,$(LIB_SRCS)))
 
-full-re-check: $(BUILD_TST_TSTS) $(BUILD_TST_RE_CHECKS)
-	echo done
+TST_LIVE_THREADS := tst-live-start tst-live-clone
+TSTS := tst-rtld $(TST_LIVE_THREADS)
+BUILD_TST_TST_OUTS := $(patsubst %,$(BUILD_TST)/%.out,$(TSTS))
 
-# tst-rtld
+$(eval $(call TOP,all,$(BUILD_TST_TST_OUTS)))
+.PHONY: all
+
+$(BUILD)/live-signal-thread.S.o: $(GENERATED)/live-signal-thread-local-offsets.h $(GENERATED)/lib/syscall-offsets.h
+$(BUILD)/live-thread.S.o: $(GENERATED)/live-thread-local-offsets.h $(GENERATED)/lib/syscall-offsets.h
+
+$(eval $(call TOP,$(BUILD)/rtld-convert,$(BUILD)/rtld-convert.c.o,gcc -o $$@ $$(PREPS)))
+$(BUILD)/rtld-convert.c.o: private CFLAGS := $O -I . -Wall -Werror -g -c
+
+$(BUILD)/%.so: private LDFLAGS += -shared
+
+$(eval $(call TOP,$(BUILD)/%.l.o,$(BUILD)/%.c.o $(BUILD)/%.S.o,\
+	ld -r $$(PREPS) -o $$@.c &&\
+	nm -g --defined-only $$@.c | awk '{ print $$$$3 }' | grep -v '^eri_' >$$@.l &&\
+	objcopy --localize-symbols=$$@.l $$@.c $$@))
+
+$(eval $(call TOP,$(GENERATED)/%-offsets.h,%-offsets.c,\
+	mkdir -p $$(@D) && \
+	gcc -I . -MM -MQ $$@ -MP -MF $$@.d $$< &&\
+	gcc -I . -Wall -Werror -O3 -S -o $$@.s $$< &&\
+	grep __AS_DEFINE__ $$@.s | sed 's/__AS_DEFINE__/#define/g' >$$@,\
+	$$(ADD_DEPS)))
+
+$(eval $(call TOP,$(BUILD)/%.o,%,$$(COMPILE),$$(ADD_DEPS)))
+
+TST_LDFLAGS = $(LDFLAGS) -Wl,-e,tst_start
 
 BUILD_TST_RTLD := $(BUILD_TST)/rtld
 
 $(BUILD_TST)/tst-rtld.out: $(BUILD_TST)/tst-rtld-recorder
+$(BUILD_TST)/tst-rtld.out: private TST_ENVS := ERS_RECORDER=tst-rtld-recorder
 
-$(BUILD_TST)/tst-rtld: % : %.S.o
-	gcc -nostdlib -pie -Wl,-e,start -o $@ $<
+$(eval $(call TOP,$(BUILD_TST)/tst-rtld-recorder $(BUILD_TST_RTLD)/generated/recorder-binary.h,\
+		$(BUILD_TST)/tst-rtld-recorder.so $(BUILD)/rtld-convert,\
+	mkdir -p $(BUILD_TST_RTLD)/generated &&\
+	$(BUILD)/rtld-convert recorder $$< $(BUILD_TST)/tst-rtld-recorder $(BUILD_TST_RTLD)/generated/recorder-binary.h))
 
-TST_RTLD_PUBLIC_IMPL_H_PRES := $(BUILD)/public/entry-offsets.h \
-				$(BUILD_TST_RTLD)/public/rtld.h
-TST_RTLD_PUBLIC_IMPL_H_DEPS := $(BUILD)/public/entry-offsets.h.s \
-				$(BUILD_TST)/tst-rtld.S.o
+$(eval $(call TOP,$(BUILD_TST)/tst-rtld-recorder.so,\
+		$(BUILD_TST)/tst-rtld-recorder.c.o $(BUILD_TST)/tst-rtld-recorder.S.o\
+		$(LIB_OBJS),\
+	gcc $$(TST_LDFLAGS) -o $$@ $$(PREPS)))
 
-DEPS += $(TST_RTLD_PUBLIC_IMPL_H_DEPS)
-$(BUILD_TST)/tst-rtld.S.o: private CFLAGS += -D ERI_TST_RTLD -fPIE
-$(BUILD_TST)/tst-rtld.S.o: $(TST_RTLD_PUBLIC_IMPL_H_PRES)
+$(BUILD_TST)/tst-rtld-recorder.S.o: $(GENERATED)/rtld-offsets.h
 
-$(BUILD_TST_RTLD)/public/rtld.h: $(BUILD_TST_RTLD)/rtld $(BUILD)/rtld-convert
-	mkdir -p $(@D)
-	$(BUILD)/rtld-convert rtld $< $@
+$(eval $(call TOP,$(BUILD_TST)/tst-rtld,$(BUILD_TST)/tst-rtld.S.o,\
+	gcc -nostdlib -pie -Wl$(,)-e$(,)start -o $$@ $$(PREPS)))
 
-BUILD_TST_RTLD2_SRCS := rtld.S rtld.c lib/util.c lib/printf.c
-BUILD_TST_RTLD2_OBJS := \
-		$(patsubst %,$(BUILD_TST_RTLD)/%.o,$(BUILD_TST_RTLD2_SRCS))
+PUBLIC_IMPL_H_PREPS = $1/generated/public/rtld.h $(GENERATED)/public/entry-offsets.h
 
-DEPS += $(BUILD_TST_RTLD2_OBJS)
-$(BUILD_TST_RTLD)/rtld: rtld.ld $(BUILD_TST_RTLD2_OBJS)
-	gcc $(LDFLAGS) -pie -Wl,-Map,$(BUILD_TST_RTLD)/rtld.map -Wl,-T,$< \
-		-Wl,-e,eri_start -Wl,--gc-sections -Wl,-N \
-		-o $@ $(BUILD_TST_RTLD2_OBJS)
-	objcopy -R .eh_frame -R .eh_frame_hdr -R .note.gnu.build-id -R .dynsym \
-		-R .dynstr -R .gnu.hash -R .rela.dyn -R .dynamic -R .got -R .got.plt \
-		$@
+$(BUILD_TST)/tst-rtld.S.o: $(call PUBLIC_IMPL_H_PREPS,$(BUILD_TST_RTLD))
+$(BUILD_TST)/tst-rtld.S.o: private CFLAGS := -I $(BUILD_TST_RTLD) $(filter-out -fPIC,$(CFLAGS)) -fPIE
 
-$(BUILD_TST_RTLD)/%.o: private CFLAGS += -D ERI_TST_RTLD \
-				-fPIE -fdata-sections -ffunction-sections
-$(BUILD_TST_RTLD)/rtld.c.o: $(BUILD_TST)/tst-rtld-recorder-binary.h
+$(eval $(call TOP,$(BUILD_TST_RTLD)/generated/public/rtld.h,\
+		$(BUILD_TST_RTLD)/rtld $(BUILD)/rtld-convert,\
+	mkdir -p $$(@D) &&\
+	$(BUILD)/rtld-convert rtld $$< $$@))
 
-$(BUILD_TST_RTLD)/%.o: % $(MAKE_FILES)
-	$(COMPILE)
+$(eval $(call TOP,$(BUILD_TST_RTLD)/rtld,\
+		rtld.ld $(BUILD_TST_RTLD)/rtld.l.o $(BUILD_TST_RTLD)/lib/util.c.o $(BUILD_TST_RTLD)/lib/printf.c.o,\
+	gcc $$(LDFLAGS) -pie -Wl$(,)-Map$(,)$(BUILD_TST)/rtld/rtld.map -Wl$(,)-T$(,)$$<\
+		-Wl$(,)-e$(,)eri_start -Wl$(,)--gc-sections -Wl$(,)-N -o $$@ $$(filter-out rtld.ld,$$(PREPS)) &&\
+	objcopy -R .eh_frame -R .eh_frame_hdr -R .note.gnu.build-id -R .dynsym\
+		-R .dynstr -R .gnu.hash -R .rela.dyn -R .dynamic -R .got -R .got.plt $$@))
 
-$(BUILD_TST)/tst-rtld-recorder $(BUILD_TST)/tst-rtld-recorder-binary.h: \
-		$(BUILD_TST)/tst-rtld-recorder.so $(BUILD)/rtld-convert
-	$(BUILD)/rtld-convert recorder $< $(BUILD_TST)/tst-rtld-recorder \
-		$(BUILD_TST)/tst-rtld-recorder-binary.h
+$(BUILD_TST_RTLD)/%.o: private CFLAGS := -I $(BUILD_TST_RTLD)\
+			$(filter-out -fPIC,$(CFLAGS)) -fPIE -fdata-sections -ffunction-sections
+$(BUILD_TST_RTLD)/rtld.c.o: $(BUILD_TST_RTLD)/generated/recorder-binary.h
 
-$(eval $(call PROG,$(BUILD_TST)/tst-rtld-recorder.so,\
-	tst/tst-rtld-recorder.c tst/tst-rtld-recorder.S))
+$(eval $(call TOP,$(BUILD_TST_RTLD)/%.o,%,$$(COMPILE),$$(ADD_DEPS)))
 
-$(BUILD_TST)/tst-rtld-recorder.S.os: $(BUILD)/rtld-offsets.h
+TST_LIVE_THREADS_SRCS := tst/tst-common-start.S tst/tst-live-main.c\
+		live-signal-thread.l live-thread.l helper.c live-thread-recorder.c
+TST_LIVE_THREADS_OBJS := $(call EXP_OBJS,$(TST_LIVE_THREADS_SRCS)) $(LIB_OBJS)
 
-# tst
+$(foreach T,$(TST_LIVE_THREADS),\
+	$(eval $(call TOP,$(BUILD_TST)/$T,\
+			$(BUILD_TST)/$T.c.o $(TST_LIVE_THREADS_OBJS),\
+		gcc $$(TST_LDFLAGS) -o $$@ $$(PREPS))))
 
-$(BUILD_TST)/tst-%: private LDFLAGS += -Wl,-e,tst_start
+TST_TST_RECORDER_H_PREPS := $(call PUBLIC_IMPL_H_PREPS,$(BUILD))
+$(patsubst %,$(BUILD_TST)/%.c.o,$(TST_LIVE_THREADS)): $(TST_TST_RECORDER_H_PREPS)
 
-# tst-live-quit
+# XXX
+$(eval $(call TOP,$(GENERATED)/public/rtld.h,,mkdir -p $$(@D) && touch $$@))
 
-TST_LIVE_QUIT_COMMON_SRCS := tst/tst-common-start.S \
-		tst/tst-live-quit-common.S tst/tst-live-quit-common.c \
-		live.S live.c common.S common.c loop.c
+$(eval $(call TOP,$(BUILD)/%.out,$(BUILD)/%,\
+	cd $$(@D) && $$(TST_ENVS) ./$$(<F) 2>&1 | tee $$(<F).log;\
+	test $$$${PIPESTATUS[0]} -eq 0 && touch $$(@F)))
 
-$(foreach tst,$(patsubst %,tst-live-quit-%,$(TST_LIVE_QUIT_TSTS)),\
-	$(eval $(call PROG,$(BUILD_TST)/$(tst),\
-		$(TST_LIVE_QUIT_COMMON_SRCS) tst/$(tst).c)))
+clean:
+	rm -rf $(BUILD)
+.PHONY: clean
 
-$(BUILD_TST)/tst-live-quit-common.S.os: $(BUILD)/rtld-offsets.h \
-		$(BUILD)/live-entry-offsets.h
-
-# tst-live-entry
-
-TST_LIVE_ENTRY_START_SRCS := tst/tst-live-entry-common.c \
-		tst/tst-live-entry-start.S tst/tst-live-entry-start.c \
-		live-entry.c live-entry.S lib/tst/tst-util.c
-
-TST_LIVE_ENTRY_COMMON_SRCS := tst/tst-common-start.S \
-		tst/tst-live-entry-common.S tst/tst-live-entry-common.c \
-		live-entry.S live-entry.c lib/tst/tst-util.c
-
-TST_LIVE_ENTRY_BASIC_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-basic.S tst/tst-live-entry-basic.c
-
-TST_LIVE_ENTRY_CLONE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-clone.S tst/tst-live-entry-clone.c
-
-TST_LIVE_ENTRY_SIG_IGNORE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-sig-ignore.c
-
-TST_LIVE_ENTRY_RESTART_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-restart.S tst/tst-live-entry-restart.c
-
-TST_LIVE_ENTRY_RESTART_POLL_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		lib/tst/tst-util.S \
-		tst/tst-live-entry-restart-poll.S \
-		tst/tst-live-entry-restart-poll.c
-
-TST_LIVE_ENTRY_USER_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-user.c
-
-TST_LIVE_ENTRY_NESTED_INVOKE_SRCS := $(TST_LIVE_ENTRY_COMMON_SRCS) \
-		tst/tst-live-entry-nested-invoke.c
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-start,\
-		$(TST_LIVE_ENTRY_START_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-basic,\
-		$(TST_LIVE_ENTRY_BASIC_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-clone,\
-		$(TST_LIVE_ENTRY_CLONE_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-sig-ignore,\
-		$(TST_LIVE_ENTRY_SIG_IGNORE_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart,\
-		$(TST_LIVE_ENTRY_RESTART_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-restart-poll,\
-		$(TST_LIVE_ENTRY_RESTART_POLL_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-user,\
-		$(TST_LIVE_ENTRY_USER_SRCS)))
-
-$(eval $(call PROG,$(BUILD_TST)/tst-live-entry-nested-invoke,\
-		$(TST_LIVE_ENTRY_NESTED_INVOKE_SRCS)))
-
-DEPS += $(BUILD)/public/entry-offsets.h.s \
-	$(BUILD)/rtld-offsets.h.s $(BUILD)/live-entry-offsets.h.s \
-	$(BUILD)/lib/syscall-offsets.h.s \
-	$(BUILD_TST)/tst-live-entry-common-offsets.h.s \
-	$(PUBLIC_IMPL_H_DEPS)
-
-$(BUILD)/live-entry.S.os: $(BUILD)/public/entry-offsets.h \
-		$(BUILD)/rtld-offsets.h $(BUILD)/live-entry-offsets.h \
-		$(BUILD)/lib/syscall-offsets.h
-
-$(BUILD_TST)/tst-live-entry-common.S.os: \
-		$(BUILD_TST)/tst-live-entry-common-offsets.h
-
-$(BUILD_TST)/tst-live-entry-basic.S.os: \
-		$(BUILD_TST)/tst-live-entry-common-offsets.h \
-		$(PUBLIC_IMPL_H_PRES)
-
-$(BUILD_TST)/tst-live-entry-clone.S.os: $(BUILD)/live-entry-offsets.h \
-		$(PUBLIC_IMPL_H_PRES)
-
-$(BUILD_TST)/tst-live-entry-restart.S.os: $(PUBLIC_IMPL_H_PRES)
-$(BUILD_TST)/tst-live-entry-restart-poll.S.os: $(PUBLIC_IMPL_H_PRES)
-
-$(BUILD)/%.so: private LDFLAGS += -shared
-
--include $(patsubst %,%.d,$(DEPS))
-
-all tests check full-check re-check full-re-check clean: lib
-
-lib:
-	$(MAKE) -C $@ $(MAKECMDGOALS)
-
-.PHONY: all tests check full-check re-check full-re-check lib
+-include $(BUILD)/deps.mk

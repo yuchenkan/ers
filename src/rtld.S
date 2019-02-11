@@ -4,9 +4,10 @@
 
   .section .text.start, "ax", @progbits
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_start)
+ERI_FUNCTION (eri_start)
   movq	%rsp, %rdi
   movq	%rdx, %rsi
   pushfq
-  jmp	eri_rtld
-  .size eri_start, . - eri_start
+  popq	%rdx
+  jmp	rtld
+  ERI_END_FUNCTION (eri_start)

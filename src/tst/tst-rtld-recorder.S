@@ -1,18 +1,19 @@
 /* vim: set ft=gas: */
 
-#include "rtld-offsets.h"
+#include "generated/rtld-offsets.h"
 
 #include "lib/util.h"
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (tst_start)
+ERI_FUNCTION (tst_start)
   pushq	%rdi
   call	tst_rtld
   popq	%rdi
-  movq	ERI_RTLD_RDX(%rdi), %rdx
-  movq	ERI_RTLD_RSP(%rdi), %rsp
-  movq	ERI_RTLD_RIP(%rdi), %rax
+  movq	ERI_RTLD_ARGS_RDX(%rdi), %rdx
+  pushq	ERI_RTLD_ARGS_RFLAGS(%rdi)
   popfq
+  movq	ERI_RTLD_ARGS_RSP(%rdi), %rsp
+  movq	ERI_RTLD_ARGS_RIP(%rdi), %rax
   jmp	*%rax
-  .size tst_start, . - tst_start
+  ERI_END_FUNCTION (tst_start)

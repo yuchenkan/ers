@@ -69,7 +69,7 @@ struct eri_elf64_phdr
 
 #define ERI_PT_LOAD		1
 
-struct eri_seg
+struct eri_seg_args
 {
   int32_t prot;
 
@@ -79,13 +79,15 @@ struct eri_seg
   uint64_t memsz;
 };
 
-struct eri_rtld
+struct eri_rtld_args
 {
   uint64_t rdx;
+  uint64_t rflags;
+
   uint64_t rsp;
   uint64_t rip;
 
-  struct eri_sigmask sig_mask;
+  struct eri_sigset sig_mask;
 
   uint64_t map_start;
   uint64_t map_end;

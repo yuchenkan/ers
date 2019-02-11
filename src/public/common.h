@@ -1,18 +1,21 @@
 #ifndef _ERS_PUBLIC_COMMON_H
 #define _ERS_PUBLIC_COMMON_H
 
-#define __ERS_STR(x)		#x
-#define _ERS_STR(x)		__ERS_STR (x)
+#define __ERS_STR(...)		#__VA_ARGS__
+#define _ERS_STR(...)		__ERS_STR (__VA_ARGS__)
 
 #define __ERS_PASTE(x, y)	x##y
 #define _ERS_PASTE(x, y)	__ERS_PASTE (x, y)
 
 #define _ERS_PASTE2(x, y,z)	_ERS_PASTE (_ERS_PASTE (x, y), z)
 
+#if 0
 #define _ERS_EVAL(...)		__VA_ARGS__
+#endif
 
-#define _ERS_MARK_EXTERNAL_RET	1
-#define _ERS_MARK_INTERNAL_RET	2
+#define _ERS_PP_IF_0(...)
+#define _ERS_PP_IF_1(...)	__VA_ARGS__
+#define _ERS_PP_IF(t, ...)	_ERS_PASTE (_ERS_PP_IF_, t) (__VA_ARGS__)
 
 #define _ERS_OP_SYSCALL		1
 #define _ERS_OP_SYNC_ASYNC	2
@@ -23,13 +26,6 @@
 #define _ERS_OP_ATOMIC_DEC	6
 #define _ERS_OP_ATOMIC_XCHG	7
 #define _ERS_OP_ATOMIC_CMPXCHG	8
-
-#define _ERS_OP_FLAGS_BITS	4
-#define _ERS_OP_FLAGS_MASK	((1 << _ERS_OP_FLAGS_BITS) - 1)
-
-#define _ERS_OP(op, flags)	(((op) << _ERS_OP_FLAGS_BITS) | (flags))
-#define _ERS_OP_OP(op)		((op) >> _ERS_OP_FLAGS_BITS)
-#define _ERS_OP_FLAGS(op)	(op & _ERS_OP_FLAGS_MASK)
 
 #define _ERS_ATOMIC_SIZE_b	0
 #define _ERS_ATOMIC_SIZE_w	1

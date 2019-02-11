@@ -1,6 +1,0 @@
-#ifndef TST_TST_LIVE_ENTRY_CLONE_H
-#define TST_TST_LIVE_ENTRY_CLONE_H
-
-#define TST_CHILD_STACK_SIZE	(2 * 1024 * 1024)
-
-#endif

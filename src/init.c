@@ -1,3 +1,6 @@
+#include "init-local.h"
+
+#include "compiler.h"
 #include "rtld.h"
 
 struct proc_init_map_data
@@ -52,9 +55,7 @@ proc_init_map_entry (const struct eri_map_entry *ent, void *data)
     eri_save_init_map_data (d->init, start, end - start);
 }
 
-static uint8_t init_context (eri_file_t init,
-		uint64_t start, uint64_t end)  __attribute__ ((noinline));
-
+#if 0
 static uint8_t
 init_context (eri_file_t init, uint64_t start, uint64_t end)
 {
@@ -76,9 +77,10 @@ init_context (eri_file_t init, uint64_t start, uint64_t end)
     }
   return mode;
 }
+#endif
 
 void
-eri_init (struct eri_rtld *rtld)
+init (struct eri_rtld_args *rtld)
 {
   const char *config = "ers_config";
   uint64_t page_size = 4096;
@@ -93,7 +95,6 @@ eri_init (struct eri_rtld *rtld)
   uint64_t argc = *(uint64_t *) arg;
   char **envp;
   for (envp = (char **) arg + 1 + argc + 1; *envp; ++envp)
-    /* TODO: nested recording */
     if (eri_strncmp (*envp, "ERS_CONFIG=", eri_strlen ("ERS_CONFIG=")) == 0)
       path = *envp + eri_strlen ("ERS_CONFIG=");
 
@@ -125,7 +126,7 @@ eri_init (struct eri_rtld *rtld)
   eri_process_maps (proc_init_map_entry, &pd);
 
   eri_assert (pd.stack_start);
-  uint8_t mode = eri_init_context (init, pd.stack_start, pd.stack_end);
+  uint8_t mode = init_context (init, pd.stack_start, pd.stack_end);
 
   if (mode == ERI_LIVE) eri_live_init (&common, rtld);
 }

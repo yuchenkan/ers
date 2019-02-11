@@ -5,9 +5,9 @@
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (tst_start)
+ERI_FUNCTION (tst_start)
   call	tst_main
-  movq	%rax, %rdi
+  movl	%eax, %edi
   movl	$__NR_exit, %eax
   syscall
-  .size tst_start, . - tst_start
+  ERI_END_FUNCTION (tst_start)

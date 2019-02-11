@@ -3,9 +3,7 @@
 
 #include <stdint.h>
 
-#include "lib/malloc.h"
-
-struct eri_common
+struct eri_common_args
 {
   const char *config;
   uint64_t page_size;
@@ -18,15 +16,13 @@ struct eri_common
   uint64_t buf;
 };
 
-struct eri_daemon
-{
-  int32_t pid;
-};
+#include "lib/printf.h"
 
-struct eri_daemon *eri_daemon_start (uint8_t mt, struct eri_mtpool *pool,
-				     uint64_t stack_size);
-void eri_daemon_invoke (struct eri_daemon *daemon,
-			void (*fn) (void *), void *data);
-void eri_daemon_stop (uint8_t mt, struct eri_daemon *daemon);
+#define eri_debug(fmt, ...) \
+  eri_assert_gprintf ("[%s:%u]\t%s\t" fmt,				\
+		      __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+
+#define eri_debug_stop() \
+  eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
 
 #endif

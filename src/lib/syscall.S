@@ -5,7 +5,23 @@
 
   .text
 
-ERI_GLOBAL_HIDDEN_FUNCTION (eri_sigreturn)
+ERI_FUNCTION (clone)
+  movl	$__NR_clone, %eax
+  movq	%rcx, %r10
+  syscall
+  testq	%rax, %rax
+  jz	.lclone_start_child
+  ret
+.lclone_start_child:
+  popq	%rdx
+  popq	%rsi
+  popq	%rdi
+  popq	%rax
+  jmp	*%rax
+  ERI_END_FUNCTION (clone)
+
+ERI_FUNCTION (eri_assert_sys_sigreturn)
   movl	$__NR_rt_sigreturn, %eax
   syscall
-  .size eri_sigreturn, .-eri_sigreturn
+  ERI_ASSERT_FALSE
+  ERI_END_FUNCTION (eri_assert_sys_sigreturn)

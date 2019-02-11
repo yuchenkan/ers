@@ -10,7 +10,7 @@
 #include "rtld.h"
 
 static uint64_t
-parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
+parse_elf (FILE *f, struct eri_seg_args **segs, uint16_t *nsegs)
 {
   struct eri_elf64_ehdr ehdr;
   assert (fread (&ehdr, sizeof ehdr, 1, f) == 1);
@@ -51,7 +51,7 @@ convert_recorder (const char *elf, const char *bin, const char *header)
   FILE *ef = fopen (elf, "rb");
   assert (ef);
 
-  struct eri_seg *segs;
+  struct eri_seg_args *segs;
   uint16_t nsegs;
   uint64_t entry = parse_elf (ef, &segs, &nsegs);
 
@@ -91,7 +91,7 @@ convert_rtld (const char *elf, const char *header)
   FILE *ef = fopen (elf, "rb");
   assert (ef);
 
-  struct eri_seg *segs;
+  struct eri_seg_args *segs;
   uint16_t nsegs;
   uint64_t entry = parse_elf (ef, &segs, &nsegs);
 
