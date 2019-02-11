@@ -1,0 +1,47 @@
+@startuml
+title exit
+robust "Signal Thread" as ST
+concise "Signal Thread Sig Mask" as STSM
+concise "Signal Thread Exit Group Mask" as STEGM
+concise "Signal Thread Exit Group Signal Generability" as STEGS
+robust "Thread" as T
+
+ST is idle
+STSM is 0
+STEGM is 0
+STEGS is 1
+T is user
+
+@0
+T is exit
+T -> ST@+1: exit event
+
+@+1
+ST is event
+STEGM is 1
+
+@STEGM
+@+0 <-> @+2: event
+
+@ST
+@+0 <-> @+6: exit
+
+@+1
+STSM is 1
+STEGS is 0
+
+@+1
+ST is idle
+ST -> T@+1: do exit
+STEGM is 0
+
+@ST 
+@+0 <-> @+3: join
+
+@+2
+T -> ST@+1:
+
+@+1
+ST is event
+
+@enduml

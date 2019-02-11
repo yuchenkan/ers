@@ -1,0 +1,110 @@
+@startuml
+title exit syscall failed due to pending signal
+robust "Signal Thread" as ST
+concise "Signal Thread Sig Mask" as STSM
+concise "Signal Thread Exit Group Mask" as STEGM
+robust "Thread" as T
+concise "Thread Sig Mask" as TSM
+robust "External" as E
+
+ST is idle
+STSM is 0
+STEGM is 0
+T is user
+TSM is 0
+E is idle
+
+@0
+E is idle
+E -> ST@+1: signal
+STEGM is 1
+@STEGM
+@+0 <-> @+1: sig_mask
+
+@ST
+@+0 <-> @+6: possible signal arriving range
+
+@+1
+ST is sig_hand
+STSM is 1
+STEGM is 1
+
+@STEGM
+@+0 <-> @+2: sig_hand
+
+@+2
+ST is idle
+ST -> T@+4: forward signal
+STEGM is 1
+
+@STEGM
+@+0 <-> @+3: sig_info
+
+@+2
+T is exit
+T -> ST@+1: exit event
+
+@+1
+ST is event
+STEGM is 1
+
+@ST
+@+0 <-> @+2: exit
+
+@STEGM
+@+0 <-> @+2: event
+
+@+1
+T is sig_hand
+TSM is 1
+
+@T
+@+0 <-> @+3: pend signal
+
+@+1
+ST is idle
+ST -> T@+2: failed due to pending signal
+STEGM is 1
+
+@STEGM
+@+0 <-> @+4: sig_info
+
+@+2
+T is exit
+TSM is 0
+
+@+1
+T is sig_hand
+T -> ST@+1: sig_reset event
+
+@T
+@+0 <-> @+4: sig_reset
+
+@+1
+ST is event
+STEGM is 1
+
+@STEGM
+@+0 <-> @+2: event
+
+@ST
+@+0 <-> @+2: sig_reset
+
+@+1
+STSM is 0
+
+@+1
+ST is idle
+ST -> T@+1: done
+STEGM is 0
+
+@T
+@+1 <-> @+2: user
+
+@+2
+T is exit
+
+@T
+@+0 <-> @+1 : retry
+
+@enduml

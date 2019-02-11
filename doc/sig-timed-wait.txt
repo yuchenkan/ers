@@ -1,0 +1,60 @@
+@startuml
+title sig-timed-wait (0110)
+robust "Signal Thread" as ST
+concise "Signal Thread Sig Mask" as STSM
+concise "Signal Thread Sig Force Deliver" as STSFD
+robust "Thread" as T
+robust "External" as E
+
+ST is idle
+STSM is 1100
+STSFD is 0000
+T is user
+E is idle
+
+@0
+T is sigtimedwait
+E is idle
+
+@+1
+STSFD is 0100
+
+@+1
+T -> ST@+1: sig_tmp_mask_async event (1000)
+
+@+1
+ST is event
+
+@+1
+STSM is 1000
+
+@+1
+ST is idle
+ST -> T@+1: done
+
+@T
+@+2 <-> @+3: sig_wait
+
+@+3
+E -> T: timeout
+
+@+1
+T -> ST@+1: sig_tmp_mask_async_event (1100)
+
+@+1
+ST is event
+
+@+1
+STSM is 1100
+
+@+1
+ST is idle
+ST -> T@+1: done
+
+@+1
+STSFD is 0000
+
+@+1
+T is user
+
+@enduml

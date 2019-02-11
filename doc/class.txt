@@ -1,0 +1,118 @@
+@startuml
+
+class signal_thread
+{
+  - group
+  - alive
+  {field} - ERI_LST_NODE_FIELDS (signal_thread)
+  - sig_mask
+  - sig_act
+  - event_sig_restart
+  - event_sig_reset_restart
+  - event_pipe
+  - stack[]
+  - sig_stack[]
+  - tid
+  - th
+  __
+  + none init_thread_sig_stack (sig_th, stack, stack_size)
+  + noreturn init_main (args, rtld_args)
+  + done clone (sig_th, args)
+  + done exit (sig_th, group, status)
+  + noreturn die (sig_th)
+  + done sig_action (sig_th, sig, act, old_act)
+  + done sig_mask_async (sig_th, mask)
+  + done sig_tmp_mask_async (sig_th, mask)
+  + none sig_reset (sig_th, mask)
+  + done sig_mask_all (sig_th)
+  + none sig_prepare_sync (sig_th, info, act)
+  + done sig_fd_read (sig_th, args)
+  + signaled syscall (sig_th, args)
+  .. simple getter ..
+  + pool get_pool (sig_th)
+  + mask get_sig_mask (sig_th)
+  + pid get_pid (sig_th)
+  + tid get_tid (sig_th)
+}
+
+class signal_thread_group
+{
+  ~ pool
+  ~ args
+  ~ helper
+  ~ pid
+  ~ sig_acts[]
+  ~ sig_sync_info
+  ~ sig_exit_group_info
+  ~ exit_group
+  ~ exit_group_lock
+  ~ thread_count
+  ~ thread_lock
+  {field} ~ ERI_LST_LIST_FIELDS (signal_thread)
+}
+
+class thread
+{
+  - group
+  - sig_th
+  - id
+  - alive
+  - clear_tid
+  - rec
+  - ctx
+  - tid
+  - sig_alt_stack
+  - sig_stack[]
+  - stack[]
+  __
+  + deliver sig_digest_act (th, info, act)
+  + none sig_handler (th, frame, act)
+  + thread create_main (sig_th, rtld_args)
+  + none clone_main (th)
+  + thread create (sig_th, create_args)
+  + result clone (th)
+  + none destroy (th, helper)
+  + none join (th)
+  .. simple getter ..
+  + pid get_pid (th)
+  + tid get_tid (th)
+}
+
+class thread_group
+{
+  ~ pool
+  ~ map_start
+  ~ map_end
+  ~ ref_count
+  ~ pid
+  ~ sig_fd_lock
+  {field} ~ ERI_RBT_TREE_FIELDS (sig_fd, struct sig_fd)
+  ~ atomic_table
+  ~ atomic_table_size
+  ~ th_id
+  ~ stack_size
+}
+
+class thread_recorder
+{
+}
+
+class helper
+{
+  - pool
+  - alive
+  - event_pipe
+  - segv_hand
+  - stack[]
+  + helper start (pool, stack_size)
+  + none exit (helper)
+  + none invoke (helper, fn, args, segv_hand)
+}
+
+signal_thread_group "1" <--> "many" signal_thread : contains
+signal_thread_group --> helper
+signal_thread <--> thread
+thread --> thread_group
+thread --> thread_recorder
+
+@enduml
