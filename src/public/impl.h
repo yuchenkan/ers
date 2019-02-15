@@ -1,9 +1,13 @@
 #ifndef _ERS_PUBLIC_IMPL_H
 #define _ERS_PUBLIC_IMPL_H
 
-#include "public/common.h"
-#include "generated/public/rtld.h"
-#include "generated/public/entry-offsets.h"
+#include <public/common.h>
+#if 0
+#ifndef _ERS_RTLD
+# include <generated/public/rtld.h>
+#endif
+#endif
+#include <public/entry-offsets.h>
 
 #define _ERS_INIT \
   .align 16, 0x90;							\

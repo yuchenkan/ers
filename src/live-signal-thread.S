@@ -1,12 +1,12 @@
 /* vim: set ft=gas: */
 
-#include "live-signal-thread-local.h"
+#include <live-signal-thread-local.h>
 
-#include "lib/util.h"
-#include "lib/syscall.h"
+#include <lib/util.h>
+#include <lib/syscall.h>
 
-#include "generated/live-signal-thread-local-offsets.h"
-#include "generated/lib/syscall-offsets.h"
+#include <live-signal-thread-local-offsets.h>
+#include <lib/syscall-offsets.h>
 
   .text
 

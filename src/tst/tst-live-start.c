@@ -1,11 +1,11 @@
 #include <stdint.h>
 
-#include "compiler.h"
+#include <compiler.h>
 
-#include "live-signal-thread.h"
-#include "common.h"
+#include <live-signal-thread.h>
+#include <common.h>
 
-#include "tst/tst-recorder.h"
+#include <tst/tst-recorder.h>
 
 noreturn void tst_live_start (void);
 

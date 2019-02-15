@@ -1,9 +1,11 @@
 /* vim: set ft=gas: */
 
-#include "public/impl.h"
+#include <tst/rtld/generated/public/rtld.h>
 
-#include "lib/util.h"
-#include "lib/syscall.h"
+#include <public/impl.h>
+
+#include <lib/util.h>
+#include <lib/syscall.h>
 
   .text
 

@@ -1,7 +1,7 @@
 /* vim: set ft=gas: */
 
-#include "lib/util.h"
-#include "lib/syscall.h"
+#include <lib/util.h>
+#include <lib/syscall.h>
 
   .text
 

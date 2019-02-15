@@ -1,0 +1,25 @@
+'use strict'; /* vim: set ft=javascript: */
+
+const cp = s => async () => {
+  await env.run (`mkdir -p ${env.dir (goal)} && cp ${s} ${goal}`, true);
+};
+
+const src = async s => await this.update ([ env.src (s) ], cp (env.src (s)));
+const gsrc = async g => await src (`goals/${g}.g`);
+
+const raw = env.trim (goal);
+
+if (new Set([ 'rtld-convert.c.o', 'tst/tst-rtld.S.o'  ]).has (raw)) await src (goal);
+else if (raw.match (/\bgenerated\/public\/rtld.h/)) await src ('generated/public/rtld.h.g');
+else if (raw.match (/[^-]\brtld$/)) await src ('rtld.g');
+else if (raw.match (/[^-]\brtld.c.o$/)) await src ('rtld.c.o.g');
+else if (raw.match (/\bgenerated\/recorder-binary.h/)) await src ('generated/recorder-binary.h.g');
+else if (raw.match (/[^-]\brecorder$/)) await src ('recorder.g');
+else if (raw.match (/\b-offsets.h$/)) await gsrc ('offset');
+else if (env.ext (raw, 'o')) await gsrc ('compile');
+else if (env.ext (raw, 'd')) await gsrc ('depend');
+else if (env.ext (raw, 'l')) await gsrc ('local');
+else if (env.exts (raw, [ 'c', 'S', 'h', 'ld' ])) await gsrc ('source');
+else if (new Set([ 'tst/tst-rtld.out' ]).has (raw)) await src (goal);
+else if (env.ext (raw, 'out')) await gsrc ('tst/out');
+else await src (goal);

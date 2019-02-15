@@ -1,7 +1,7 @@
-#include "entry.h"
+#include <entry.h>
 
-#include "lib/util.h"
-#include "lib/offset.h"
+#include <lib/util.h>
+#include <lib/offset.h>
 
 #define THREAD_ENTRY_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (_ERS_THREAD_ENTRY_, name,				\

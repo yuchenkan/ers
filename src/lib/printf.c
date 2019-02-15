@@ -1,9 +1,7 @@
-#include "util.h"
-#include "lock.h"
-#include "printf.h"
-#include "syscall.h"
-
-#include <asm/unistd.h>
+#include <lib/util.h>
+#include <lib/lock.h>
+#include <lib/printf.h>
+#include <lib/syscall.h>
 
 #define READ_NORMAL	1
 #define READ_EOF	2

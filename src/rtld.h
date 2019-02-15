@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "lib/syscall.h"
+#include <lib/syscall.h>
 
 struct eri_auxv
 {

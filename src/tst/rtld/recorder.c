@@ -1,5 +1,5 @@
-#include "rtld.h"
-#include "lib/printf.h"
+#include <rtld.h>
+#include <lib/printf.h>
 
 void
 tst_rtld (struct eri_rtld_args *rtld)

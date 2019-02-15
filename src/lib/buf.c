@@ -1,4 +1,4 @@
-#include "buf.h"
+#include <lib/buf.h>
 
 int32_t
 eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,

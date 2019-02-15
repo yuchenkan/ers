@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#include "lib/util.h"
-#include "lib/rbtree.h"
+#include <lib/util.h>
+#include <lib/rbtree.h>
 
 struct eri_pool
 {
@@ -49,7 +49,7 @@ int32_t eri_free (struct eri_pool *pool, void *p);
 
 void eri_preserve (struct eri_pool *pool);
 
-#include "lib/lock.h"
+#include <lib/lock.h>
 
 struct eri_mtpool
 {

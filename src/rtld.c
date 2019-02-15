@@ -1,12 +1,14 @@
 #include <stdint.h>
 
-#include "rtld.h"
+#include <rtld.h>
 
-#include "generated/recorder-binary.h"
+#ifndef ERI_GENERATED_RECORDER_BINARY_H
+# include <generated/recorder-binary.h>
+#endif
 
-#include "lib/util.h"
-#include "lib/syscall.h"
-#include "lib/printf.h"
+#include <lib/util.c>
+#include <lib/syscall.h>
+#include <lib/printf.c>
 
 void
 rtld (void **args, uint64_t rdx, uint64_t rflags)

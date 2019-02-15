@@ -1,15 +1,15 @@
-#include "live-signal-thread.h"
-#include "live-signal-thread-local.h"
+#include <live-signal-thread.h>
+#include <live-signal-thread-local.h>
 
-#include "helper.h"
-#include "common.h"
-#include "rtld.h"
-#include "live-thread.h"
+#include <helper.h>
+#include <common.h>
+#include <rtld.h>
+#include <live-thread.h>
 
-#include "lib/util.h"
-#include "lib/atomic.h"
-#include "lib/malloc.h"
-#include "lib/syscall.h"
+#include <lib/util.h>
+#include <lib/atomic.h>
+#include <lib/malloc.h>
+#include <lib/syscall.h>
 
 struct sig_act
 {

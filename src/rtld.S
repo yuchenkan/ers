@@ -1,6 +1,6 @@
 /* vim: set ft=gas: */
 
-#include "lib/util.h"
+#include <lib/util.h>
 
   .section .text.start, "ax", @progbits
 

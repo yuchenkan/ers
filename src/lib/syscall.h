@@ -3,7 +3,7 @@
 
 #include <asm/unistd.h>
 
-#include "lib/util.h"
+#include <lib/util.h>
 
 #define ERI_SYSCALLS(p) \
   p (clone)								\

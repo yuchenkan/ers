@@ -4,8 +4,8 @@
 #include <stdarg.h>
 #include <stdint.h>
 
-#include "lib/util.h"
-#include "lib/buf.h"
+#include <lib/util.h>
+#include <lib/buf.h>
 
 typedef uint64_t eri_file_t;
 #define eri_file_buf_t			uint8_t __attribute__ ((aligned (16)))

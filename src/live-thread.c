@@ -1,21 +1,21 @@
 #include <stdarg.h>
 
-#include "live-thread.h"
-#include "live-thread-local.h"
+#include <live-thread.h>
+#include <live-thread-local.h>
 
-#include "public/common.h"
+#include <public/common.h>
 
-#include "rtld.h"
-#include "common.h"
-#include "helper.h"
-#include "live-signal-thread.h"
-#include "live-thread-recorder.h"
+#include <rtld.h>
+#include <common.h>
+#include <helper.h>
+#include <live-signal-thread.h>
+#include <live-thread-recorder.h>
 
-#include "lib/util.h"
-#include "lib/rbtree.h"
-#include "lib/malloc.h"
-#include "lib/syscall.h"
-#include "lib/atomic.h"
+#include <lib/util.h>
+#include <lib/rbtree.h>
+#include <lib/malloc.h>
+#include <lib/syscall.h>
+#include <lib/atomic.h>
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
 

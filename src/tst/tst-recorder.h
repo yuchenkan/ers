@@ -1,10 +1,10 @@
 #ifndef TST_RECORDER_H
 #define TST_RECORDER_H
 
-#include "public/impl.h"
+#include <public/impl.h>
 
-#include "lib/util.h"
-#include "lib/syscall.h"
+#include <lib/util.h>
+#include <lib/syscall.h>
 
 #define _tst_syscall_0(nr) \
   _tst_syscall_6 (nr, 0, 0, 0, 0, 0, 0)

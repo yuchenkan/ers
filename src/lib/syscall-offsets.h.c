@@ -1,5 +1,5 @@
-#include "lib/syscall.h"
-#include "lib/offset.h"
+#include <lib/syscall-common.h>
+#include <lib/offset.h>
 
 #define SIGINFO_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_SIGINFO_, name, struct eri_siginfo, member)

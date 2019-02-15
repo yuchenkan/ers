@@ -8,10 +8,10 @@
 
 #include <stdint.h>
 
-#include "compiler.h"
+#include <compiler.h>
 
-#include "lib/list.h"
-#include "lib/syscall.h"
+#include <lib/list.h>
+#include <lib/syscall.h>
 
 struct eri_common_args;
 struct eri_rtld_args;

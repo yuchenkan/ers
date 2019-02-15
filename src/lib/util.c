@@ -1,4 +1,4 @@
-#include "lib/util.h"
+#include <lib/util.h>
 
 void
 eri_memset (void *s, char c, uint64_t n)

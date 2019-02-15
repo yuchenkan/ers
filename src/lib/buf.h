@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "lib/malloc.h"
+#include <lib/malloc.h>
 
 typedef int32_t (*eri_buf_alloc_t) (void *, uint64_t, void **);
 typedef int32_t (*eri_buf_free_t) (void *, void *);

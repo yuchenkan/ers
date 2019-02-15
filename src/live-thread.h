@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "compiler.h"
+#include <compiler.h>
 
 struct eri_sigaction;
 struct eri_siginfo;

@@ -16,7 +16,7 @@ struct eri_common_args
   uint64_t buf;
 };
 
-#include "lib/printf.h"
+#include <lib/printf.h>
 
 #define eri_debug(fmt, ...) \
   eri_assert_gprintf ("[%s:%u]\t%s\t" fmt,				\

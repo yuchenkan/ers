@@ -6,8 +6,8 @@
 
 #define eri_assert	assert
 
-#include "lib/syscall.h"
-#include "rtld.h"
+#include <lib/syscall.h>
+#include <rtld.h>
 
 static uint64_t
 parse_elf (FILE *f, struct eri_seg_args **segs, uint16_t *nsegs)
@@ -72,12 +72,15 @@ convert_recorder (const char *elf, const char *bin, const char *header)
   FILE *hf = fopen (header, "w");
   assert (hf);
 
+  fprintf (hf, "#ifndef ERI_RECORDER_BINARY_H\n");
+  fprintf (hf, "#define ERI_RECORDER_BINARY_H\n\n");
   fprintf (hf, "#define ERI_RECORDER_BINARY_SEGMENTS\t{ ");
   for (i = 0; i < nsegs; ++i)
     fprintf (hf, "{ %d, %lu, %lu, %lu, %lu }, ", segs[i].prot,
 	     segs[i].offset, segs[i].filesz, segs[i].vaddr, segs[i].memsz);
   fprintf (hf, " }\n");
   fprintf (hf, "#define ERI_RECORDER_BINARY_ENTRY\t%lu\n", entry);
+  fprintf (hf, "\n#endif\n");
 
   fclose (hf);
   fclose (bf);
@@ -106,6 +109,8 @@ convert_rtld (const char *elf, const char *header)
   assert (fread (b, sz, 1, ef) == 1);
 
   FILE *hf = fopen (header, "w");
+  fprintf (hf, "#ifndef _ERS_RTLD_H\n");
+  fprintf (hf, "#define _ERS_RTLD_H\n");
   fprintf (hf, "#define _ERS_RTLD\t.byte");
   uint64_t i;
   for (i = 0; i < sz; ++i)
@@ -114,7 +119,7 @@ convert_rtld (const char *elf, const char *header)
       fprintf (hf, " %u", b[i]);
     }
 
-  fprintf (hf, "\n");
+  fprintf (hf, "\n\n#endif");
 
   fclose (hf);
   free (segs);

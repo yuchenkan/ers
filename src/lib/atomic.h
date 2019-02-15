@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "lib/util.h"
+#include <lib/util.h>
 
 #define eri_barrier()			asm volatile ("" : : : "memory")
 

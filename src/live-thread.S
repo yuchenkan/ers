@@ -1,11 +1,11 @@
 /* vim: set ft=gas: */
 
-#include "public/common.h"
-#include "lib/util.h"
-#include "lib/syscall.h"
+#include <public/common.h>
+#include <lib/util.h>
+#include <lib/syscall.h>
 
-#include "generated/live-thread-local-offsets.h"
-#include "generated/lib/syscall-offsets.h"
+#include <live-thread-local-offsets.h>
+#include <lib/syscall-offsets.h>
 
 #define PASTE		ERI_PASTE
 

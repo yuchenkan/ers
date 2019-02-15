@@ -1,7 +1,7 @@
-#include "compiler.h"
+#include <compiler.h>
 
-#include "lib/atomic.h"
-#include "lib/syscall.h"
+#include <lib/atomic.h>
+#include <lib/syscall.h>
 
 uint64_t clone (int32_t flags, void *stack, int32_t *ptid,
 		int32_t *ctid, void *new_tls);

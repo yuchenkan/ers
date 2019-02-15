@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "lib/util.h"
+#include <lib/util.h>
 
 /*
  * tree_type { ERI_RBT_TREE_FIELDS (pfx, node_type) ... };

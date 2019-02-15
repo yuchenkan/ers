@@ -1,6 +1,6 @@
-#include "live-signal-thread-local.h"
+#include <live-signal-thread-local.h>
 
-#include "lib/offset.h"
+#include <lib/offset.h>
 
 #define SIGNAL_THREAD_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (SIGNAL_THREAD_, name, struct eri_live_signal_thread, member)

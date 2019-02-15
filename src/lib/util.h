@@ -1,7 +1,7 @@
 #ifndef ERI_LIB_UTIL_H
 #define ERI_LIB_UTIL_H
 
-#include "public/common.h"
+#include <public/common.h>
 
 #define ERI_STR		_ERS_STR
 #define ERI_PASTE	_ERS_PASTE

@@ -1,10 +1,10 @@
 #include <stdint.h>
 
-#include "compiler.h"
+#include <compiler.h>
 
-#include "live-signal-thread.h"
-#include "rtld.h"
-#include "common.h"
+#include <live-signal-thread.h>
+#include <rtld.h>
+#include <common.h>
 
 static uint8_t buf[32 * 1024 * 1024];
 static uint8_t stack[8 * 1024 * 1024];

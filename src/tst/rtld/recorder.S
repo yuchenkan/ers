@@ -1,8 +1,8 @@
 /* vim: set ft=gas: */
 
-#include "generated/rtld-offsets.h"
+#include <rtld-offsets.h>
 
-#include "lib/util.h"
+#include <lib/util.h>
 
   .text
 

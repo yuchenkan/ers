@@ -1,6 +1,6 @@
-#include "live-thread-local.h"
+#include <live-thread-local.h>
 
-#include "lib/offset.h"
+#include <lib/offset.h>
 
 #define THREAD_CONTEXT_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (THREAD_CONTEXT_, name, struct thread_context, member)
