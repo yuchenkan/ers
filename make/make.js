@@ -22,141 +22,33 @@ const info = msg => console.log ('\x1b[33m%s\x1b[0m', `[info] ${msg}`);
 const note = msg => console.log ('\x1b[32m%s\x1b[0m', `[note] ${msg}`);
 const fatal = msg => console.log ('\x1b[31m%s\x1b[0m', `[fatal] ${msg}`);
 
-function error (msg) {
-
-  if (msg === undefined) return process.exitCode;
-
-  fatal (`\n${msg}`);
-  process.exitCode = 1;
-}
-
 async function read (file, opt) {
 
-  try {
-    var fd = await open (file, 'r');
-  } catch (err) {
+  try { return await readFile (file, 'utf8'); }
+  catch (err) {
     if (opt && err.code === 'ENOENT') return null;
     throw err;
   }
-
-  try {
-    return await readFile (fd);
-  } finally {
-    await close (fd);
-  }
 }
 
-async function stat (file, opt) {
-  try {
-    var fd = await open (file, 'r');
-  } catch (err) {
-    if (opt && err.code === 'ENOENT') return null;
+async function ctime (file) {
+
+  try { var fd = await open (file, 'r'); }
+  catch (err) {
+    if (err.code === 'ENOENT') return null;
     throw err;
   }
 
-  try {
-    return await fstat (fd);
-  } finally {
-    await close (fd);
-  }
+  try { return (await fstat (fd)).ctimeMs; }
+  finally { await close (fd); }
 }
 
+const def = (v, d, p) => v ? (p ? p (v) : v) : d;
+const norm = p => path.normalize (path.relative ('.', p));
 const context = (env, goal) => ({ update: env.update, invoke: env.invoke, env, goal });
 
 const wait = async list => await new Promise ((res, rej) => list.push ({ res, rej }));
 const wake = (list, all) => all ? list.map (x => x.res ()) : list.shift ().res ();
-
-async function invoke (script, args) {
-
-  const { env, goal } = this;
-  debug (`invoke ${script} ${goal} [ ${args ? Object.keys (args).join (', ') : ''} ]`);
-
-  if (args === undefined) args = { };
-
-  const keys = Object.keys (args);
-  assert (keys.every (k => k.match (',') === null));
-  const name = `${path.normalize (path.relative ('.', script))}//${keys}`;
-
-  try {
-
-    if (name in env.invokes) {
-
-      if (! env.invokes[name].updated) await wait (env.invokes[name].waiting);
-
-      if (env.invokes[name].err !== undefined) throw env.invokes[name].err;
-
-    } else {
-
-      env.invokes[name] = { updated: false, waiting: [ ], fn: null };
-      try {
-	let decl = [ null, 'env', 'goal' ].concat (keys).concat (await env.read (script));
-	env.invokes[name].fn = new (AsyncFunction.bind.apply (AsyncFunction, decl));
-      } catch (err) {
-	env.invokes[name].err = err;
-	throw err;
-      } finally {
-	env.invokes[name].updated = true;
-	wake (env.invokes[name].waiting, true);
-      }
-    }
-
-    return await env.invokes[name].fn.apply (this, [ env, goal ].concat (keys.map (k => args[k])));
-
-  } catch (err) {
-    if (err !== null) err.stack = `  by ${script}: ${env.goals[script].deps}\n${err.stack}`;
-    throw err;
-  }
-}
-
-const ext = (f, e) => f.endsWith (`.${e}`);
-const exts = (f, es) => ! es.every (e => ! ext (f, e));
-
-const goalScript = g => ext (g, 'g') ? 'Goalfile' : `${g}.g`;
-
-async function build (internal) {
-
-  if (error ()) throw null;
-
-  const { env, goal } = this;
-
-  if (! internal) {
-
-    if (goal in env.goals) {
-
-      if (! env.goals[goal].updated) await wait (env.goals[goal].waiting);
-
-      if (env.goals[goal].err !== undefined) throw env.goals[goal].err;
-    } else {
-
-      env.goals[goal] = { updated: false, waiting: [ ] };
-
-      try {
-	await build.call (this, true);
-      } catch (err) {
-	env.goals[goal].err = err;
-	throw err;
-      }finally {
-	env.goals[goal].updated = true;
-	wake (env.goals[goal].waiting, true);
-      }
-    }
-
-    return;
-  }
-
-  debug (`build ${goal}`);
-
-  if (goal === 'Goalfile')
-    await this.update ([ env.src (goal) ], async () => await env.run (`cp ${env.src (goal)} ${goal}`));
-  else {
-    let script = goalScript (goal);
-    env.goals[goal].edges = [ script ];
-    await build.call (context (env, script));
-    await this.invoke (script);
-
-    await env.stat (goal);
-  }
-}
 
 async function run (cmd, quiet) {
 
@@ -168,126 +60,223 @@ async function run (cmd, quiet) {
   (quiet ? debug : info) (cmd);
 
   try {
-    let { stdout, stderr } = await exec (cmd);
-    process.stdout.write (stdout);
+    let { stdout } = await exec (cmd);
+    if (! quiet) process.stdout.write (stdout);
+    return stdout;
   } finally {
     if (env.waiting.length) wake (env.waiting, false);
     else --env.jobs;
   }
 }
 
-async function outdated (deps) {
+const visit = async (c, k) => {
 
-  const { env, goal } = this;
-
-  const goalStat = await env.stat (goal, true);
-  const depStats = await Promise.all (deps.map (d => env.stat (d, goalStat !== null).then (s => ({ d, s }))));
-
-  const log = debug;
-  if (goalStat !== null) {
-    let up = depStats.filter (s => s.s === null || s.s.ctimeMs >= goalStat.ctimeMs);
-    log (`outdated ${goal} existed and order than [ ${up.map (u => u.d).join (', ')} ] of [ ${ deps.join (', ')} ]`);
-    return up.length != 0;
+  if (! (k in c)) {
+    c[k] = { waiting: [ ] };
+    return c[k];
   }
-  log (`outdated ${goal} did not exist`);
-  return true;
+
+  if (c[k].waiting) await wait (c[k].waiting);
+  return null;
 }
 
-async function update (deps, act, opts) {
+const finish = v => {
+  const w = v.waiting;
+  delete v.waiting;
+  wake (w, true);
+}
+
+async function collect () {
 
   const { env, goal } = this;
 
+  const infos = env.infos;
+  const first = await visit (infos, goal);
+  debug (`collect ${goal} +++`);
+  if (! first) return goal in env.stats;
+  debug (`collect ${goal} !!!`);
+
+  const stat = env.stats[goal];
+  const deps = stat.deps;
+  await Promise.all (deps.map (d => collect.call (context (env, d))));
+  if (! deps.every (d => d in env.stats && stat.ctime >= env.stats[d].ctime)) {
+    debug ('collect dependend file changed');
+    delete env.stats[goal];
+  } else if (stat.src
+	     && (stat.src != env.src (goal)
+		 || def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime))) {
+    debug ('collect source file changed');
+    delete env.stats[goal];
+  } else env.goals[goal] = { };
+
+  debug (`collect ${goal} ${goal in env.stats}`);
+  finish (first);
+}
+
+async function invoke (script, args) {
+  const { env, goal } = this;
+  script = norm (script);
+  if (args === undefined) args = { };
+  debug (`invoke ${script} ${goal} [ ${Object.keys (args).join (', ')} ]`);
+
+  await this.update ([ script ]);
+
+  const keys = Object.keys (args);
+  assert (keys.every (k => k.match (',') === null));
+  const name = `${script}//${keys}`;
+
+  try {
+
+    const first = await visit (env.funcs, name);
+
+    if (first) {
+      let decl = [ null, 'env', 'goal' ].concat (keys).concat (await read (script));
+      first.fn = new (AsyncFunction.bind.apply (AsyncFunction, decl));
+      finish (first);
+    }
+
+    return await env.funcs[name].fn.apply (this, [ env, goal ].concat (keys.map (k => args[k])));
+
+  } catch (err) {
+    if (script !== 'Goalfile')
+      err.stack = `    by ${script}\n${err.stack}`;
+    throw err;
+  }
+}
+
+async function build () {
+
+  const { env, goal } = this;
+
+  debug (`build ${goal}`);
+
+  const goals = env.goals;
+
+  const first = await visit (goals, goal);
+  if (! first) return;
+
+  first.deps = new Set ();
+  try {
+    await env.mkdir (goal);
+    if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {
+      var src = env.src (goal);
+      if (await ctime (src)) await env.run (`cp ${src} ${goal}`);
+      else await env.run (`rm -f ${goal}`);
+    }
+
+    env.stats[goal] = { deps: Array.from (first.deps), ctime: env.ctime, src };
+    env.save ();
+
+  } catch (err) {
+    err.stack = `  when build ${goal}\n${err.stack}`;
+    throw err;
+  }
+  finish (first);
+}
+
+async function update (deps) {
+
+  const { env, goal } = this;
+
+  deps = Array.from (new Set (deps.map (d => norm (d))));
   debug (`update ${goal} ${deps}`);
 
-  env.goals[goal].deps = deps;
-  if (goal !== 'Goalfile')
-    deps = [ goalScript (goal) ].concat (deps);
+  assert (deps.every (d => ! d.startsWith ('..')));
 
-  const srcs = deps.filter (d => ! d.startsWith ('..'));
-  env.goals[goal].edges = srcs;
+  if (goal) env.goals[goal].edges = deps;
 
-  if (opts !== undefined) {
-    let errs = (await Promise.all (srcs.map (s => {
-      return build.call (context (env, s)).then (_ => null).catch (e => ({ s, e }));
-    }))).filter (e => e !== null);
+  await Promise.all (deps.map (d => build.call (context (env, d))));
 
-    let fatals = errs.filter (e => ! new Set (opts).has (e.s));
-    if (fatals.length) throw fatals[0].e;
-
-    deps = deps.filter (d => ! new Set (errs.map (e => e.s)).has (d));
-
-    let old = await outdated.call (this, deps);
-    if (errs.length && ! old) throw errs[0].e;
-
-    return old && act !== undefined ? await act.call (this) : undefined;
-  }
-
-  await Promise.all (srcs.map (s => build.call (context (env, s))));
-
-  if (await outdated.call (this, deps) && act !== undefined)
-    return await act.call (this);
+  if (goal) deps.forEach (d => env.goals[goal].deps.add (d));
 }
 
-async function make (goals) {
-
+async function mkdir (file) {
   const env = this;
-  try {
-    await env.run (`mkdir -p ${env.dst}`);
 
-    env.src = (rt => r => path.join (rt, r)) (path.relative (env.dst, env.src)),
-    info (`chdir ${env.dst}`);
-    process.chdir (env.dst);
-    delete env.dst;
+  file = norm (file);
+  assert (! file.startsWith ('..'));
+  const dir = env.dir (file);
 
-    await Promise.all (goals.map (goal => build.call (context (env, goal))));
-    note ('every up-to-date');
-  } catch (err) {
-    error (`${err.stack}`);
-  }
+  let first = await visit (env.dirs, dir);
+  if (! first) return;
+
+  if (dir !== '.') env.run (`mkdir -p ${dir}`);
+
+  finish (first);
 }
 
 function main () {
   const env = {
+    def: def,
+
     dir: path.dirname, base: path.basename,
 
-    ext: ext, exts: exts,
+    mkdir: mkdir,
+    dirs: { },
+
+    ext: (f, e) => f.endsWith (`.${e}`),
+    exts: (f, es) => ! es.every (e => ! env.ext (f, e)),
 
     trim: s => s.split ('.').slice (0, -1).join ('.'),
     split: s => s.split (/(\s+)/).filter (x => x.trim () !== '' && x !== '\\'),
-    filter: (s, p) => env.split (s).map (x => x.match (p)).filter (x => x).map (x => x[0]).join (' '),
+    filter: (s, p) => env.split (s).map (x => x.match (p)).map (x => x === null ? '' : x[0]).join (' '),
+    diff: (a, b) => a.filter (x => ! b.includes (x)),
 
-    read: read, stat: stat, run: run,
+    read: read, run: run,
 
     invoke: invoke, update: update,
 
-    goals: { }, invokes: { },
+    infos: { }, goals: { }, funcs: { },
 
     src: '../src', dst: '../build',
     jobs: 0, maxJobs: 4, waiting: [ ]
   };
 
-  process.on ('beforeExit', err => {
-    if (err === 0) {
-      let left = goals => goals.filter (g => ! env.goals[g].updated).shift ();
-      let node = left (Object.keys (env.goals));
-      if (node === undefined) return;
+  const circular = () => {
+    const goals = env.goals;
+    const left = gs => gs.filter (g => goals[g].waiting).shift ();
+    let node = left (Object.keys (goals));
+    if (! node) return;
 
-      let circle = { };
-      while (! (node in circle)) {
-	circle[node] = left (env.goals[node].edges);
-	node = circle[node];
-      }
-      let path = [ node ];
-      do {
-	node = circle[node];
-	path.push (node);
-      } while (node != path[0]);
-
-      env.goals[node].waiting.shift ().rej (new Error (`circular dependancy detected:\n  ${path.join (' => ')}`));
+    const circle = { };
+    while (! (node in circle)) {
+      circle[node] = left (goals[node].edges);
+      node = circle[node];
     }
-  });
+    const link = [ node ];
+    do {
+      node = circle[node];
+      link.push (node);
+    } while (node != link[0]);
 
-  make.call (env, [ 'tst/tst-rtld.out', 'tst/tst-live-start.out' ]);
+    goals[node].waiting.shift ().rej (new Error (`circular dependancy detected:\n  ${link.join (' => ')}`));
+  };
+
+  const make = async goals => {
+
+    await env.run (`mkdir -p ${env.dst}`, true);
+    env.src = (rt => r => path.join (rt, r)) (path.relative (env.dst, env.src)),
+    info (`chdir ${env.dst}`);
+    process.chdir (env.dst);
+    delete env.dst;
+
+    env.stats = def (await read ('.goal-stats', true), { }, JSON.parse);
+    await Promise.all (Object.keys (env.stats).map (g => collect.call (context (env, g))));
+
+    await env.run ('touch .goal-ctime', true);
+    env.ctime = await ctime ('.goal-ctime');
+    env.save = () => fs.writeFileSync ('.goal-stats', JSON.stringify (env.stats));
+
+    process.on ('beforeExit', circular);
+
+    await update.call (context (env, null), goals);
+    note ('every up-to-date');
+  };
+
+  make ([ 'tst/tst-rtld.out', 'tst/tst-live-start.out' ]).catch (err => {
+    fatal (`\n${err.stack}`);
+    process.exit (1);
+  });
 }
 
 main ();

@@ -1,25 +1,16 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const cp = s => async () => {
-  await env.run (`mkdir -p ${env.dir (goal)} && cp ${s} ${goal}`, true);
-};
-
-const src = async s => await this.update ([ env.src (s) ], cp (env.src (s)));
-const gsrc = async g => await src (`goals/${g}.g`);
-
-const raw = env.trim (goal);
-
-if (new Set([ 'rtld-convert.c.o', 'tst/tst-rtld.S.o'  ]).has (raw)) await src (goal);
-else if (raw.match (/\bgenerated\/public\/rtld.h/)) await src ('generated/public/rtld.h.g');
-else if (raw.match (/[^-]\brtld$/)) await src ('rtld.g');
-else if (raw.match (/[^-]\brtld.c.o$/)) await src ('rtld.c.o.g');
-else if (raw.match (/\bgenerated\/recorder-binary.h/)) await src ('generated/recorder-binary.h.g');
-else if (raw.match (/[^-]\brecorder$/)) await src ('recorder.g');
-else if (raw.match (/\b-offsets.h$/)) await gsrc ('offset');
-else if (env.ext (raw, 'o')) await gsrc ('compile');
-else if (env.ext (raw, 'd')) await gsrc ('depend');
-else if (env.ext (raw, 'l')) await gsrc ('local');
-else if (env.exts (raw, [ 'c', 'S', 'h', 'ld' ])) await gsrc ('source');
-else if (new Set([ 'tst/tst-rtld.out' ]).has (raw)) await src (goal);
-else if (env.ext (raw, 'out')) await gsrc ('tst/out');
-else await src (goal);
+if (goal.match (/\bgenerated\/public\/rtld.h$/)) return await this.invoke ('generated/public/rtld.h.g');
+else if (goal.match (/[^-]\brtld$/)) return await this.invoke ('rtld.g');
+else if (goal.match (/[^-]\brtld.c.o$/)) return await this.invoke ('rtld.c.o.g');
+else if (goal.match (/\bgenerated\/recorder-binary.h$/)) return await this.invoke ('generated/recorder-binary.h.g');
+else if (goal.match (/[^-]\brecorder$/)) return await this.invoke ('recorder.g');
+else if (goal.match (/\b-offsets.h$/)) return await this.invoke ('goal/offset.g');
+else if (goal.match (/\b-dedicated.h$/)) return await this.invoke ('goal/m4.g')
+else if (new Set([ 'rtld-convert.c.o', 'tst/tst-rtld.S.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
+else if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
+else if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');
+else if (new Set([ 'tst/tst-rtld.out' ]).has (goal)) return await this.invoke (`${goal}.g`);
+else if (env.ext (goal, 'out')) return await this.invoke ('goal/tst/out.g');
+else if (env.exts (goal, [ 'c', 'S', 'h', 'ld', 'm4', 'g' ])) return false;
+else return await this.invoke (`${goal}.g`);
