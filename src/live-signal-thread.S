@@ -23,7 +23,7 @@ ERI_FUNCTION (eri_live_signal_thread_init_main)
   addq	$SIGNAL_THREAD_STACK_SIZE, %rsp
 
   movq	%rax, %rdi
-  call	start_main
+  call	start_group
   ERI_ASSERT_FALSE
   ERI_END_FUNCTION (eri_live_signal_thread_init_main)
 

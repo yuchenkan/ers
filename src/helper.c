@@ -37,15 +37,11 @@ sigsegv_handler (int32_t sig, struct eri_siginfo *info,
 }
 
 static noreturn void
-start (struct eri_helper *helper, int32_t *lock)
+start (struct eri_helper *helper, int32_t ppid)
 {
-  eri_debug ("pid = %u, ppid = %u\n",
-	     helper->pid, (uint32_t) eri_assert_syscall (getppid));
-
-  struct eri_sigset mask;
-  eri_sig_fill_set (&mask);
-  eri_sig_del_set (&mask, ERI_SIGSEGV);
-  eri_assert_sys_sigprocmask (&mask, 0);
+  eri_debug ("pid = %u, ppid = %u\n", helper->pid, ppid);
+  eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
+  eri_assert (eri_assert_syscall (getppid) == ppid);
 
   struct eri_sigaction act = {
     sigsegv_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
@@ -54,8 +50,10 @@ start (struct eri_helper *helper, int32_t *lock)
   eri_sig_fill_set (&act.mask);
   eri_assert_sys_sigaction (ERI_SIGSEGV, &act, 0);
 
-  eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
-  eri_unlock (lock);
+  struct eri_sigset mask;
+  eri_sig_fill_set (&mask);
+  eri_sig_del_set (&mask, ERI_SIGSEGV);
+  eri_assert_sys_sigprocmask (&mask, 0);
 
   while (1)
     {
@@ -80,7 +78,8 @@ start (struct eri_helper *helper, int32_t *lock)
 }
 
 struct eri_helper *
-eri_helper_start (struct eri_mtpool *pool, uint64_t stack_size)
+eri_helper_start (struct eri_mtpool *pool,
+		  uint64_t stack_size, int32_t pid)
 {
   eri_debug ("\n");
   struct eri_helper *helper
@@ -98,16 +97,14 @@ eri_helper_start (struct eri_mtpool *pool, uint64_t stack_size)
 
   *(void **) helper->stack = helper;
 
-  int32_t lock = 1;
   struct eri_sys_clone_args args = {
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
     | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID | ERI_SIGCHLD,
     helper->stack + stack_size - 8,
-    &helper->pid, &helper->alive, 0, start, helper, &lock
+    &helper->pid, &helper->alive, 0, start, helper, (void *) (uint64_t) pid
   };
   eri_assert_sys_clone (&args);
   eri_assert_syscall (sigaltstack, &old_stack, 0);
-  eri_lock (&lock);
   return helper;
 }
 

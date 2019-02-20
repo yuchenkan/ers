@@ -50,7 +50,7 @@ void sig_handler_frame (struct eri_sigframe *frame);
 struct eri_live_signal_thread *init_group (
 		struct eri_common_args *args,
 		struct eri_rtld_args *rtld_args);
-noreturn void start_main (struct eri_live_signal_thread *sig_th);
+noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
 noreturn uint8_t thread_die (int32_t *alive);
 

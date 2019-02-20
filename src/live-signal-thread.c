@@ -20,7 +20,7 @@ struct sig_act
 struct watch
 {
   int32_t alive;
-  uint8_t stack[2048];
+  uint8_t stack[4096];
 };
 
 struct signal_thread_group
@@ -28,9 +28,6 @@ struct signal_thread_group
   struct eri_mtpool *pool;
 
   struct eri_common_args args;
-
-  struct eri_helper *helper;
-  struct watch watch_helper;
 
   int32_t pid;
 
@@ -45,7 +42,8 @@ struct signal_thread_group
   int32_t thread_lock;
   ERI_LST_LIST_FIELDS (thread)
 
-  struct watch watch_thread;
+  struct watch watch;
+  struct eri_helper *helper;
 };
 
 ERI_DEFINE_LIST (static, thread, struct signal_thread_group,
@@ -241,45 +239,10 @@ init_main (struct signal_thread_group *group,
   return sig_th;
 }
 
-static noreturn void start_watch (int32_t pid);
-
-static noreturn void
-start_watch (int32_t pid)
-{
-  eri_debug ("pid = %u, tid = %u, watch_pid = %u\n",
-	     (uint32_t) eri_assert_syscall (getpid),
-	     (uint32_t) eri_assert_syscall (gettid), pid);
-  struct eri_siginfo info;
-  eri_assert_syscall (waitid, ERI_P_PID, pid, &info, ERI_WEXITED, 0);
-  eri_assert (info.chld.status == 0);
-  eri_debug ("leave watch_pid = %u\n", pid);
-  eri_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
-}
-
-static void
-watch (struct watch *watch, int32_t pid)
-{
-  watch->alive = 1;
-  struct eri_sys_clone_args args = {
-
-    ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
-    | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD | ERI_CLONE_CHILD_CLEARTID,
-
-    (void *) ((uint64_t) watch->stack + sizeof watch->stack - 8),
-    0, &watch->alive, 0, start_watch, (void *) (uint64_t) pid
-  };
-
-  eri_assert_sys_clone (&args);
-}
-
 struct eri_live_signal_thread *
 init_group (struct eri_common_args *args, struct eri_rtld_args *rtld_args)
 {
   struct signal_thread_group *group = init_group_memory (args);
-
-  group->helper = eri_helper_start (group->pool, 256 * 1024);
-  watch (&group->watch_helper, eri_helper_get_pid (group->helper));
 
   group->pid = eri_assert_syscall (getpid);
 
@@ -321,15 +284,64 @@ restore_sig_mask (struct eri_live_signal_thread *sig_th)
   eri_assert_sys_sigprocmask (&sig_th->sig_mask, 0);
 }
 
+static noreturn void start_watch (
+		struct eri_live_signal_thread *sig_th, int32_t *lock);
+
+static noreturn void
+start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
+{
+  eri_debug ("pid = %u, tid = %u\n",
+	     (uint32_t) eri_assert_syscall (getpid),
+	     (uint32_t) eri_assert_syscall (gettid));
+
+  struct signal_thread_group *group = sig_th->group;
+  group->helper = eri_helper_start (group->pool, 256 * 1024, group->pid);
+  int32_t pgid = eri_helper_get_pid (group->helper);
+  eri_assert_syscall (setpgid, pgid, 0);
+
+  eri_live_thread_clone_main (sig_th->th);
+  int32_t th_pid = eri_live_thread_get_pid (sig_th->th);
+  eri_assert_syscall (setpgid, th_pid, pgid);
+  eri_unlock (lock);
+
+  struct eri_siginfo info;
+  eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
+  eri_assert (info.chld.pid == th_pid && info.chld.status == 0);
+  eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
+  eri_assert (info.chld.pid == pgid && info.chld.status == 0);
+  eri_debug ("leave watch\n");
+  eri_assert_syscall (exit, 0);
+  eri_assert_unreachable ();
+}
+
+static void
+watch (struct eri_live_signal_thread *sig_th)
+{
+  int32_t lock = 1;
+  struct watch *watch = &sig_th->group->watch;
+  watch->alive = 1;
+  struct eri_sys_clone_args args = {
+
+    ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
+    | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD | ERI_CLONE_CHILD_CLEARTID,
+
+    (void *) ((uint64_t) watch->stack + sizeof watch->stack - 8),
+    0, &watch->alive, 0, start_watch, sig_th, &lock
+  };
+
+  eri_assert_sys_clone (&args);
+  eri_lock (&lock);
+}
+
 void
-start_main (struct eri_live_signal_thread *sig_th)
+start_group (struct eri_live_signal_thread *sig_th)
 {
   eri_debug ("tid = %u\n", sig_th->tid);
 
+  watch (sig_th);
+
   init_sig_stack (sig_th);
 
-  eri_live_thread_clone_main (sig_th->th);
-  watch (&sig_th->group->watch_thread, eri_live_thread_get_pid (sig_th->th));
   restore_sig_mask (sig_th);
 
   event_loop (sig_th);
@@ -759,7 +771,6 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   event->done = 1;
   release_event ((void *) event);
   eri_live_thread_join (th);
-  eri_lock (&group->watch_thread.alive);
 
   eri_debug ("destroy thread group\n");
 
@@ -768,7 +779,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
   eri_debug ("exit helper\n");
   eri_helper_exit (group->helper);
-  eri_lock (&group->watch_helper.alive);
+  eri_lock (&group->watch.alive);
 
   eri_debug ("destroy\n");
 

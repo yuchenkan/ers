@@ -139,7 +139,7 @@ label:									\
 
 ERI_FUNCTION (main)
   movq	%rdi, %rbx
-  TH_CALL (start_main)
+  TH_CALL (start)
 
   movq	$0, TCE (RBX)(%rbx)
   movq	$0, TC (SREGS_RCX)(%rbx)

@@ -10,7 +10,7 @@ struct eri_ucontext;
 struct eri_helper;
 
 struct eri_helper *eri_helper_start (struct eri_mtpool *pool,
-				     uint64_t stack_size);
+				     uint64_t stack_size, int32_t pid);
 void eri_helper_exit (struct eri_helper *helper);
 
 typedef void (*eri_helper_sigsegv_handler_t) (struct eri_siginfo *info,

@@ -289,6 +289,9 @@ start (struct eri_live_thread *th)
 {
   eri_debug ("tid = %u, %lx %lx %lx %lx, %lx\n",
 	     th->tid, th, th->ctx, th->ctx->sig_frame, th->ctx->top);
+  eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
+  eri_assert (eri_assert_syscall (getppid)
+	      == eri_live_signal_thread_get_pid (th->sig_th));
 
   eri_live_signal_thread_init_thread_sig_stack (
 	th->sig_th, th->sig_stack, 2 * THREAD_SIG_STACK_SIZE);
@@ -304,16 +307,6 @@ start (struct eri_live_thread *th)
 }
 
 void
-start_main (struct eri_live_thread *th)
-{
-  eri_debug ("tid = %u\n", th->tid);
-
-  eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
-  eri_assert_sys_futex_wake (&th->group->pid, th->tid);
-  start (th);
-}
-
-void
 eri_live_thread_clone_main (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -326,8 +319,7 @@ eri_live_thread_clone_main (struct eri_live_thread *th)
     (void *) th_ctx->top, &th->tid, &th->alive, 0, main, th_ctx
   };
 
-  eri_assert_sys_clone (&args);
-  eri_assert_sys_futex_wait (&th->group->pid, 0, 0);
+  th->group->pid = eri_assert_sys_clone (&args);
 }
 
 #define SIG_ACT_TERM	((void *) 1)

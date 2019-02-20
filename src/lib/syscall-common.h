@@ -618,6 +618,7 @@
 #define ERI_PR_SET_PDEATHSIG	1
 
 #define ERI_P_PID		1
+#define ERI_P_PGID		2
 #define ERI_WEXITED		4
 
 #ifdef __ASSEMBLER__
