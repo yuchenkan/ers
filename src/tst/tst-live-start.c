@@ -5,7 +5,7 @@
 #include <live-signal-thread.h>
 #include <common.h>
 
-#include <tst/tst-recorder.h>
+#include <tst/tst-syscall.h>
 
 noreturn void tst_live_start (void);
 

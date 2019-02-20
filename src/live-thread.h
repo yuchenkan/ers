@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
-
 struct eri_sigaction;
 struct eri_siginfo;
 struct eri_ucontext;

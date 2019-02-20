@@ -19,7 +19,7 @@ struct eri_common_args
 #include <lib/printf.h>
 
 #define eri_debug(fmt, ...) \
-  eri_assert_gprintf ("[%s:%u]\t%s\t" fmt,				\
+  eri_assert_gprintf ("[%s:%u(%s)]\t" fmt,				\
 		      __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 #define eri_debug_stop() \

@@ -4,6 +4,7 @@ const util = require ('util');
 const assert = require ('assert');
 const path = require ('path');
 const fs = require ('fs');
+const os = require ('os');
 
 const fstat = util.promisify (fs.fstat);
 const open = util.promisify (fs.open);
@@ -14,8 +15,9 @@ const exec = util.promisify (require ('child_process').exec);
 
 const AsyncFunction = Object.getPrototypeOf (async function () { }).constructor;
 
+let verbose = 0;
 const debug = msg => {
-  if (process.argv.length > 2) console.log (`[debug] ${msg}`);
+  if (verbose > 1) console.log (`[debug] ${msg}`);
 }
 
 const info = msg => console.log ('\x1b[33m%s\x1b[0m', `[info] ${msg}`);
@@ -57,7 +59,7 @@ async function run (cmd, quiet) {
   if (env.jobs === env.maxJobs) await wait (env.waiting);
   else ++env.jobs;
 
-  (quiet ? debug : info) (cmd);
+  if (! quiet || verbose > 0) info (cmd);
 
   try {
     let { stdout } = await exec (cmd);
@@ -92,9 +94,8 @@ async function collect () {
 
   const infos = env.infos;
   const first = await visit (infos, goal);
-  debug (`collect ${goal} +++`);
   if (! first) return goal in env.stats;
-  debug (`collect ${goal} !!!`);
+  debug (`collect ${goal}`);
 
   const stat = env.stats[goal];
   const deps = stat.deps;
@@ -103,11 +104,18 @@ async function collect () {
     debug ('collect dependend file changed');
     delete env.stats[goal];
   } else if (stat.src
-	     && (stat.src != env.src (goal)
+	     && (stat.src !== env.src (goal)
 		 || def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime))) {
     debug ('collect source file changed');
     delete env.stats[goal];
   } else env.goals[goal] = { };
+/*
+if (goal === 'm4/util.m4')
+console.log (goal, stat, await ctime (stat.src), await ctime (goal), goal in env.stats);
+if (new Set ([ 'tst/tst-common-start.S.o', 'all' ]).has (goal))
+console.log (goal, stat, goal in env.stats);
+*/
+  if (! (goal in env.stats)) await env.run (`rm -f ${goal}`, true);
 
   debug (`collect ${goal} ${goal in env.stats}`);
   finish (first);
@@ -160,8 +168,7 @@ async function build () {
     await env.mkdir (goal);
     if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {
       var src = env.src (goal);
-      if (await ctime (src)) await env.run (`cp ${src} ${goal}`);
-      else await env.run (`rm -f ${goal}`);
+      if (await ctime (src)) await env.run (`cp ${src} ${goal}`, true);
     }
 
     env.stats[goal] = { deps: Array.from (first.deps), ctime: env.ctime, src };
@@ -200,19 +207,55 @@ async function mkdir (file) {
   let first = await visit (env.dirs, dir);
   if (! first) return;
 
-  if (dir !== '.') env.run (`mkdir -p ${dir}`);
+  if (dir !== '.') env.run (`mkdir -p ${dir}`, true);
 
   finish (first);
 }
 
 function main () {
+
+  const args = [ ];
+  let maxJobs = 1;
+  process.argv.shift ();
+  process.argv.shift ();
+  try {
+    while (process.argv.length) {
+      let a = process.argv.shift ();
+      if (a === '-v') verbose = Number (process.argv.shift ());
+      else if (a === '-j') maxJobs = Number (process.argv.shift ());
+      else {
+	assert (a[0] != '-');
+        args.push (a);
+      }
+    }
+    if (isNaN (verbose)) verbose = 1;
+    assert (! isNaN (maxJobs));
+    if (maxJobs > 2 * os.cpus ().length) maxJobs = 2 * os.cpus ().length;
+    assert (args.length >= 3);
+  } catch (err) {
+    fatal ('usage: node make.js [-v -j] src dst goal ...');
+    debug (err.stack);
+    process.exit (1);
+  }
+
+  const src = norm (args.shift ());
+  const dst = norm (args.shift ());
+
+  try {
+    assert (path.relative (src, dst).startsWith ('..'));
+    assert (path.relative (dst, src).startsWith ('..'));
+  } catch (err) {
+    fatal ('do not nest src dst dir');
+    debug (err.stack);
+    process.exit (1);
+  }
+
   const env = {
     def: def,
 
     dir: path.dirname, base: path.basename,
 
-    mkdir: mkdir,
-    dirs: { },
+    mkdir, dirs: { },
 
     ext: (f, e) => f.endsWith (`.${e}`),
     exts: (f, es) => ! es.every (e => ! env.ext (f, e)),
@@ -222,14 +265,14 @@ function main () {
     filter: (s, p) => env.split (s).map (x => x.match (p)).map (x => x === null ? '' : x[0]).join (' '),
     diff: (a, b) => a.filter (x => ! b.includes (x)),
 
-    read: read, run: run,
+    read, run,
 
-    invoke: invoke, update: update,
+    invoke, update,
 
     infos: { }, goals: { }, funcs: { },
 
-    src: '../src', dst: '../build',
-    jobs: 0, maxJobs: 4, waiting: [ ]
+    src, dst,
+    jobs: 0, maxJobs, waiting: [ ]
   };
 
   const circular = () => {
@@ -256,9 +299,8 @@ function main () {
 
     await env.run (`mkdir -p ${env.dst}`, true);
     env.src = (rt => r => path.join (rt, r)) (path.relative (env.dst, env.src)),
-    info (`chdir ${env.dst}`);
+    info (`cd ${env.dst}`);
     process.chdir (env.dst);
-    delete env.dst;
 
     env.stats = def (await read ('.goal-stats', true), { }, JSON.parse);
     await Promise.all (Object.keys (env.stats).map (g => collect.call (context (env, g))));
@@ -273,8 +315,8 @@ function main () {
     note ('every up-to-date');
   };
 
-  make ([ 'tst/tst-rtld.out', 'tst/tst-live-start.out' ]).catch (err => {
-    fatal (`\n${err.stack}`);
+  make (args).catch (err => {
+    fatal (`dst: ${env.dst}\n${err.stack}`);
     process.exit (1);
   });
 }

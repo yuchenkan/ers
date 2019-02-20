@@ -63,7 +63,7 @@ start (struct eri_helper *helper, int32_t *lock)
       eri_assert_syscall (read, helper->event_pipe[0],
 			  &event, sizeof event);
 
-      if (! event) eri_assert_syscall (exit, 0);
+      if (! event) break;
 
       void (*fn) (void *) = event->fn;
       void *args = event->args;
@@ -74,6 +74,9 @@ start (struct eri_helper *helper, int32_t *lock)
       fn (args);
       helper->segv_hand = 0;
     }
+  eri_debug ("exit\n");
+  eri_assert_syscall (exit, 0);
+  eri_assert_unreachable ();
 }
 
 struct eri_helper *

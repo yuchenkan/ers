@@ -249,9 +249,13 @@ ERI_FUNCTION (entry)
 .lsyscall_no_extra_save:
   TH_CALL (syscall)
 
-  cmpl	$__NR_rt_sigreturn, %eax
-  jne	.lsyscall_no_extra_restore
+  testq	%rax, %rax
+  jz	.lsyscall_no_extra_restore
+  cmpq	$1, %rax
+  je	.lsyscall_extra_restore
+  movq	%rax, %rbx /* clone child start */
 
+.lsyscall_extra_restore:
 #define SYSCALL_RESTORE_EREG(creg, reg) \
   movq	TC (PASTE (SYSCALL_EREGS_, creg))(%rbx), %reg
 

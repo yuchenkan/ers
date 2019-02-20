@@ -6,7 +6,7 @@
 #include <rtld.h>
 #include <common.h>
 
-static uint8_t buf[32 * 1024 * 1024];
+static uint8_t buf[256 * 1024 * 1024];
 static uint8_t stack[8 * 1024 * 1024];
 
 noreturn void tst_main (void);

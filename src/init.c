@@ -1,6 +1,5 @@
 #include <init-local.h>
 
-#include <compiler.h>
 #include <rtld.h>
 
 struct proc_init_map_data
