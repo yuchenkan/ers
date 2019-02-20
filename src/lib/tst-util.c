@@ -1,6 +1,5 @@
-#include "lib/tst/tst-util.h"
-
-#include "lib/util.h"
+#include <lib/util.h>
+#include <lib/tst-util.h>
 
 uint64_t
 tst_rand_next (struct tst_rand *rand)

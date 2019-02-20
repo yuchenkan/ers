@@ -302,6 +302,7 @@ function main () {
     info (`cd ${env.dst}`);
     process.chdir (env.dst);
 
+    note ('collecting goal stats...');
     env.stats = def (await read ('.goal-stats', true), { }, JSON.parse);
     await Promise.all (Object.keys (env.stats).map (g => collect.call (context (env, g))));
 

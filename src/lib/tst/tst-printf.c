@@ -1,9 +1,9 @@
 #include <stdint.h>
 
-#include "lib/util.h"
-#include "lib/printf.h"
-#include "lib/buf.h"
-#include "lib/malloc.h"
+#include <lib/util.h>
+#include <lib/printf.h>
+#include <lib/buf.h>
+#include <lib/malloc.h>
 
 static void
 proc_line (const char *ln, uint64_t sz, void *d)

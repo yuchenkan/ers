@@ -1,7 +1,7 @@
 #include <stdint.h>
 
-#include "lib/util.h"
-#include "lib/atomic.h"
+#include <lib/util.h>
+#include <lib/atomic.h>
 
 int
 main (void)
@@ -11,96 +11,75 @@ main (void)
   uint32_t u32;
   uint64_t u64;
 
-  eri_catomic_store (1, &u8, 1);
-  eri_catomic_store (1, &u16, 1);
-  eri_catomic_store (1, &u32, 1);
-  eri_catomic_store (1, &u64, 1);
+  eri_atomic_store (&u8, 1);
+  eri_atomic_store (&u16, 1);
+  eri_atomic_store (&u32, 1);
+  eri_atomic_store (&u64, 1);
 
-  eri_assert (eri_catomic_load (0, &u8) == 1);
-  eri_assert (eri_catomic_load (0, &u16) == 1);
-  eri_assert (eri_catomic_load (0, &u32) == 1);
-  eri_assert (eri_catomic_load (0, &u64) == 1);
+  eri_assert (eri_atomic_load (&u8) == 1);
+  eri_assert (eri_atomic_load (&u16) == 1);
+  eri_assert (eri_atomic_load (&u32) == 1);
+  eri_assert (eri_atomic_load (&u64) == 1);
 
   u8 = 1;
   u16 = 1;
   u32 = 1;
   u64 = 1;
 
-  eri_catomic_inc (1, &u8);
-  eri_catomic_inc (1, &u16);
-  eri_catomic_inc (1, &u32);
-  eri_catomic_inc (1, &u64);
+  eri_atomic_inc (&u8);
+  eri_atomic_inc (&u16);
+  eri_atomic_inc (&u32);
+  eri_atomic_inc (&u64);
 
   eri_assert (u8 == 2);
   eri_assert (u16 == 2);
   eri_assert (u32 == 2);
   eri_assert (u64 == 2);
-
-  eri_catomic_inc (0, &u8);
-  eri_catomic_inc (0, &u16);
-  eri_catomic_inc (0, &u32);
-  eri_catomic_inc (0, &u64);
-
-  eri_assert (u8 == 3);
-  eri_assert (u16 == 3);
-  eri_assert (u32 == 3);
-  eri_assert (u64 == 3);
 
   u8 = 3;
   u16 = 3;
   u32 = 3;
   u64 = 3;
 
-  eri_catomic_dec (1, &u8);
-  eri_catomic_dec (1, &u16);
-  eri_catomic_dec (1, &u32);
-  eri_catomic_dec (1, &u64);
+  eri_atomic_dec (&u8);
+  eri_atomic_dec (&u16);
+  eri_atomic_dec (&u32);
+  eri_atomic_dec (&u64);
 
   eri_assert (u8 == 2);
   eri_assert (u16 == 2);
   eri_assert (u32 == 2);
   eri_assert (u64 == 2);
-
-  eri_catomic_dec (0, &u8);
-  eri_catomic_dec (0, &u16);
-  eri_catomic_dec (0, &u32);
-  eri_catomic_dec (0, &u64);
-
-  eri_assert (u8 == 1);
-  eri_assert (u16 == 1);
-  eri_assert (u32 == 1);
-  eri_assert (u64 == 1);
 
   u8 = -1;
   u16 = -1;
   u32 = -1;
   u64 = -1;
 
-  uint8_t x;
-  eri_assert (eri_catomic_inc_fetch (1, &u8) == 0);
-  eri_assert (eri_catomic_inc_fetch (1, &u16) == 0);
-  eri_assert (eri_catomic_inc_fetch (1, &u32) == 0);
-  eri_assert (eri_catomic_inc_fetch (1, &u64) == 0);
+  eri_assert (eri_atomic_inc_fetch (&u8) == 0);
+  eri_assert (eri_atomic_inc_fetch (&u16) == 0);
+  eri_assert (eri_atomic_inc_fetch (&u32) == 0);
+  eri_assert (eri_atomic_inc_fetch (&u64) == 0);
 
-  eri_assert (eri_catomic_inc_fetch (0, &u8) == 1);
-  eri_assert (eri_catomic_inc_fetch (0, &u16) == 1);
-  eri_assert (eri_catomic_inc_fetch (0, &u32) == 1);
-  eri_assert (eri_catomic_inc_fetch (0, &u64) == 1);
+  eri_assert (eri_atomic_inc_fetch (&u8) == 1);
+  eri_assert (eri_atomic_inc_fetch (&u16) == 1);
+  eri_assert (eri_atomic_inc_fetch (&u32) == 1);
+  eri_assert (eri_atomic_inc_fetch (&u64) == 1);
 
   u8 = 3;
   u16 = 3;
   u32 = 3;
   u64 = 3;
 
-  eri_assert (eri_catomic_dec_fetch (1, &u8) == 2);
-  eri_assert (eri_catomic_dec_fetch (1, &u16) == 2);
-  eri_assert (eri_catomic_dec_fetch (1, &u32) == 2);
-  eri_assert (eri_catomic_dec_fetch (1, &u64) == 2);
+  eri_assert (eri_atomic_dec_fetch (&u8) == 2);
+  eri_assert (eri_atomic_dec_fetch (&u16) == 2);
+  eri_assert (eri_atomic_dec_fetch (&u32) == 2);
+  eri_assert (eri_atomic_dec_fetch (&u64) == 2);
 
-  eri_assert (eri_catomic_dec_fetch (0, &u8) == 1);
-  eri_assert (eri_catomic_dec_fetch (0, &u16) == 1);
-  eri_assert (eri_catomic_dec_fetch (0, &u32) == 1);
-  eri_assert (eri_catomic_dec_fetch (0, &u64) == 1);
+  eri_assert (eri_atomic_dec_fetch (&u8) == 1);
+  eri_assert (eri_atomic_dec_fetch (&u16) == 1);
+  eri_assert (eri_atomic_dec_fetch (&u32) == 1);
+  eri_assert (eri_atomic_dec_fetch (&u64) == 1);
 
   u8 = -5;
   u16 = -5;

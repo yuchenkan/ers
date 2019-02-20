@@ -258,7 +258,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   eri_debug ("%lx %lx\n", th, sig_th);
   th->sig_th = sig_th;
   th->id = eri_atomic_fetch_inc (&group->th_id);
-  th->alive = 1;
+  th->alive = 0;
   th->clear_tid = clear_tid;
   th->rec = eri_live_thread_recorder_create (group->pool, th->id);
 
@@ -272,6 +272,7 @@ eri_live_thread_create_main (struct eri_live_signal_thread *sig_th,
 {
   struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);
+  th->alive = 1;
   struct thread_context *th_ctx = th->ctx;
   th_ctx->ext.op.sig_hand = SIG_HAND_ASYNC;
   th_ctx->ext.op.args = 0;
@@ -301,6 +302,7 @@ start (struct eri_live_thread *th)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->ctx);
 
+  eri_assert_sys_futex_wait (&th->alive, 0, 0);
   eri_debug ("leave %lx %lx\n",
 	     __builtin_return_address (0), th->ctx->sig_frame);
   return th->ctx;
@@ -485,7 +487,7 @@ core:
   eri_debug ("core\n");
   if (eri_live_signal_thread_exit (sig_th, 1, core_status))
     {
-      eri_assert_syscall (tgkill, th->group->pid, th->tid, frame->info.sig);
+      if (core_status == 130) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
     }
   else
@@ -665,7 +667,7 @@ sig_restart_set_ctx (struct thread_context *th_ctx)
 struct eri_live_thread_create_args
 {
   struct eri_live_thread *pth;
-  uint64_t child_thread_id;
+  struct eri_live_thread *cth;
 };
 
 struct eri_live_thread *
@@ -680,7 +682,7 @@ eri_live_thread_create (struct eri_live_signal_thread *sig_th,
   int32_t *clear_tid = flags & ERI_CLONE_CHILD_CLEARTID ? ctid : 0;
   struct eri_live_thread *th = create (pth->group, sig_th, clear_tid);
 
-  create_args->child_thread_id = th->id;
+  create_args->cth = th;
   struct thread_context *th_ctx = th->ctx;
   th_ctx->ext.op = pth_ctx->ext.op;
   th_ctx->ext.rbx = pth_ctx->ext.rbx;
@@ -977,10 +979,14 @@ DEFINE_SYSCALL (clone)
   if (! eri_live_signal_thread_clone (sig_th, &args))
     return SYSCALL_SIG_WAIT_RESTART;
 
-  if (flags & ERI_CLONE_PARENT_SETTID)
-    copy_to_user (th, ptid, &args.tid, sizeof args.tid);
-  if (flags & ERI_CLONE_CHILD_SETTID)
-    copy_to_user (th, ctid, &args.tid, sizeof args.tid);
+  if (! eri_syscall_is_error (args.result))
+    {
+      if (flags & ERI_CLONE_PARENT_SETTID)
+	copy_to_user (th, ptid, &args.tid, sizeof args.tid);
+      if (flags & ERI_CLONE_CHILD_SETTID)
+	copy_to_user (th, ctid, &args.tid, sizeof args.tid);
+      eri_assert_sys_futex_wake (&create_args.cth->alive, 1);
+    }
 
   SYSCALL_RETURN_DONE (th_ctx, args.result);
 }

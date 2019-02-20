@@ -1,10 +1,10 @@
 #include <stdint.h>
 
-#include "lib/tst/tst-util.h"
+#include <lib/tst-util.h>
 
-#include "lib/util.h"
-#include "lib/malloc.h"
-#include "lib/syscall.h"
+#include <lib/util.h>
+#include <lib/malloc.h>
+#include <lib/syscall.h>
 
 static uint8_t buf2[64 * 1024 * 1024];
 
@@ -27,7 +27,7 @@ main (void)
   eri_assert_fini_pool (&pool);
 
   struct tst_rand rand;
-  tst_rand_seed (&rand, ERI_ASSERT_SYSCALL_RES (gettid));
+  tst_rand_seed (&rand, eri_assert_syscall (gettid));
 
   eri_assert_init_pool (&pool, buf2, sizeof buf2);
 #define MALLOC(p, s) \

@@ -75,7 +75,8 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
 {
   struct eri_live_thread *th = sig_th->th;
   struct eri_siginfo *info = &frame->info;
-  eri_debug ("sig = %u, rip = %lx\n", info->sig, frame->ctx.mctx.rip);
+  eri_debug ("sig = %u, frame = %lx, rip = %lx\n",
+	     info->sig, frame, frame->ctx.mctx.rip);
   if (eri_si_sync (info))
     {
       eri_live_thread_sig_handler (th, frame, 0);

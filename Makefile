@@ -1,5 +1,5 @@
-TOPTARGETS := all check
-SUBDIRS := src examples
+TOPTARGETS := all
+SUBDIRS := src
 
 $(TOPTARGETS): $(SUBDIRS)
 

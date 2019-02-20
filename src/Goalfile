@@ -1,6 +1,7 @@
 'use strict'; /* vim: set ft=javascript: */
 
-if (goal.match (/\bgenerated\/public\/rtld\.h$/)) return await this.invoke ('generated/public/rtld.h.g');
+if (new Set([ 'rtld-convert.c.o', 'tst/tst-rtld.S.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
+else if (goal.match (/\bgenerated\/public\/rtld\.h$/)) return await this.invoke ('generated/public/rtld.h.g');
 else if (goal.match (/[^-]\brtld$/)) return await this.invoke ('rtld.g');
 else if (goal.match (/[^-]\brtld\.c\.o$/)) return await this.invoke ('rtld.c.o.g');
 else if (goal.match (/\bgenerated\/recorder-binary\.h$/)) return await this.invoke ('generated/recorder-binary.h.g');
@@ -9,7 +10,8 @@ else if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g')
 else if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 else if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
   return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);
-else if (new Set([ 'rtld-convert.c.o', 'tst/tst-rtld.S.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
+else if (goal.match (/^lib\/tst\/tst-[^.]*$/)) return await this.invoke ('lib/tst/link.g');
+else if (goal.match (/^lib\/tst\/.*\.o$/)) return await this.invoke ('lib/tst/compile.g');
 else if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 else if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');
 else if (new Set([ 'tst/tst-rtld.out' ]).has (goal)) return await this.invoke (`${goal}.g`);
