@@ -232,6 +232,7 @@ init_main (struct signal_thread_group *group,
 
   sig_th->th = eri_live_thread_create_main (sig_th, rtld_args);
 
+  eri_debug ("sig_th %lx\n", sig_th);
   eri_assert_syscall (set_tid_address, &sig_th->alive);
   sig_th->tid = eri_assert_syscall (gettid);
 
@@ -290,9 +291,7 @@ static noreturn void start_watch (
 static noreturn void
 start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
 {
-  eri_debug ("pid = %u, tid = %u\n",
-	     (uint32_t) eri_assert_syscall (getpid),
-	     (uint32_t) eri_assert_syscall (gettid));
+  eri_debug ("\n");
 
   struct signal_thread_group *group = sig_th->group;
   group->helper = eri_helper_start (group->pool, 256 * 1024, group->pid);
@@ -305,8 +304,10 @@ start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
   eri_unlock (lock);
 
   struct eri_siginfo info;
+  eri_debug ("watch wait th\n");
   eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
   eri_assert (info.chld.pid == th_pid && info.chld.status == 0);
+  eri_debug ("watch wait helper\n");
   eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
   eri_assert (info.chld.pid == pgid && info.chld.status == 0);
   eri_debug ("leave watch\n");
@@ -336,7 +337,7 @@ watch (struct eri_live_signal_thread *sig_th)
 void
 start_group (struct eri_live_signal_thread *sig_th)
 {
-  eri_debug ("tid = %u\n", sig_th->tid);
+  eri_debug ("\n");
 
   watch (sig_th);
 
@@ -634,7 +635,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     &sig_cth->tid, &sig_cth->alive, 0, start, sig_cth, event
   };
 
-  eri_debug ("clone %lx %lx\n", event, sig_cth_args.stack);
+  eri_debug ("clone %lx %lx %lx\n", event, sig_cth, sig_cth_args.stack);
   args->result = eri_sys_clone (&sig_cth_args);
   uint8_t error_sig_clone = eri_syscall_is_error (args->result);
 
@@ -659,7 +660,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     }
 
   restore_sig_mask (sig_th);
-  eri_debug ("clone done %lx\n", event);
+  eri_debug ("clone done %lx %lu\n", event, args->result);
   event->done = 1;
   return;
 }
@@ -748,34 +749,38 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
       unhold_exit_group (&group->exit_group_lock);
 
-      eri_debug ("exit %u\n", eri_assert_syscall (gettid));
+      eri_debug ("exit %lx\n", sig_th);
       eri_assert_syscall (exit, status);
     }
 
-  eri_debug ("exit group %u %u\n",
-	     eri_assert_syscall (gettid), event->group);
+  eri_debug ("exit group %u\n", event->group);
 
   if (event->group)
     {
       if (! try_lock_exit_group (group)) return;
 
       inform_exit_group (sig_th);
+
+      struct eri_live_signal_thread *it;
+
+      eri_debug ("exit thread group\n");
+      ERI_LST_FOREACH (thread, group, it)
+	if (it != sig_th)
+	  {
+	    join (it);
+	    eri_live_thread_destroy (it->th, 0);
+	    eri_assert_mtfree (group->pool, it);
+	  }
     }
+  else eri_assert (try_lock_exit_group (group));
 
-  struct eri_live_signal_thread *it;
-  ERI_LST_FOREACH (thread, group, it)
-    if (it != sig_th) join (it);
-
-  eri_debug ("exit thread group\n");
+  eri_debug ("exit last thread\n");
 
   event->done = 1;
   release_event ((void *) event);
   eri_live_thread_join (th);
 
-  eri_debug ("destroy thread group\n");
-
-  ERI_LST_FOREACH (thread, group, it)
-    eri_live_thread_destroy (it->th, 0);
+  eri_live_thread_destroy (th, 0);
 
   eri_debug ("exit helper\n");
   eri_helper_exit (group->helper);
@@ -786,8 +791,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   struct eri_pool *pool = &group->pool->pool;
   eri_preserve (pool);
 
-  ERI_LST_FOREACH (thread, group, it)
-    eri_assert_free (pool, it);
+  eri_assert_free (pool, sig_th);
 
   eri_assert_free (pool, group);
   eri_assert (pool->used == 0);
@@ -799,7 +803,7 @@ uint8_t
 eri_live_signal_thread_exit (struct eri_live_signal_thread *sig_th,
 			     uint8_t group, uint64_t status)
 {
-  eri_debug ("pid = %u, status = %lu\n", eri_assert_syscall (getpid), status);
+  eri_debug ("status = %lu\n", status);
   struct exit_event event = { EXIT_EVENT, group, status };
   proc_event (sig_th, &event);
   return event.done;

@@ -221,14 +221,14 @@ function main () {
   try {
     while (process.argv.length) {
       let a = process.argv.shift ();
-      if (a === '-v') verbose = Number (process.argv.shift ());
+      if (a === '-v')
+	verbose = isNaN (Number (process.argv[0])) ? 1 : Number (process.argv.shift ());
       else if (a === '-j') maxJobs = Number (process.argv.shift ());
       else {
 	assert (a[0] != '-');
         args.push (a);
       }
     }
-    if (isNaN (verbose)) verbose = 1;
     assert (! isNaN (maxJobs));
     if (maxJobs > 2 * os.cpus ().length) maxJobs = 2 * os.cpus ().length;
     assert (args.length >= 3);

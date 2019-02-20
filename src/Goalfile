@@ -14,6 +14,6 @@ else if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 else if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');
 else if (new Set([ 'tst/tst-rtld.out' ]).has (goal)) return await this.invoke (`${goal}.g`);
 else if (env.ext (goal, 'out')) return await this.invoke ('goal/tst/out.g');
-else if (env.exts (goal, [ 'c', 'S', 'h', 'ld', 'm4', 'g' ])) return false;
+else if (env.exts (goal, [ 'c', 'S', 'h', 'ld', 'm4', 'g', 'sh' ])) return false;
 else if (goal.match (/^tst\/tst-live-[^.]*/)) return await this.invoke ('tst/tst-live.g');
 else return await this.invoke (`${goal}.g`);

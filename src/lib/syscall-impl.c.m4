@@ -38,7 +38,6 @@ m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
       if (timeout && res == ERI_ETIMEDOUT) return 0;
       eri_assert (! eri_syscall_is_error (res)
 		  || res == ERI_EAGAIN || res == ERI_EINTR);
-eri_assert (res != ERI_EINTR);
     }
   return 1;
 }

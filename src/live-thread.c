@@ -255,7 +255,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   struct eri_live_thread *th
 	= eri_assert_mtmalloc (group->pool, sizeof *th + group->stack_size);
   th->group = group;
-  eri_debug ("tid = %u, %lx %lx\n", eri_assert_syscall (gettid), th, sig_th);
+  eri_debug ("%lx %lx\n", th, sig_th);
   th->sig_th = sig_th;
   th->id = eri_atomic_fetch_inc (&group->th_id);
   th->alive = 1;
@@ -287,8 +287,8 @@ eri_live_thread_create_main (struct eri_live_signal_thread *sig_th,
 struct thread_context *
 start (struct eri_live_thread *th)
 {
-  eri_debug ("tid = %u, %lx %lx %lx %lx, %lx\n",
-	     th->tid, th, th->ctx, th->ctx->sig_frame, th->ctx->top);
+  eri_debug ("%lx %lx %lx %lx, %lx\n",
+	     th, th->ctx, th->ctx->sig_frame, th->ctx->top);
   eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
   eri_assert (eri_assert_syscall (getppid)
 	      == eri_live_signal_thread_get_pid (th->sig_th));
@@ -1010,7 +1010,7 @@ syscall_do_exit (struct eri_live_thread *th)
   if (! eri_live_signal_thread_exit (sig_th, exit_group, status))
     return SYSCALL_SIG_WAIT_RESTART;
 
-  eri_debug ("syscall exit %u\n", eri_assert_syscall (gettid));
+  eri_debug ("syscall exit\n");
   eri_assert_syscall_nr (nr, 0);
   eri_assert_unreachable ();
 }
@@ -2131,8 +2131,7 @@ eri_live_thread_sig_handler (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
 		struct eri_sigaction *act)
 {
-  eri_debug ("tid = %u, sig_hand = %u, sig = %u, rip = %lx\n",
-	     eri_assert_syscall (gettid),
+  eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
 	     th->ctx->ext.op.sig_hand, frame->info.sig, frame->ctx.mctx.rip);
 
   const void (*hands[]) (

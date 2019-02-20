@@ -18,9 +18,14 @@ struct eri_common_args
 
 #include <lib/printf.h>
 
-#define eri_debug(fmt, ...) \
-  eri_assert_gprintf ("[%s:%u(%s)]\t" fmt,				\
-		      __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#if 0
+# define eri_debug(fmt, ...) \
+  eri_assert_gprintf ("[%s:%u(%s)%lu]\t" fmt,				\
+		      __FILE__, __LINE__, __FUNCTION__,			\
+		      eri_assert_syscall (gettid), ##__VA_ARGS__)
+#else
+# define eri_debug(...)
+#endif
 
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
