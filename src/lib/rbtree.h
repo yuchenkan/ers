@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
 #include <lib/util.h>
 
 /*
@@ -35,18 +36,13 @@
 #define ERI_RBT_GT	4
 
 #define ERI_DECLARE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
-attr void pfx##_rbt_insert (tree_type *tree,				\
-			    node_type *node) __attribute__ ((unused));	\
-attr void pfx##_rbt_remove (tree_type *tree,				\
-			    node_type *node) __attribute__ ((unused));	\
-attr node_type *pfx##_rbt_get (tree_type *tree, key_type *key,		\
-			       int32_t flags) __attribute__ ((unused));	\
-attr node_type *pfx##_rbt_get_first (tree_type *tree)			\
-					__attribute__ ((unused));	\
-attr node_type *pfx##_rbt_get_next (node_type *node)			\
-					__attribute__ ((unused));	\
-attr uint64_t pfx##_rbt_get_size (tree_type *tree)			\
-					__attribute__ ((unused));
+attr unused void pfx##_rbt_insert (tree_type *tree, node_type *node);	\
+attr unused void pfx##_rbt_remove (tree_type *tree, node_type *node);	\
+attr unused node_type *pfx##_rbt_get (tree_type *tree, key_type *key,	\
+				      int32_t flags);			\
+attr unused node_type *pfx##_rbt_get_first (tree_type *tree);		\
+attr unused node_type *pfx##_rbt_get_next (node_type *node);		\
+attr unused uint64_t pfx##_rbt_get_size (tree_type *tree);
 
 #define ERI_DECLARE_RBTREE1(attr, pfx, tree_type, node_type) \
 ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)

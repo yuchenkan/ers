@@ -8,8 +8,6 @@
 #include <tst/tst-syscall.h>
 #include <lib/tst-util.h>
 
-noreturn void tst_live_start (void);
-
 static aligned16 uint8_t stack[1024 * 1024];
 static int32_t ptid, ctid;
 static void *tls = &tls;
@@ -30,15 +28,18 @@ static void start (int32_t *a0, int32_t *a1, int32_t *a2)
 
   tst_yield (a[1]);
   eri_debug ("exit\n");
-  tst_syscall (exit, 0);
+  tst_assert_syscall (exit, 0);
   eri_assert_unreachable ();
 }
+
+noreturn void tst_live_start (void);
 
 noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_seed (&rand, eri_assert_syscall (gettid));
+  tst_rand_init (&rand);
+
   a[0] = tst_rand (&rand, 0, 64);
   a[1] = tst_rand (&rand, 0, 64);
   struct eri_sys_clone_args args = {
@@ -50,6 +51,6 @@ tst_live_start (void)
 
   tst_yield (a[0]);
   eri_debug ("exit\n");
-  tst_syscall (exit, 0);
+  tst_assert_syscall (exit, 0);
   eri_assert_unreachable ();
 }

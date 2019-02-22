@@ -105,7 +105,7 @@ sig_handler_frame (struct eri_sigframe *frame)
   struct eri_ucontext *ctx = &frame->ctx;
 
   struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
-  if (sig_th->sig_stack != (void *) sig_th)
+  if (sig_th->sig_stack != (void *) ctx->stack.sp)
     {
       thread_sig_handler (sig_th, frame);
       return;
@@ -561,7 +561,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	}
       else eri_assert (0);
 
-      release_event (event_type);
+      if (*event_type != CLONE_EVENT) release_event (event_type);
     }
 }
 
@@ -569,14 +569,15 @@ struct clone_event {
   uint32_t type;
   struct eri_live_signal_thread_clone_args *args;
 
-  int32_t clone_thread_call;
   int32_t clone_thread_return;
 
   int32_t clone_start_call;
   int32_t clone_start_return;
 
+  int32_t clone_done;
+
   struct eri_live_signal_thread *sig_cth;
-  uint8_t done;
+
 };
 
 static noreturn void start (struct eri_live_signal_thread *sig_th,
@@ -608,15 +609,11 @@ start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 static void
 clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 {
-  if (! sig_mask_all_async (sig_th)) return;
+  if (! sig_mask_all_async (sig_th)) goto signaled;
 
   struct signal_thread_group *group = sig_th->group;
 
-  if (! try_hold_exit_group (&group->exit_group_lock))
-    {
-      restore_sig_mask (sig_th);
-      return;
-    }
+  if (! try_hold_exit_group (&group->exit_group_lock)) goto signaled;
 
   struct eri_live_signal_thread_clone_args *args = event->args;
 
@@ -640,7 +637,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
   args->result = eri_sys_clone (&sig_cth_args);
   uint8_t error_sig_clone = eri_syscall_is_error (args->result);
 
-  eri_unlock (&event->clone_thread_call);
+  release_event ((void *) event);
   eri_lock (&event->clone_thread_return);
 
   if (! error_sig_clone)
@@ -662,8 +659,12 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   restore_sig_mask (sig_th);
   eri_debug ("clone done %lx %lu\n", event, args->result);
-  event->done = 1;
+  eri_unlock (&event->clone_done);
   return;
+
+signaled:
+  event->args->result = 0;
+  release_event ((void *) event);
 }
 
 uint8_t
@@ -671,8 +672,9 @@ eri_live_signal_thread_clone (struct eri_live_signal_thread *sig_th,
 			      struct eri_live_signal_thread_clone_args *args)
 {
   struct clone_event event = { CLONE_EVENT, args, 1, 1, 1, 1 };
-  queue_event (sig_th, &event);
-  eri_lock (&event.clone_thread_call);
+  proc_event (sig_th, &event);
+
+  if (args->result == 0) return 0;
 
   if (! eri_syscall_is_error (args->result))
     {
@@ -681,9 +683,9 @@ eri_live_signal_thread_clone (struct eri_live_signal_thread *sig_th,
     }
 
   eri_unlock (&event.clone_thread_return);
-  wait_event ((void *) &event, CLONE_EVENT);
+  eri_lock (&event.clone_done);
 
-  return event.done;
+  return 1;
 }
 
 struct exit_event
@@ -762,14 +764,15 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
       inform_exit_group (sig_th);
 
-      struct eri_live_signal_thread *it;
+      struct eri_live_signal_thread *it, *nit;
 
       eri_debug ("exit thread group\n");
-      ERI_LST_FOREACH (thread, group, it)
+      ERI_LST_FOREACH_SAFE (thread, group, it, nit)
 	if (it != sig_th)
 	  {
 	    join (it);
 	    eri_live_thread_destroy (it->th, 0);
+	    thread_lst_remove (group, it);
 	    eri_assert_mtfree (group->pool, it);
 	  }
     }

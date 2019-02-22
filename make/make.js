@@ -165,6 +165,9 @@ async function build () {
 
   first.deps = new Set ();
   try {
+
+    if (verbose === 1) note (`build ${goal}`);
+
     await env.mkdir (goal);
     if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {
       var src = env.src (goal);
@@ -233,7 +236,7 @@ function main () {
     if (maxJobs > 2 * os.cpus ().length) maxJobs = 2 * os.cpus ().length;
     assert (args.length >= 3);
   } catch (err) {
-    fatal ('usage: node make.js [-v -j] src dst goal ...');
+    fatal ('usage: node make.js [-v N -j N] src dst goal ...');
     debug (err.stack);
     process.exit (1);
   }

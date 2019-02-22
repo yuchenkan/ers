@@ -288,7 +288,7 @@ eri_live_thread_create_main (struct eri_live_signal_thread *sig_th,
 struct thread_context *
 start (struct eri_live_thread *th)
 {
-  eri_debug ("%lx %lx %lx %lx, %lx\n",
+  eri_debug ("%lx %lx %lx %lx\n",
 	     th, th->ctx, th->ctx->sig_frame, th->ctx->top);
   eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
   eri_assert (eri_assert_syscall (getppid)

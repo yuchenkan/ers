@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
+
 #define ERI_LST_INIT_LIST(pfx, list) \
   do { typeof (list) __eri_l = (list);					\
        __eri_l->pfx##_lst[0]						\
@@ -12,11 +14,9 @@
 #define ERI_LST_NODE_FIELDS(pfx) void *pfx##_lst[2];
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
-attr void pfx##_lst_append (list_type *list,				\
-			    node_type *node) __attribute__ ((unused));	\
-attr void pfx##_lst_remove (list_type *list,				\
-			    node_type *node) __attribute__ ((unused));	\
-attr uint64_t pfx##_lst_get_size (list_type *list) __attribute__ ((unused));
+attr unused void pfx##_lst_append (list_type *list, node_type *node);	\
+attr unused void pfx##_lst_remove (list_type *list,  node_type *node);	\
+attr unused uint64_t pfx##_lst_get_size (list_type *list);
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
 ERI_DECLARE_LIST(attr, pfx, list_type, node_type)			\

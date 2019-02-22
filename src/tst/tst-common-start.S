@@ -6,6 +6,7 @@
   .text
 
 ERI_FUNCTION (tst_start)
+  movq	%rsp, %rdi
   call	tst_main
   movl	%eax, %edi
   movl	$__NR_exit, %eax

@@ -14,6 +14,7 @@ m4_include(`m4/util.m4')
   ({									\
     uint64_t __res;							\
     ERI_PASTE (_ERI_LOAD_ARGS_, nargs) (__VA_ARGS__)			\
+    ERI_PASTE (_ERI_LOAD_REGS_, nargs)					\
     asm volatile (							\
       ERI_STR (m4_syscall(1))						\
       : "=a" (__res)							\

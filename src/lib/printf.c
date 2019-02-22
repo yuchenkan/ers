@@ -103,6 +103,8 @@ ifwrite (int32_t nr, int32_t fd,
 	  return res;
 	}
 
+      if (res == ERI_EAGAIN || res == ERI_EINTR) continue;
+
       wrote += res;
       advance (nr == __NR_writev || nr == __NR_pwritev, &buf, &size, res);
     }

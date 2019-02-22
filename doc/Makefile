@@ -1,7 +1,7 @@
 BUILD := ../build/doc
 PLANTUML_JAR := $(abspath ../../plantuml.jar)
 
-DIAGRAMS := class sig-timed-wait atomic-sync-signal exit retry-exit
+DIAGRAMS := class sig-timed-wait atomic-sync-signal exit retry-exit threads
 all: $(DIAGRAMS)
 
 $(DIAGRAMS): % : $(BUILD)/%.pdf

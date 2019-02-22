@@ -16,16 +16,22 @@ struct eri_common_args
   uint64_t buf;
 };
 
+#include <lib/util.h>
 #include <lib/printf.h>
+#include <compiler.h>
 
-#if 0
-# define eri_debug(fmt, ...) \
-  eri_assert_gprintf ("[%s:%u(%s)%lu]\t" fmt,				\
-		      __FILE__, __LINE__, __FUNCTION__,			\
-		      eri_assert_syscall (gettid), ##__VA_ARGS__)
-#else
-# define eri_debug(...)
-#endif
+#define _eri_log(level, fmt, ...) \
+  eri_assert_printf ("[" ERI_STR (level) " %s:%u(%s)%lu]\t" fmt,	\
+		     __FILE__, __LINE__, __FUNCTION__,			\
+		     eri_assert_syscall (gettid), ##__VA_ARGS__)
+
+static unused uint8_t eri_enable_debug = 1;
+#define eri_debug(fmt, ...) \
+  do {									\
+    if (eri_enable_debug) _eri_log (DEBUG, fmt, ##__VA_ARGS__);		\
+  } while (0)
+
+#define eri_info(fmt, ...)	_eri_log (INFO, fmt, ##__VA_ARGS__)
 
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
