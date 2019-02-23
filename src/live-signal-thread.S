@@ -4,6 +4,7 @@
 
 #include <lib/util.h>
 #include <lib/syscall.h>
+#include <lib/syscall-offsets.h>
 
 #include <live-signal-thread-local-offsets.h>
 #include <lib/syscall-offsets.h>
@@ -11,8 +12,33 @@
   .text
 
 ERI_FUNCTION (sig_handler)
+  .cfi_startproc
+  .cfi_def_cfa rsp, 0
+  .cfi_offset r8, ERI_SIGFRAME_CTX_MCTX_R8
+  .cfi_offset r9, ERI_SIGFRAME_CTX_MCTX_R9
+  .cfi_offset r10, ERI_SIGFRAME_CTX_MCTX_R10
+  .cfi_offset r11, ERI_SIGFRAME_CTX_MCTX_R11
+  .cfi_offset r12, ERI_SIGFRAME_CTX_MCTX_R12
+  .cfi_offset r13, ERI_SIGFRAME_CTX_MCTX_R13
+  .cfi_offset r14, ERI_SIGFRAME_CTX_MCTX_R14
+  .cfi_offset r15, ERI_SIGFRAME_CTX_MCTX_R15
+  .cfi_offset rdi, ERI_SIGFRAME_CTX_MCTX_RDI
+  .cfi_offset rsi, ERI_SIGFRAME_CTX_MCTX_RSI
+  .cfi_offset rbp, ERI_SIGFRAME_CTX_MCTX_RBP
+  .cfi_offset rbx, ERI_SIGFRAME_CTX_MCTX_RBX
+  .cfi_offset rdx, ERI_SIGFRAME_CTX_MCTX_RDX
+  .cfi_offset rax, ERI_SIGFRAME_CTX_MCTX_RAX
+  .cfi_offset rcx, ERI_SIGFRAME_CTX_MCTX_RCX
+  .cfi_offset rsp, ERI_SIGFRAME_CTX_MCTX_RSP
+  .cfi_offset rip, ERI_SIGFRAME_CTX_MCTX_RIP
   movq	%rsp, %rdi
-  jmp	sig_handler_frame
+  subq	$8, %rsp
+  .cfi_adjust_cfa_offset 8
+  call	sig_handler_frame
+  addq	$8, %rsp
+  .cfi_adjust_cfa_offset -8
+  ret
+  .cfi_endproc
   ERI_END_FUNCTION (sig_handler)
 
 ERI_FUNCTION (eri_live_signal_thread_init_main)

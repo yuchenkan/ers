@@ -305,12 +305,14 @@ start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
   eri_unlock (lock);
 
   struct eri_siginfo info;
-  eri_debug ("watch wait th\n");
-  eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
-  eri_assert (info.chld.pid == th_pid && info.chld.status == 0);
-  eri_debug ("watch wait helper\n");
-  eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
-  eri_assert (info.chld.pid == pgid && info.chld.status == 0);
+  uint8_t i;
+  for (i = 0; i < 2; ++i)
+    {
+      eri_debug ("watch wait\n");
+      eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
+      eri_assert ((info.chld.pid == th_pid || info.chld.pid == pgid)
+		  && info.chld.status == 0);
+    }
   eri_debug ("leave watch\n");
   eri_assert_syscall (exit, 0);
   eri_assert_unreachable ();
@@ -397,7 +399,7 @@ remove_from_group (struct eri_live_signal_thread *sig_th)
 }
 
 static void
-release_event (uint32_t *event)
+release_event (void *event)
 {
   eri_assert_sys_futex_wake (event, 0);
 }
@@ -495,38 +497,39 @@ event_loop (struct eri_live_signal_thread *sig_th)
   uint8_t pending_exit_group = 0;
   while (1)
     {
-      uint32_t *event_type;
+      void *event_type;
       uint64_t res = eri_syscall (read, sig_th->event_pipe[0],
 				  &event_type, sizeof event_type);
       if (res == ERI_EINTR) continue;
       eri_assert (! eri_syscall_is_error (res));
 
-      if (*event_type == CLONE_EVENT)
-	clone (sig_th, (void *) event_type);
-      else if (*event_type == EXIT_EVENT)
-	exit (sig_th, (void *) event_type);
-      else if (*event_type == SIG_ACTION_EVENT)
-	sig_action (sig_th, (void *) event_type);
-      else if (*event_type == SIG_MASK_ASYNC_EVENT)
+      uint32_t type = *(uint32_t *) event_type;
+      if (type == CLONE_EVENT)
+	clone (sig_th, event_type);
+      else if (type == EXIT_EVENT)
+	exit (sig_th, event_type);
+      else if (type == SIG_ACTION_EVENT)
+	sig_action (sig_th, event_type);
+      else if (type == SIG_MASK_ASYNC_EVENT)
 	{
-	  struct sig_mask_event *event = (void *) event_type;
+	  struct sig_mask_event *event = event_type;
 	  if ((event->done = sig_mask_async (sig_th, event->mask)))
 	    set_sig_mask (sig_th, event->mask);
 	}
-      else if (*event_type == SIG_TMP_MASK_ASYNC_EVENT)
+      else if (type == SIG_TMP_MASK_ASYNC_EVENT)
 	{
-	  struct sig_mask_event *event = (void *) event_type;
+	  struct sig_mask_event *event = event_type;
 	  event->done = sig_mask_async (sig_th, event->mask);
 	}
-      else if (*event_type == SIG_MASK_ALL_EVENT)
+      else if (type == SIG_MASK_ALL_EVENT)
 	{
-	  struct sig_mask_event *event = (void *) event_type;
+	  struct sig_mask_event *event = event_type;
 	  event->done = sig_mask_all (sig_th, &sig_th->group->sig_sync_info);
 	}
-      else if (*event_type == SIG_RESET_EVENT)
+      else if (type == SIG_RESET_EVENT)
 	{
 	  eri_assert (sig_th->sig_info);
-	  struct sig_mask_event *event = (void *) event_type;
+	  struct sig_mask_event *event = event_type;
 
 	  if (pending_exit_group)
 	    {
@@ -545,15 +548,15 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	    }
 	  event->done = 1;
 	}
-      else if (*event_type == SIG_FD_READ_EVENT)
-	sig_fd_read (sig_th, (void *) event_type);
-      else if (*event_type == SYSCALL_EVENT)
+      else if (type == SIG_FD_READ_EVENT)
+	sig_fd_read (sig_th, event_type);
+      else if (type == SYSCALL_EVENT)
 	{
-	  struct syscall_event *event = (void *) event_type;
+	  struct syscall_event *event = event_type;
 	  eri_sys_syscall (event->args);
 	  event->signal = !! eri_atomic_load (&sig_th->sig_info);
 	}
-      else if (*event_type == SIG_EXIT_GROUP_EVENT)
+      else if (type == SIG_EXIT_GROUP_EVENT)
 	{
 	  if (sig_mask_all (sig_th, &sig_th->group->sig_exit_group_info))
 	    signal_exit_group (sig_th);
@@ -561,7 +564,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	}
       else eri_assert (0);
 
-      if (*event_type != CLONE_EVENT) release_event (event_type);
+      if (type != CLONE_EVENT) release_event (event_type);
     }
 }
 
@@ -637,7 +640,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
   args->result = eri_sys_clone (&sig_cth_args);
   uint8_t error_sig_clone = eri_syscall_is_error (args->result);
 
-  release_event ((void *) event);
+  release_event (event);
   eri_lock (&event->clone_thread_return);
 
   if (! error_sig_clone)
@@ -664,7 +667,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
 signaled:
   event->args->result = 0;
-  release_event ((void *) event);
+  release_event (event);
 }
 
 uint8_t
@@ -741,7 +744,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       if (! try_hold_exit_group (&group->exit_group_lock)) return;
 
       event->done = 1;
-      release_event ((void *) event);
+      release_event (event);
       eri_live_thread_join (th);
 
       eri_live_thread_destroy (th, group->helper);
@@ -781,7 +784,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   eri_debug ("exit last thread\n");
 
   event->done = 1;
-  release_event ((void *) event);
+  release_event (event);
   eri_live_thread_join (th);
 
   eri_live_thread_destroy (th, 0);
