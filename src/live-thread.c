@@ -826,11 +826,12 @@ clear_tid (void *args)
        "  jmp\t1f\n"
        "clear_tid_clear_user_fault:\n"
        "  movb\t$1, %b1\n"
-       "1:" : "=m" (*clear_tid), "=r" (fault));
+       "1:" : "=m" (*clear_tid), "+r" (fault));
   if (! fault)
     {
       struct atomic_pair ver = unlock_atomic (group, &idx, 0);
       eri_live_thread_recorder_rec_atomic (th->rec, &ver.first);
+      eri_syscall (futex, clear_tid, ERI_FUTEX_WAKE, 1);
     }
   else unlock_atomic (group, &idx, 0);
 
@@ -992,9 +993,10 @@ DEFINE_SYSCALL (clone)
       if (flags & ERI_CLONE_CHILD_SETTID)
 	copy_to_user (th, ctid, &args.tid, sizeof args.tid);
       eri_assert_sys_futex_wake (&create_args.cth->alive, 1);
-    }
 
-  SYSCALL_RETURN_DONE (th_ctx, args.result);
+      SYSCALL_RETURN_DONE (th_ctx, args.tid);
+    }
+  else SYSCALL_RETURN_DONE (th_ctx, args.result);
 }
 
 SYSCALL_TO_IMPL (unshare)

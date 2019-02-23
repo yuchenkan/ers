@@ -8,6 +8,7 @@
 #include <tst/tst-syscall.h>
 #include <lib/tst-util.h>
 
+static int32_t pid;
 static aligned16 uint8_t stack[1024 * 1024];
 static int32_t ptid, ctid;
 static void *tls = &tls;
@@ -15,9 +16,11 @@ static int32_t a[3];
 
 static noreturn void start (int32_t *a0, int32_t *a1, int32_t *a2);
 
-static void start (int32_t *a0, int32_t *a1, int32_t *a2)
+static noreturn void
+start (int32_t *a0, int32_t *a1, int32_t *a2)
 {
   eri_assert (a0 == a && a1 == a + 1 && a2 == a + 2);
+  eri_assert (tst_assert_syscall (getpid) == pid);
   int32_t tid = tst_assert_syscall (gettid);
   eri_debug ("tid = %u\n", tid);
   eri_assert (ptid == tid);
@@ -37,6 +40,9 @@ noreturn void tst_live_start (void);
 noreturn void
 tst_live_start (void)
 {
+  pid = tst_assert_syscall (getpid);
+  eri_assert (tst_assert_syscall (gettid) == pid);
+
   struct tst_rand rand;
   tst_rand_init (&rand);
 
@@ -48,6 +54,7 @@ tst_live_start (void)
   };
   eri_debug ("%lx %lx %lx %lx\n", args.fn, a, &args, args.stack);
   tst_assert_sys_clone (&args);
+  eri_assert (args.result == ptid);
 
   tst_yield (a[0]);
   eri_debug ("exit\n");
