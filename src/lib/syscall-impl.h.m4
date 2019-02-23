@@ -71,5 +71,7 @@ void m4_ns(assert_sys_futex_wake) (void *mem, uint32_t val);
 uint8_t m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
 				      const struct eri_timespec *timeout);
 
+noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
+
 #endif
 #endif

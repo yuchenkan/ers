@@ -25,3 +25,18 @@ ERI_FUNCTION (m4_ns(assert_sys_sigreturn))
   m4_syscall(0)
   ERI_ASSERT_FALSE
   ERI_END_FUNCTION (m4_ns(assert_sys_sigreturn))
+
+ERI_FUNCTION (m4_ns(assert_sys_thread_die))
+  movq	$0, (%rdi)
+
+  movl	$__NR_futex, %eax
+  movq	$ERI_FUTEX_WAKE, %rsi
+  movq	$1, %rdx
+  m4_syscall(0)
+  cmpq	$-4096, %rax
+  ja	.lerror
+1:
+  jmp	1b
+.lerror:
+  ERI_ASSERT_FALSE
+  ERI_END_FUNCTION (m4_ns(assert_sys_thread_die))

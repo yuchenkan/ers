@@ -1,0 +1,9 @@
+'use strict'; /* vim: set ft=javascript: */
+
+if (new Set([ 'tst/tst-rtld.S.o', 'tst/tst-rtld.out' ]).has (goal)) return await this.invoke (`${goal}.g`);
+
+if (goal.match (/^tst\/tst-live-exit-[^.]*.out$/)) return await this.invoke ('tst/tst-live-exit.out.g');
+
+if (goal.match (/^tst\/tst-live-[^.]*$/)) return await this.invoke ('tst/tst-live.g');
+
+return false;

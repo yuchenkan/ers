@@ -453,7 +453,10 @@ sig_action (struct eri_live_thread *th)
 
   /* XXX: core, die context */
   if (frame->info.sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP)
-    eri_live_signal_thread_die (sig_th);
+    {
+      eri_live_signal_thread_die (sig_th);
+      eri_assert_sys_thread_die (&th->alive);
+    }
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 
@@ -491,7 +494,10 @@ core:
       eri_assert_unreachable ();
     }
   else
-    eri_live_signal_thread_die (sig_th);
+    {
+      eri_live_signal_thread_die (sig_th);
+      eri_assert_sys_thread_die (&th->alive);
+    }
 }
 
 static void

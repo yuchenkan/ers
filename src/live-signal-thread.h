@@ -40,7 +40,7 @@ uint8_t eri_live_signal_thread_exit (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t group, uint64_t status);
 
-noreturn void eri_live_signal_thread_die (
+void eri_live_signal_thread_die (
 		struct eri_live_signal_thread *sig_th);
 
 uint8_t eri_live_signal_thread_sig_action (

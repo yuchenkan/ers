@@ -1,0 +1,7 @@
+'use strict'; /* vim: set ft=javascript: */
+
+if (goal.match (/^lib\/tst\/tst-[^.]*$/)) return await this.invoke ('lib/tst/link.g');
+
+if (goal.match (/^lib\/tst\/.*\.o$/)) return await this.invoke ('lib/tst/compile.g');
+
+return false;

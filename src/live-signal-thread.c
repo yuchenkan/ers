@@ -426,15 +426,16 @@ proc_event (struct eri_live_signal_thread *sig_th, void *event)
 
 #define CLONE_EVENT			1
 #define EXIT_EVENT			2
-#define SIG_ACTION_EVENT		3
-#define SIG_MASK_ASYNC_EVENT		4
-#define SIG_TMP_MASK_ASYNC_EVENT	5
-#define SIG_MASK_ALL_EVENT		6
-#define SIG_RESET_EVENT			7
-#define SIG_RESTORE_MASK_EVENT		8
-#define SIG_FD_EVENT			9
-#define SIG_FD_READ_EVENT		10
-#define SYSCALL_EVENT			11
+#define DIE_EVENT			3
+#define SIG_ACTION_EVENT		4
+#define SIG_MASK_ASYNC_EVENT		5
+#define SIG_TMP_MASK_ASYNC_EVENT	6
+#define SIG_MASK_ALL_EVENT		7
+#define SIG_RESET_EVENT			8
+#define SIG_RESTORE_MASK_EVENT		9
+#define SIG_FD_EVENT			10
+#define SIG_FD_READ_EVENT		11
+#define SYSCALL_EVENT			12
 
 #define SIG_EXIT_GROUP_EVENT		32
 
@@ -508,6 +509,11 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	clone (sig_th, event_type);
       else if (type == EXIT_EVENT)
 	exit (sig_th, event_type);
+      else if (type == DIE_EVENT)
+	{
+	  eri_live_thread_join (sig_th->th);
+	  eri_assert_sys_thread_die (&sig_th->alive);
+	}
       else if (type == SIG_ACTION_EVENT)
 	sig_action (sig_th, event_type);
       else if (type == SIG_MASK_ASYNC_EVENT)
@@ -824,10 +830,11 @@ signal_exit_group (struct eri_live_signal_thread *sig_th)
 		      eri_live_thread_get_tid (th), SIG_EXIT_GROUP);
 }
 
-noreturn void
+void
 eri_live_signal_thread_die (struct eri_live_signal_thread *sig_th)
 {
-  thread_die (&sig_th->alive);
+  uint32_t event = DIE_EVENT;
+  queue_event (sig_th, &event);
 }
 
 struct sig_action_event

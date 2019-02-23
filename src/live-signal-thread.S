@@ -53,21 +53,6 @@ ERI_FUNCTION (eri_live_signal_thread_init_main)
   ERI_ASSERT_FALSE
   ERI_END_FUNCTION (eri_live_signal_thread_init_main)
 
-ERI_FUNCTION (thread_die)
-  movq	$0, (%rdi)
-
-  movl	$__NR_futex, %eax
-  movq	$ERI_FUTEX_WAKE, %rsi
-  movq	$1, %rdx
-  syscall
-  cmpq	$-4096, %rax
-  ja	.lerror
-1:
-  jmp	1b
-.lerror:
-  ERI_ASSERT_FALSE
-  ERI_END_FUNCTION (thread_die)
-
 #define EVENT_SIG_RESTART	SIGNAL_THREAD_EVENT_SIG_RESTART
 #define EVENT_SIG_RESET_RESTART	SIGNAL_THREAD_EVENT_SIG_RESET_RESTART
 

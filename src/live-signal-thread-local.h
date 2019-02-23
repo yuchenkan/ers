@@ -52,8 +52,6 @@ struct eri_live_signal_thread *init_group (
 		struct eri_rtld_args *rtld_args);
 noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
-noreturn uint8_t thread_die (int32_t *alive);
-
 uint8_t sig_mask_async (struct eri_live_signal_thread *sig_th,
 			      const struct eri_sigset *mask);
 
