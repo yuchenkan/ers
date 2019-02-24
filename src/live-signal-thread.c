@@ -314,8 +314,7 @@ start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
 		  && info.chld.status == 0);
     }
   eri_debug ("leave watch\n");
-  eri_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
+  eri_assert_sys_exit (0);
 }
 
 static void
@@ -603,7 +602,7 @@ start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
   if (eri_syscall_is_error (event->args->result))
     {
       eri_assert_syscall (set_tid_address, &event->clone_start_return);
-      eri_assert_syscall (exit, 0);
+      eri_assert_sys_exit (0);
     }
 
   restore_sig_mask (sig_th);
@@ -762,7 +761,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       unhold_exit_group (&group->exit_group_lock);
 
       eri_debug ("exit %lx\n", sig_th);
-      eri_assert_syscall (exit, status);
+      eri_assert_sys_exit (status);
     }
 
   eri_debug ("exit group %u\n", event->group);
@@ -809,7 +808,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   eri_assert_free (pool, group);
   eri_assert (pool->used == 0);
 
-  eri_assert_syscall (exit_group, status);
+  eri_assert_sys_exit_group (status);
 }
 
 uint8_t

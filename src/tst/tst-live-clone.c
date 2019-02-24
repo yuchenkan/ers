@@ -1,12 +1,12 @@
 #include <stdint.h>
 
 #include <compiler.h>
-
-#include <live-signal-thread.h>
 #include <common.h>
 
-#include <tst/tst-syscall.h>
+#include <lib/syscall.h>
 #include <lib/tst-util.h>
+#include <tst/tst-util.h>
+#include <tst/tst-syscall.h>
 
 static int32_t pid;
 static aligned16 uint8_t stack[1024 * 1024];
@@ -24,15 +24,15 @@ start (int32_t *a0, int32_t *a1, int32_t *a2)
   int32_t tid = tst_assert_syscall (gettid);
   eri_debug ("tid = %u\n", tid);
   eri_assert (ptid == tid);
-  void *new_tls;
-  asm ("movq	%%fs:0, %0" : "=r" (new_tls));
+  eri_assert ((uint64_t) &tid >= (uint64_t) stack
+	      && (uint64_t) &tid < (uint64_t) stack + sizeof stack);
+  void *new_tls = tst_get_tls ();
   eri_debug ("%lx %lx\n", new_tls, tls);
   eri_assert (new_tls == tls);
 
   tst_yield (a[1]);
   eri_debug ("exit\n");
-  tst_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
+  tst_assert_sys_exit (0);
 }
 
 noreturn void tst_live_start (void);
@@ -58,6 +58,5 @@ tst_live_start (void)
 
   tst_yield (a[0]);
   eri_debug ("exit\n");
-  tst_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
+  tst_assert_sys_exit (0);
 }

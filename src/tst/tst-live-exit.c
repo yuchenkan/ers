@@ -1,12 +1,12 @@
 #include <stdint.h>
 
 #include <compiler.h>
-
-#include <live-signal-thread.h>
 #include <common.h>
 
-#include <tst/tst-syscall.h>
+#include <lib/syscall.h>
 #include <lib/tst-util.h>
+#include <tst/tst-util.h>
+#include <tst/tst-syscall.h>
 
 noreturn void tst_live_start (void);
 
@@ -36,8 +36,7 @@ start (uint32_t delay, uint32_t i, uint8_t group)
 {
   clone (i);
   tst_yield (delay);
-  tst_assert_syscall_nr (group ? __NR_exit_group : __NR_exit, 0);
-  eri_assert_unreachable ();
+  tst_assert_sys_exit_nr (group ? __NR_exit_group : __NR_exit, 0);
 }
 
 noreturn void

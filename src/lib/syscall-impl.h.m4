@@ -73,5 +73,17 @@ uint8_t m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
 
 noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
 
+#define m4_ns(assert_sys_exit)(status) \
+  do { m4_ns(assert_syscall (exit, status));				\
+       eri_assert_unreachable (); } while (0)
+
+#define m4_ns(assert_sys_exit_group)(status) \
+  do { m4_ns(assert_syscall (exit_group, status));			\
+       eri_assert_unreachable (); } while (0)
+
+#define m4_ns(assert_sys_exit_nr)(nr, status) \
+  do { m4_ns(assert_syscall_nr (nr, status));				\
+       eri_assert_unreachable (); } while (0)
+
 #endif
 #endif

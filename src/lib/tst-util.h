@@ -29,11 +29,4 @@ uint64_t tst_rand_next (struct tst_rand *rand);
 
 void tst_rand_fill (struct tst_rand *rand, void *buf, uint64_t size);
 
-#define tst_yield(n) \
-  do {									\
-    typeof (n) _i;							\
-    typeof (n) _n = n;							\
-    for (_i = 0; _i < _n; ++_i) eri_assert_syscall (sched_yield);	\
-  } while (0)
-
 #endif

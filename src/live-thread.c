@@ -233,6 +233,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   uint64_t th_text = (uint64_t) th_ctx + th_ctx_size16;
   eri_memcpy ((uint8_t *) th_text, (uint8_t *) text, text_size);
 
+  th_ctx->ext.zero = 0;
   th_ctx->ext.entry = th_text + text_entry - text;
 
   th_ctx->entry = (uint64_t) entry;
@@ -588,6 +589,8 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
 
   if (internal (th->group, ctx->mctx.rip))
     {
+      if (sig_access_fault (th_ctx, info, ctx)) return;
+
       eri_assert (! eri_si_sync (info));
       if (th_ctx->sig_act.act == SIG_ACT_STOP)
 	ctx->mctx = th_ctx->sig_act_frame->ctx.mctx;
@@ -1025,8 +1028,7 @@ syscall_do_exit (struct eri_live_thread *th)
     return SYSCALL_SIG_WAIT_RESTART;
 
   eri_debug ("syscall exit\n");
-  eri_assert_syscall_nr (nr, 0);
-  eri_assert_unreachable ();
+  eri_assert_sys_exit_nr (nr, 0);
 }
 
 DEFINE_SYSCALL (exit) { return syscall_do_exit (th); }
@@ -1119,7 +1121,28 @@ SYSCALL_TO_IMPL (capget)
 
 SYSCALL_TO_IMPL (personality)
 SYSCALL_TO_IMPL (prctl)
-SYSCALL_TO_IMPL (arch_prctl)
+
+DEFINE_SYSCALL (arch_prctl)
+{
+  struct thread_context *th_ctx = th->ctx;
+  int32_t code = th_ctx->sregs.rdi;
+  void *user_addr = (void *) th_ctx->sregs.rsi;
+
+  if (code == ERI_ARCH_SET_FS || code == ERI_ARCH_SET_GS)
+    SYSCALL_RETURN_DONE (th_ctx,
+			 eri_syscall (arch_prctl, code, user_addr));
+
+  if (code == ERI_ARCH_GET_FS || code == ERI_ARCH_GET_GS)
+    {
+      uint64_t addr;
+      eri_assert_syscall (arch_prctl, code, &addr);
+      if (! copy_to_user (th, user_addr, &addr, sizeof *user_addr))
+	SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
+      SYSCALL_RETURN_DONE (th_ctx, 0);
+    }
+
+  SYSCALL_RETURN_DONE (th_ctx, ERI_EINVAL);
+}
 
 SYSCALL_TO_IMPL (quotactl)
 SYSCALL_TO_IMPL (acct)

@@ -925,7 +925,4 @@ struct eri_sys_clone_args
 
 #endif
 
-#define ERI_TRACE_FLAG_BIT_OFFSET	8
-#define ERI_TRACE_FLAG_MASK		(1 << ERI_TRACE_FLAG_BIT_OFFSET)
-
 #endif

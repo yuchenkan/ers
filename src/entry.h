@@ -10,6 +10,8 @@
 
 struct eri_thread_entry
 {
+  uint64_t zero; /* so that %gs:0 is always zero */
+
   struct
     {
       uint8_t sig_hand;

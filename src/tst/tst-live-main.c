@@ -27,7 +27,7 @@ tst_main (void **args)
   *(void **) top = args;
 
   struct eri_rtld_args rtld_args = {
-    0, 0, (uint64_t) top, (uint64_t) tst_live_start,
+    0, 0, (uint64_t) top, (uint64_t) tst_live_start
   };
 
   eri_live_signal_thread_init_main (&common_args, &rtld_args);
