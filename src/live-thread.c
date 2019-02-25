@@ -292,7 +292,6 @@ eri_live_thread_create_main (struct eri_live_signal_thread *sig_th,
   th_ctx->ext.ret = rtld_args->rip;
   th_ctx->rsp = rtld_args->rsp;
   th_ctx->sregs.rdx = rtld_args->rdx;
-  th_ctx->syscall.start_thread = 0;
   eri_assert_syscall (sigaltstack, 0, &th->sig_alt_stack);
   return th;
 }
@@ -499,7 +498,6 @@ sig_action (struct eri_live_thread *th)
 
   struct eri_sigset mask;
 core:
-  asm ("pushq	$0; popfq" : : : "cc");
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
   eri_live_signal_thread_sig_reset (sig_th, &mask);
@@ -537,10 +535,12 @@ sig_return_to (struct eri_live_thread *th,
   *--stack = (uint64_t) fn;
   *--stack = (uint64_t) th;
 
+  *--stack = ctx->mctx.rflags;
   *--stack = ctx->mctx.rsp;
   *--stack = ctx->mctx.rip;
   *--stack = (uint64_t) ctx;
 
+  ctx->mctx.rflags = 0;
   ctx->mctx.rsp = (uint64_t) stack;
   ctx->mctx.rip = (uint64_t) sig_to;
 }
@@ -642,7 +642,7 @@ sig_hand_return_to_user (
   if (intern && eri_si_single_step (info)) return;
 
   struct thread_context *th_ctx = th->ctx;
-  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL && th_ctx->syscall.start_thread
+  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL
       && ctx->mctx.rip == th_ctx->ext.ret && eri_si_single_step (info))
     return;
 
@@ -718,7 +718,6 @@ eri_live_thread_create (struct eri_live_signal_thread *sig_th,
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
   th_ctx->syscall.eregs = pth_ctx->syscall.eregs;
-  th_ctx->syscall.start_thread = 1;
   *(uint64_t *) (th_ctx->top - 8) = *(uint64_t *) (pth_ctx->top - 8);
   eri_debug ("%lx %lx\n", th_ctx->top, *(uint64_t *) (th_ctx->top - 8));
   th->sig_alt_stack = pth->sig_alt_stack;
@@ -1154,7 +1153,13 @@ SYSCALL_TO_IMPL (acct)
 
 SYSCALL_TO_IMPL (setpriority)
 SYSCALL_TO_IMPL (getpriority)
-SYSCALL_TO_IMPL (sched_yield)
+
+DEFINE_SYSCALL (sched_yield)
+{
+  /* TODO: syscall */
+  SYSCALL_RETURN_DONE (th->ctx, 0);
+}
+
 SYSCALL_TO_IMPL (sched_setparam)
 SYSCALL_TO_IMPL (sched_getparam)
 SYSCALL_TO_IMPL (sched_setscheduler)
@@ -1345,6 +1350,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   th_ctx->syscall.eregs.r13 = ctx->mctx.r13;
   th_ctx->syscall.eregs.r14 = ctx->mctx.r14;
   th_ctx->syscall.eregs.r15 = ctx->mctx.r15;
+  ctx->mctx.rflags = 0;
 
   frame.restorer = eri_assert_sys_sigreturn;
 
@@ -1937,7 +1943,6 @@ syscall (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
 
-  th_ctx->syscall.start_thread = 0;
   int32_t nr = th_ctx->sregs.rax;
   uint8_t extra_restore;
 
@@ -2176,9 +2181,8 @@ eri_live_thread_sig_handler (
 		struct eri_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
-  if (! eri_si_single_step (info))
-    eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
-	       th->ctx->ext.op.sig_hand, info->sig, frame->ctx.mctx.rip);
+  eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
+	     th->ctx->ext.op.sig_hand, info->sig, frame->ctx.mctx.rip);
 
   const void (*hands[]) (
 	    struct eri_live_thread *, struct eri_sigframe *,

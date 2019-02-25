@@ -17,6 +17,7 @@ declare (void)
 
   UCONTEXT_OFFSET (MCTX_RSP, mctx.rsp);
   UCONTEXT_OFFSET (MCTX_RIP, mctx.rip);
+  UCONTEXT_OFFSET (MCTX_RFLAGS, mctx.rflags);
 
   SIGFRAME_OFFSET (INFO, info);
   SIGFRAME_OFFSET (CTX, ctx);

@@ -115,17 +115,19 @@ ERI_SYMBOL (thread_context_text_end)
 
 #define SIG_RETURN_ACTION(action) \
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
+  SIG_SAVE_CTX_REG (RSP, rsp, %rcx);					\
+  movq	TC (TOP)(%rbx), %rsp;						\
+  pushfq;								\
+  popq	ERI_SIGFRAME_CTX_MCTX_RFLAGS(%rcx);				\
+  pushq	$0;								\
+  popfq;								\
   FOREACH_SGREG_NO_RCX (SIG_SAVE_CTX_REG, %rcx);			\
   ERI_MOV_MM (TCE (RBX)(%rbx),						\
 	      ERI_SIGFRAME_CTX_MCTX_RBX(%rcx), %rax);			\
   ERI_MOV_MM (TCE (RET)(%rbx),						\
 	      ERI_SIGFRAME_CTX_MCTX_RIP(%rcx), %rax);			\
-  SIG_SAVE_CTX_REG (RSP, rsp, %rcx);					\
   ERI_MOV_MM (TC (SREGS_RCX)(%rbx),					\
 	      ERI_SIGFRAME_CTX_MCTX_RCX(%rcx), %rax);			\
-  movq	TC (TOP)(%rbx), %rsp;						\
-  pushfq;								\
-  popq	ERI_SIGFRAME_CTX_MCTX_RFLAGS(%rcx);				\
   FOREACH_EREG (SIG_SAVE_CTX_REG, %rcx);				\
   TH_CALL (action)
 
@@ -519,6 +521,7 @@ ERI_FUNCTION (sig_to)
 
   popq	ERI_UCONTEXT_MCTX_RIP(%rax)
   popq	ERI_UCONTEXT_MCTX_RSP(%rax)
+  popq	ERI_UCONTEXT_MCTX_RFLAGS(%rax)
 
   popq	%rdi	/* th */
   popq	%r11	/* fn */

@@ -1,0 +1,78 @@
+#ifndef ERI_TST_TST_LIVE_ENTRY_H
+#define ERI_TST_TST_LIVE_ENTRY_H
+
+#include <stdint.h>
+
+#include <lib/tst-util.h>
+#include <tst/tst-util.h>
+
+#define TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG(p, ...) \
+  p (RAX, rax, ##__VA_ARGS__)						\
+  p (RBX, rbx, ##__VA_ARGS__)						\
+  p (RCX, rcx, ##__VA_ARGS__)						\
+  p (RDX, rdx, ##__VA_ARGS__)						\
+  p (RDI, rdi, ##__VA_ARGS__)						\
+  p (RSI, rsi, ##__VA_ARGS__)						\
+  p (RSP, rsp, ##__VA_ARGS__)						\
+  p (RBP, rbp, ##__VA_ARGS__)						\
+  p (R8, r8, ##__VA_ARGS__)						\
+  p (R9, r9, ##__VA_ARGS__)						\
+  p (R10, r10, ##__VA_ARGS__)						\
+  p (R11, r11, ##__VA_ARGS__)						\
+  p (R12, r12, ##__VA_ARGS__)						\
+  p (R13, r13, ##__VA_ARGS__)						\
+  p (R14, r14, ##__VA_ARGS__)						\
+  p (R15, r15, ##__VA_ARGS__)						\
+  p (RIP, rip, ##__VA_ARGS__)						\
+  p (RFLAGS, rflags, ##__VA_ARGS__)
+
+struct tst_live_entry_mcontext
+{
+#define _TST_LIVE_ENTRY_MCONTEXT_REG(cr, r)	uint64_t r;
+  TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (_TST_LIVE_ENTRY_MCONTEXT_REG)
+};
+
+#define tst_live_entry_rand_fill_mcontext(rand, tctx) \
+  do {									\
+    struct tst_rand *_rand = rand;					\
+    struct tst_live_entry_mcontext *_tctx = tctx;			\
+    tst_rand_fill (_rand, _tctx, sizeof *_tctx);			\
+    _tctx->rflags &= TST_RFLAGS_STATUS_MASK;				\
+    _tctx->rsp = tst_rand_next (_rand) | 0x1000000000000000;		\
+  } while (0);
+
+void tst_live_entry (struct tst_live_entry_mcontext *ctx,
+		uint8_t (*step) (struct tst_live_entry_mcontext *, void *),
+		void *args);
+
+enum
+{
+#define _TST_LIVE_ENTRY_MCONTEXT_REP_BIT_OFFSET(cr, r) \
+  ERI_PASTE2 (TST_LIVE_ENTRY_MCONTEXT_, cr, _BIT_OFFSET),
+  TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (
+				_TST_LIVE_ENTRY_MCONTEXT_REP_BIT_OFFSET)
+};
+
+enum
+{
+#define _TST_LIVE_ENTRY_MCONTEXT_REP_MASK(cr, r) \
+  ERI_PASTE2 (TST_LIVE_ENTRY_MCONTEXT_, cr, _MASK)			\
+		= 1 << ERI_PASTE2 (TST_LIVE_ENTRY_MCONTEXT_, cr, _BIT_OFFSET),
+  TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (
+				_TST_LIVE_ENTRY_MCONTEXT_REP_MASK)
+};
+
+#define _TST_LIVE_ENTRY_MCONTEXT_ASSERT_REG_EQ(cr, r) \
+  if (ERI_PASTE2 (TST_LIVE_ENTRY_MCONTEXT_, cr, _MASK) & _mask)	\
+    eri_assert (_a->r == _b->r);
+
+#define tst_assert_live_entry_mcontext_eq(a, b, mask) \
+  do {									\
+    struct tst_live_entry_mcontext *_a = a;				\
+    struct tst_live_entry_mcontext *_b = b;				\
+    uint32_t _mask = mask;						\
+    TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (				\
+			_TST_LIVE_ENTRY_MCONTEXT_ASSERT_REG_EQ)		\
+  } while (0)
+
+#endif
