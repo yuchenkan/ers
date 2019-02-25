@@ -35,6 +35,5 @@ tst_main (void **args)
     .map_end = (uint64_t)tst_live_map_end
   };
 
-
   eri_live_signal_thread_init_main (&common_args, &rtld_args);
 }

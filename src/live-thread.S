@@ -114,6 +114,7 @@ ERI_SYMBOL (thread_context_text_end)
   movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame)
 
 #define SIG_RETURN_ACTION(action) \
+  movq	TC (SIG_FRAME)(%rbx), %rcx;					\
   FOREACH_SGREG_NO_RCX (SIG_SAVE_CTX_REG, %rcx);			\
   ERI_MOV_MM (TCE (RBX)(%rbx),						\
 	      ERI_SIGFRAME_CTX_MCTX_RBX(%rcx), %rax);			\
@@ -466,6 +467,7 @@ ATOMIC_LABEL (name):							\
   ret
 
 ERI_FUNCTION (do_copy_from_user)
+  .cfi_startproc
 
   COPY_SET_ACCESS (load)
 .lcopy_load:
@@ -481,6 +483,7 @@ ERI_FUNCTION (do_copy_from_user)
 .lcopy_load_user_fault:
   COPY_RETURN (0)
 
+  .cfi_endproc
   ERI_END_FUNCTION (do_copy_from_user)
 
 /************************************************/
@@ -488,6 +491,7 @@ ERI_FUNCTION (do_copy_from_user)
 /************************************************/
 
 ERI_FUNCTION (do_copy_to_user)
+  .cfi_startproc
 
   COPY_SET_ACCESS (save)
 .lcopy_save:
@@ -503,6 +507,7 @@ ERI_FUNCTION (do_copy_to_user)
 .lcopy_save_user_fault:
   COPY_RETURN (0)
 
+  .cfi_endproc
   ERI_END_FUNCTION (do_copy_to_user)
 
 /************************************************/
@@ -517,7 +522,7 @@ ERI_FUNCTION (sig_to)
 
   popq	%rdi	/* th */
   popq	%r11	/* fn */
-  call	*%r11
+  jmp	*%r11
   ERI_END_FUNCTION (sig_to)
 
 /************************************************/

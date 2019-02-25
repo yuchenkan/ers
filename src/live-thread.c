@@ -400,6 +400,7 @@ disable_sig_stack (struct eri_stack *stack)
 static uint8_t
 sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
 {
+  eri_debug ("\n");
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
 
@@ -411,6 +412,7 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
   uint8_t alt = (act->flags & ERI_SA_ONSTACK)
 		&& ! user_on_sig_stack (th, ctx->mctx.rsp);
   uint64_t rsp = alt ? stack->sp + stack->size : ctx->mctx.rsp - 128;
+  eri_debug ("%lx %u %lx\n", rsp, alt, ctx->mctx.rsp);
 
   uint64_t top = (uint64_t) th->sig_stack + 2 * THREAD_SIG_STACK_SIZE;
 
@@ -446,18 +448,19 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
     }
 
   th_ctx->sig_act_frame = user_frame;
+  eri_debug ("leave\n");
   return 1;
 }
 
 noreturn void
 sig_action (struct eri_live_thread *th)
 {
-  eri_debug ("\n");
-
   struct thread_context *th_ctx = th->ctx;
   struct eri_sigframe *frame = sig_get_frame (th_ctx);
   sig_set_frame (th_ctx, 0);
   eri_assert (frame->info.sig);
+
+  eri_debug ("%lx\n", frame);
 
   struct eri_live_signal_thread *sig_th = th->sig_th;
 
@@ -529,7 +532,7 @@ sig_return_to (struct eri_live_thread *th,
 {
   struct thread_context *th_ctx = th->ctx;
   uint64_t *stack = (void *) th_ctx->top;
-  *--stack = (uint64_t) eri_assert_sys_sigreturn;
+  *--stack = 0; /* XXX: cfi */
   *--stack = (uint64_t) fn;
   *--stack = (uint64_t) th;
 
@@ -2121,7 +2124,9 @@ complete_atomic (struct eri_live_thread *th)
     }
 }
 
-static void
+static noreturn void sig_restart_atomic (struct eri_live_thread *th);
+
+static noreturn void
 sig_restart_atomic (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
