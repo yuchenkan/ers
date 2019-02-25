@@ -3,13 +3,12 @@
 #include <compiler.h>
 #include <common.h>
 
-#include <lib/syscall.h>
 #include <tst/tst-syscall.h>
 
 static uint8_t handled;
 static int32_t pid;
 static int32_t tid;
-static struct eri_sigset mask;
+static struct eri_sigset old_mask;
 
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
@@ -26,7 +25,12 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (ctx->mctx.rdi == pid);
   eri_assert (ctx->mctx.rsi == tid);
   eri_assert (ctx->mctx.rdx == ERI_SIGINT);
-  eri_assert (ctx->sig_mask.val[0] == mask.val[0]);
+  eri_assert (ctx->sig_mask.val[0] == old_mask.val[0]);
+
+  struct eri_sigset mask;
+  tst_assert_sys_sigprocmask (0, &mask);
+  /* ~(SIGKILL_MASK | SIGSTOP_MASK) */
+  eri_assert (mask.val[0] == 0xfffffffffffbfeff);
 }
 
 noreturn void tst_live_start (void);
@@ -37,7 +41,7 @@ tst_live_start (void)
   pid = tst_assert_syscall (getpid);
   tid = tst_assert_syscall (gettid);
 
-  tst_assert_sys_sigprocmask (0, &mask);
+  tst_assert_sys_sigprocmask (0, &old_mask);
 
   struct eri_sigaction old_act;
   struct eri_sigaction act = {
@@ -45,6 +49,7 @@ tst_live_start (void)
   };
   eri_sig_fill_set (&act.mask);
   tst_assert_sys_sigaction (ERI_SIGINT, &act, &old_act);
+  eri_assert (old_act.act == ERI_SIG_DFL);
 
   eri_debug ("%lx\n", &old_act);
 

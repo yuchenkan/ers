@@ -499,6 +499,7 @@ sig_action (struct eri_live_thread *th)
 
   struct eri_sigset mask;
 core:
+  asm ("pushq	$0; popfq" : : : "cc");
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
   eri_live_signal_thread_sig_reset (sig_th, &mask);
@@ -604,8 +605,9 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
   if (internal (th->group, ctx->mctx.rip))
     {
       if (sig_access_fault (th_ctx, info, ctx)) return;
-
+      if (eri_si_single_step (info)) return;
       eri_assert (! eri_si_sync (info));
+
       if (th_ctx->sig_act.act == SIG_ACT_STOP)
 	ctx->mctx = th_ctx->sig_act_frame->ctx.mctx;
       else
@@ -915,17 +917,6 @@ ERI_PASTE (syscall_, name) (struct eri_live_thread *th)
 
 #define SYSCALL_TO_IMPL(name) \
   DEFINE_SYSCALL (name) { SYSCALL_RETURN_DONE (th->ctx, ERI_ENOSYS); }
-
-#if 0
-static void
-syscall_restore_sig_stack (struct eri_live_thread *th)
-{
-  struct eri_stack stack = {
-    (uint64_t) th->sig_stack, 0, 2 * THREAD_SIG_STACK_SIZE
-  };
-  eri_assert_syscall (sigaltstack, 0, &stack);
-}
-#endif
 
 static uint64_t
 syscall_set_sig_alt_stack (struct eri_live_thread *th,
@@ -1991,7 +1982,7 @@ sig_wait_restart:
   return extra_restore;
 
 done:
-  eri_debug ("done\n");
+  eri_debug ("%u done\n", nr);
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
   return extra_restore;
@@ -2184,8 +2175,10 @@ eri_live_thread_sig_handler (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
 		struct eri_sigaction *act)
 {
-  eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
-	     th->ctx->ext.op.sig_hand, frame->info.sig, frame->ctx.mctx.rip);
+  struct eri_siginfo *info = &frame->info;
+  if (! eri_si_single_step (info))
+    eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
+	       th->ctx->ext.op.sig_hand, info->sig, frame->ctx.mctx.rip);
 
   const void (*hands[]) (
 	    struct eri_live_thread *, struct eri_sigframe *,
@@ -2195,7 +2188,7 @@ eri_live_thread_sig_handler (
   };
 
   struct eri_sigaction sync_act;
-  if (eri_si_sync (&frame->info)) act = &sync_act;
+  if (eri_si_sync (info)) act = &sync_act;
   hands[th->ctx->ext.op.sig_hand] (th, frame, act);
 }
 

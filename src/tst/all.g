@@ -1,6 +1,6 @@
 'use strict'; /* vim: set ft=javascript: */
 
-let tsts = [ 'rtld', 'live-start', 'live-clone', 'live-clear-tid', 'live-raise' ];
+let tsts = [ 'rtld', 'live-start', 'live-clone', 'live-clear-tid', 'live-raise', 'live-sigaltstack' ];
 tsts = tsts.concat ([ ...Array (6).keys () ].map (x => `live-exit-${x}`));
 //tsts = tsts.concat ([ 'syscall' ].map (t => `live-entry-${t}`));
 

@@ -16,9 +16,10 @@ struct eri_common_args
   uint64_t buf;
 };
 
+#include <compiler.h>
 #include <lib/util.h>
 #include <lib/printf.h>
-#include <compiler.h>
+#include <lib/syscall.h>
 
 #define _eri_log(level, fmt, ...) \
   eri_assert_printf ("[" ERI_STR (level) " %s:%u(%s)%lu]\t" fmt,	\
