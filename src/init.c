@@ -79,7 +79,7 @@ init_context (eri_file_t init, uint64_t start, uint64_t end)
 #endif
 
 void
-init (struct eri_rtld_args *rtld)
+init (struct eri_rtld_args *rtld_args)
 {
   const char *config = "ers_config";
   uint64_t page_size = 4096;
@@ -89,7 +89,7 @@ init (struct eri_rtld_args *rtld)
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
 
-  void **arg = rtld->arg;
+  void **arg = rtld_args->arg;
 
   uint64_t argc = *(uint64_t *) arg;
   char **envp;
@@ -104,28 +104,28 @@ init (struct eri_rtld_args *rtld)
 
   /* TODO: load config */
 
-  static struct eri_common common;
+  static struct eri_common_args common_args;
 
-  common.config = config;
-  common.page_size = page_size;
+  common_args.config = config;
+  common_args.page_size = page_size;
 
-  common.path = path;
-  common.buf_size = buf_size;
-  common.stack_size = stack_size;
-  common.file_buf_size = file_buf_size;
+  common_args.path = path;
+  common_args.buf_size = buf_size;
+  common_args.stack_size = stack_size;
+  common_args.file_buf_size = file_buf_size;
 
-  common.buf = (uint64_t) ERI_ASSERT_SYSCALL_RES (
+  common_args.buf = (uint64_t) ERI_ASSERT_SYSCALL_RES (
 		mmap, 0, buf_size + 2 * page_size, 0,
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, - 1, 0) + page_size;
 
   eri_file_buf_t init_buf[1024];
   eri_file_t init = eri_open_path (path, "init", 0, 0,
 				   init_buf, sizeof init_buf);
-  struct proc_init_map_data pd = { init, common.buf + page_size };
+  struct proc_init_map_data pd = { init, common_args.buf + page_size };
   eri_process_maps (proc_init_map_entry, &pd);
 
   eri_assert (pd.stack_start);
   uint8_t mode = init_context (init, pd.stack_start, pd.stack_end);
 
-  if (mode == ERI_LIVE) eri_live_init (&common, rtld);
+  if (mode == ERI_LIVE) eri_live_init (&common_args, rtld_args);
 }

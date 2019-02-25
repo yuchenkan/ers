@@ -26,9 +26,15 @@ tst_main (void **args)
   void *top = stack + sizeof stack - 8;
   *(void **) top = args;
 
+  extern uint8_t tst_live_map_start[];
+  extern uint8_t tst_live_map_end[];
+
   struct eri_rtld_args rtld_args = {
-    0, 0, (uint64_t) top, (uint64_t) tst_live_start
+    0, 0, (uint64_t) top, (uint64_t) tst_live_start,
+    .map_start = (uint64_t) tst_live_map_start,
+    .map_end = (uint64_t)tst_live_map_end
   };
+
 
   eri_live_signal_thread_init_main (&common_args, &rtld_args);
 }

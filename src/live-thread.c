@@ -65,6 +65,9 @@ struct thread_group
   uint64_t map_start;
   uint64_t map_end;
 
+  uint64_t buf_start;
+  uint64_t buf_end;
+
   uint64_t ref_count;
   int32_t pid;
 
@@ -124,7 +127,8 @@ sig_fd_try_lock (struct thread_group *group, int32_t fd)
 static uint8_t
 internal (struct thread_group *group, uint64_t addr)
 {
-  return addr >= group->map_start && addr < group->map_end;
+  return (addr >= group->map_start && addr < group->map_end)
+	 || (addr >= group->buf_start && addr < group->buf_end);
 }
 
 static uint8_t
@@ -132,9 +136,12 @@ internal_range (struct thread_group *group, uint64_t start, uint64_t size)
 {
   uint64_t map_start = group->map_start;
   uint64_t map_end = group->map_end;
+  uint64_t buf_start = group->buf_start;
+  uint64_t buf_end = group->buf_end;
   uint64_t end = start + size;
 
-  return end > map_start && start < map_end;
+  return (end > map_start && start < map_end)
+	 || (end > buf_start && start < buf_end);
 }
 
 static uint8_t
@@ -169,13 +176,17 @@ create_group (struct eri_live_signal_thread *sig_th,
 {
   /* XXX: parameterize */
   uint64_t atomic_table_size =  2 * 1024 * 1024;
-  uint64_t stack_size = eri_live_signal_thread_get_args (sig_th)->stack_size;
+  const struct eri_common_args *common_args
+			= eri_live_signal_thread_get_args (sig_th);
+  uint64_t stack_size = common_args->stack_size;
 
   struct eri_mtpool *pool = eri_live_signal_thread_get_pool (sig_th);
   struct thread_group *group = eri_assert_mtmalloc (pool, sizeof *group);
   group->pool = pool;
   group->map_start = rtld_args->map_start;
   group->map_end = rtld_args->map_end;
+  group->buf_start = common_args->buf;
+  group->buf_end = common_args->buf + common_args->buf_size;
   group->ref_count = 0;
   group->pid = 0;
 

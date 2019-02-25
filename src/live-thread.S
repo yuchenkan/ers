@@ -47,7 +47,7 @@
 #define TC(name)	PASTE (THREAD_CONTEXT_, name)
 #define TCE(name)	TC (PASTE (EXT_, name))
 
-  .data
+  .section .rodata
 
 /************************************************/
 /* thread_context_text				*/
