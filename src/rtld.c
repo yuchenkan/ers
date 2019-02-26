@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 #include <rtld.h>
 
 #ifndef ERI_GENERATED_RECORDER_BINARY_H

@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 #include <lib/util.h>
 #include <lib/atomic.h>
 

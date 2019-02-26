@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 #include <lib/util.h>
 #include <lib/list.h>
 #include <lib/printf.h>

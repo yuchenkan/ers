@@ -1,5 +1,3 @@
-#include <stdint.h>
-
 #include <compiler.h>
 #include <common.h>
 
