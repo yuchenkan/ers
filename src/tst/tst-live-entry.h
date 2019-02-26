@@ -6,23 +6,10 @@
 #include <lib/tst-util.h>
 #include <tst/tst-util.h>
 
+#include <tst/generated/registers.h>
+
 #define TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG(p, ...) \
-  p (RAX, rax, ##__VA_ARGS__)						\
-  p (RBX, rbx, ##__VA_ARGS__)						\
-  p (RCX, rcx, ##__VA_ARGS__)						\
-  p (RDX, rdx, ##__VA_ARGS__)						\
-  p (RDI, rdi, ##__VA_ARGS__)						\
-  p (RSI, rsi, ##__VA_ARGS__)						\
-  p (RSP, rsp, ##__VA_ARGS__)						\
-  p (RBP, rbp, ##__VA_ARGS__)						\
-  p (R8, r8, ##__VA_ARGS__)						\
-  p (R9, r9, ##__VA_ARGS__)						\
-  p (R10, r10, ##__VA_ARGS__)						\
-  p (R11, r11, ##__VA_ARGS__)						\
-  p (R12, r12, ##__VA_ARGS__)						\
-  p (R13, r13, ##__VA_ARGS__)						\
-  p (R14, r14, ##__VA_ARGS__)						\
-  p (R15, r15, ##__VA_ARGS__)						\
+  TST_FOREACH_GENERAL_REG (p, ##__VA_ARGS__)				\
   p (RIP, rip, ##__VA_ARGS__)						\
   p (RFLAGS, rflags, ##__VA_ARGS__)
 

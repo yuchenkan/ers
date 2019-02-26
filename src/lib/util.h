@@ -3,9 +3,12 @@
 
 #include <public/common.h>
 
-#define ERI_STR		_ERS_STR
-#define ERI_PASTE	_ERS_PASTE
-#define ERI_PASTE2	_ERS_PASTE2
+#define ERI_STR(...)		_ERS_STR (__VA_ARGS__)
+#define ERI_PASTE(x, y)		_ERS_PASTE (x, y)
+#define ERI_PASTE2(x, y, z)	ERI_PASTE (ERI_PASTE (x, y), z)
+
+#define ERI_EMPTY
+#define ERI_EVAL(...)	__VA_ARGS__
 
 #define ERI_MOV_LM(label, dst, reg) \
   leaq	label(%rip), reg;						\

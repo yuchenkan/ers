@@ -7,12 +7,6 @@
 #define __ERS_PASTE(x, y)	x##y
 #define _ERS_PASTE(x, y)	__ERS_PASTE (x, y)
 
-#define _ERS_PASTE2(x, y,z)	_ERS_PASTE (_ERS_PASTE (x, y), z)
-
-#if 0
-#define _ERS_EVAL(...)		__VA_ARGS__
-#endif
-
 #define _ERS_PP_IF_0(...)
 #define _ERS_PP_IF_1(...)	__VA_ARGS__
 #define _ERS_PP_IF(t, ...)	_ERS_PASTE (_ERS_PP_IF_, t) (__VA_ARGS__)

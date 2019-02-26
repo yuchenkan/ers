@@ -4,45 +4,28 @@
 #include <lib/util.h>
 #include <lib/syscall.h>
 
-#include <live-thread-local-offsets.h>
+#include <lib/registers.h>
 #include <lib/syscall-offsets.h>
+#include <live-thread-local-offsets.h>
+
+#define RAX(sz)		ERI_RAX (sz)
+#define RBX(sz)		ERI_RBX (sz)
+#define RCX(sz)		ERI_RCX (sz)
+#define RDX(sz)		ERI_RDX (sz)
+#define RDI(sz)		ERI_RDI (sz)
+#define RSI(sz)		ERI_RSI (sz)
+#define RSP(sz)		ERI_RSP (sz)
+#define RBP(sz)		ERI_RBP (sz)
+#define R8(sz)		ERI_R8 (sz)
+#define R9(sz)		ERI_R9 (sz)
+#define R10(sz)		ERI_R10 (sz)
+#define R11(sz)		ERI_R11 (sz)
+#define R12(sz)		ERI_R12 (sz)
+#define R13(sz)		ERI_R13 (sz)
+#define R14(sz)		ERI_R14 (sz)
+#define R15(sz)		ERI_R15 (sz)
 
 #define PASTE		ERI_PASTE
-
-#define R0_b(i)		PASTE (i, l)
-#define R0_w(i)		PASTE (i, x)
-#define R0_l(i)		PASTE (e, i, x)
-#define R0_q(i)		PASTE (r, i, x)
-
-#define RAX(sz)		PASTE (R0_, sz) (a)
-#define RBX(sz)		PASTE (R0_, sz) (b)
-#define RDX(sz)		PASTE (R0_, sz) (d)
-#define RCX(sz)		PASTE (R0_, sz) (c)
-
-#define R1_b(i)		PASTE (i, l)
-#define R1_w(i)		i
-#define R1_l(i)		PASTE (e, i)
-#define R1_q(i)		PASTE (r, i)
-
-#define RDI(sz)		PASTE (R1_, sz) (di)
-#define RSI(sz)		PASTE (R1_, sz) (si)
-#define RSP(sz)		PASTE (R1_, sz) (sp)
-#define RBP(sz)		PASTE (R1_, sz) (bp)
-
-#define R2_b(i)		PASTE (i, b)
-#define R2_w(i)		PASTE (i, w)
-#define R2_l(i)		PASTE (i, d)
-#define R2_q(i)		i
-
-#define R8(sz)		PASTE (R2_, sz) (r8)
-#define R9(sz)		PASTE (R2_, sz) (r9)
-#define R10(sz)		PASTE (R2_, sz) (r10)
-#define R11(sz)		PASTE (R2_, sz) (r11)
-#define R12(sz)		PASTE (R2_, sz) (r12)
-#define R13(sz)		PASTE (R2_, sz) (r13)
-#define R14(sz)		PASTE (R2_, sz) (r14)
-#define R15(sz)		PASTE (R2_, sz) (r15)
-
 
 #define TC(name)	PASTE (THREAD_CONTEXT_, name)
 #define TCE(name)	TC (PASTE (EXT_, name))
@@ -320,7 +303,7 @@ ATOMIC_SIZE_LABEL (sz, name):						\
 
 .latomic_ext_return:
   movq	%rcx, TC (SREGS_RCX)(%rbx)
-  ERI_MOV_LM (entry, TCE (ENTRY), %rcx)
+  ERI_MOV_LM (entry, TC (ENTRY)(%rbx), %rcx)
   ERI_MOV_MM (TCE (ATOMIC_RET)(%rbx), TCE (RET)(%rbx), %rcx)
 
   SIG_RETURN_TO_USER (.latomic_ext_return_sig_return)
@@ -328,7 +311,7 @@ ATOMIC_SIZE_LABEL (sz, name):						\
 #define EXT_COMPLETE_ATOMIC \
   TH_CALL (complete_atomic);						\
 									\
-  ERI_MOV_LM (.latomic_ext_return, TCE (ENTRY)(%rbx), %rax);		\
+  ERI_MOV_LM (.latomic_ext_return, TC (ENTRY)(%rbx), %rax);		\
   RESTORE;								\
   jmp	*TC (RET)(%rbx)
 

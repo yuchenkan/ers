@@ -1,6 +1,7 @@
 'use strict'; /* vim: set ft=javascript: */
 
-if (new Set([ 'tst/tst-rtld.S.o', 'tst/tst-rtld.out', 'tst/live.l' ]).has (goal)) return await this.invoke (`${goal}.g`);
+if (new Set([ 'tst/tst-rtld.S.o', 'tst/tst-rtld.out', 'tst/live.l', 'tst/generated/registers.h' ]).has (goal))
+  return await this.invoke (`${goal}.g`);
 
 if (goal.match (/^tst\/tst-live-exit-[^.]*.out$/)) return await this.invoke ('tst/tst-live-exit.out.g');
 

@@ -24,12 +24,9 @@
   movq	$(op), _ERS_ENTRY (e, OP);					\
   movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX)
 
-#define _ERS_MOV_LM(e, label, dst, reg) \
-  leaq	label(_ERS_RIP (e)), reg;					\
-  movq	reg, dst
-
 #define _ERS_SAVE_LABEL(e, label, field) \
-  _ERS_MOV_LM (e, label, _ERS_ENTRY (e, field), _ERS_RBX (e))
+  leaq	label(_ERS_RIP (e)), _ERS_RBX (e);				\
+  movq	_ERS_RBX (e), _ERS_ENTRY (e, field)
 
 #define _ERS_SAVE_CALL(e, label)	_ERS_SAVE_LABEL (e, label, CALL)
 #define _ERS_SAVE_RET(e, label)		_ERS_SAVE_LABEL (e, label, RET)
@@ -56,13 +53,14 @@
   inst
 
 #define _ERS_ATOMIC_OP(op, sz) \
-  _ERS_OP (op, _ERS_ATOMIC_SIZE (sz), ATOMIC)
+  _ERS_OP (ERI_PASTE (ATOMIC_, op), _ERS_ATOMIC_SIZE (sz), ATOMIC)
 
 #define _ERS_ATOMIC_SAVE_VAL(e, sz, val) \
   _ERS_PASTE (mov, sz)	val, _ERS_ENTRY (e, ATOMIC_VAL)
 
 #define _ERS_ATOMIC_SAVE_MEM(e, mem) \
-  _ERS_MOV_LM (e, mem, _ERS_ENTRY (e, ATOMIC_MEM), _ERS_RBX (e))
+  leaq	mem, _ERS_RBX (e);						\
+  movq	_ERS_RBX (e), _ERS_ENTRY (e, ATOMIC_MEM)
 
 #define _ERS_ATOMIC_SAVE_RET(e, label) \
   _ERS_SAVE_LABEL (e, label, ATOMIC_RET)
@@ -70,13 +68,14 @@
 #define _ERS_ATOMIC_COMMON_LOAD(e, sz, mem, op, ...) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (LOAD, sz));				\
-  _ERS_SAVE_CALL (e, 30b);						\
-  _ERS_SAVE_RET (e, 20f);						\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
-  _ERS_ATOMIC_SAVE_RET (e, 10f);					\
+  _ERS_SAVE_CALL (e, 30b);						\
+  _ERS_SAVE_RET (e, 10f);						\
+  _ERS_ATOMIC_SAVE_RET (e, 20f);					\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 10:									\
   op (sz, _ERS_ENTRY (e, ATOMIC_VAL), ##__VA_ARGS__);			\
+  movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX);				\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
@@ -90,19 +89,19 @@
 #define _ERS_ATOMIC_STORE(e, sz, imm_or_reg, mem) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (STORE, sz));				\
-  _ERS_SAVE_CALL (e, 30b);						\
-  _ERS_SAVE_RET (e, 20f);						\
   _ERS_ATOMIC_SAVE_VAL (e, sz, imm_or_reg);				\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
+  _ERS_SAVE_CALL (e, 30b);						\
+  _ERS_SAVE_RET (e, 20f);						\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
 #define _ERS_ATOMIC_INC_DEC(e, sz, mem, op) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (op, sz));				\
+  _ERS_ATOMIC_SAVE_MEM (e, mem);					\
   _ERS_SAVE_CALL (e, 30b);						\
   _ERS_SAVE_RET (e, 20f);						\
-  _ERS_ATOMIC_SAVE_MEM (e, mem);					\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
@@ -112,24 +111,25 @@
 #define _ERS_ATOMIC_XCHG(e, sz, reg, mem) \
 30:									\
   _ERS_ENTER (e, ERS_ATOMIC_OP (XCHG, sz));				\
-  _ERS_SAVE_CALL (e, 30b);						\
-  _ERS_SAVE_RET (e, 20f);						\
   _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
-  _ERS_ATOMIC_SAVE_RET (e, 10f);					\
+  _ERS_SAVE_CALL (e, 30b);						\
+  _ERS_SAVE_RET (e, 10f);						\
+  _ERS_ATOMIC_SAVE_RET (e, 20f);					\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 10:									\
   _ERS_PASTE (mov, sz)	_ERS_ENTRY (e, ATOMIC_VAL), reg;		\
+  movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX);				\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
 #define _ERS_ATOMIC_CMPXCHG(e, sz, reg, mem) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (CMPXCHG, sz));				\
-  _ERS_SAVE_CALL (e, 30b);						\
-  _ERS_SAVE_RET (e, 20f);						\
   _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
+  _ERS_SAVE_CALL (e, 30b);						\
+  _ERS_SAVE_RET (e, 20f);						\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 

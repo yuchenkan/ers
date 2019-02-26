@@ -166,7 +166,7 @@ async function build () {
   first.deps = new Set ();
   try {
 
-    if (verbose === 1) note (`build ${goal}`);
+    if (verbose > 0) note (`build ${goal}`);
 
     await env.mkdir (goal);
     if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {

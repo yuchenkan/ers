@@ -54,5 +54,9 @@ tst_live_start (void)
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
   eri_assert (handled == 1);
 
+  struct eri_sigset mask;
+  tst_assert_sys_sigprocmask (0, &mask);
+  eri_assert (mask.val[0] == old_mask.val[0]);
+
   tst_assert_sys_exit (0);
 }
