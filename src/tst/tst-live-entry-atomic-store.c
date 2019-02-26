@@ -10,26 +10,42 @@
 
 #define OP(src, dst, sz)	TST_LIVE_ENTRY_ATOMIC_OP2 (src, dst, sz)
 
-#define ASM_SIZE(sz, src, cdst, dst) \
+#define ASM_SIZE(sz, csrc, src, dst) \
 TST_LIVE_ENTRY_ATOMIC_ASM (OP (src, dst, sz),				\
-	ERI_EVAL (ERI_PASTE (mov, sz)	(%src),				\
-					%ERI_PASTE (ERI_, cdst) (sz)),	\
-	_ERS_ATOMIC_LOAD (0, sz, (%src), %ERI_PASTE (ERI_, cdst) (sz)))
+	ERI_EVAL (ERI_PASTE (mov, sz)	%ERI_PASTE (ERI_, csrc) (sz),	\
+					(%dst)),			\
+	_ERS_ATOMIC_STORE (0, sz, %ERI_PASTE (ERI_, csrc) (sz), (%dst)))
 
 #define ASM(csrc, src, cdst, dst) \
-TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, src, cdst, dst)
+TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, csrc, src, dst)
 
 TST_FOREACH_GENERAL_REG2 (ASM)
 
-#define VAL	0x123456789abcdef0
-static uint64_t val = VAL;
+#define IMM_b	$0x12
+#define IMM_w	$0x1234
+#define IMM_l	$0x12345678
+#define IMM_q	$0x123456789abcdef0
+
+#define ASM_IMM_SIZE(sz, dst) \
+TST_LIVE_ENTRY_ATOMIC_ASM (OP (imm, dst, sz),				\
+	ERI_EVAL (ERI_PASTE (mov, sz)	ERI_PASTE (IMM_, sz), (%dst)),	\
+	_ERS_ATOMIC_STORE (0, sz, ERI_PASTE (IMM_, sz), (%dst)))
+
+#define ASM_IMM(cdst, dst) \
+TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE3 (ASM_IMM_SIZE, dst)
+
+TST_FOREACH_GENERAL_REG (ASM_IMM)
+
+static uint64_t val;
 
 static struct tst_live_entry_mcontext ctrl_tctx;
+static uint64_t ctrl_val; 
 
 static uint8_t
 ctrl_step (struct tst_live_entry_mcontext *tctx, void *args)
 {
   ctrl_tctx = *tctx;
+  ctrl_val = val;
   return 0;
 }
 
@@ -40,14 +56,14 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
   eri_assert (tctx->rip == (uint64_t) args);
   tst_assert_live_entry_mcontext_eq (&ctrl_tctx, tctx,
 				     ~TST_LIVE_ENTRY_MCONTEXT_RIP_MASK);
-  eri_assert (val == VAL);
+  eri_assert (val == ctrl_val);
   return 0;
 }
 
 struct tst_op
 {
   const char *name;
-  uint64_t src_off;
+  uint64_t dst_off;
   void *ctrl_enter, *expr_enter, *expr_leave;
 };
 
@@ -58,11 +74,13 @@ tst (struct tst_rand *rand, struct tst_op *op)
 
   struct tst_live_entry_mcontext tctx;
   tst_live_entry_rand_fill_mcontext (rand, &tctx);
-  *(uint64_t **)((uint8_t *) &tctx + op->src_off) = &val;
+  *(uint64_t **)((uint8_t *) &tctx + op->dst_off) = &val;
 
+  val = 0;
   tctx.rip = (uint64_t) op->ctrl_enter;
   tst_live_entry (&tctx, ctrl_step, 0);
 
+  val = 0;
   tctx.rip = (uint64_t) op->expr_enter;
   tst_live_entry (&tctx, expr_step, op->expr_leave);
 }
@@ -71,7 +89,7 @@ static unused struct tst_op tst_ops[] = {
 
 #define TST_OP_SIZE(sz, src, dst) \
   { ERI_STR (OP (src, dst, sz)),					\
-    __builtin_offsetof (struct tst_live_entry_mcontext, src),		\
+    __builtin_offsetof (struct tst_live_entry_mcontext, dst),		\
     TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER (OP (src, dst, sz)),		\
     TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (OP (src, dst, sz)),		\
     TST_LIVE_ENTRY_ATOMIC_EXPR_LEAVE (OP (src, dst, sz)) },
@@ -80,6 +98,18 @@ static unused struct tst_op tst_ops[] = {
   TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (TST_OP_SIZE, src, dst)
 
   TST_FOREACH_GENERAL_REG2 (TST_OP)
+
+#define TST_OP_IMM_SIZE(sz, dst) \
+  { ERI_STR (OP (imm, dst, sz)),					\
+    __builtin_offsetof (struct tst_live_entry_mcontext, dst),		\
+    TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER (OP (imm, dst, sz)),		\
+    TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (OP (imm, dst, sz)),		\
+    TST_LIVE_ENTRY_ATOMIC_EXPR_LEAVE (OP (imm, dst, sz)) },
+
+#define TST_OP_IMM(cdst, dst) \
+  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE3 (TST_OP_IMM_SIZE, dst)
+
+  TST_FOREACH_GENERAL_REG (TST_OP_IMM)
 };
 
 noreturn void tst_live_start (void);
