@@ -70,6 +70,7 @@ struct thread_context
       struct
 	{
 	  struct extra_registers eregs;
+	  uint8_t swallow_single_step;
 	  uint8_t wait_sig; /* Always zero in user code. */
 	} syscall;
       struct

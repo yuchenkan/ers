@@ -253,6 +253,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   th_ctx->sig_force_deliver = 0;
   sig_set_frame (th_ctx, 0);
   th_ctx->access = 0;
+  th_ctx->syscall.swallow_single_step = 0;
   th_ctx->syscall.wait_sig = 0;
   th_ctx->atomic.access_end = 0;
   th_ctx->th = th;
@@ -476,6 +477,9 @@ sig_action (struct eri_live_thread *th)
 
   if (! SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
     {
+      if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
+	th_ctx->syscall.swallow_single_step = 0;
+
       if (! sig_setup_user_frame (th, frame)) goto core;
 
       eri_live_signal_thread_sig_reset (sig_th, &th_ctx->sig_act.mask);
@@ -639,12 +643,20 @@ sig_hand_return_to_user (
 
   uint8_t intern = internal (th->group, ctx->mctx.rip);
 
+  struct thread_context *th_ctx = th->ctx;
+  if (intern && eri_si_single_step (info)
+      && th_ctx->ext.op.code == _ERS_OP_SYSCALL)
+    th_ctx->syscall.swallow_single_step = 1;
+
   if (intern && eri_si_single_step (info)) return;
 
-  struct thread_context *th_ctx = th->ctx;
   if (th_ctx->ext.op.code == _ERS_OP_SYSCALL
+      && th_ctx->syscall.swallow_single_step
       && ctx->mctx.rip == th_ctx->ext.ret && eri_si_single_step (info))
-    return;
+    {
+      th_ctx->syscall.swallow_single_step = 0;
+      return;
+    }
 
   if (intern)
     {
