@@ -901,8 +901,6 @@ eri_live_thread_join (struct eri_live_thread *th)
 #define SYSCALL_DONE			0
 #define SYSCALL_SIG_WAIT_RESTART	1
 #define SYSCALL_SIG_FAULT		2
-#define SYSCALL_RESULT_MASK		0x0fff
-#define SYSCALL_EXTRA_RESTORE		0x1000
 
 #define SYSCALL_RETURN_DONE(th_ctx, result) \
   do {									\
@@ -1359,7 +1357,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   *stack = frame;
 
   sig_return_back (stack);
-  return SYSCALL_DONE | SYSCALL_EXTRA_RESTORE;
+  return SYSCALL_DONE;
 }
 
 DEFINE_SYSCALL (rt_sigpending) { return syscall_signal_thread (th); }
@@ -1944,13 +1942,10 @@ syscall (struct eri_live_thread *th)
   struct thread_context *th_ctx = th->ctx;
 
   int32_t nr = th_ctx->sregs.rax;
-  uint8_t extra_restore;
 
 #define SYSCALL(name) \
   do {									\
-    uint32_t res = ERI_PASTE (syscall_, name) (th);			\
-    extra_restore = !! (res & SYSCALL_EXTRA_RESTORE);			\
-    switch (res & SYSCALL_RESULT_MASK)					\
+    switch (ERI_PASTE (syscall_, name) (th))				\
       {									\
       case SYSCALL_DONE: goto done;					\
       case SYSCALL_SIG_WAIT_RESTART: goto sig_wait_restart;		\
@@ -1978,19 +1973,20 @@ sig_fault:
   eri_assert (eri_live_thread_sig_digest_act (th, &sig_frame->info,
 					      &th_ctx->sig_act));
   sig_set_frame (th_ctx, sig_frame);
-  return extra_restore;
+  return 0;
 
 sig_wait_restart:
   eri_debug ("sig_wait_restart\n");
   syscall_sig_wait (th_ctx, 0);
   th_ctx->ext.ret = th_ctx->ext.call;
-  return extra_restore;
+  return 0;
 
 done:
   eri_debug ("%u done\n", nr);
+  if (nr == __NR_rt_sigreturn) return 1;
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
-  return extra_restore;
+  return 0;
 }
 
 static void
