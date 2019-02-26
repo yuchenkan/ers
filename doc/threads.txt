@@ -1,0 +1,33 @@
+@startuml
+
+package "PID 0" {
+  [Main/Signal Thread 0 TID 0] as ST0 #Yellow
+  [Watch TID 1] as W
+  [Signal Thread 1 TID 4] as ST1 #Green
+}
+
+package "PGID 2" {
+
+  () " " as PD
+
+  package "PID 2" {
+    [Helper TID 2] as H
+  }
+
+  package "PID 3" {
+    [Thread 0 TID 3] as T0 #Yellow
+    [Thread 1 TID 5] as T1 #Green
+  }
+}
+
+note left of W : waitid (P_PGID, 2)
+
+W --> H
+W --> T0
+ST0 --> W
+ST0 --> ST1
+T0 --> T1
+
+note left of PD: prctl (SET_PDEATHSIG, SIGKILL)
+
+@enduml
