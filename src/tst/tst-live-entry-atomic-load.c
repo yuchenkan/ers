@@ -8,7 +8,8 @@
 #include <tst/tst-live-entry-atomic.h>
 #include <tst/generated/registers.h>
 
-#define OP(src, dst, sz)	TST_LIVE_ENTRY_ATOMIC_OP2 (src, dst, sz)
+#define OP(src, dst, sz) \
+  ERI_PASTE (ERI_PASTE2 (load_, src, _), ERI_PASTE2 (dst, _, sz))
 
 #define ASM_SIZE(sz, src, cdst, dst) \
 TST_LIVE_ENTRY_ATOMIC_ASM (OP (src, dst, sz),				\

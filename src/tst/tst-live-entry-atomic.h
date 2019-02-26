@@ -8,9 +8,6 @@
 #include <lib/util.h>
 #include <tst/tst-live-entry.h>
 
-#define TST_LIVE_ENTRY_ATOMIC_OP2(src, dst, sz) \
-  ERI_PASTE (ERI_PASTE2 (load_, src, _), ERI_PASTE2 (dst, _, sz))
-
 #define TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER(op)	ERI_PASTE2 (ctrl_, op, _enter)
 #define TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER(op)	ERI_PASTE2 (expr_, op, _enter)
 #define TST_LIVE_ENTRY_ATOMIC_EXPR_LEAVE(op)	ERI_PASTE2 (expr_, op, _leave)
