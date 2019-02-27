@@ -47,7 +47,7 @@ tst_live_start (void)
   a[0] = tst_rand (&rand, 0, 64);
   a[1] = tst_rand (&rand, 0, 64);
   struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, stack + sizeof stack - 8, &ptid, &ctid, &tls,
+    ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack), &ptid, &ctid, &tls,
     start, a, a + 1, a + 2
   };
   eri_debug ("%lx %lx %lx %lx\n", args.fn, a, &args, args.stack);

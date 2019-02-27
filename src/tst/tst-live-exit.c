@@ -21,7 +21,7 @@ clone (uint64_t i)
   if (i == 0) return;
 
   struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, stack[i - 1] + sizeof stack[0] - 8, 0, 0, 0,
+    ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack[i - 1]), 0, 0, 0,
     start, (void *) tst_rand (&rand, 0, 32), (void *) (i - 1),
     (void *) (uint64_t) (tst_rand (&rand, 0, 5) < group)
   };
