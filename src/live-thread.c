@@ -953,8 +953,8 @@ syscall_set_sig_alt_stack (struct eri_live_thread *th,
   return 0;
 }
 
-static uint8_t
-syscall_do_signal_thread (struct eri_live_thread *th)
+static uint32_t
+syscall_signal_thread (struct eri_live_thread *th)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
@@ -963,16 +963,8 @@ syscall_do_signal_thread (struct eri_live_thread *th)
     { th_ctx->sregs.rdi, th_ctx->sregs.rsi, th_ctx->sregs.rdx,
       th_ctx->sregs.r10, th_ctx->sregs.r8, th_ctx->sregs.r9 }
   };
-  uint8_t signal = eri_live_signal_thread_syscall (sig_th, &args);
-  th_ctx->sregs.rax = args.result;
-  return signal;
-}
-
-static uint32_t
-syscall_signal_thread (struct eri_live_thread *th)
-{
-  syscall_do_signal_thread (th);
-  return SYSCALL_DONE;
+  eri_live_signal_thread_syscall (sig_th, &args);
+  SYSCALL_RETURN_DONE (th_ctx, args.result);
 }
 
 static uint8_t
@@ -1222,6 +1214,9 @@ DEFINE_SYSCALL (rt_sigprocmask)
 
       if (! eri_live_signal_thread_sig_mask_async (sig_th, &mask))
 	return SYSCALL_SIG_WAIT_RESTART;
+
+      if (eri_live_signal_thread_signaled (sig_th))
+	syscall_sig_wait (th_ctx, 0);
     }
 
   if (user_old_mask
@@ -1467,8 +1462,11 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 static uint32_t
 syscall_do_kill (struct eri_live_thread *th)
 {
-  if (syscall_do_signal_thread (th)) syscall_sig_wait (th->ctx, 0);
-  return SYSCALL_DONE;
+  uint32_t res = syscall_signal_thread (th);
+  if (res == SYSCALL_DONE
+      && eri_live_signal_thread_signaled (th->sig_th))
+    syscall_sig_wait (th->ctx, 0);
+  return res;
 }
 
 DEFINE_SYSCALL (kill) { return syscall_do_kill (th); }

@@ -51,7 +51,7 @@ tst_live_start (void)
   eri_debug ("%lx\n", &old_act);
 
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
-  eri_assert (handled == 1);
+  eri_assert (handled);
 
   struct eri_sigset mask;
   tst_assert_sys_sigprocmask (0, &mask);

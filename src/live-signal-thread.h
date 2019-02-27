@@ -85,15 +85,12 @@ uint8_t eri_live_signal_thread_sig_fd_read (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_live_signal_thread_sig_fd_read_args *args);
 
-/*
- * Returns 1 if we have got signals. This is for kill-like syscalls.
- *
- * "If the signal causes a handler to be called, raise() will return only
- * after the signal handler has returned."
- */
-uint8_t eri_live_signal_thread_syscall (
+void eri_live_signal_thread_syscall (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_sys_syscall_args *args);
+
+uint8_t eri_live_signal_thread_signaled (
+		struct eri_live_signal_thread *sig_th);
 
 const struct eri_common_args *eri_live_signal_thread_get_args (
 		const struct eri_live_signal_thread *sig_th);

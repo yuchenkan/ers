@@ -75,8 +75,7 @@ tst_live_entry (struct tst_live_entry_mcontext *tctx,
   eri_sig_del_set (&mask, ERI_SIGTRAP);
   tst_assert_sys_sigprocmask (&mask, &old_mask);
 
-  tst_assert_syscall (tgkill, tst_assert_syscall (getpid),
-		      tst_assert_syscall (gettid), ERI_SIGTRAP);
+  tst_assert_sys_raise (ERI_SIGTRAP);
 
   tst_assert_syscall (arch_prctl, ERI_ARCH_SET_FS, pack.fs);
   tst_assert_syscall (sigaltstack, &old_stack, 0);

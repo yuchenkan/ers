@@ -40,9 +40,8 @@ tst_live_start (void)
   };
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
-  tst_assert_syscall (tgkill, tst_assert_syscall (getpid),
-		      tst_assert_syscall (gettid), ERI_SIGINT);
-  eri_assert (handled == 1);
+  tst_assert_sys_raise (ERI_SIGINT);
+  eri_assert (handled);
 
   tst_assert_syscall (sigaltstack, 0, &stack);
   eri_assert (stack.sp == (uint64_t) sig_stack);

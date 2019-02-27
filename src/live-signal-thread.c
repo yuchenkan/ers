@@ -489,7 +489,6 @@ struct syscall_event
 {
   uint32_t type;
   struct eri_sys_syscall_args *args;
-  uint8_t signal;
 };
 
 static noreturn void
@@ -562,7 +561,6 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	{
 	  struct syscall_event *event = event_type;
 	  eri_sys_syscall (event->args);
-	  event->signal = !! eri_atomic_load (&sig_th->sig_info);
 	}
       else if (type == SIG_EXIT_GROUP_EVENT)
 	{
@@ -1019,14 +1017,20 @@ eri_live_signal_thread_sig_fd_read (
   return event.done;
 }
 
-uint8_t
+void
 eri_live_signal_thread_syscall (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_sys_syscall_args *args)
 {
   struct syscall_event event = { SYSCALL_EVENT, args };
   proc_event (sig_th, &event);
-  return event.signal;
+}
+
+uint8_t
+eri_live_signal_thread_signaled (
+			struct eri_live_signal_thread *sig_th)
+{
+  return !! eri_atomic_load (&sig_th->sig_info);
 }
 
 const struct eri_common_args *
