@@ -2,7 +2,7 @@
 
 let tsts = [ 'rtld' ];
 
-let live = [ 'start', 'clone', 'clear-tid', 'raise', 'sigaltstack', 'sigprocmask', 'sigpending' ];
+let live = [ 'start', 'clone', 'clear-tid', 'raise', 'sigaltstack', 'sigprocmask', 'sigpending', 'sig-ignore' ];
 
 live = live.concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));
 
@@ -15,4 +15,4 @@ tsts = tsts.concat (live.map (t => `live-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-sigpending.out' ]);
+//await this.update ([ 'tst/tst-live-sig-ignore.out' ]);
