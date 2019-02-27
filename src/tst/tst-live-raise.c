@@ -27,8 +27,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   struct eri_sigset mask;
   tst_assert_sys_sigprocmask (0, &mask);
-  /* ~(SIGKILL_MASK | SIGSTOP_MASK) */
-  eri_assert (mask.val[0] == 0xfffffffffffbfeff);
+  eri_assert (mask.val[0] == TST_SIGSET_MASK);
 }
 
 noreturn void tst_live_start (void);

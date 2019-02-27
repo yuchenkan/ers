@@ -4,4 +4,7 @@
 #include <public/impl.h>
 #include <tst/tst-syscall-dedicated.h>
 
+/* ~(SIGKILL_MASK | SIGSTOP_MASK) */
+#define TST_SIGSET_MASK			0xfffffffffffbfeff
+
 #endif

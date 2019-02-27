@@ -25,7 +25,6 @@ struct tst_live_entry_mcontext
     struct tst_live_entry_mcontext *_tctx = tctx;			\
     tst_rand_fill (_rand, _tctx, sizeof *_tctx);			\
     _tctx->rflags &= TST_RFLAGS_STATUS_MASK;				\
-    _tctx->rsp = tst_rand_next (_rand) | 0x1000000000000000;		\
   } while (0);
 
 void tst_live_entry (struct tst_live_entry_mcontext *ctx,

@@ -1,11 +1,18 @@
 'use strict'; /* vim: set ft=javascript: */
 
-let tsts = [ 'rtld', 'live-start', 'live-clone', 'live-clear-tid', 'live-raise', 'live-sigaltstack' ];
-tsts = tsts.concat ([ ...Array (6).keys () ].map (x => `live-exit-${x}`));
+let tsts = [ 'rtld' ];
+
+let live = [ 'start', 'clone', 'clear-tid', 'raise', 'sigaltstack', 'sigprocmask' ];
+
+live = live.concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));
+
 let entries = [ 'syscall', 'sync-async', 'sync-async-repeat' ];
 entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp' ].map (x => `atomic-${x}`));
-tsts = tsts.concat (entries.map (t => `live-entry-${t}`));
+
+live = live.concat (entries.map (t => `entry-${t}`));
+
+tsts = tsts.concat (live.map (t => `live-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-entry-atomic-cmp.out' ]);
+//await this.update ([ 'tst/tst-live-sigprocmask.out' ]);

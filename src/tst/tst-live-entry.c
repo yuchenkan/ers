@@ -54,8 +54,11 @@ tst_live_entry (struct tst_live_entry_mcontext *tctx,
   tst_assert_syscall (arch_prctl, ERI_ARCH_SET_FS, &pack);
 
   uint8_t sig_stack[8096];
+  eri_debug ("sig_stack = %lx, &pack = %lx\n", sig_stack, &pack);
   struct eri_stack old_stack;
-  struct eri_stack stack = { (uint64_t) sig_stack, 0, sizeof sig_stack };
+  struct eri_stack stack = {
+    (uint64_t) sig_stack, ERI_SS_AUTODISARM, sizeof sig_stack
+  };
   tst_assert_syscall (sigaltstack, &stack, &old_stack);
 
   struct eri_sigaction old_act;

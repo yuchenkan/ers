@@ -58,6 +58,8 @@ struct tst_live_entry_atomic_case
 
 struct tst_live_entry_atomic_anchor
 {
+  struct tst_live_entry_mcontext *tctx;
+  uint64_t *val;
   struct tst_live_entry_mcontext *ctrl_tctx;
   uint64_t *ctrl_val;
   struct tst_live_entry_mcontext *expr_tctx;
@@ -75,8 +77,9 @@ void tst_live_entry_atomic_common_info (
 
 
 #define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, debug) \
-noreturn void tst_live_start (void);					\
+static struct tst_live_entry_atomic_anchor anchor;			\
 									\
+noreturn void tst_live_start (void);					\
 noreturn void								\
 tst_live_start (void)							\
 {									\
@@ -84,8 +87,8 @@ tst_live_start (void)							\
   tst_rand_init (&rand);						\
 									\
   eri_global_enable_debug = debug;					\
-  static struct tst_live_entry_atomic_anchor anchor;			\
   tst_live_entry_atomic_cases (&rand, cases, &anchor);			\
   tst_assert_sys_exit (0);						\
 }
+
 #endif

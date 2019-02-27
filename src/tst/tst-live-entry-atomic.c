@@ -39,14 +39,16 @@ tst (struct tst_rand *rand, struct tst_live_entry_atomic_case *caze,
   if (caze->info) ((void (*) (void *)) caze->info) (caze);
 
   struct pack pack = { caze->expr_leave, anchor };
+  struct tst_live_entry_mcontext tctx;
+  uint64_t val;
+
   if (anchor)
     {
+      anchor->tctx = &tctx;
+      anchor->val = &val;
       anchor->ctrl_tctx = &pack.ctrl_tctx;
       anchor->ctrl_val = &pack.ctrl_val;
     }
-
-  struct tst_live_entry_mcontext tctx;
-  uint64_t val;
 
   tst_live_entry_rand_fill_mcontext (rand, &tctx);
   *(uint64_t **)((uint8_t *) &tctx + caze->mem_off) = &pack.val;

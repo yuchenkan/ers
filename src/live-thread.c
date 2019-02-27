@@ -1142,6 +1142,8 @@ DEFINE_SYSCALL (arch_prctl)
   int32_t code = th_ctx->sregs.rdi;
   void *user_addr = (void *) th_ctx->sregs.rsi;
 
+  eri_debug ("user_addr %lx\n", user_addr);
+  /* XXX: warning for set gs */
   if (code == ERI_ARCH_SET_FS || code == ERI_ARCH_SET_GS)
     SYSCALL_RETURN_DONE (th_ctx,
 			 eri_syscall (arch_prctl, code, user_addr));
