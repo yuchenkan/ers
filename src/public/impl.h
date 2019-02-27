@@ -110,7 +110,7 @@
 
 #define _ERS_ATOMIC_XCHG(e, sz, reg, mem) \
 30:									\
-  _ERS_ENTER (e, ERS_ATOMIC_OP (XCHG, sz));				\
+  _ERS_ENTER (e, _ERS_ATOMIC_OP (XCHG, sz));				\
   _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
   _ERS_SAVE_CALL (e, 30b);						\
