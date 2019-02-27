@@ -1,10 +1,8 @@
-#include <compiler.h>
 #include <common.h>
 
 #include <public/impl.h>
 #include <lib/util.h>
 #include <lib/registers.h>
-#include <tst/tst-syscall.h>
 #include <tst/tst-live-entry-atomic.h>
 #include <tst/generated/registers.h>
 
@@ -35,16 +33,4 @@ static struct tst_live_entry_atomic_case cases[] = {
   TST_FOREACH_GENERAL_REG2 (CASE)
 };
 
-noreturn void tst_live_start (void);
-
-noreturn void
-tst_live_start (void)
-{
-  struct tst_rand rand;
-  tst_rand_init (&rand);
-
-  // eri_global_enable_debug = 1;
-  static struct tst_live_entry_atomic_anchor anchor;
-  tst_live_entry_atomic_cases (&rand, cases, &anchor);
-  tst_assert_sys_exit (0);
-}
+TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)

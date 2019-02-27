@@ -1,10 +1,8 @@
-#include <compiler.h>
 #include <common.h>
 
 #include <public/impl.h>
 #include <lib/util.h>
 #include <lib/registers.h>
-#include <tst/tst-syscall.h>
 #include <tst/tst-live-entry-atomic.h>
 #include <tst/generated/registers.h>
 
@@ -22,16 +20,11 @@ TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, creg, reg, mem)
 
 TST_FOREACH_GENERAL_REG2 (ASM)
 
-struct init_args
-{
-  uint64_t mask;
-  uint64_t rax, val; /* low bits according to size */
-};
-
 struct caze
 {
   struct tst_live_entry_atomic_case caze;
-  struct init_args args;
+  uint64_t mask;
+  uint64_t rax, val; /* low bits according to size */
 };
 
 static unused void info (struct caze *caze);
@@ -40,16 +33,16 @@ static void
 info (struct caze *caze)
 {
   eri_info ("%s %u %lx %lx\n",
-	    caze->caze.name, !! caze->caze.init, caze->args.rax, caze->args.val);
+	    caze->caze.name, !! caze->caze.init, caze->rax, caze->val);
 }
 
 static void
-init (struct tst_live_entry_mcontext *tctx, uint64_t *val, void *args)
+init (struct tst_live_entry_mcontext *tctx, uint64_t *val,
+      struct caze *caze)
 {
-  struct init_args *a = args;
-  uint64_t m = a->mask;
-  tctx->rax = (tctx->rax & ~m) | (a->rax & m);
-  *val = (*val & ~m) | (a->val & m);
+  uint64_t m = caze->mask;
+  tctx->rax = (tctx->rax & ~m) | (caze->rax & m);
+  *val = (*val & ~m) | (caze->val & m);
 }
 
 static struct caze cases[] = {
@@ -84,7 +77,7 @@ static struct caze cases[] = {
 #define DO_CASE_SIZE(sz, reg, mem, rax, val) \
   { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
 				     mem, INFO, init),			\
-    { ERI_PASTE (MASK_, sz), rax, val } },
+    ERI_PASTE (MASK_, sz), rax, val },
 
 #define CASE_SIZE(sz, reg, mem, rax, val) \
   ERI_PP_IF (REG_IS_NOT_RAX (mem), DO_CASE_SIZE (sz, reg, mem, rax, val))
@@ -104,16 +97,4 @@ static struct caze cases[] = {
   TST_FOREACH_GENERAL_REG2 (CASE_RAND)
 };
 
-noreturn void tst_live_start (void);
-
-noreturn void
-tst_live_start (void)
-{
-  struct tst_rand rand;
-  tst_rand_init (&rand);
-
-  // eri_global_enable_debug = 1;
-  static struct tst_live_entry_atomic_anchor anchor;
-  tst_live_entry_atomic_cases (&rand, cases, &anchor);
-  tst_assert_sys_exit (0);
-}
+TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)

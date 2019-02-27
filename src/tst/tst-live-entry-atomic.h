@@ -3,9 +3,11 @@
 
 #include <stdint.h>
 
+#include <compiler.h>
 #include <common.h>
 
 #include <lib/util.h>
+#include <tst/tst-syscall.h>
 #include <tst/tst-live-entry.h>
 
 #define TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER(op)	ERI_PASTE2 (ctrl_, op, _enter)
@@ -46,9 +48,12 @@ struct tst_live_entry_atomic_case
   void *ctrl_enter, *expr_enter, *expr_leave;
   uint16_t mem_off;
 
-  void *info; /* void (*) (struct tst_live_entry_mcontext *) */
-  void (*init) (struct tst_live_entry_mcontext *, uint64_t *, void *);
-  uint8_t args[0];
+  void *info; /* void (*) (struct tst_live_entry_atomic_case *) */
+  /*
+   * void (*init) (struct tst_live_entry_mcontext *, uint64_t *,
+   *		   struct tst_live_entry_atomic_case *)
+   */
+  void *init;
 };
 
 struct tst_live_entry_atomic_anchor
@@ -68,4 +73,19 @@ void tst_live_entry_atomic (struct tst_rand *rand,
 void tst_live_entry_atomic_common_info (
 			struct tst_live_entry_atomic_case *caze);
 
+
+#define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, debug) \
+noreturn void tst_live_start (void);					\
+									\
+noreturn void								\
+tst_live_start (void)							\
+{									\
+  struct tst_rand rand;							\
+  tst_rand_init (&rand);						\
+									\
+  eri_global_enable_debug = debug;					\
+  static struct tst_live_entry_atomic_anchor anchor;			\
+  tst_live_entry_atomic_cases (&rand, cases, &anchor);			\
+  tst_assert_sys_exit (0);						\
+}
 #endif
