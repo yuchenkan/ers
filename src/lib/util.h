@@ -7,6 +7,8 @@
 #define ERI_PASTE(x, y)		_ERS_PASTE (x, y)
 #define ERI_PASTE2(x, y, z)	ERI_PASTE (ERI_PASTE (x, y), z)
 
+#define ERI_PP_IF(t, ...)	_ERS_PP_IF (t, ##__VA_ARGS__)
+
 #define ERI_EMPTY
 #define ERI_EVAL(...)	__VA_ARGS__
 

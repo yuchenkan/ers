@@ -3,9 +3,9 @@
 let tsts = [ 'rtld', 'live-start', 'live-clone', 'live-clear-tid', 'live-raise', 'live-sigaltstack' ];
 tsts = tsts.concat ([ ...Array (6).keys () ].map (x => `live-exit-${x}`));
 let entries = [ 'syscall', 'sync-async', 'sync-async-repeat' ];
-entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg' ].map (x => `atomic-${x}`));
+entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg' ].map (x => `atomic-${x}`));
 tsts = tsts.concat (entries.map (t => `live-entry-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-entry-atomic-xchg.out' ]);
+//await this.update ([ 'tst/tst-live-entry-atomic-cmpxchg.out' ]);

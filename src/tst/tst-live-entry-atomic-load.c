@@ -22,15 +22,16 @@ TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, src, cdst, dst)
 
 TST_FOREACH_GENERAL_REG2 (ASM)
 
-#define VAL	0x123456789abcdef0
-static uint64_t val = VAL;
+static uint64_t val;
 
 static struct tst_live_entry_mcontext ctrl_tctx;
+static uint64_t ctrl_val;
 
 static uint8_t
 ctrl_step (struct tst_live_entry_mcontext *tctx, void *args)
 {
   ctrl_tctx = *tctx;
+  ctrl_val = val;
   return 0;
 }
 
@@ -41,7 +42,7 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
   eri_assert (tctx->rip == (uint64_t) args);
   tst_assert_live_entry_mcontext_eq (&ctrl_tctx, tctx,
 				     ~TST_LIVE_ENTRY_MCONTEXT_RIP_MASK);
-  eri_assert (val == VAL);
+  eri_assert (val == ctrl_val);
   return 0;
 }
 
@@ -61,9 +62,12 @@ tst (struct tst_rand *rand, struct tst_op *op)
   tst_live_entry_rand_fill_mcontext (rand, &tctx);
   *(uint64_t **)((uint8_t *) &tctx + op->src_off) = &val;
 
+  uint64_t v = tst_rand_next (rand);
+  val = v;
   tctx.rip = (uint64_t) op->ctrl_enter;
   tst_live_entry (&tctx, ctrl_step, 0);
 
+  val = v;
   tctx.rip = (uint64_t) op->expr_enter;
   tst_live_entry (&tctx, expr_step, op->expr_leave);
 }
