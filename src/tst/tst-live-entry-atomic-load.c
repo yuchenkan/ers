@@ -22,69 +22,21 @@ TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, src, cdst, dst)
 
 TST_FOREACH_GENERAL_REG2 (ASM)
 
-static uint64_t val;
+static struct tst_live_entry_atomic_case cases[] = {
 
-static struct tst_live_entry_mcontext ctrl_tctx;
-static uint64_t ctrl_val;
+#define INFO	0 // tst_live_entry_atomic_common_info
 
-static uint8_t
-ctrl_step (struct tst_live_entry_mcontext *tctx, void *args)
-{
-  ctrl_tctx = *tctx;
-  ctrl_val = val;
-  return 0;
-}
+#define CASE_SIZE(sz, src, dst) \
+  TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (src, dst, sz), src, INFO, 0),
 
-static uint8_t
-expr_step (struct tst_live_entry_mcontext *tctx, void *args)
-{
-  eri_debug ("expr = %lx\n", tctx);
-  eri_assert (tctx->rip == (uint64_t) args);
-  tst_assert_live_entry_mcontext_eq (&ctrl_tctx, tctx,
-				     ~TST_LIVE_ENTRY_MCONTEXT_RIP_MASK);
-  eri_assert (val == ctrl_val);
-  return 0;
-}
+#if 1
+#define CASE(csrc, src, cdst, dst) \
+  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, src, dst)
 
-struct tst_op
-{
-  const char *name;
-  uint64_t src_off;
-  void *ctrl_enter, *expr_enter, *expr_leave;
-};
-
-static void
-tst (struct tst_rand *rand, struct tst_op *op)
-{
-  /* eri_info ("%s\n", op->name); */
-
-  struct tst_live_entry_mcontext tctx;
-  tst_live_entry_rand_fill_mcontext (rand, &tctx);
-  *(uint64_t **)((uint8_t *) &tctx + op->src_off) = &val;
-
-  uint64_t v = tst_rand_next (rand);
-  val = v;
-  tctx.rip = (uint64_t) op->ctrl_enter;
-  tst_live_entry (&tctx, ctrl_step, 0);
-
-  val = v;
-  tctx.rip = (uint64_t) op->expr_enter;
-  tst_live_entry (&tctx, expr_step, op->expr_leave);
-}
-
-static unused struct tst_op tst_ops[] = {
-
-#define TST_OP_SIZE(sz, src, dst) \
-  { ERI_STR (OP (src, dst, sz)),					\
-    __builtin_offsetof (struct tst_live_entry_mcontext, src),		\
-    TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER (OP (src, dst, sz)),		\
-    TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (OP (src, dst, sz)),		\
-    TST_LIVE_ENTRY_ATOMIC_EXPR_LEAVE (OP (src, dst, sz)) },
-
-#define TST_OP(csrc, src, cdst, dst) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (TST_OP_SIZE, src, dst)
-
-  TST_FOREACH_GENERAL_REG2 (TST_OP)
+  TST_FOREACH_GENERAL_REG2 (CASE)
+#else
+  CASE_SIZE (b, rbx, rax)
+#endif
 };
 
 noreturn void tst_live_start (void);
@@ -95,16 +47,8 @@ tst_live_start (void)
   struct tst_rand rand;
   tst_rand_init (&rand);
 
-#if 1
-  uint16_t i;
-  for (i = 0; i < eri_length_of (tst_ops); ++i)
-    tst (&rand, tst_ops + i);
-#else
-  eri_global_enable_debug = 1;
-  struct tst_op op[1] = { TST_OP_SIZE (b, rbx, rax) };
-  tst (&rand, op);
-#endif
-
-  eri_debug ("done\n");
+  // eri_global_enable_debug = 1;
+  static struct tst_live_entry_atomic_anchor anchor;
+  tst_live_entry_atomic_cases (&rand, cases, &anchor);
   tst_assert_sys_exit (0);
 }

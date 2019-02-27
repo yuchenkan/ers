@@ -79,8 +79,7 @@
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
-#define _ERS_LOAD_LOAD(sz, res, reg) \
-  _ERS_PASTE (mov, sz)	res, reg
+#define _ERS_LOAD_LOAD(sz, res, reg)	_ERS_PASTE (mov, sz)	res, reg
 
 #define _ERS_ATOMIC_LOAD(e, sz, mem, reg) \
   _ERS_ATOMIC_COMMON_LOAD (e, sz, mem, _ERS_LOAD_LOAD, reg)

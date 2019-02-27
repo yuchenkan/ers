@@ -5,6 +5,8 @@ if (new Set([ 'tst/tst-rtld.S.o', 'tst/tst-rtld.out', 'tst/live.l', 'tst/generat
 
 if (goal.match (/^tst\/tst-live-exit-[^.]*.out$/)) return await this.invoke ('tst/tst-live-exit.out.g');
 
+if (goal.match (/^tst\/tst-live-entry-atomic-[^.]*$/)) return await this.invoke ('tst/tst-live-entry-atomic.g');
+
 if (goal.match (/^tst\/tst-live-entry-[^.]*$/)) return await this.invoke ('tst/tst-live-entry.g');
 
 if (goal.match (/^tst\/tst-live-[^.]*$/)) return await this.invoke ('tst/tst-live.g');

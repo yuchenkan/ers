@@ -8,4 +8,4 @@ tsts = tsts.concat (entries.map (t => `live-entry-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-entry-atomic-cmpxchg.out' ]);
+//await this.update ([ 'tst/tst-live-entry-atomic-cmp.out' ]);
