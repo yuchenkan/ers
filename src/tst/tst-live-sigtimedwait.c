@@ -5,15 +5,6 @@
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 
-static uint8_t handled;
-
-static void
-sig_handler (int32_t sig)
-{
-  eri_debug ("\n");
-  handled = 1;
-}
-
 static aligned16 uint8_t stack[1024 * 1024];
 static struct tst_sys_clone_raise_args raise_args = { ERI_SIGINT };
 
@@ -37,19 +28,20 @@ tst_live_start (void)
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
-  struct eri_sigaction act = {
-    sig_handler, ERI_SA_RESTORER, tst_assert_sys_sigreturn
-  };
-  tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
-
-  eri_sig_empty_set (&mask);
-
   tst_assert_sys_clone_raise (&raise_args);
 
   tst_yield (delay);
-  eri_assert (tst_syscall (rt_sigsuspend, &mask,
-			   ERI_SIG_SETSIZE) == ERI_EINTR);
-  eri_assert (handled);
+  struct eri_siginfo info;
+  eri_assert (tst_assert_syscall (rt_sigtimedwait, &mask,
+				  &info, 0, ERI_SIG_SETSIZE) == ERI_SIGINT);
+  eri_assert (info.sig == ERI_SIGINT);
+  eri_assert (info.code == ERI_SI_TKILL);
+  eri_assert (info.kill.pid == raise_args.pid);
 
+  struct eri_timespec to = { 0, 0 };
+  eri_assert (tst_syscall (rt_sigtimedwait, &mask,
+			   0, &to, ERI_SIG_SETSIZE) == ERI_EAGAIN);
+
+  eri_debug ("done\n");
   tst_assert_sys_exit (0);
 }

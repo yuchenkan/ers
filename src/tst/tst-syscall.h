@@ -13,4 +13,18 @@
   tst_assert_syscall (tgkill, tst_assert_syscall (getpid),		\
 		      tst_assert_syscall (gettid), sig)
 
+#ifndef __ASSEMBLER__
+
+struct tst_sys_clone_raise_args
+{
+  int32_t sig;
+  uint8_t *top;
+  uint32_t delay;
+  int32_t pid, tid;
+};
+
+void tst_assert_sys_clone_raise (struct tst_sys_clone_raise_args *args);
+
+#endif
+
 #endif
