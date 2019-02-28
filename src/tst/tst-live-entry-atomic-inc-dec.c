@@ -6,16 +6,16 @@
 #include <tst/tst-live-entry-atomic.h>
 #include <tst/generated/registers.h>
 
-#define OP(inc, reg, sz) \
-  ERI_PASTE (ERI_PASTE2 (inc, _, reg), ERI_PASTE (_, sz))
+#define OP(inc, mem, sz) \
+  ERI_PASTE (ERI_PASTE2 (inc, _, mem), ERI_PASTE (_, sz))
 
-#define ASM_SIZE(sz, cinc, inc, reg) \
-TST_LIVE_ENTRY_ATOMIC_ASM (OP (inc, reg, sz),				\
-	ERI_EVAL (ERI_PASTE (inc, sz)	(%reg)),			\
-	ERI_PASTE (_ERS_ATOMIC_, cinc) (0, sz, (%reg)))
+#define ASM_SIZE(sz, cinc, inc, mem) \
+TST_LIVE_ENTRY_ATOMIC_ASM (OP (inc, mem, sz),				\
+	ERI_EVAL (ERI_PASTE (inc, sz)	(%mem)),			\
+	ERI_PASTE (_ERS_ATOMIC_, cinc) (0, sz, (%mem)))
 
-#define ASM(creg, reg, cinc, inc) \
-TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, cinc, inc, reg)
+#define ASM(cmem, mem, cinc, inc) \
+TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, cinc, inc, mem)
 
 TST_FOREACH_GENERAL_REG (ASM, INC, inc)
 TST_FOREACH_GENERAL_REG (ASM, DEC, dec)
@@ -31,7 +31,7 @@ static unused void info (struct caze *caze);
 static void
 info (struct caze *caze)
 {
-  eri_info ("%s %u %lx\n", caze->caze.name, !! caze->caze.init, caze->val);
+  eri_info ("%s %lx %lx\n", caze->caze.name, caze->caze.init, caze->val);
 }
 
 static void
@@ -45,28 +45,27 @@ static struct caze cases[] = {
 
 #define INFO	0 // info
 
-#define CASE_SIZE(sz, inc, val, reg) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (inc, reg, sz),			\
-				    reg, INFO, init), val },
+#define DO_CASE_SIZE(sz, mem, inc, val) \
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (inc, mem, sz),			\
+				     mem, INFO, init), val }
 
-#define CASE_RAND_SIZE(sz, inc, reg) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (inc, reg, sz), reg, INFO, 0) },
+#define DO_CASE_RAND_SIZE(sz, mem, inc) \
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (inc, mem, sz), mem, INFO, 0) }
 
-#define CASE(creg, reg, inc, val) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, inc, val, reg)
+#define CASE_SIZE(sz, mem) \
+  DO_CASE_SIZE (sz, mem, inc, -1), DO_CASE_SIZE (sz, mem, inc, 0),	\
+  DO_CASE_SIZE (sz, mem, inc, 1), DO_CASE_SIZE (sz, mem, dec, -1),	\
+  DO_CASE_SIZE (sz, mem, dec, 0), DO_CASE_SIZE (sz, mem, dec, 1),	\
+  DO_CASE_RAND_SIZE (sz, mem, inc), DO_CASE_RAND_SIZE (sz, mem, dec),	\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (inc, mem, sz),		\
+					   mem, INFO) },		\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (dec, mem, sz),		\
+					   mem, INFO) },
 
-#define CASE_RAND(creg, reg, inc) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_RAND_SIZE, inc, reg)
+#define CASE(cmem, mem) \
+  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, mem)
 
-  TST_FOREACH_GENERAL_REG (CASE, inc, -1)
-  TST_FOREACH_GENERAL_REG (CASE, inc, 0)
-  TST_FOREACH_GENERAL_REG (CASE, inc, 1)
-  TST_FOREACH_GENERAL_REG (CASE, dec, -1)
-  TST_FOREACH_GENERAL_REG (CASE, dec, 0)
-  TST_FOREACH_GENERAL_REG (CASE, dec, 1)
-
-  TST_FOREACH_GENERAL_REG (CASE_RAND, inc)
-  TST_FOREACH_GENERAL_REG (CASE_RAND, dec)
+  TST_FOREACH_GENERAL_REG (CASE)
 };
 
 TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)

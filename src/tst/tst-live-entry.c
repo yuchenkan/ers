@@ -18,7 +18,7 @@ struct pack
 static void
 trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  eri_debug ("rip = %lx\n", ctx->mctx.rip);
+  eri_debug ("sig = %u, rip = %lx\n", sig, ctx->mctx.rip);
 
   struct pack *pack = tst_get_tls ();
   if (! pack->init)
@@ -35,6 +35,7 @@ trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   struct tst_live_entry_mcontext tctx;
 #define GET(cr, r)	tctx.r = ctx->mctx.r;
   TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (GET)
+  tctx.rflags &= TST_RFLAGS_STATUS_MASK;
 
   if (! pack->step (&tctx, pack->args))
     {
@@ -61,24 +62,28 @@ tst_live_entry (struct tst_live_entry_mcontext *tctx,
   };
   tst_assert_syscall (sigaltstack, &stack, &old_stack);
 
-  struct eri_sigaction old_act;
+  struct eri_sigaction old_act_trap;
+  struct eri_sigaction old_act_segv;
   struct eri_sigaction act = {
     trap, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
     tst_assert_sys_sigreturn
   };
   eri_sig_fill_set (&act.mask);
-  tst_assert_sys_sigaction (ERI_SIGTRAP, &act, &old_act);
+  tst_assert_sys_sigaction (ERI_SIGTRAP, &act, &old_act_trap);
+  tst_assert_sys_sigaction (ERI_SIGSEGV, &act, &old_act_segv);
 
   struct eri_sigset old_mask;
   struct eri_sigset mask;
   eri_sig_fill_set (&mask);
   eri_sig_del_set (&mask, ERI_SIGTRAP);
+  eri_sig_del_set (&mask, ERI_SIGSEGV);
   tst_assert_sys_sigprocmask (&mask, &old_mask);
 
   tst_assert_sys_raise (ERI_SIGTRAP);
 
   tst_assert_syscall (arch_prctl, ERI_ARCH_SET_FS, pack.fs);
   tst_assert_syscall (sigaltstack, &old_stack, 0);
-  tst_assert_sys_sigaction (ERI_SIGTRAP, &old_act, 0);
+  tst_assert_sys_sigaction (ERI_SIGTRAP, &old_act_trap, 0);
+  tst_assert_sys_sigaction (ERI_SIGSEGV, &old_act_segv, 0);
   tst_assert_sys_sigprocmask (&old_mask, 0);
 }

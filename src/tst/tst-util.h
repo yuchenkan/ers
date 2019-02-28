@@ -16,6 +16,7 @@
 #define TST_RFLAGS_TRACE_BIT_OFFSET	8
 #define TST_RFLAGS_TRACE_MASK		(1 << TST_RFLAGS_TRACE_BIT_OFFSET)
 
+/* XXX: check other flags */
 #define TST_RFLAGS_STATUS_MASK		0xd5
 
 #endif

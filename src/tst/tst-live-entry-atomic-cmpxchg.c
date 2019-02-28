@@ -74,27 +74,24 @@ static struct caze cases[] = {
 
 #define REG_IS_NOT_RAX(mem) ERI_PASTE (_REG_IS_NOT_RAX_, mem)
 
-#define DO_CASE_SIZE(sz, reg, mem, rax, val) \
+#define DO_CASE_SIZE(sz, reg, mem, val) \
   { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
 				     mem, INFO, init),			\
-    ERI_PASTE (MASK_, sz), rax, val },
+    ERI_PASTE (MASK_, sz), 0x123456789abcdef0, val }
 
-#define CASE_SIZE(sz, reg, mem, rax, val) \
-  ERI_PP_IF (REG_IS_NOT_RAX (mem), DO_CASE_SIZE (sz, reg, mem, rax, val))
+#define CASE_SIZE(sz, reg, mem) \
+  ERI_PP_IF (REG_IS_NOT_RAX (mem),					\
+	     DO_CASE_SIZE (sz, reg, mem, 0x123456789abcdef0),		\
+	     DO_CASE_SIZE (sz, reg, mem, 0x123456789abcdef1),)		\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+				     mem, INFO, 0) },			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (reg, mem, sz),		\
+					   mem, INFO) },
 
-#define CASE_RAND_SIZE(sz, reg, mem) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz), mem, INFO, 0) },
+#define CASE(creg, reg, cmem, mem) \
+  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, reg, mem)
 
-#define CASE(creg, reg, cmem, mem, rax, val) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, reg, mem, rax, val)
-
-#define CASE_RAND(creg, reg, cmem, mem) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_RAND_SIZE, reg, mem)
-
-  TST_FOREACH_GENERAL_REG2 (CASE, 0x123456789abcdef0, 0x123456789abcdef0)
-  TST_FOREACH_GENERAL_REG2 (CASE, 0x123456789abcdef0, 0x123456789abcdef1)
-
-  TST_FOREACH_GENERAL_REG2 (CASE_RAND)
+  TST_FOREACH_GENERAL_REG2 (CASE)
 };
 
 TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)

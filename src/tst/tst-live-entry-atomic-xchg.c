@@ -25,7 +25,8 @@ static struct tst_live_entry_atomic_case cases[] = {
 #define INFO	0 // tst_live_entry_atomic_common_info
 
 #define CASE_SIZE(sz, reg, mem) \
-  TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz), mem, INFO, 0),
+  TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz), mem, INFO, 0),	\
+  TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (reg, mem, sz), mem, INFO),
 
 #define CASE(creg, reg, cmem, mem) \
   TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, reg, mem)

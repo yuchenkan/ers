@@ -45,19 +45,16 @@ static struct caze cases[] = {
 #define CASE_SIZE(sz, reg, mem) \
   { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
 				     mem, INFO, init),			\
-    __builtin_offsetof (struct tst_live_entry_mcontext, reg) },
-
-#define CASE_RAND_SIZE(sz, reg, mem) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),	mem, INFO, 0) },
+    __builtin_offsetof (struct tst_live_entry_mcontext, reg) },		\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+				     mem, INFO, 0) },			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (reg, mem, sz),		\
+					   mem, INFO) },
 
 #define CASE(creg, reg, cmem, mem) \
   TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, reg, mem)
 
-#define CASE_RAND(creg, reg, cmem, mem) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_RAND_SIZE, reg, mem)
-
   TST_FOREACH_GENERAL_REG2 (CASE)
-  TST_FOREACH_GENERAL_REG2 (CASE_RAND)
 };
 
 TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)

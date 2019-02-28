@@ -42,6 +42,16 @@ asm (ERI_STR (TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (op)) ": "		\
     __builtin_offsetof (struct tst_live_entry_mcontext, mem),		\
     info, init }
 
+#define TST_LIVE_ENTRY_ATOMIC_FAULT	((void *) 1)
+
+#define TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT(op, mem, info) \
+  { ERI_STR (ERI_PASTE (op, _fault)),					\
+    TST_LIVE_ENTRY_ATOMIC_CTRL_ENTER (op),				\
+    TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (op),				\
+    TST_LIVE_ENTRY_ATOMIC_EXPR_ENTER (op),				\
+    __builtin_offsetof (struct tst_live_entry_mcontext, mem),		\
+    info, TST_LIVE_ENTRY_ATOMIC_FAULT }
+
 struct tst_live_entry_atomic_case
 {
   const char *name;

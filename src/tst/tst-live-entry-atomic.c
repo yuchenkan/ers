@@ -1,8 +1,11 @@
+#include "tst/tst-syscall.h"
 #include "tst/tst-live-entry-atomic.h"
 
 struct pack
 {
   void *expr_leave;
+  uint8_t fault;
+
   struct tst_live_entry_atomic_anchor *anchor;
 
   uint64_t val;
@@ -16,7 +19,7 @@ ctrl_step (struct tst_live_entry_mcontext *tctx, void *args)
 {
   struct pack *pack = args;
   pack->ctrl_tctx = *tctx;
-  pack->ctrl_val = pack->val;
+  if (! pack->fault) pack->ctrl_val = pack->val;
   return 0;
 }
 
@@ -28,7 +31,7 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
   eri_assert (tctx->rip == (uint64_t) pack->expr_leave);
   tst_assert_live_entry_mcontext_eq (&pack->ctrl_tctx, tctx,
 				     ~TST_LIVE_ENTRY_MCONTEXT_RIP_MASK);
-  eri_assert (pack->val == pack->ctrl_val);
+  if (! pack->fault) eri_assert (pack->val == pack->ctrl_val);
   return 0;
 }
 
@@ -38,7 +41,9 @@ tst (struct tst_rand *rand, struct tst_live_entry_atomic_case *caze,
 {
   if (caze->info) ((void (*) (void *)) caze->info) (caze);
 
-  struct pack pack = { caze->expr_leave, anchor };
+  uint8_t fault = caze->init == TST_LIVE_ENTRY_ATOMIC_FAULT;
+
+  struct pack pack = { caze->expr_leave, fault, anchor };
   struct tst_live_entry_mcontext tctx;
   uint64_t val;
 
@@ -51,17 +56,17 @@ tst (struct tst_rand *rand, struct tst_live_entry_atomic_case *caze,
     }
 
   tst_live_entry_rand_fill_mcontext (rand, &tctx);
-  *(uint64_t **)((uint8_t *) &tctx + caze->mem_off) = &pack.val;
+  *(uint64_t **)((uint8_t *) &tctx + caze->mem_off) = fault ? 0 : &pack.val;
   val = tst_rand_next (rand);
-  if (caze->init)
+  if (! fault && caze->init)
     ((void (*) (struct tst_live_entry_mcontext *,
 		uint64_t *, void *)) caze->init) (&tctx, &val, caze);
 
-  pack.val = val;
+  if (! fault) pack.val = val;
   tctx.rip = (uint64_t) caze->ctrl_enter;
   tst_live_entry (&tctx, ctrl_step, &pack);
 
-  pack.val = val;
+  if (! fault) pack.val = val;
   tctx.rip = (uint64_t) caze->expr_enter;
   tst_live_entry (&tctx, expr_step, &pack);
 }
@@ -80,5 +85,5 @@ tst_live_entry_atomic (struct tst_rand *rand,
 void
 tst_live_entry_atomic_common_info (struct tst_live_entry_atomic_case *caze)
 {
-  eri_info ("%s %u\n", caze->name, !! caze->init);
+  eri_info ("%s %u\n", caze->name, caze->init > TST_LIVE_ENTRY_ATOMIC_FAULT);
 }
