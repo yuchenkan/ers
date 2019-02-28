@@ -76,7 +76,7 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
   struct eri_live_thread *th = sig_th->th;
   struct eri_siginfo *info = &frame->info;
 
-  if (! eri_si_single_step (info))
+  if (! eri_si_single_step (info) && eri_si_sync (info))
     eri_debug ("sig = %u, frame = %lx, rip = %lx\n",
 	       info->sig, frame, frame->ctx.mctx.rip);
 
@@ -89,6 +89,8 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
   if (! thread_sig_filter (sig_th->group, info)) return;
 
   *info = *sig_th->sig_info;
+  eri_debug ("sig = %u, frame = %lx, rip = %lx\n",
+	     info->sig, frame, frame->ctx.mctx.rip);
   eri_live_thread_sig_handler (th, frame, &sig_th->sig_act);
 }
 
@@ -118,7 +120,6 @@ sig_handler_frame (struct eri_sigframe *frame)
   struct eri_siginfo *info = &frame->info;
 
   eri_assert (! eri_si_sync (info));
-  eri_debug ("sig = %u, code = %u\n", info->sig, info->code);
 
   int32_t th_pid = eri_live_thread_get_pid (th);
   int32_t th_tid = eri_live_thread_get_tid (th);
@@ -143,6 +144,8 @@ sig_handler_frame (struct eri_sigframe *frame)
   if (! eri_live_thread_sig_digest_act (th, info, &sig_th->sig_act))
     return;
 
+  eri_debug ("sig = %u, frame = %lx, code = %u\n",
+             info->sig, frame, info->code);
   sig_th->sig_info = info;
   eri_assert_syscall (tgkill, th_pid, th_tid, SIG_SIGNAL);
 
@@ -150,6 +153,7 @@ sig_handler_frame (struct eri_sigframe *frame)
       && ctx->mctx.rip != sig_th->event_sig_reset_restart)
     ctx->mctx.rip = sig_th->event_sig_restart;
 
+  eri_debug ("\n");
   eri_sig_fill_set (&ctx->sig_mask);
 }
 
@@ -495,6 +499,7 @@ static noreturn void
 event_loop (struct eri_live_signal_thread *sig_th)
 {
   eri_debug ("\n");
+  struct signal_thread_group *group = sig_th->group;
 
   uint8_t pending_exit_group = 0;
   while (1)
@@ -506,6 +511,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       eri_assert (! eri_syscall_is_error (res));
 
       uint32_t type = *(uint32_t *) event_type;
+      eri_debug ("%u\n", type);
       if (type == CLONE_EVENT)
 	clone (sig_th, event_type);
       else if (type == EXIT_EVENT)
@@ -531,7 +537,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       else if (type == SIG_MASK_ALL_EVENT)
 	{
 	  struct sig_mask_event *event = event_type;
-	  event->done = sig_mask_all (sig_th, &sig_th->group->sig_sync_info);
+	  event->done = sig_mask_all (sig_th, &group->sig_sync_info);
 	}
       else if (type == SIG_RESET_EVENT)
 	{
@@ -540,20 +546,17 @@ event_loop (struct eri_live_signal_thread *sig_th)
 
 	  if (pending_exit_group)
 	    {
-	      sig_th->sig_info = &sig_th->group->sig_exit_group_info;
+	      release_event (event_type);
+	      sig_th->sig_info = &group->sig_exit_group_info;
 	      signal_exit_group (sig_th);
 	    }
 	  else
 	    {
 	      sig_th->sig_info = 0;
-	      if (! event->mask) restore_sig_mask (sig_th);
-	      else
-		{
-		  eri_assert (sig_mask_async (sig_th, event->mask));
-		  set_sig_mask (sig_th, event->mask);
-		}
+	      if (event->mask) set_sig_mask (sig_th, event->mask);
+	      release_event (event_type);
+	      restore_sig_mask (sig_th);
 	    }
-	  event->done = 1;
 	}
       else if (type == SIG_FD_READ_EVENT)
 	sig_fd_read (sig_th, event_type);
@@ -564,13 +567,14 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	}
       else if (type == SIG_EXIT_GROUP_EVENT)
 	{
-	  if (sig_mask_all (sig_th, &sig_th->group->sig_exit_group_info))
+	  if (sig_mask_all (sig_th, &group->sig_exit_group_info))
 	    signal_exit_group (sig_th);
 	  else pending_exit_group = 1;
 	}
       else eri_assert (0);
 
-      if (type != CLONE_EVENT) release_event (event_type);
+      if (type != CLONE_EVENT && type != SIG_RESET_EVENT)
+	release_event (event_type);
     }
 }
 
@@ -922,7 +926,7 @@ eri_live_signal_thread_sig_reset (
 			struct eri_live_signal_thread *sig_th,
 			const struct eri_sigset *mask)
 {
-  eri_assert (thread_do_sig_mask (sig_th, SIG_RESET_EVENT, mask));
+  thread_do_sig_mask (sig_th, SIG_RESET_EVENT, mask);
 }
 
 void
@@ -977,7 +981,6 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
     { sig_th->event_pipe[0], ERI_POLLIN }
   };
 
-  uint8_t restore = 1;
   do
     {
       event->done = 1;
@@ -987,16 +990,13 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
       eri_sig_union_set (&mask, args->mask);
       eri_unlock (args->mask_lock);
 
-      args->result = eri_syscall (ppoll, fds, 2, 0, &mask);
-      if (args->result != -ERI_EINTR)
+      args->result = eri_syscall (ppoll, fds, 2, 0, &mask, ERI_SIG_SETSIZE);
+      if (args->result != ERI_EINTR)
 	{
 	  eri_assert (! eri_syscall_is_error (args->result));
 
 	  if (fds[1].revents & ERI_POLLIN)
-	    {
-	      restore = 0;
-	      args->result = ERI_EINTR;
-	    }
+	    args->result = ERI_EINTR;
 	}
 
       if (args->result != ERI_EINTR)
@@ -1004,7 +1004,7 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
     }
   while (args->result == ERI_EAGAIN);
 
-  if (restore) restore_sig_mask (sig_th);
+  if (args->result != ERI_EINTR) restore_sig_mask (sig_th);
 }
 
 uint8_t

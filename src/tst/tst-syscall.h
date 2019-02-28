@@ -23,6 +23,16 @@ struct tst_sys_clone_raise_args
   int32_t pid, tid;
 };
 
+#define tst_sys_clone_raise_init_args(args, signal, stack, raise_delay) \
+  do {									\
+    struct tst_sys_clone_raise_args *_args = args;			\
+    _args->sig = signal;						\
+    _args->top = tst_clone_top (stack);					\
+    _args->delay = raise_delay;						\
+    _args->pid = tst_assert_syscall (getpid);				\
+    _args->tid = tst_assert_syscall (gettid);				\
+  } while (0)
+
 void tst_assert_sys_clone_raise (struct tst_sys_clone_raise_args *args);
 
 #endif

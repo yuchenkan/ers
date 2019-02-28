@@ -482,6 +482,11 @@ sig_action (struct eri_live_thread *th)
 
       if (! sig_setup_user_frame (th, frame)) goto core;
 
+      struct eri_stack st = {
+	(uint64_t) th->sig_stack, 0, 2 * THREAD_SIG_STACK_SIZE
+      };
+      eri_assert_syscall (sigaltstack, &st, 0);
+
       eri_live_signal_thread_sig_reset (sig_th, &th_ctx->sig_act.mask);
       sig_act (th_ctx);
     }
@@ -1640,7 +1645,13 @@ syscall_do_dup2 (struct eri_live_thread *th)
 
   new_fd = eri_syscall (dup3, fd, new_fd, flags);
   if (! eri_syscall_is_error (new_fd))
-    sig_fd_copy_insert (group, new_fd, sig_fd);
+    {
+      struct sig_fd *new_sig_fd = sig_fd_rbt_get (group, &new_fd,
+						  ERI_RBT_EQ);
+      if (new_sig_fd) sig_fd_remove_free (group, new_sig_fd);
+
+      sig_fd_copy_insert (group, new_fd, sig_fd);
+    }
 
   eri_unlock (&group->sig_fd_lock);
   SYSCALL_RETURN_DONE (th_ctx, new_fd);
@@ -1680,8 +1691,8 @@ DEFINE_SYSCALL (fcntl)
       else
 	{
 	  int32_t flags = a[0];
-	  int32_t sig_fd_flags = flags & ERI_SFD_NONBLOCK;
-	  flags &= ~ERI_SFD_NONBLOCK;
+	  int32_t sig_fd_flags = flags & ERI_O_NONBLOCK;
+	  flags &= ~ERI_O_NONBLOCK;
 	  th_ctx->sregs.rax = eri_syscall (fcntl, fd, cmd, flags);
 	  if (! eri_syscall_is_error (th_ctx->sregs.rax))
 	    sig_fd->flags = sig_fd_flags;
@@ -1743,6 +1754,8 @@ syscall_do_read (struct eri_live_thread *th)
     res = SYSCALL_SIG_WAIT_RESTART;
   else
     {
+      if (args.result == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
+
       th_ctx->sregs.rax = args.result;
       res = SYSCALL_DONE;
     }

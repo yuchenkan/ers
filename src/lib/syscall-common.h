@@ -540,6 +540,7 @@
 
 #define ERI_O_RDONLY		00
 #define ERI_O_WRONLY		01
+#define ERI_O_RDWR		02
 #define ERI_O_CREAT		0100
 #define ERI_O_TRUNC		01000
 #define ERI_O_NONBLOCK		04000
@@ -731,6 +732,31 @@ struct eri_siginfo
       int32_t status;
     } chld;
   };
+};
+
+struct eri_signalfd_siginfo {
+  int32_t sig;
+  int32_t err;
+  int32_t code;
+  int32_t pid;
+  int32_t uid;
+  int32_t fd;
+  int32_t tid;
+  int32_t band;
+  int32_t overrun;
+  int32_t trapno;
+  int32_t status;
+  int32_t val;
+  uint64_t ptr;
+  int64_t utime;
+  int64_t stime;
+  uint64_t addr;
+  uint16_t addr_lsb;
+  uint16_t pad2;
+  int32_t syscall;
+  uint64_t call_addr;
+  uint32_t arch;
+  uint8_t pad[28];
 };
 
 #define eri_si_from_kernel(info)	((info)->code > 0)

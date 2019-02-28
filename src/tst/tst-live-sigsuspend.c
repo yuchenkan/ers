@@ -15,7 +15,7 @@ sig_handler (int32_t sig)
 }
 
 static aligned16 uint8_t stack[1024 * 1024];
-static struct tst_sys_clone_raise_args raise_args = { ERI_SIGINT };
+static struct tst_sys_clone_raise_args raise_args;
 
 noreturn void tst_live_start (void);
 
@@ -26,12 +26,8 @@ tst_live_start (void)
   tst_rand_init (&rand);
 
   uint32_t delay = tst_rand (&rand, 0, 64);
-
-  raise_args.top = tst_clone_top (stack);
-  raise_args.delay = tst_rand (&rand, 0, 64);
-
-  raise_args.pid = tst_assert_syscall (getpid);
-  raise_args.tid = tst_assert_syscall (gettid);
+  tst_sys_clone_raise_init_args (&raise_args, ERI_SIGINT, stack,
+				 tst_rand (&rand, 0, 64));
 
   struct eri_sigset mask;
   eri_sig_fill_set (&mask);
