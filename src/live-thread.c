@@ -912,7 +912,7 @@ eri_live_thread_join (struct eri_live_thread *th)
 
 #define SYSCALL_DONE			0
 #define SYSCALL_SIG_WAIT_RESTART	1
-#define SYSCALL_SIG_FAULT		2
+#define SYSCALL_SEG_FAULT		2
 
 #define SYSCALL_RETURN_DONE(th_ctx, result) \
   do {									\
@@ -1312,7 +1312,7 @@ DEFINE_SYSCALL (rt_sigreturn)
 
   struct eri_sigframe frame;
   if (! copy_from_user (th, &frame, user_frame, sizeof frame))
-    return SYSCALL_SIG_FAULT;
+    return SYSCALL_SEG_FAULT;
 
   struct eri_ucontext *ctx = &frame.ctx;
   if (ctx->mctx.fpstate)
@@ -1320,13 +1320,13 @@ DEFINE_SYSCALL (rt_sigreturn)
       const struct eri_fpstate *user_fpstate = ctx->mctx.fpstate;
       struct eri_fpstate fpstate;
       if (! copy_from_user (th, &fpstate, user_fpstate, sizeof fpstate))
-	return SYSCALL_SIG_FAULT;
+	return SYSCALL_SEG_FAULT;
       if (fpstate.size + 64 + sizeof frame + 16 + 8 >= ERI_MINSIGSTKSZ)
-	return SYSCALL_SIG_FAULT;
+	return SYSCALL_SEG_FAULT;
 
       rsp = eri_round_down (rsp - fpstate.size, 64);
       if (! copy_from_user (th, (void *) rsp, user_fpstate, fpstate.size))
-	return SYSCALL_SIG_FAULT;
+	return SYSCALL_SEG_FAULT;
 
       ctx->mctx.fpstate = (void *) rsp;
     }
@@ -1961,7 +1961,7 @@ syscall (struct eri_live_thread *th)
       {									\
       case SYSCALL_DONE: goto done;					\
       case SYSCALL_SIG_WAIT_RESTART: goto sig_wait_restart;		\
-      case SYSCALL_SIG_FAULT: goto sig_fault;				\
+      case SYSCALL_SEG_FAULT: goto seg_fault;				\
       default: eri_assert (0);						\
       }									\
   } while (0)
@@ -1972,8 +1972,8 @@ syscall (struct eri_live_thread *th)
   ERI_SYSCALLS (IF_SYSCALL)
   eri_assert (0);
 
-sig_fault:
-  eri_debug ("sig_fault\n");
+seg_fault:
+  eri_debug ("seg_fault\n");
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_NONE);
