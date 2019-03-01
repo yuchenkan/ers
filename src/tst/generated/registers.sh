@@ -24,6 +24,7 @@ for r in $gregs; do
   echo -n '  p ('$(up $r)', '$r', '$(up $s)', '$s', ##__VA_ARGS__)'
   done
 done
+echo
 
 echo
 echo '#endif'
