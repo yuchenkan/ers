@@ -1,11 +1,13 @@
 #include <compiler.h>
 #include <common.h>
 
+#include <lib/lock.h>
 #include <lib/tst-util.h>
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 
 static aligned16 uint8_t stack[1024 * 1024];
+static aligned16 uint8_t stack2[1024 * 1024];
 static struct tst_sys_clone_raise_args raise_args;
 
 static void
@@ -21,6 +23,7 @@ assert_raise_read (uint32_t delay, int32_t sig, int32_t fd)
   eri_assert (siginfo.sig == sig);
   eri_assert (siginfo.code == ERI_SI_TKILL);
   eri_assert (siginfo.pid == raise_args.pid);
+  eri_lock (&raise_args.alive);
 }
 
 static uint8_t handled;
@@ -30,29 +33,6 @@ sig_handler (int32_t sig)
 {
   eri_debug ("\n");
   handled = 1;
-}
-
-static noreturn void raise (void);
-
-static noreturn void
-raise (void)
-{
-  tst_yield (raise_args.delay);
-  uint32_t i = 1;
-  while (1)
-    {
-      tst_assert_syscall (tgkill, raise_args.pid, raise_args.tid, ERI_SIGINT);
-      tst_yield (i *= 2);
-    }
-}
-
-static noreturn void exit_group (uint32_t delay);
-
-static noreturn void
-exit_group (uint32_t delay)
-{
-  tst_yield (delay);
-  tst_assert_sys_exit_group (0);
 }
 
 noreturn void tst_live_start (void);
@@ -65,7 +45,7 @@ tst_live_start (void)
 
   uint32_t delay = tst_rand (&rand, 0, 64);
   tst_sys_clone_raise_init_args (&raise_args, 0, stack,
-				 tst_rand (&rand, 0, 64));
+				 tst_rand (&rand, 0, 64), 1);
   eri_info ("%u %u\n", delay, raise_args.delay);
 
   struct eri_sigset mask;
@@ -124,10 +104,9 @@ tst_live_start (void)
   eri_sig_fill_set (&act.mask);
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
-  struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack), 0, 0, 0, raise
-  };
-  tst_assert_sys_clone (&args);
+  raise_args.sig = ERI_SIGINT;
+  raise_args.count = 0;
+  tst_assert_sys_clone_raise (&raise_args);
   tst_yield (delay);
 
   struct eri_signalfd_siginfo siginfo;
@@ -138,9 +117,9 @@ tst_live_start (void)
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
-  args.fn = exit_group;
-  args.a0 = (void *) (uint64_t) raise_args.delay;
-  tst_assert_sys_clone (&args);
+  struct tst_sys_clone_exit_group_args exit_args;
+  tst_sys_clone_exit_group_init_args (&exit_args, stack2, raise_args.delay);
+  tst_assert_sys_clone_exit_group (&exit_args);
 
   tst_yield (delay);
   tst_assert_syscall (read, fd2, &siginfo, sizeof siginfo);

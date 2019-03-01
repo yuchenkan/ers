@@ -18,7 +18,7 @@ tst_live_start (void)
 
   uint32_t delay = tst_rand (&rand, 0, 64);
   tst_sys_clone_raise_init_args (&raise_args, ERI_SIGINT, stack,
-				 tst_rand (&rand, 0, 64));
+				 tst_rand (&rand, 0, 64), 1);
 
   struct eri_sigset mask;
   eri_sig_fill_set (&mask);
