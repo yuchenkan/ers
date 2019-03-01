@@ -1,6 +1,7 @@
 #ifndef ERI_TST_TST_UTIL_H
 #define ERI_TST_TST_UTIL_H
 
+#include <lib/util.h>
 #include <lib/syscall.h>
 
 #define tst_yield(n) \
@@ -18,5 +19,11 @@
 
 /* XXX: check other flags */
 #define TST_RFLAGS_STATUS_MASK		0xd5
+
+#define TST_STUB(symbol) \
+  asm (ERI_STR (ERI_SYMBOL (symbol)) ERI_STR (ERI_ASSERT_FALSE));
+
+#define tst_enable_trace() \
+  asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc");
 
 #endif

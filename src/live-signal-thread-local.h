@@ -53,7 +53,7 @@ struct eri_live_signal_thread *init_group (
 noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
 uint8_t sig_mask_async (struct eri_live_signal_thread *sig_th,
-			      const struct eri_sigset *mask);
+			const struct eri_sigset *mask);
 
 #endif
 

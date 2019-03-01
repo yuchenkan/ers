@@ -29,8 +29,6 @@
 #define ERI_OMIT(...)
 #endif
 
-#ifdef __ASSEMBLER__
-
 #define ERI_SYMBOL(symbol) \
   .global symbol;							\
   .hidden symbol;							\
@@ -55,7 +53,7 @@ func:
   movq	$0, %r15;							\
   movq	$0, (%r15)
 
-#else
+#ifndef __ASSEMBLER__
 
 #include <stdint.h>
 
