@@ -8,6 +8,7 @@
 #include <lib/syscall.h>
 
 #include <tst/live-sig-hand-ut.h>
+#include <tst/tst-live-sig-hand-ut.h>
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 #include <tst/generated/registers.h>
@@ -16,7 +17,10 @@ static uint8_t handled;
 
 static aligned16 uint8_t stack[1024 * 1024];
 
-static void
+static noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
+				  struct eri_ucontext *ctx);
+
+static noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   handled = 1;
@@ -68,15 +72,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_debug ("%lx\n", ctx->mctx.rip);
   if (ctx->mctx.rip == 0) reach_done = 1;
 
-  ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
-
-  info->code = 0;
-  struct eri_sigframe *frame = (void *) ((uint64_t) info
-		    - __builtin_offsetof (struct eri_sigframe, info));
-  struct eri_sigaction act = {
-    sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER, 0
-  };
-  eri_live_thread__sig_handler (sig_th.th, frame, &act);
+  tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
 }
 
 uint32_t

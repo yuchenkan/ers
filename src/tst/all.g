@@ -4,7 +4,7 @@ let tsts = [ 'rtld' ];
 
 let live = [ 'start', 'clone', 'clear-tid', 'raise', 'sig-ignore', 'sig-nest',
 	     'sig-exit-group', 'sig-sig-mask', 'sig-sig-prepare-sync',
-	     'sig-mask-async-ut', 'sig-hand-main-ut',
+	     'sig-mask-async-ut', 'sig-hand-main-ut', 'sig-hand-syscall-ut',
 	     'sigaltstack', 'sigprocmask', 'sigpending', 'sigsuspend', 'sigtimedwait', 'signalfd' ];
 
 live = live.concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));

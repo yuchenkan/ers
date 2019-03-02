@@ -1983,7 +1983,9 @@ syscall (struct eri_live_thread *th)
   if (nr == ERI_PASTE (__NR_, name)) SYSCALL (name);
 
   ERI_SYSCALLS (IF_SYSCALL)
-  eri_assert (0);
+
+  th_ctx->sregs.rax = ERI_ENOSYS;
+  goto done;
 
 seg_fault:
   eri_debug ("seg_fault\n");
