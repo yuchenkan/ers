@@ -3,7 +3,7 @@
 #include <lib/util.h>
 #include <lib/atomic.h>
 
-#include <tst/live-sig-hand-main-ut.h>
+#include <tst/live-sig-hand-ut.h>
 #include <tst/tst-util.h>
 
 TST_UNUSED (eri_helper__invoke)

@@ -1,6 +1,6 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const srcs = [ 'common.c.o', 'live-thread.l', `${env.trim (goal)}.c.o`,
+const srcs = [ 'common.c.o', 'live-thread.l', `tst/live-sig-hand-ut.c.o`,
 	       'tst/live-thread-recorder.c.o', 'lib.a' ];
 const keep = [ '^eri_live_thread__.*', '^eri_global_enable_debug$' ];
 

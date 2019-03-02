@@ -7,21 +7,34 @@
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 
-#include <tst/live-sig-hand-main-ut.h>
+#include <tst/live-sig-hand-ut.h>
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 #include <tst/generated/registers.h>
 
 static uint8_t handled;
 
+static aligned16 uint8_t stack[1024 * 1024];
+
 static void
-sig_handler (int32_t sig) { handled = 1; }
+sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  handled = 1;
+
+#define ZERO(creg, reg) \
+  if (__builtin_offsetof (struct eri_mcontext, reg)			\
+	!= __builtin_offsetof (struct eri_mcontext, rsp))		\
+    eri_assert (ctx->mctx.reg == 0);
+  TST_FOREACH_GENERAL_REG (ZERO)
+
+  eri_assert (ctx->mctx.rsp == (uint64_t) tst_clone_top (stack));
+  eri_assert (ctx->mctx.rip == 0);
+  eri_assert ((ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK) == 0);
+  eri_assert_sys_exit (0);
+}
 
 static aligned16 uint8_t buf[256 * 1024 * 1024];
 static struct eri_live_signal_thread sig_th;
-static struct eri_rtld_args rtld_args;
-
-static aligned16 uint8_t stack[1024 * 1024];
 
 static uint8_t unblocked;
 
@@ -61,24 +74,9 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   struct eri_sigframe *frame = (void *) ((uint64_t) info
 		    - __builtin_offsetof (struct eri_sigframe, info));
   struct eri_sigaction act = {
-    sig_handler, ERI_SA_RESTORER, tst_assert_sys_sigreturn
+    sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER, 0
   };
   eri_live_thread__sig_handler (sig_th.th, frame, &act);
-}
-
-static void
-segv (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
-{
-#define ZERO(creg, reg) \
-  if (__builtin_offsetof (struct eri_mcontext, reg)			\
-	!= __builtin_offsetof (struct eri_mcontext, rsp))		\
-    eri_assert (ctx->mctx.reg == 0);
-  TST_FOREACH_GENERAL_REG (ZERO)
-
-  eri_assert (ctx->mctx.rsp == (uint64_t) tst_clone_top (stack));
-  eri_assert (ctx->mctx.rip == 0);
-  eri_assert ((ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK) == 0);
-  eri_assert_sys_exit (0);
 }
 
 uint32_t
@@ -92,22 +90,20 @@ tst_main (void)
   sig_th.pid = eri_assert_syscall (getpid);
   sig_th.tid = eri_assert_syscall (gettid);
 
-  rtld_args.rsp = (uint64_t) tst_clone_top (stack);
-
   extern uint8_t tst_live_map_start[];
   extern uint8_t tst_live_map_end[];
-  rtld_args.map_start = (uint64_t) tst_live_map_start;
-  rtld_args.map_end = (uint64_t) tst_live_map_end;
+
+  struct eri_rtld_args rtld_args = {
+    .rsp = (uint64_t) tst_clone_top (stack),
+    .map_start = (uint64_t) tst_live_map_start,
+    .map_end = (uint64_t) tst_live_map_end
+  };
 
   struct eri_sigaction act = {
     step, ERI_SA_SIGINFO | ERI_SA_ONSTACK | ERI_SA_RESTORER,
     eri_assert_sys_sigreturn
   };
   eri_assert_sys_sigaction (ERI_SIGTRAP, &act, 0);
-
-  act.act = segv;
-  eri_sig_fill_set (&act.mask);
-  eri_assert_sys_sigaction (ERI_SIGSEGV, &act, 0);
 
   struct eri_sigset mask;
   eri_sig_empty_set (&mask);
