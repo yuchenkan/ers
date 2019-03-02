@@ -4,7 +4,7 @@
 #include <rtld.h>
 #include <common.h>
 
-static uint8_t buf[256 * 1024 * 1024];
+static aligned16 uint8_t buf[256 * 1024 * 1024];
 static aligned16 uint8_t stack[8 * 1024 * 1024];
 
 noreturn void tst_main (void **args);
@@ -30,7 +30,7 @@ tst_main (void **args)
   struct eri_rtld_args rtld_args = {
     0, 0, (uint64_t) top, (uint64_t) tst_live_start,
     .map_start = (uint64_t) tst_live_map_start,
-    .map_end = (uint64_t)tst_live_map_end
+    .map_end = (uint64_t) tst_live_map_end
   };
 
   eri_live_signal_thread__init_main (&common_args, &rtld_args);
