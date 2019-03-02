@@ -15,7 +15,7 @@ struct eri_helper
   int32_t alive;
 
   int32_t event_pipe[2];
-  eri_helper_sigsegv_handler_t segv_hand;
+  eri_helper__sigsegv_handler_t segv_hand;
 
   aligned16 uint8_t stack[0];
 };
@@ -24,7 +24,7 @@ struct event
 {
   void (*fn) (void *);
   void *args;
-  eri_helper_sigsegv_handler_t segv_hand;
+  eri_helper__sigsegv_handler_t segv_hand;
 };
 
 static void
@@ -65,7 +65,7 @@ start (struct eri_helper *helper, int32_t ppid)
 
       void (*fn) (void *) = event->fn;
       void *args = event->args;
-      eri_helper_sigsegv_handler_t segv_hand = event->segv_hand;
+      eri_helper__sigsegv_handler_t segv_hand = event->segv_hand;
       eri_assert_mtfree (helper->pool, event);
 
       helper->segv_hand = segv_hand;
@@ -78,7 +78,7 @@ start (struct eri_helper *helper, int32_t ppid)
 }
 
 struct eri_helper *
-eri_helper_start (struct eri_mtpool *pool,
+eri_helper__start (struct eri_mtpool *pool,
 		  uint64_t stack_size, int32_t pid)
 {
   eri_debug ("\n");
@@ -109,7 +109,7 @@ eri_helper_start (struct eri_mtpool *pool,
 }
 
 void
-eri_helper_exit (struct eri_helper *helper)
+eri_helper__exit (struct eri_helper *helper)
 {
   struct event *event = 0;
   eri_assert_syscall (write, helper->event_pipe[1], &event, sizeof event);
@@ -121,8 +121,8 @@ eri_helper_exit (struct eri_helper *helper)
 }
 
 void
-eri_helper_invoke (struct eri_helper *helper, void (*fn) (void *),
-		   void *args, eri_helper_sigsegv_handler_t segv_hand)
+eri_helper__invoke (struct eri_helper *helper, void (*fn) (void *),
+		    void *args, eri_helper__sigsegv_handler_t segv_hand)
 {
   struct event *event = eri_assert_mtmalloc (helper->pool, sizeof *event);
   event->fn = fn;
@@ -132,7 +132,7 @@ eri_helper_invoke (struct eri_helper *helper, void (*fn) (void *),
 }
 
 int32_t
-eri_helper_get_pid (const struct eri_helper *helper)
+eri_helper__get_pid (const struct eri_helper *helper)
 {
   return helper->pid;
 }

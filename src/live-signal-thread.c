@@ -82,7 +82,7 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
 
   if (eri_si_sync (info))
     {
-      eri_live_thread_sig_handler (th, frame, 0);
+      eri_live_thread__sig_handler (th, frame, 0);
       return;
     }
 
@@ -91,7 +91,7 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
   *info = *sig_th->sig_info;
   eri_debug ("sig = %u, frame = %lx, rip = %lx\n",
 	     info->sig, frame, frame->ctx.mctx.rip);
-  eri_live_thread_sig_handler (th, frame, &sig_th->sig_act);
+  eri_live_thread__sig_handler (th, frame, &sig_th->sig_act);
 }
 
 static void
@@ -121,12 +121,12 @@ sig_handler_frame (struct eri_sigframe *frame)
 
   eri_assert (! eri_si_sync (info));
 
-  int32_t th_pid = eri_live_thread_get_pid (th);
-  int32_t th_tid = eri_live_thread_get_tid (th);
+  int32_t th_pid = eri_live_thread__get_pid (th);
+  int32_t th_tid = eri_live_thread__get_tid (th);
 
   if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info)
       && (info->chld.pid == th_pid
-	  || info->chld.pid == eri_helper_get_pid (sig_th->group->helper)))
+	  || info->chld.pid == eri_helper__get_pid (sig_th->group->helper)))
     return;
 
   /* From sig_route_xcpu.  */
@@ -141,7 +141,7 @@ sig_handler_frame (struct eri_sigframe *frame)
 
   sig_get_act (sig_th->group, info->sig, &sig_th->sig_act);
 
-  if (! eri_live_thread_sig_digest_act (th, info, &sig_th->sig_act))
+  if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act))
     return;
 
   eri_debug ("sig = %u, frame = %lx, code = %u\n",
@@ -238,7 +238,7 @@ init_main (struct signal_thread_group *group,
 
   init_event (sig_th, &rtld_args->sig_mask);
 
-  sig_th->th = eri_live_thread_create_main (sig_th, rtld_args);
+  sig_th->th = eri_live_thread__create_main (sig_th, rtld_args);
 
   eri_debug ("sig_th %lx\n", sig_th);
   eri_assert_syscall (set_tid_address, &sig_th->alive);
@@ -268,7 +268,7 @@ init_group (struct eri_common_args *args, struct eri_rtld_args *rtld_args)
 }
 
 void
-eri_live_signal_thread_init_thread_sig_stack (
+eri_live_signal_thread__init_thread_sig_stack (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t *stack, uint64_t stack_size)
 {
@@ -281,7 +281,7 @@ eri_live_signal_thread_init_thread_sig_stack (
 static void
 init_sig_stack (struct eri_live_signal_thread *sig_th)
 {
-  eri_live_signal_thread_init_thread_sig_stack (
+  eri_live_signal_thread__init_thread_sig_stack (
 	sig_th, sig_th->sig_stack, SIGNAL_THREAD_SIG_STACK_SIZE);
 }
 
@@ -302,12 +302,12 @@ start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
   eri_debug ("\n");
 
   struct signal_thread_group *group = sig_th->group;
-  group->helper = eri_helper_start (group->pool, 256 * 1024, group->pid);
-  int32_t pgid = eri_helper_get_pid (group->helper);
+  group->helper = eri_helper__start (group->pool, 256 * 1024, group->pid);
+  int32_t pgid = eri_helper__get_pid (group->helper);
   eri_assert_syscall (setpgid, pgid, 0);
 
-  eri_live_thread_clone_main (sig_th->th);
-  int32_t th_pid = eri_live_thread_get_pid (sig_th->th);
+  eri_live_thread__clone_main (sig_th->th);
+  int32_t th_pid = eri_live_thread__get_pid (sig_th->th);
   eri_assert_syscall (setpgid, th_pid, pgid);
   eri_unlock (lock);
 
@@ -518,7 +518,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	exit (sig_th, event_type);
       else if (type == DIE_EVENT)
 	{
-	  eri_live_thread_join (sig_th->th);
+	  eri_live_thread__join (sig_th->th);
 	  eri_assert_sys_thread_die (&sig_th->alive);
 	}
       else if (type == SIG_ACTION_EVENT)
@@ -580,7 +580,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 
 struct clone_event {
   uint32_t type;
-  struct eri_live_signal_thread_clone_args *args;
+  struct eri_live_signal_thread__clone_args *args;
 
   int32_t clone_thread_return;
 
@@ -628,13 +628,13 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   if (! try_hold_exit_group (&group->exit_group_lock)) goto signaled;
 
-  struct eri_live_signal_thread_clone_args *args = event->args;
+  struct eri_live_signal_thread__clone_args *args = event->args;
 
   struct eri_live_signal_thread *sig_cth = event->sig_cth = create (group);
 
   init_event (sig_cth, &sig_th->sig_mask);
 
-  sig_cth->th = eri_live_thread_create (sig_cth, args->args);
+  sig_cth->th = eri_live_thread__create (sig_cth, args->args);
 
   eri_atomic_inc (&group->thread_count);
 
@@ -663,7 +663,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     {
       eri_atomic_dec (&group->thread_count);
 
-      eri_live_thread_destroy (sig_cth->th, 0);
+      eri_live_thread__destroy (sig_cth->th, 0);
 
       fini_event (sig_cth);
       eri_assert_mtfree (group->pool, sig_cth);
@@ -681,8 +681,8 @@ signaled:
 }
 
 uint8_t
-eri_live_signal_thread_clone (struct eri_live_signal_thread *sig_th,
-			      struct eri_live_signal_thread_clone_args *args)
+eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
+			       struct eri_live_signal_thread__clone_args *args)
 {
   struct clone_event event = { CLONE_EVENT, args, 1, 1, 1, 1 };
   proc_event (sig_th, &event);
@@ -692,7 +692,7 @@ eri_live_signal_thread_clone (struct eri_live_signal_thread *sig_th,
   if (! eri_syscall_is_error (args->result))
     {
       args->tid = args->result;
-      args->result = eri_live_thread_clone (event.sig_cth->th);
+      args->result = eri_live_thread__clone (event.sig_cth->th);
     }
 
   eri_unlock (&event.clone_thread_return);
@@ -755,13 +755,13 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
       event->done = 1;
       release_event (event);
-      eri_live_thread_join (th);
+      eri_live_thread__join (th);
 
-      eri_live_thread_destroy (th, group->helper);
+      eri_live_thread__destroy (th, group->helper);
       remove_from_group (sig_th);
 
       fini_event (sig_th);
-      eri_helper_invoke (group->helper, cleanup, sig_th, 0);
+      eri_helper__invoke (group->helper, cleanup, sig_th, 0);
 
       unhold_exit_group (&group->exit_group_lock);
 
@@ -784,7 +784,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 	if (it != sig_th)
 	  {
 	    join (it);
-	    eri_live_thread_destroy (it->th, 0);
+	    eri_live_thread__destroy (it->th, 0);
 	    thread_lst_remove (group, it);
 	    eri_assert_mtfree (group->pool, it);
 	  }
@@ -795,12 +795,12 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
   event->done = 1;
   release_event (event);
-  eri_live_thread_join (th);
+  eri_live_thread__join (th);
 
-  eri_live_thread_destroy (th, 0);
+  eri_live_thread__destroy (th, 0);
 
   eri_debug ("exit helper\n");
-  eri_helper_exit (group->helper);
+  eri_helper__exit (group->helper);
   eri_lock (&group->watch.alive);
 
   eri_debug ("destroy\n");
@@ -817,8 +817,8 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 }
 
 uint8_t
-eri_live_signal_thread_exit (struct eri_live_signal_thread *sig_th,
-			     uint8_t group, uint64_t status)
+eri_live_signal_thread__exit (struct eri_live_signal_thread *sig_th,
+			      uint8_t group, uint64_t status)
 {
   eri_debug ("status = %lu\n", status);
   struct exit_event event = { EXIT_EVENT, group, status };
@@ -830,12 +830,12 @@ static void
 signal_exit_group (struct eri_live_signal_thread *sig_th)
 {
   struct eri_live_thread *th = sig_th->th;
-  eri_assert_syscall (tgkill, eri_live_thread_get_pid (th),
-		      eri_live_thread_get_tid (th), SIG_EXIT_GROUP);
+  eri_assert_syscall (tgkill, eri_live_thread__get_pid (th),
+		      eri_live_thread__get_tid (th), SIG_EXIT_GROUP);
 }
 
 void
-eri_live_signal_thread_die (struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__die (struct eri_live_signal_thread *sig_th)
 {
   uint32_t event = DIE_EVENT;
   queue_event (sig_th, &event);
@@ -874,9 +874,9 @@ sig_action (struct eri_live_signal_thread *sig_th,
 }
 
 uint8_t
-eri_live_signal_thread_sig_action (struct eri_live_signal_thread *sig_th,
-				   int32_t sig, const struct eri_sigaction *act,
-				   struct eri_sigaction *old_act)
+eri_live_signal_thread__sig_action (struct eri_live_signal_thread *sig_th,
+				    int32_t sig, const struct eri_sigaction *act,
+				    struct eri_sigaction *old_act)
 {
   if (! act)
     {
@@ -899,7 +899,7 @@ thread_do_sig_mask (struct eri_live_signal_thread *sig_th,
 }
 
 uint8_t
-eri_live_signal_thread_sig_mask_async (
+eri_live_signal_thread__sig_mask_async (
 			struct eri_live_signal_thread *sig_th,
 			const struct eri_sigset *mask)
 {
@@ -907,7 +907,7 @@ eri_live_signal_thread_sig_mask_async (
 }
 
 uint8_t
-eri_live_signal_thread_sig_tmp_mask_async (
+eri_live_signal_thread__sig_tmp_mask_async (
 			struct eri_live_signal_thread *sig_th,
 			const struct eri_sigset *mask)
 {
@@ -915,14 +915,14 @@ eri_live_signal_thread_sig_tmp_mask_async (
 }
 
 uint8_t
-eri_live_signal_thread_sig_mask_all (
+eri_live_signal_thread__sig_mask_all (
 			struct eri_live_signal_thread *sig_th)
 {
   return thread_do_sig_mask (sig_th, SIG_MASK_ALL_EVENT, 0);
 }
 
 void
-eri_live_signal_thread_sig_reset (
+eri_live_signal_thread__sig_reset (
 			struct eri_live_signal_thread *sig_th,
 			const struct eri_sigset *mask)
 {
@@ -930,11 +930,11 @@ eri_live_signal_thread_sig_reset (
 }
 
 void
-eri_live_signal_thread_sig_prepare_sync (
+eri_live_signal_thread__sig_prepare_sync (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_siginfo *info, struct eri_sigaction *act)
 {
-  if (eri_live_signal_thread_sig_mask_all (sig_th))
+  if (eri_live_signal_thread__sig_mask_all (sig_th))
     {
       sig_get_act (sig_th->group, info->sig, act);
       return;
@@ -954,7 +954,7 @@ eri_live_signal_thread_sig_prepare_sync (
 struct sig_fd_read_event
 {
   uint32_t type;
-  struct eri_live_signal_thread_sig_fd_read_args *args;
+  struct eri_live_signal_thread__sig_fd_read_args *args;
 
   uint8_t done;
 };
@@ -963,7 +963,7 @@ static void
 sig_fd_read (struct eri_live_signal_thread *sig_th,
 	     struct sig_fd_read_event *event)
 {
-  struct eri_live_signal_thread_sig_fd_read_args *args = event->args;
+  struct eri_live_signal_thread__sig_fd_read_args *args = event->args;
   int32_t fd = args->fd;
   int32_t nr = args->nr;
   const uint64_t *a = args->a;
@@ -1008,9 +1008,9 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
 }
 
 uint8_t
-eri_live_signal_thread_sig_fd_read (
+eri_live_signal_thread__sig_fd_read (
 			struct eri_live_signal_thread *sig_th,
-			struct eri_live_signal_thread_sig_fd_read_args *args)
+			struct eri_live_signal_thread__sig_fd_read_args *args)
 {
   struct sig_fd_read_event event = { SIG_FD_READ_EVENT, args };
   proc_event (sig_th, &event);
@@ -1018,7 +1018,7 @@ eri_live_signal_thread_sig_fd_read (
 }
 
 void
-eri_live_signal_thread_syscall (
+eri_live_signal_thread__syscall (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_sys_syscall_args *args)
 {
@@ -1027,39 +1027,39 @@ eri_live_signal_thread_syscall (
 }
 
 uint8_t
-eri_live_signal_thread_signaled (
+eri_live_signal_thread__signaled (
 			struct eri_live_signal_thread *sig_th)
 {
   return !! eri_atomic_load (&sig_th->sig_info);
 }
 
 const struct eri_common_args *
-eri_live_signal_thread_get_args (const struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__get_args (const struct eri_live_signal_thread *sig_th)
 {
   return &sig_th->group->args;
 }
 
 struct eri_mtpool *
-eri_live_signal_thread_get_pool (struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__get_pool (struct eri_live_signal_thread *sig_th)
 {
   return sig_th->group->pool;
 }
 
 const struct eri_sigset *
-eri_live_signal_thread_get_sig_mask (
+eri_live_signal_thread__get_sig_mask (
 			const struct eri_live_signal_thread *sig_th)
 {
   return &sig_th->sig_mask;
 }
 
 int32_t
-eri_live_signal_thread_get_pid (const struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__get_pid (const struct eri_live_signal_thread *sig_th)
 {
   return sig_th->group->pid;
 }
 
 int32_t
-eri_live_signal_thread_get_tid (const struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__get_tid (const struct eri_live_signal_thread *sig_th)
 {
   return sig_th->tid;
 }

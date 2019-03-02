@@ -20,10 +20,22 @@
 /* XXX: check other flags */
 #define TST_RFLAGS_STATUS_MASK		0xd5
 
-#define TST_STUB(symbol) \
-  asm (ERI_STR (ERI_SYMBOL (symbol)) ERI_STR (ERI_ASSERT_FALSE));
+#define TST_UNUSED(func) \
+  asm (ERI_STR (ERI_SYMBOL (func)) ERI_STR (ERI_ASSERT_FALSE));
+
+#define TST_WEAK_SYMBOL(symbol) \
+  .global symbol;							\
+  .weak symbol;								\
+  .hidden symbol;							\
+symbol:
+
+#define TST_WEAK_BLANK_ZERO(func) \
+asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
+
+#define TST_WEAK_BLANK(func) \
+asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
 
 #define tst_enable_trace() \
-  asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc");
+asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc");
 
 #endif

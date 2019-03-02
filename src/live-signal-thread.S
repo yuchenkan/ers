@@ -15,7 +15,7 @@ ERI_FUNCTION (sig_handler)
   jmp	sig_handler_frame
   ERI_END_FUNCTION (sig_handler)
 
-ERI_FUNCTION (eri_live_signal_thread_init_main)
+ERI_FUNCTION (eri_live_signal_thread__init_main)
   subq	$8, %rsp
   call	init_group
 
@@ -25,7 +25,7 @@ ERI_FUNCTION (eri_live_signal_thread_init_main)
   movq	%rax, %rdi
   call	start_group
   ERI_ASSERT_FALSE
-  ERI_END_FUNCTION (eri_live_signal_thread_init_main)
+  ERI_END_FUNCTION (eri_live_signal_thread__init_main)
 
 #define EVENT_SIG_RESTART	SIGNAL_THREAD_EVENT_SIG_RESTART
 #define EVENT_SIG_RESET_RESTART	SIGNAL_THREAD_EVENT_SIG_RESET_RESTART

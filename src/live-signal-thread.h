@@ -17,46 +17,46 @@ struct eri_live_signal_thread;
 
 #define ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP	ERI_NSIG
 
-void eri_live_signal_thread_init_thread_sig_stack (
+void eri_live_signal_thread__init_thread_sig_stack (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t *stack, uint64_t stack_size);
 
-noreturn void eri_live_signal_thread_init_main (
+noreturn void eri_live_signal_thread__init_main (
 		struct eri_common_args *args,
 		struct eri_rtld_args *rtld_args);
 
-struct eri_live_signal_thread_clone_args
+struct eri_live_signal_thread__clone_args
 {
   void *args;
   int32_t tid;
   uint64_t result;
 };
 
-uint8_t eri_live_signal_thread_clone (
+uint8_t eri_live_signal_thread__clone (
 		struct eri_live_signal_thread *sig_th,
-		struct eri_live_signal_thread_clone_args *args);
+		struct eri_live_signal_thread__clone_args *args);
 
-uint8_t eri_live_signal_thread_exit (
+uint8_t eri_live_signal_thread__exit (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t group, uint64_t status);
 
-void eri_live_signal_thread_die (
+void eri_live_signal_thread__die (
 		struct eri_live_signal_thread *sig_th);
 
-uint8_t eri_live_signal_thread_sig_action (
+uint8_t eri_live_signal_thread__sig_action (
 		struct eri_live_signal_thread *sig_th,
 		int32_t sig, const struct eri_sigaction *act,
 		struct eri_sigaction *old_act);
 
-uint8_t eri_live_signal_thread_sig_mask_async (
+uint8_t eri_live_signal_thread__sig_mask_async (
 		struct eri_live_signal_thread *sig_th,
 		const struct eri_sigset *mask);
-uint8_t eri_live_signal_thread_sig_tmp_mask_async (
+uint8_t eri_live_signal_thread__sig_tmp_mask_async (
 		struct eri_live_signal_thread *sig_th,
 		const struct eri_sigset *mask);
-uint8_t eri_live_signal_thread_sig_mask_all (
+uint8_t eri_live_signal_thread__sig_mask_all (
 		struct eri_live_signal_thread *sig_th);
-void eri_live_signal_thread_sig_reset (
+void eri_live_signal_thread__sig_reset (
 		struct eri_live_signal_thread *sig_th,
 		const struct eri_sigset *mask);
 /*
@@ -64,11 +64,11 @@ void eri_live_signal_thread_sig_reset (
  * digested sig_act are put in the info and act.
  * Otherwise, raw sig_act for the info is put in the act.
  */
-void eri_live_signal_thread_sig_prepare_sync (
+void eri_live_signal_thread__sig_prepare_sync (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_siginfo *info, struct eri_sigaction *act);
 
-struct eri_live_signal_thread_sig_fd_read_args
+struct eri_live_signal_thread__sig_fd_read_args
 {
   int32_t fd;
   int32_t nr;
@@ -81,29 +81,29 @@ struct eri_live_signal_thread_sig_fd_read_args
   uint64_t result;
 };
 
-uint8_t eri_live_signal_thread_sig_fd_read (
+uint8_t eri_live_signal_thread__sig_fd_read (
 		struct eri_live_signal_thread *sig_th,
-		struct eri_live_signal_thread_sig_fd_read_args *args);
+		struct eri_live_signal_thread__sig_fd_read_args *args);
 
-void eri_live_signal_thread_syscall (
+void eri_live_signal_thread__syscall (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_sys_syscall_args *args);
 
-uint8_t eri_live_signal_thread_signaled (
+uint8_t eri_live_signal_thread__signaled (
 		struct eri_live_signal_thread *sig_th);
 
-const struct eri_common_args *eri_live_signal_thread_get_args (
+const struct eri_common_args *eri_live_signal_thread__get_args (
 		const struct eri_live_signal_thread *sig_th);
 
-struct eri_mtpool *eri_live_signal_thread_get_pool (
+struct eri_mtpool *eri_live_signal_thread__get_pool (
 		struct eri_live_signal_thread *sig_th);
 
-const struct eri_sigset *eri_live_signal_thread_get_sig_mask (
+const struct eri_sigset *eri_live_signal_thread__get_sig_mask (
 		const struct eri_live_signal_thread *sig_th);
 
-int32_t eri_live_signal_thread_get_pid (
+int32_t eri_live_signal_thread__get_pid (
 		const struct eri_live_signal_thread *sig_th);
-int32_t eri_live_signal_thread_get_tid (
+int32_t eri_live_signal_thread__get_tid (
 		const struct eri_live_signal_thread *sig_th);
 
 #endif

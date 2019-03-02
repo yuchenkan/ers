@@ -6,13 +6,13 @@
 #include <lib/syscall.h>
 #include <tst/tst-util.h>
 
-TST_STUB (sig_handler_frame);
-TST_STUB (init_group);
-TST_STUB (start_group);
+TST_UNUSED (sig_handler_frame);
+TST_UNUSED (init_group);
+TST_UNUSED (start_group);
 
-TST_STUB (eri_lock);
-TST_STUB (eri_unlock);
-TST_STUB (eri_buf_reserve);
+TST_UNUSED (eri_lock);
+TST_UNUSED (eri_unlock);
+TST_UNUSED (eri_buf_reserve);
 
 static struct eri_siginfo info = { ERI_SIGINT };
 static struct eri_live_signal_thread sig_th;  
