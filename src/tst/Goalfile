@@ -9,7 +9,7 @@ if (new Set([ 'tst/tst-live.ld', 'tst/tst-live-sig-hand-ut.ld' ]).has (goal))
 
 if (goal.match (/^tst\/tst-live-exit-[^.]*.out$/)) return await this.invoke ('tst/tst-live-exit.out.g');
 
-if (goal.match (/^tst\/tst-live-sig-hand-[^-.]*-ut$/)) return await this.invoke ('tst/tst-live-sig-hand-ut.g');
+if (goal.match (/^tst\/tst-live-sig-hand-[^.]*-ut$/)) return await this.invoke ('tst/tst-live-sig-hand-ut.g');
 
 if (goal.match (/^tst\/tst-live-entry-atomic-[^.]*$/)) return await this.invoke ('tst/tst-live-entry-atomic.g');
 

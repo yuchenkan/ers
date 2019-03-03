@@ -24,6 +24,7 @@ struct context
 struct step
 {
   uint8_t raise;
+  uint8_t repeated;
   uint32_t count;
 
   uint32_t step_count;
@@ -45,18 +46,20 @@ static struct step step;
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
-static void
-assert_eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
+static uint8_t
+eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
 {
-#define EQ(creg, reg, mc, c)	eri_assert (mc->reg == c->ctx.reg);
+#define EQ(creg, reg, mc, c)	if (mc->reg != c->ctx.reg) return 0;
 
   TST_FOREACH_GENERAL_REG(EQ, mctx, ctx)
   EQ (RIP, rip, mctx, ctx)
-  eri_assert ((mctx->rflags & TST_RFLAGS_STATUS_MASK)
-		== (ctx->ctx.rflags & TST_RFLAGS_STATUS_MASK));
+  if ((mctx->rflags & TST_RFLAGS_STATUS_MASK)
+	!= (ctx->ctx.rflags & TST_RFLAGS_STATUS_MASK)) return 0;
 
-  if (step->step.mem_size)
-    eri_assert (eri_memcmp (step->mem, ctx->mem, step->step.mem_size) == 0);
+  if (step->step.mem_size
+      && eri_memcmp (step->mem, ctx->mem, step->step.mem_size))
+    return 0;
+  return 1;
 }
 
 static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
@@ -68,10 +71,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   struct context *start = step.ctxs + step.count - 1;
   struct context *end = step.trans ? step.ctxs + step.count : 0;
 
-  eri_assert (ctx->mctx.rip == start->ctx.rip
-	      || (end && ctx->mctx.rip == end->ctx.rip));
-
-  assert_eq (&ctx->mctx, ctx->mctx.rip == start->ctx.rip ? start : end, &step);
+  eri_assert (eq (&ctx->mctx, start, &step)
+	      || (end && eq (&ctx->mctx, end, &step)));
 
   if (step.reach_done)
     {
@@ -80,9 +81,10 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 
   ++step.raise_at;
-  step.trans = 0;
+  step.repeated = 0;
   step.count = 0;
   step.step_count = 0;
+  step.trans = 0;
   tst_enable_trace ();
   enter (&step);
   eri_assert_unreachable ();
@@ -99,21 +101,28 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	step.step.fix_ctx (&ctx->mctx, step.mem);
 
       if (ctx->mctx.rip == step.step.enter
+	  /* XXX: decouple repeating */
+	  || (ctx->mctx.rip == step.step.repeat && step.repeated)
 	  || ctx->mctx.rip == step.step.leave)
 	{
 	  struct context *c = step.ctxs + step.count;
 	  c->ctx = ctx->mctx;
+	  if (ctx->mctx.rip == step.step.repeat)
+	    c->ctx.rip = step.step.enter;
 	  eri_memcpy (c->mem, step.mem, step.step.mem_size);
+
+	  if (ctx->mctx.rip != step.step.leave) ++step.count;
 	}
 
-      if (ctx->mctx.rip == step.step.enter) ++step.count;
+      if (ctx->mctx.rip == step.step.repeat) step.repeated = 1;
 
       if (ctx->mctx.rip == step.step.leave)
 	ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
       return;
     }
 
-  if (ctx->mctx.rip == step.step.enter)
+  if (ctx->mctx.rip == step.step.enter
+      || (ctx->mctx.rip == step.step.repeat && step.repeated))
     {
       if (! step.count)
 	{
@@ -126,6 +135,7 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   else step.trans = 1;
 
   if (! step.count) return;
+  if (ctx->mctx.rip == step.step.repeat) step.repeated = 1;
   if (step.step_count++ != step.raise_at) return;
 
   eri_debug ("%lx\n", ctx->mctx.rip);
@@ -144,6 +154,7 @@ start (void)
   enter (&step);
 
   step.raise = 1;
+  step.repeated = 0;
   step.count = 0;
   tst_enable_trace ();
   enter (&step);
@@ -173,6 +184,9 @@ tst_main (void)
 	step.ctxs[i].mem = eri_assert_malloc (&sig_th.pool.pool,
 					      step.step.mem_size);
     }
+
+  if (step.step.debug == 2) eri_global_enable_debug = 1;
+  else if (step.step.debug == 1) eri_enable_debug = 1;
 
   extern uint8_t tst_live_map_start[];
   extern uint8_t tst_live_map_end[];

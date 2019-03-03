@@ -20,12 +20,12 @@
   movq	src, reg;							\
   movq	reg, dst
 
-#if 0
 #define _ERI_PP_IIF_0(t, ...)		__VA_ARGS__
 #define _ERI_PP_IIF_1(t, ...)		t
 #define ERI_PP_IIF(c, t, ...) \
   ERI_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
+#if 0
 #define ERI_OMIT(...)
 #endif
 

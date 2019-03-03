@@ -14,8 +14,11 @@ struct tst_live_sig_hand_step
 
   uint64_t enter;
   uint64_t leave;
+  uint64_t repeat;
 
   uint64_t mem_size;
+
+  uint8_t debug;
 };
 
 uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
@@ -32,14 +35,17 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
     eri_live_thread__sig_handler (th, _frame, &_act);			\
   } while (0)
 
-#define TST_LIVE_SIG_HAND_DEFINE_INIT_STEP(fix, ent, lev, mem, cnt) \
+#define TST_LIVE_SIG_HAND_DEFINE_INIT_STEP( \
+				fix, ent, lev, rep, mem, cnt, dbg) \
 uint32_t								\
 tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step)	\
 {									\
   step->fix_ctx = fix;							\
   step->enter = (uint64_t) (ent);					\
   step->leave = (uint64_t) (lev);					\
+  step->repeat = (uint64_t) (rep);					\
   step->mem_size = mem;							\
+  step->debug = dbg;							\
   return cnt;								\
 }
 

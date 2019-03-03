@@ -96,7 +96,7 @@ ERI_SYMBOL (thread_context_text_end)
 #define SIG_SAVE_CTX_REG(creg, reg, frame) \
   movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame)
 
-#define SIG_RETURN_ACTION(action) \
+#define SIG_RETURN_ACTION(action, ret) \
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
   SIG_SAVE_CTX_REG (RSP, rsp, %rcx);					\
   movq	TC (TOP)(%rbx), %rsp;						\
@@ -107,7 +107,7 @@ ERI_SYMBOL (thread_context_text_end)
   FOREACH_SGREG_NO_RCX (SIG_SAVE_CTX_REG, %rcx);			\
   ERI_MOV_MM (TCE (RBX)(%rbx),						\
 	      ERI_SIGFRAME_CTX_MCTX_RBX(%rcx), %rax);			\
-  ERI_MOV_MM (TCE (RET)(%rbx),						\
+  ERI_MOV_MM (TCE (ERI_PP_IIF (ret, RET, CALL))(%rbx),			\
 	      ERI_SIGFRAME_CTX_MCTX_RIP(%rcx), %rax);			\
   ERI_MOV_MM (TC (SREGS_RCX)(%rbx),					\
 	      ERI_SIGFRAME_CTX_MCTX_RCX(%rcx), %rax);			\
@@ -117,7 +117,7 @@ ERI_SYMBOL (thread_context_text_end)
 #define SIG_RETURN_TO_USER(label) \
   SIG_RETURN (RETURN_TO_USER, label);					\
 label:									\
-  SIG_RETURN_ACTION (sig_action)
+  SIG_RETURN_ACTION (sig_action, 1)
 
 /************************************************/
 /* main						*/
@@ -265,7 +265,7 @@ ERI_FUNCTION (entry)
 
 .lsync_async_sig_return:
 
-  SIG_RETURN_ACTION (sig_restart_sync_async)
+  SIG_RETURN_ACTION (sig_restart_sync_async, 0)
 
 /************************************************/
 /* entry: atomic_common				*/
