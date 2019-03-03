@@ -36,7 +36,7 @@ asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
 asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
 
 #define tst_enable_trace() \
-asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc");
+asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc", "memory");
 
 #define tst_struct(mem, st, name) \
   ((void *) ((uint64_t) mem - __builtin_offsetof (st, name)))

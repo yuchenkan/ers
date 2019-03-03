@@ -7,7 +7,7 @@ let live = [ 'start', 'clone', 'clear-tid', 'raise', 'sig-ignore', 'sig-nest',
 	     'sigaltstack', 'sigprocmask', 'sigpending', 'sigsuspend', 'sigtimedwait', 'signalfd',
 	     'sig-mask-async-ut' ];
 
-live = live.concat ([ 'main', 'syscall', 'sync-async' ].map (x => `sig-hand-${x}-ut`));
+live = live.concat ([ 'main', 'syscall', 'sync-async', 'atomic', 'atomic-ext' ].map (x => `sig-hand-${x}-ut`));
 
 live = live.concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));
 
@@ -20,4 +20,4 @@ tsts = tsts.concat (live.map (t => `live-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-sig-hand-sync-async-ut.out' ]);
+//await this.update ([ 'tst/tst-live-sig-hand-atomic-ext-ut.out' ]);

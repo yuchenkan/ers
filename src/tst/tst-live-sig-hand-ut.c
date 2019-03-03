@@ -13,6 +13,7 @@
 #include <tst/generated/registers.h>
 
 static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
+static eri_aligned16 uint8_t ext_buf[1024];
 static struct eri_live_signal_thread sig_th;
 
 struct context
@@ -42,7 +43,27 @@ struct step
 
 static struct step step;
 
-#define enter(s)	((void (*) (void)) (s)->step.enter) ()
+asm (ERI_STR (ERI_STATIC_FUNCTION (save_enter))
+ "pushq	%rbx;"
+ "pushq	%rbp;"
+ "pushq	%r12;"
+ "pushq	%r13;"
+ "pushq	%r14;"
+ "pushq	%r15;"
+ "subq	$8, %rsp;"
+ "call	*%rdi;"
+ "addq	$8, %rsp;"
+ "popq	%r15;"
+ "popq	%r14;"
+ "popq	%r13;"
+ "popq	%r12;"
+ "popq	%rbp;"
+ "popq	%rbx;"
+ "ret;"
+ERI_STR (ERI_END_FUNCTION (save_enter)));
+
+void save_enter (uint64_t entry);
+#define enter(s)	save_enter ((s)->step.enter)
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
@@ -178,7 +199,7 @@ tst_main (void)
 				 sizeof step.ctxs[0] * cnt);
   if (step.step.mem_size)
     {
-      step.mem = eri_assert_malloc (&sig_th.pool.pool, step.step.mem_size);
+      step.mem = ext_buf;
       uint32_t i;
       for (i = 0; i < cnt; ++i)
 	step.ctxs[i].mem = eri_assert_malloc (&sig_th.pool.pool,
@@ -212,7 +233,6 @@ tst_main (void)
 
   if (step.step.mem_size)
     {
-      eri_assert_free (&sig_th.pool.pool, step.mem);
       uint32_t i;
       for (i = 0; i < cnt; ++i)
 	eri_assert_free (&sig_th.pool.pool, step.ctxs[i].mem);
