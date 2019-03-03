@@ -5,12 +5,12 @@
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 
-static aligned16 uint8_t stack[1024 * 1024];
+static eri_aligned16 uint8_t stack[1024 * 1024];
 static struct tst_sys_clone_raise_args raise_args;
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;

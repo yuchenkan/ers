@@ -6,14 +6,14 @@
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
 static struct tst_rand rand;
 static uint8_t stack[3][1024 * 1024];
 
 static uint8_t group;
 
-static noreturn void start (uint32_t delay, uint32_t i, uint8_t group);
+static eri_noreturn void start (uint32_t delay, uint32_t i, uint8_t group);
 
 static void
 clone (uint64_t i)
@@ -29,7 +29,7 @@ clone (uint64_t i)
   tst_assert_sys_clone (&args);
 }
 
-static noreturn void
+static eri_noreturn void
 start (uint32_t delay, uint32_t i, uint8_t group)
 {
   clone (i);
@@ -37,7 +37,7 @@ start (uint32_t delay, uint32_t i, uint8_t group)
   tst_assert_sys_exit_nr (group ? __NR_exit_group : __NR_exit, 0);
 }
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   void **args = __builtin_return_address (0);

@@ -9,11 +9,11 @@
 static int32_t ctid;
 static int32_t set_ctid;
 
-static aligned16 uint8_t stack[1024 * 1024];
+static eri_aligned16 uint8_t stack[1024 * 1024];
 
-static noreturn void start (int32_t *set);
+static eri_noreturn void start (int32_t *set);
 
-static noreturn void
+static eri_noreturn void
 start (int32_t *set)
 {
   if (set) tst_assert_syscall (set_tid_address, set);
@@ -22,9 +22,9 @@ start (int32_t *set)
   eri_assert_unreachable ();
 }
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   struct eri_sys_clone_args args = {

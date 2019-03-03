@@ -14,9 +14,11 @@
 #define ERI_LST_NODE_FIELDS(pfx) void *pfx##_lst[2];
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
-attr unused void pfx##_lst_append (list_type *list, node_type *node);	\
-attr unused void pfx##_lst_remove (list_type *list,  node_type *node);	\
-attr unused uint64_t pfx##_lst_get_size (list_type *list);
+attr eri_unused void pfx##_lst_append (					\
+			list_type *list, node_type *node);		\
+attr eri_unused void pfx##_lst_remove (					\
+			list_type *list, node_type *node);		\
+attr eri_unused uint64_t pfx##_lst_get_size (list_type *list);
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
 ERI_DECLARE_LIST(attr, pfx, list_type, node_type)			\

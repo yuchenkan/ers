@@ -39,7 +39,7 @@ struct eri_live_thread
 
   uint8_t sig_stack[2 * THREAD_SIG_STACK_SIZE];
 
-  aligned16 uint8_t stack[0];
+  eri_aligned16 uint8_t stack[0];
 };
 
 struct sig_fd_mask
@@ -452,7 +452,7 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
   return 1;
 }
 
-noreturn void
+eri_noreturn void
 sig_action (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -2044,7 +2044,7 @@ sync_async (struct eri_live_thread *th, uint64_t cnt)
   eri_live_thread_recorder__rec_sync_async (th->rec);
 }
 
-noreturn void
+eri_noreturn void
 sig_restart_sync_async (struct eri_live_thread *th)
 {
   uint64_t cnt = sig_get_frame (th->ctx)->ctx.mctx.rcx;
@@ -2143,9 +2143,9 @@ complete_atomic (struct eri_live_thread *th)
     }
 }
 
-static noreturn void sig_restart_atomic (struct eri_live_thread *th);
+static eri_noreturn void sig_restart_atomic (struct eri_live_thread *th);
 
-static noreturn void
+static eri_noreturn void
 sig_restart_atomic (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;

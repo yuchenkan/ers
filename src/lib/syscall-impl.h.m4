@@ -58,7 +58,7 @@ uint64_t m4_ns(sys_clone) (struct eri_sys_clone_args *args);
   ({ uint64_t _res = m4_ns(sys_clone) (args);				\
      eri_assert (! eri_syscall_is_error (_res)); _res; })
 
-noreturn void m4_ns(assert_sys_sigreturn) (void);
+eri_noreturn void m4_ns(assert_sys_sigreturn) (void);
 
 #define m4_ns(assert_sys_sigaction)(sig, act, old_act) \
   m4_ns(assert_syscall) (rt_sigaction, sig, act, old_act, ERI_SIG_SETSIZE)
@@ -71,7 +71,7 @@ void m4_ns(assert_sys_futex_wake) (void *mem, uint32_t val);
 uint8_t m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
 				      const struct eri_timespec *timeout);
 
-noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
+eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
 
 #define m4_ns(assert_sys_exit)(status) \
   do { m4_ns(assert_syscall (exit, status));				\

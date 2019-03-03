@@ -26,7 +26,7 @@ struct caze
   uint64_t val;
 };
 
-static unused void info (struct caze *caze);
+static eri_unused void info (struct caze *caze);
 
 static void
 info (struct caze *caze)

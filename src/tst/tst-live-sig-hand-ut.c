@@ -12,7 +12,7 @@
 #include <tst/tst-syscall.h>
 #include <tst/generated/registers.h>
 
-static aligned16 uint8_t buf[256 * 1024 * 1024];
+static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
 static struct eri_live_signal_thread sig_th;
 
 struct step
@@ -40,7 +40,7 @@ static struct step step;
 
 #define enter(s)	((void (*) (void)) (s)->step.enter) ()
 
-static aligned16 uint8_t stack[8 * 1024 * 1024];
+static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
 #define EQ(creg, reg, c1, c2) \
   eri_assert (c1->reg == c2->reg);
@@ -55,10 +55,10 @@ static aligned16 uint8_t stack[8 * 1024 * 1024];
 		== (_c2->rflags & TST_RFLAGS_STATUS_MASK));		\
   } while (0)
 
-static noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
-				  struct eri_ucontext *ctx);
+static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
+				      struct eri_ucontext *ctx);
 
-static noreturn void
+static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   struct eri_mcontext *start = ! step.trap_count ? &step.init_ctx
@@ -148,9 +148,9 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
 }
 
-noreturn void start (void);
+eri_noreturn void start (void);
 
-noreturn void
+eri_noreturn void
 start (void)
 {
   tst_enable_trace ();

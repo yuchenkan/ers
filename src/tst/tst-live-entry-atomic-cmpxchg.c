@@ -27,7 +27,7 @@ struct caze
   uint64_t rax, val; /* low bits according to size */
 };
 
-static unused void info (struct caze *caze);
+static eri_unused void info (struct caze *caze);
 
 static void
 info (struct caze *caze)

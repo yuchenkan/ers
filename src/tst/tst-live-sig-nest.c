@@ -5,7 +5,7 @@
 #include <tst/tst-util.h>
 #include <tst/tst-syscall.h>
 
-static aligned16 uint8_t stack[1024 * 1024];
+static eri_aligned16 uint8_t stack[1024 * 1024];
 
 static int32_t pid;
 static int32_t tid;
@@ -20,9 +20,9 @@ sig_handler (int32_t sig)
   eri_unlock (sig == ERI_SIGINT ? &int_lock : &term_lock);
 }
 
-static noreturn void raise (void);
+static eri_noreturn void raise (void);
 
-static noreturn void
+static eri_noreturn void
 raise (void)
 {
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
@@ -30,9 +30,9 @@ raise (void)
   tst_assert_sys_exit (0);
 }
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   pid = tst_assert_syscall (getpid);

@@ -35,9 +35,9 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
   return 0;
 }
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;

@@ -89,8 +89,8 @@ void tst_live_entry_atomic_common_info (
 #define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, debug) \
 static struct tst_live_entry_atomic_anchor anchor;			\
 									\
-noreturn void tst_live_start (void);					\
-noreturn void								\
+eri_noreturn void tst_live_start (void);				\
+eri_noreturn void							\
 tst_live_start (void)							\
 {									\
   struct tst_rand rand;							\

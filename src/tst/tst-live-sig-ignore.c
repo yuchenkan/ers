@@ -2,9 +2,9 @@
 
 #include <tst/tst-syscall.h>
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   struct eri_sigaction act = { ERI_SIG_IGN };

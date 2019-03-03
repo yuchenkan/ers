@@ -87,7 +87,7 @@ struct thread_context
 
   struct eri_live_thread *th;
 
-  aligned16 uint8_t text[];
+  eri_aligned16 uint8_t text[];
 };
 
 extern uint8_t thread_context_text[];
@@ -95,7 +95,7 @@ extern uint8_t thread_context_text_entry[];
 extern uint8_t thread_context_text_return[];
 extern uint8_t thread_context_text_end[];
 
-noreturn void main (void);
+eri_noreturn void main (void);
 void entry (void);
 
 uint8_t do_copy_from_user (struct thread_context *th_ctx,
@@ -103,9 +103,9 @@ uint8_t do_copy_from_user (struct thread_context *th_ctx,
 uint8_t do_copy_to_user (struct thread_context *th_ctx,
 			 void *dst, const void *src, uint64_t size);
 
-noreturn void sig_to (void);
-noreturn void sig_act (struct thread_context *th_ctx);
-noreturn void sig_return (struct eri_sigframe *frame);
+eri_noreturn void sig_to (void);
+eri_noreturn void sig_act (struct thread_context *th_ctx);
+eri_noreturn void sig_return (struct eri_sigframe *frame);
 void sig_return_back (struct eri_sigframe *frame);
 
 #define SIG_HANDS(p) \
@@ -126,12 +126,12 @@ enum
 struct thread_context *start (struct eri_live_thread *th);
 void start_main (struct eri_live_thread *th);
 
-noreturn void sig_action (struct eri_live_thread *th);
+eri_noreturn void sig_action (struct eri_live_thread *th);
 
 uint8_t syscall (struct eri_live_thread *th);
 
 void sync_async (struct eri_live_thread *th, uint64_t cnt);
-noreturn void sig_restart_sync_async (struct eri_live_thread *th);
+eri_noreturn void sig_restart_sync_async (struct eri_live_thread *th);
 
 uint64_t prepare_atomic (struct eri_live_thread *th,
 			 uint64_t access_start, uint64_t access_end);

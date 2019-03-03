@@ -285,7 +285,7 @@ init_sig_stack (struct eri_live_signal_thread *sig_th)
 	sig_th, sig_th->sig_stack, SIGNAL_THREAD_SIG_STACK_SIZE);
 }
 
-static noreturn void event_loop (struct eri_live_signal_thread *sig_th);
+static eri_noreturn void event_loop (struct eri_live_signal_thread *sig_th);
 
 static void
 restore_sig_mask (struct eri_live_signal_thread *sig_th)
@@ -293,10 +293,10 @@ restore_sig_mask (struct eri_live_signal_thread *sig_th)
   eri_assert_sys_sigprocmask (&sig_th->sig_mask, 0);
 }
 
-static noreturn void start_watch (
+static eri_noreturn void start_watch (
 		struct eri_live_signal_thread *sig_th, int32_t *lock);
 
-static noreturn void
+static eri_noreturn void
 start_watch (struct eri_live_signal_thread *sig_th, int32_t *lock)
 {
   eri_debug ("\n");
@@ -495,7 +495,7 @@ struct syscall_event
   struct eri_sys_syscall_args *args;
 };
 
-static noreturn void
+static eri_noreturn void
 event_loop (struct eri_live_signal_thread *sig_th)
 {
   eri_debug ("\n");
@@ -593,10 +593,10 @@ struct clone_event {
 
 };
 
-static noreturn void start (struct eri_live_signal_thread *sig_th,
-			    struct clone_event *event);
+static eri_noreturn void start (struct eri_live_signal_thread *sig_th,
+				struct clone_event *event);
 
-static noreturn void
+static eri_noreturn void
 start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 {
   eri_debug ("\n");

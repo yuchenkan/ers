@@ -7,14 +7,14 @@
 #include <tst/tst-syscall.h>
 
 static int32_t pid;
-static aligned16 uint8_t stack[1024 * 1024];
+static eri_aligned16 uint8_t stack[1024 * 1024];
 static int32_t ptid, ctid;
 static void *tls = &tls;
 static int32_t a[3];
 
-static noreturn void start (int32_t *a0, int32_t *a1, int32_t *a2);
+static eri_noreturn void start (int32_t *a0, int32_t *a1, int32_t *a2);
 
-static noreturn void
+static eri_noreturn void
 start (int32_t *a0, int32_t *a1, int32_t *a2)
 {
   eri_assert (a0 == a && a1 == a + 1 && a2 == a + 2);
@@ -33,9 +33,9 @@ start (int32_t *a0, int32_t *a1, int32_t *a2)
   tst_assert_sys_exit (0);
 }
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   pid = tst_assert_syscall (getpid);

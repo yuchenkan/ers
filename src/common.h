@@ -26,7 +26,7 @@ struct eri_common_args
 		     __FILE__, __LINE__, __FUNCTION__,			\
 		     eri_assert_syscall (gettid), ##__VA_ARGS__)
 
-static unused uint8_t eri_enable_debug = 0;
+static eri_unused uint8_t eri_enable_debug = 0;
 extern uint8_t eri_global_enable_debug;
 #define eri_debug(fmt, ...) \
   do {									\

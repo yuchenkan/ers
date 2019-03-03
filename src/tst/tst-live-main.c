@@ -4,13 +4,13 @@
 #include <rtld.h>
 #include <common.h>
 
-static aligned16 uint8_t buf[256 * 1024 * 1024];
-static aligned16 uint8_t stack[8 * 1024 * 1024];
+static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
+static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
-noreturn void tst_main (void **args);
-noreturn void tst_live_start (void);
+eri_noreturn void tst_main (void **args);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_main (void **args)
 {
   struct eri_sigset mask;

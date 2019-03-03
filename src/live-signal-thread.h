@@ -21,7 +21,7 @@ void eri_live_signal_thread__init_thread_sig_stack (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t *stack, uint64_t stack_size);
 
-noreturn void eri_live_signal_thread__init_main (
+eri_noreturn void eri_live_signal_thread__init_main (
 		struct eri_common_args *args,
 		struct eri_rtld_args *rtld_args);
 

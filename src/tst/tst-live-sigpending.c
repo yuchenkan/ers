@@ -13,9 +13,9 @@ sig_handler (int32_t sig)
   handled = 1;
 }
 
-noreturn void tst_live_start (void);
+eri_noreturn void tst_live_start (void);
 
-noreturn void
+eri_noreturn void
 tst_live_start (void)
 {
   struct eri_sigset mask;

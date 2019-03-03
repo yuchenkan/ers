@@ -6,15 +6,15 @@
 #include <tst/tst-syscall.h>
 
 #define TST_LIVE_SIG_RACE_DEFINE_TST(init, what, debug) \
-static aligned16 uint8_t _stack[1024 * 1024];				\
+static eri_aligned16 uint8_t _stack[1024 * 1024];			\
 static struct tst_sys_clone_raise_args _raise_args;			\
 									\
 static void								\
 _sig_handler (int32_t sig) { eri_debug ("\n"); }			\
 									\
-noreturn void tst_live_start (void);					\
+eri_noreturn void tst_live_start (void);				\
 									\
-noreturn void								\
+eri_noreturn void							\
 tst_live_start (void)							\
 {									\
   eri_global_enable_debug = debug;					\

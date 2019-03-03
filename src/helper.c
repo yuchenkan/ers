@@ -17,7 +17,7 @@ struct eri_helper
   int32_t event_pipe[2];
   eri_helper__sigsegv_handler_t segv_hand;
 
-  aligned16 uint8_t stack[0];
+  eri_aligned16 uint8_t stack[0];
 };
 
 struct event
@@ -36,7 +36,7 @@ sigsegv_handler (int32_t sig, struct eri_siginfo *info,
   helper->segv_hand (info, ctx);
 }
 
-static noreturn void
+static eri_noreturn void
 start (struct eri_helper *helper, int32_t ppid)
 {
   eri_debug ("pid = %u, ppid = %u\n", helper->pid, ppid);

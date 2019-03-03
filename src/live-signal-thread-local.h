@@ -36,21 +36,21 @@ struct eri_live_signal_thread
 
   int32_t event_pipe[2];
 
-  aligned16 uint8_t stack[SIGNAL_THREAD_STACK_SIZE];
-  aligned16 uint8_t sig_stack[SIGNAL_THREAD_SIG_STACK_SIZE];
+  eri_aligned16 uint8_t stack[SIGNAL_THREAD_STACK_SIZE];
+  eri_aligned16 uint8_t sig_stack[SIGNAL_THREAD_SIG_STACK_SIZE];
 
   int32_t tid;
 
   struct eri_live_thread *th;
 };
 
-noreturn void sig_handler (void);
+eri_noreturn void sig_handler (void);
 void sig_handler_frame (struct eri_sigframe *frame);
 
 struct eri_live_signal_thread *init_group (
 		struct eri_common_args *args,
 		struct eri_rtld_args *rtld_args);
-noreturn void start_group (struct eri_live_signal_thread *sig_th);
+eri_noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
 uint8_t sig_mask_async (struct eri_live_signal_thread *sig_th,
 			const struct eri_sigset *mask);

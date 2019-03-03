@@ -15,12 +15,12 @@
 
 static uint8_t handled;
 
-static aligned16 uint8_t stack[1024 * 1024];
+static eri_aligned16 uint8_t stack[1024 * 1024];
 
-static noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
-				  struct eri_ucontext *ctx);
+static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
+				      struct eri_ucontext *ctx);
 
-static noreturn void
+static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   handled = 1;
@@ -37,7 +37,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert_sys_exit (0);
 }
 
-static aligned16 uint8_t buf[256 * 1024 * 1024];
+static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
 static struct eri_live_signal_thread sig_th;
 
 static uint8_t unblocked;
