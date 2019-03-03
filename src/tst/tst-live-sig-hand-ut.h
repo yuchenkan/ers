@@ -10,13 +10,12 @@
 
 struct tst_live_sig_hand_step
 {
-  void (*fix_ctx) (struct eri_mcontext *ctx);
+  void (*fix_ctx) (struct eri_mcontext *, void *);
 
   uint64_t enter;
   uint64_t leave;
 
-  uint8_t atomic;
-  uint64_t atomic_val;
+  uint64_t mem_size;
 };
 
 uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
@@ -32,5 +31,16 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
     };									\
     eri_live_thread__sig_handler (th, _frame, &_act);			\
   } while (0)
+
+#define TST_LIVE_SIG_HAND_DEFINE_INIT_STEP(fix, ent, lev, mem, cnt) \
+uint32_t								\
+tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step)	\
+{									\
+  step->fix_ctx = fix;							\
+  step->enter = (uint64_t) (ent);					\
+  step->leave = (uint64_t) (lev);					\
+  step->mem_size = mem;							\
+  return cnt;								\
+}
 
 #endif

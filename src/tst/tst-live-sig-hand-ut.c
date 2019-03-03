@@ -15,11 +15,16 @@
 static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
 static struct eri_live_signal_thread sig_th;
 
+struct context
+{
+  struct eri_mcontext ctx;
+  void *mem;
+};
+
 struct step
 {
   uint8_t raise;
-  uint8_t init;
-  uint32_t trap_count;
+  uint32_t count;
 
   uint32_t step_count;
   uint32_t raise_at;
@@ -27,11 +32,9 @@ struct step
 
   uint8_t trans;
 
-  struct eri_mcontext init_ctx;
-  struct eri_mcontext *trap_ctxs;
+  void *mem;
 
-  uint64_t atomic_init_val;
-  uint64_t atomic_fini_val;
+  struct context *ctxs;
 
   struct tst_live_sig_hand_step step;
 };
@@ -42,18 +45,19 @@ static struct step step;
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
-#define EQ(creg, reg, c1, c2) \
-  eri_assert (c1->reg == c2->reg);
+static void
+assert_eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
+{
+#define EQ(creg, reg, mc, c)	eri_assert (mc->reg == c->ctx.reg);
 
-#define assert_eq(c1, c2) \
-  do {									\
-    struct eri_mcontext *_c1 = c1;					\
-    struct eri_mcontext *_c2 = c2;					\
-    TST_FOREACH_GENERAL_REG(EQ, _c1, _c2)				\
-    eri_assert (_c1->rip == _c2->rip);					\
-    eri_assert ((_c1->rflags & TST_RFLAGS_STATUS_MASK)			\
-		== (_c2->rflags & TST_RFLAGS_STATUS_MASK));		\
-  } while (0)
+  TST_FOREACH_GENERAL_REG(EQ, mctx, ctx)
+  EQ (RIP, rip, mctx, ctx)
+  eri_assert ((mctx->rflags & TST_RFLAGS_STATUS_MASK)
+		== (ctx->ctx.rflags & TST_RFLAGS_STATUS_MASK));
+
+  if (step->step.mem_size)
+    eri_assert (eri_memcmp (step->mem, ctx->mem, step->step.mem_size) == 0);
+}
 
 static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
 				      struct eri_ucontext *ctx);
@@ -61,23 +65,13 @@ static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
 static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  struct eri_mcontext *start = ! step.trap_count ? &step.init_ctx
-					: step.trap_ctxs + step.trap_count - 1;
-  struct eri_mcontext *end = step.trans ? step.trap_ctxs + step.trap_count : 0;
+  struct context *start = step.ctxs + step.count - 1;
+  struct context *end = step.trans ? step.ctxs + step.count : 0;
 
-  if (ctx->mctx.rip == start->rip) assert_eq (&ctx->mctx, start);
-  else if (end && ctx->mctx.rip == end->rip) assert_eq (&ctx->mctx, end);
-  else eri_assert (0);
+  eri_assert (ctx->mctx.rip == start->ctx.rip
+	      || (end && ctx->mctx.rip == end->ctx.rip));
 
-  /* No repeat atomic operation.  */
-  if (step.step.atomic)
-    {
-      if (ctx->mctx.rip == step.step.enter)
-	eri_assert (step.step.atomic_val == step.atomic_init_val);
-      else if (ctx->mctx.rip == step.step.leave)
-	eri_assert (step.step.atomic_val == step.atomic_fini_val);
-      else eri_assert (0);
-    }
+  assert_eq (&ctx->mctx, ctx->mctx.rip == start->ctx.rip ? start : end, &step);
 
   if (step.reach_done)
     {
@@ -86,9 +80,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 
   ++step.raise_at;
-  step.init = 0;
   step.trans = 0;
-  step.trap_count = 0;
+  step.count = 0;
   step.step_count = 0;
   tst_enable_trace ();
   enter (&step);
@@ -102,43 +95,37 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (! step.raise)
     {
-      if (ctx->mctx.rip == step.step.enter)
+      if (ctx->mctx.rip == step.step.enter && ! step.count)
+	step.step.fix_ctx (&ctx->mctx, step.mem);
+
+      if (ctx->mctx.rip == step.step.enter
+	  || ctx->mctx.rip == step.step.leave)
 	{
-	  if (! step.init)
-	    {
-	      step.step.fix_ctx (&ctx->mctx);
-	      step.init_ctx = ctx->mctx;
-	      step.init = 1;
-	    }
-	  else step.trap_ctxs[step.trap_count++] = ctx->mctx;
+	  struct context *c = step.ctxs + step.count;
+	  c->ctx = ctx->mctx;
+	  eri_memcpy (c->mem, step.mem, step.step.mem_size);
 	}
-      else if (ctx->mctx.rip == step.step.leave)
-	{
-	  step.trap_ctxs[step.trap_count] = ctx->mctx;
-	  if (step.step.atomic) step.atomic_fini_val = step.step.atomic_val;
-	  ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
-	}
+
+      if (ctx->mctx.rip == step.step.enter) ++step.count;
+
+      if (ctx->mctx.rip == step.step.leave)
+	ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
       return;
     }
 
-  // eri_barrier (); /* XXX: cmp    %rcx,-0x52a(%rip)? */
   if (ctx->mctx.rip == step.step.enter)
     {
-      if (! step.init)
+      if (! step.count)
 	{
-	  ctx->mctx = step.init_ctx;
-	  if (step.step.atomic) step.step.atomic_val = step.atomic_init_val;
-	  step.init = 1;
+	  ctx->mctx = step.ctxs[0].ctx;
+	  eri_memcpy (step.mem, step.ctxs[0].mem, step.step.mem_size);
 	}
-      else
-	{
-	  ++step.trap_count;
-	  step.trans = 0;
-	}
+      else step.trans = 0;
+      ++step.count;
     }
   else step.trans = 1;
 
-  if (! step.init) return;
+  if (! step.count) return;
   if (step.step_count++ != step.raise_at) return;
 
   eri_debug ("%lx\n", ctx->mctx.rip);
@@ -157,8 +144,7 @@ start (void)
   enter (&step);
 
   step.raise = 1;
-  step.init = 0;
-  step.trap_count = 0;
+  step.count = 0;
   tst_enable_trace ();
   enter (&step);
 
@@ -176,11 +162,17 @@ tst_main (void)
   sig_th.pid = eri_assert_syscall (getpid);
   sig_th.tid = eri_assert_syscall (gettid);
 
-  uint32_t traps = tst_live_sig_hand_init_step (&step.step);
-  eri_assert (traps);
-  step.trap_ctxs = eri_assert_malloc (&sig_th.pool.pool,
-				      sizeof step.trap_ctxs[0] * traps);
-  if (step.step.atomic) step.atomic_init_val = step.step.atomic_val;
+  uint32_t cnt = tst_live_sig_hand_init_step (&step.step) + 2;
+  step.ctxs = eri_assert_malloc (&sig_th.pool.pool,
+				 sizeof step.ctxs[0] * cnt);
+  if (step.step.mem_size)
+    {
+      step.mem = eri_assert_malloc (&sig_th.pool.pool, step.step.mem_size);
+      uint32_t i;
+      for (i = 0; i < cnt; ++i)
+	step.ctxs[i].mem = eri_assert_malloc (&sig_th.pool.pool,
+					      step.step.mem_size);
+    }
 
   extern uint8_t tst_live_map_start[];
   extern uint8_t tst_live_map_end[];
@@ -204,7 +196,14 @@ tst_main (void)
   eri_live_thread__join (sig_th.th);
   eri_live_thread__destroy (sig_th.th, 0);
 
-  eri_assert_free (&sig_th.pool.pool, step.trap_ctxs);
+  if (step.step.mem_size)
+    {
+      eri_assert_free (&sig_th.pool.pool, step.mem);
+      uint32_t i;
+      for (i = 0; i < cnt; ++i)
+	eri_assert_free (&sig_th.pool.pool, step.ctxs[i].mem);
+    }
+  eri_assert_free (&sig_th.pool.pool, step.ctxs);
 
   eri_assert_fini_pool (&sig_th.pool.pool);
   return 0;
