@@ -28,7 +28,7 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
     struct eri_siginfo *_info = info;					\
     _info->code = 0;							\
     struct eri_sigframe *_frame						\
-	= tst_struct (_info, typeof (*_frame), info);			\
+	= tst_struct (_info, struct eri_sigframe, info);		\
     struct eri_sigaction _act = {					\
       handler, ERI_SA_SIGINFO | ERI_SA_RESTORER, 0			\
     };									\
