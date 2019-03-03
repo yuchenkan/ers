@@ -8,10 +8,18 @@
 #include <lib/syscall.h>
 #include <tst/tst-util.h>
 
-noreturn void tst_live_sig_hand_start (void);
+struct tst_live_sig_hand_step
+{
+  void (*fix_ctx) (struct eri_mcontext *ctx);
 
-void tst_live_sig_hand_step (int32_t sig, struct eri_siginfo *info,
-			     struct eri_ucontext *ctx);
+  uint64_t enter;
+  uint64_t leave;
+
+  uint8_t atomic;
+  uint64_t atomic_val;
+};
+
+uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
 
 #define tst_live_sig_hand_signal(th, info, handler) \
   do {									\

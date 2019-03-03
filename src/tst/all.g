@@ -18,4 +18,4 @@ tsts = tsts.concat (live.map (t => `live-${t}`));
 
 await this.update ([ 'tst/loop.sh' ].concat (tsts.map (t => `tst/tst-${t}.out`)));
 
-//await this.update ([ 'tst/tst-live-sig-hand-syscall-ut.out' ]);
+//await this.update ([ 'tst/tst-live-sig-hand-atomic-ut.out' ]);
