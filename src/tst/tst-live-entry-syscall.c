@@ -1,7 +1,7 @@
+#include <public.h>
 #include <compiler.h>
 #include <common.h>
 
-#include <public/impl.h>
 #include <tst/tst-syscall.h>
 #include <tst/tst-live-entry.h>
 
@@ -11,7 +11,7 @@ asm ("ctrl_enter: syscall; nop");
 extern uint8_t expr_enter[];
 extern uint8_t expr_leave[];
 extern uint8_t syscall_done[];
-asm ("expr_enter: " ERI_STR (_ERS_SYSCALL (0))
+asm ("expr_enter: " ERI_STR (ERS_SYSCALL (0))
      "; syscall_done: nop; expr_leave:");
 
 static struct tst_live_entry_mcontext ctrl_tctx;

@@ -1,7 +1,7 @@
+#include <public.h>
 #include <compiler.h>
 #include <common.h>
 
-#include <public/impl.h>
 #include <tst/tst-syscall.h>
 #include <tst/tst-live-entry.h>
 
@@ -10,7 +10,7 @@ asm ("ctrl_enter: rep movsb");
 
 extern uint8_t expr_enter[];
 extern uint8_t expr_leave[];
-asm ("expr_enter: " ERI_STR (_ERS_SYNC_ASYNC (0, rep movsb))
+asm ("expr_enter: " ERI_STR (ERS_SYNC_ASYNC (0, rep movsb))
      "; expr_leave:");
 
 static uint8_t idx;

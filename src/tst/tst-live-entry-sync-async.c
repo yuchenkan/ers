@@ -1,7 +1,7 @@
 #include <compiler.h>
 #include <common.h>
 
-#include <public/impl.h>
+#include <public.h>
 #include <tst/tst-syscall.h>
 #include <tst/tst-live-entry.h>
 
@@ -10,7 +10,7 @@ asm ("ctrl_enter: loop	ctrl_leave; nop; nop; ctrl_leave:");
 
 extern uint8_t expr_enter[];
 extern uint8_t expr_leave[];
-asm ("expr_enter: " ERI_STR (_ERS_SYNC_ASYNC (0, loop	expr_leave))
+asm ("expr_enter: " ERI_STR (ERS_SYNC_ASYNC (0, loop	expr_leave))
      "; nop; nop; expr_leave:");
 
 static struct tst_live_entry_mcontext ctrl_tctx;

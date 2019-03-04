@@ -1,4 +1,4 @@
-#include <public/impl.h>
+#include <public.h>
 #include <lib/util.h>
 
 #include <tst/tst-live-sig-hand-ut.h>
@@ -6,7 +6,7 @@
 extern uint8_t enter[];
 extern uint8_t leave[];
 extern uint8_t repeat[];
-asm ("enter: " ERI_STR (_ERS_SYNC_ASYNC (0, repeat: rep	movsb))
+asm ("enter: " ERI_STR (ERS_SYNC_ASYNC (0, repeat: rep	movsb))
      "; leave: ret");
 
 const uint16_t src = 0x1234;

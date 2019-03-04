@@ -1,6 +1,6 @@
+#include <public.h>
 #include <common.h>
 
-#include <public/impl.h>
 #include <lib/util.h>
 #include <lib/registers.h>
 #include <tst/tst-live-entry-atomic.h>
@@ -13,7 +13,7 @@
 TST_LIVE_ENTRY_ATOMIC_ASM (OP (reg, mem, sz),				\
 	ERI_EVAL (ERI_PASTE (xchg, sz)	%ERI_PASTE (ERI_, creg) (sz),	\
 					(%mem)),			\
-	_ERS_ATOMIC_XCHG (0, sz, %ERI_PASTE (ERI_, creg) (sz), (%mem)))
+	ERS_ATOMIC_XCHG (0, sz, %ERI_PASTE (ERI_, creg) (sz), (%mem)))
 
 #define ASM(creg, reg, cmem, mem) \
 TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, creg, reg, mem)

@@ -1,6 +1,6 @@
+#include <public.h>
 #include <common.h>
 
-#include <public/impl.h>
 #include <lib/util.h>
 #include <lib/registers.h>
 #include <tst/tst-live-entry-atomic.h>
@@ -12,7 +12,7 @@
 #define ERI_LOAD_CMP(sz, res, reg)	ERI_PASTE (cmp, sz)	reg, res
 
 #define ERI_ATOMIC_CMP(e, sz, reg, mem) \
-  _ERS_ATOMIC_COMMON_LOAD (e, sz, mem, ERI_LOAD_CMP, reg)
+  ERS_ATOMIC_COMMON_LOAD (e, sz, mem, ERI_LOAD_CMP, reg)
 
 #define ASM_SIZE(sz, creg, reg, mem) \
 TST_LIVE_ENTRY_ATOMIC_ASM (OP (reg, mem, sz),				\

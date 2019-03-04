@@ -1,11 +1,11 @@
-#include <public/impl.h>
+#include <public.h>
 #include <lib/util.h>
 
 #include <tst/tst-live-sig-hand-ut.h>
 
 extern uint8_t enter[];
 extern uint8_t leave[];
-asm ("enter: " ERI_STR (_ERS_SYSCALL (0)) "; leave: ret");
+asm ("enter: " ERI_STR (ERS_SYSCALL (0)) "; leave: ret");
 
 static void
 fix_ctx (struct eri_mcontext *ctx, void *mem)

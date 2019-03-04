@@ -2,7 +2,8 @@
 
 #include <tst/live-rtld/generated/public/live-rtld.h>
 
-#include <public/impl.h>
+#define _ERS_LIVE_RTLD_H_INCLUDED
+#include <public.h>
 
 #include <lib/util.h>
 #include <lib/syscall.h>
@@ -11,7 +12,7 @@
 
 ERI_FUNCTION (start)
   movq	$0x12345678, %rdx
-  _ERS_INIT
+  ERS_INIT
   cmpq	$0x12345678, %rdx
   jne	.lerror
 
