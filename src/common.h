@@ -6,14 +6,12 @@
 struct eri_common_args
 {
   const char *config;
+  const char *path;
+
   uint64_t page_size;
 
-  const char *path;
-  uint64_t buf_size;
   uint64_t stack_size;
   uint64_t file_buf_size;
-
-  uint64_t buf;
 };
 
 #include <compiler.h>

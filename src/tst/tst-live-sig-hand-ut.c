@@ -12,8 +12,7 @@
 #include <tst/tst-syscall.h>
 #include <tst/generated/registers.h>
 
-static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
-static eri_aligned16 uint8_t ext_buf[1024];
+static eri_aligned16 uint8_t buf[1024];
 static struct eri_live_signal_thread sig_th;
 
 struct context
@@ -186,9 +185,7 @@ start (void)
 uint32_t
 tst_main (void)
 {
-  eri_assert_init_pool (&sig_th.pool.pool, buf, sizeof (buf));
-  sig_th.args.buf = (uint64_t) buf;
-  sig_th.args.buf_size = sizeof buf;
+  tst_live_sig_hand_init_pool (&sig_th.pool.pool);
   sig_th.args.stack_size = 8 * 1024 * 1024;
 
   sig_th.pid = eri_assert_syscall (getpid);
@@ -199,7 +196,7 @@ tst_main (void)
 				 sizeof step.ctxs[0] * cnt);
   if (step.step.mem_size)
     {
-      step.mem = ext_buf;
+      step.mem = buf;
       uint32_t i;
       for (i = 0; i < cnt; ++i)
 	step.ctxs[i].mem = eri_assert_malloc (&sig_th.pool.pool,

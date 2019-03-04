@@ -89,8 +89,13 @@ struct eri_rtld_args
 
   struct eri_sigset sig_mask;
 
+  uint64_t page_size;
+
   uint64_t map_start;
   uint64_t map_end;
+
+  uint64_t buf;
+  uint64_t buf_size;
 };
 
 #endif

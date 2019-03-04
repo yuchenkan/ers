@@ -13,7 +13,6 @@
 #include <lib/list.h>
 #include <lib/syscall.h>
 
-struct eri_common_args;
 struct eri_rtld_args;
 struct eri_siginfo;
 
@@ -48,7 +47,6 @@ eri_noreturn void sig_handler (void);
 void sig_handler_frame (struct eri_sigframe *frame);
 
 struct eri_live_signal_thread *init_group (
-		struct eri_common_args *args,
 		struct eri_rtld_args *rtld_args);
 eri_noreturn void start_group (struct eri_live_signal_thread *sig_th);
 

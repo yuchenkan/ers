@@ -37,7 +37,6 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert_sys_exit (0);
 }
 
-static eri_aligned16 uint8_t buf[256 * 1024 * 1024];
 static struct eri_live_signal_thread sig_th;
 
 static uint8_t unblocked;
@@ -78,9 +77,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 uint32_t
 tst_main (void)
 {
-  eri_assert_init_pool (&sig_th.pool.pool, buf, sizeof (buf));
-  sig_th.args.buf = (uint64_t) buf;
-  sig_th.args.buf_size = sizeof buf;
+  tst_live_sig_hand_init_pool (&sig_th.pool.pool);
   sig_th.args.stack_size = 8 * 1024 * 1024;
 
   sig_th.pid = eri_assert_syscall (getpid);

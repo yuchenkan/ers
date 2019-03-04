@@ -158,18 +158,36 @@ sig_handler_frame (struct eri_sigframe *frame)
 }
 
 static struct signal_thread_group *
-init_group_memory (struct eri_common_args *args)
+init_group_memory (struct eri_rtld_args *rtld_args)
 {
-  struct eri_mtpool *pool = (void *) args->buf;
+  /* XXX: parameterize */
+  const char *config = "ers_config";
+  const char *path = "ers_data";
+  uint64_t stack_size = 2 * 1024 * 1024;
+  uint64_t file_buf_size = 64 * 1024;
+
+  eri_assert_syscall (mmap, rtld_args->buf, rtld_args->buf_size,
+		/* XXX: security */
+		ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
+		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+
+  struct eri_mtpool *pool = (void *) rtld_args->buf;
   eri_assert_init_pool (&pool->pool,
-			(void *) (args->buf + eri_size_of (*pool, 16)),
-			args->buf_size - eri_size_of (*pool, 16));
+			(void *) (rtld_args->buf + eri_size_of (*pool, 16)),
+			rtld_args->buf_size - eri_size_of (*pool, 16));
 
   struct signal_thread_group *group
 	= eri_assert_malloc (&pool->pool, sizeof *group);
 
   group->pool = pool;
-  group->args = *args;
+
+  group->args.config = config;
+  group->args.path = path;
+
+  group->args.page_size = rtld_args->page_size;
+  group->args.stack_size = stack_size;
+  group->args.file_buf_size = file_buf_size;
+
   return group;
 }
 
@@ -249,9 +267,9 @@ init_main (struct signal_thread_group *group,
 }
 
 struct eri_live_signal_thread *
-init_group (struct eri_common_args *args, struct eri_rtld_args *rtld_args)
+init_group (struct eri_rtld_args *rtld_args)
 {
-  struct signal_thread_group *group = init_group_memory (args);
+  struct signal_thread_group *group = init_group_memory (rtld_args);
 
   group->pid = eri_assert_syscall (getpid);
 

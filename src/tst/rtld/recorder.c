@@ -2,9 +2,9 @@
 #include <lib/printf.h>
 
 void
-tst_rtld (struct eri_rtld_args *rtld)
+start (struct eri_rtld_args *rtld)
 {
-  eri_assert_printf ("tst_rtld: %lx %lx %lx %lx\n",
+  eri_assert_printf ("start: %lx %lx %lx %lx\n",
 		     rtld->rsp, rtld->rip,
 		     rtld->map_start, rtld->map_end);
 }
