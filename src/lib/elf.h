@@ -1,9 +1,7 @@
-#ifndef ERI_RTLD_H
-#define ERI_RTLD_H
+#ifndef LIB_ELF_H
+#define LIB_ELF_H
 
 #include <stdint.h>
-
-#include <lib/syscall.h>
 
 struct eri_auxv
 {
@@ -69,7 +67,7 @@ struct eri_elf64_phdr
 
 #define ERI_PT_LOAD		1
 
-struct eri_seg_args
+struct eri_seg
 {
   int32_t prot;
 
@@ -77,25 +75,6 @@ struct eri_seg_args
   uint64_t filesz;
   uint64_t vaddr;
   uint64_t memsz;
-};
-
-struct eri_rtld_args
-{
-  uint64_t rdx;
-  uint64_t rflags;
-
-  uint64_t rsp;
-  uint64_t rip;
-
-  struct eri_sigset sig_mask;
-
-  uint64_t page_size;
-
-  uint64_t map_start;
-  uint64_t map_end;
-
-  uint64_t buf;
-  uint64_t buf_size;
 };
 
 #endif

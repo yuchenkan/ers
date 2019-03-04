@@ -1,6 +1,6 @@
 'use strict'; /* vim: set ft=javascript: */
 
-if (new Set([ 'tst/generated/registers.h', 'tst/tst-rtld.S.o', 'tst/tst-rtld.out',
+if (new Set([ 'tst/generated/registers.h', 'tst/tst-live-rtld.S.o', 'tst/tst-live-rtld.out',
 	      'tst/live.l', 'tst/live-sig-hand-ut.l', 'tst/tst-live-sig-mask-async-ut' ]).has (goal))
   return await this.invoke (`${goal}.g`);
 
@@ -14,6 +14,8 @@ if (goal.match (/^tst\/tst-live-sig-hand-[^.]*-ut$/)) return await this.invoke (
 if (goal.match (/^tst\/tst-live-entry-atomic-[^.]*$/)) return await this.invoke ('tst/tst-live-entry-atomic.g');
 
 if (goal.match (/^tst\/tst-live-entry-[^.]*$/)) return await this.invoke ('tst/tst-live-entry.g');
+
+if (goal === 'tst/tst-live-rtld') return false;
 
 if (goal.match (/^tst\/tst-live-[^.]*$/)) return await this.invoke ('tst/tst-live.g');
 

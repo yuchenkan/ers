@@ -1,8 +1,8 @@
-#include <rtld.h>
+#include <live-rtld.h>
 #include <lib/printf.h>
 
 void
-start (struct eri_rtld_args *rtld)
+start (struct eri_live_rtld_args *rtld)
 {
   eri_assert_printf ("start: %lx %lx %lx %lx\n",
 		     rtld->rsp, rtld->rip,

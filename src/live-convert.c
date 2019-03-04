@@ -6,11 +6,11 @@
 
 #define eri_assert	assert
 
+#include <lib/elf.h>
 #include <lib/syscall.h>
-#include <rtld.h>
 
 static uint64_t
-parse_elf (FILE *f, struct eri_seg_args **segs, uint16_t *nsegs)
+parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
 {
   struct eri_elf64_ehdr ehdr;
   assert (fread (&ehdr, sizeof ehdr, 1, f) == 1);
@@ -46,12 +46,12 @@ parse_elf (FILE *f, struct eri_seg_args **segs, uint16_t *nsegs)
 }
 
 static void
-convert_recorder (const char *elf, const char *bin, const char *header)
+convert_live (const char *elf, const char *bin, const char *header)
 {
   FILE *ef = fopen (elf, "rb");
   assert (ef);
 
-  struct eri_seg_args *segs;
+  struct eri_seg *segs;
   uint16_t nsegs;
   uint64_t entry = parse_elf (ef, &segs, &nsegs);
 
@@ -72,12 +72,12 @@ convert_recorder (const char *elf, const char *bin, const char *header)
   FILE *hf = fopen (header, "w");
   assert (hf);
 
-  fprintf (hf, "#define ERI_RECORDER_BINARY_SEGMENTS\t{ ");
+  fprintf (hf, "#define ERI_LIVE_SEGMENTS\t{ ");
   for (i = 0; i < nsegs; ++i)
     fprintf (hf, "{ %d, %lu, %lu, %lu, %lu }, ", segs[i].prot,
 	     segs[i].offset, segs[i].filesz, segs[i].vaddr, segs[i].memsz);
   fprintf (hf, " }\n");
-  fprintf (hf, "#define ERI_RECORDER_BINARY_ENTRY\t%lu\n", entry);
+  fprintf (hf, "#define ERI_LIVE_START\t%lu\n", entry);
 
   fclose (hf);
   fclose (bf);
@@ -91,7 +91,7 @@ convert_rtld (const char *elf, const char *header)
   FILE *ef = fopen (elf, "rb");
   assert (ef);
 
-  struct eri_seg_args *segs;
+  struct eri_seg *segs;
   uint16_t nsegs;
   uint64_t entry = parse_elf (ef, &segs, &nsegs);
 
@@ -106,7 +106,7 @@ convert_rtld (const char *elf, const char *header)
   assert (fread (b, sz, 1, ef) == 1);
 
   FILE *hf = fopen (header, "w");
-  fprintf (hf, "#define _ERS_RTLD\t.byte");
+  fprintf (hf, "#define _ERS_LIVE_RTLD\t.byte");
   uint64_t i;
   for (i = 0; i < sz; ++i)
     {
@@ -125,12 +125,12 @@ main (int argc, const char **argv)
   assert (argc >= 2);
   const char *t = argv[1];
 
-  if (strncmp (t, "recorder", strlen ("recorder")) == 0)
+  if (strcmp (t, "live") == 0)
     {
       assert (argc == 5);
-      convert_recorder (argv[2], argv[3], argv[4]);
+      convert_live (argv[2], argv[3], argv[4]);
     }
-  else if (strncmp (t, "rtld", strlen ("rtld")) == 0)
+  else if (strcmp (t, "live-rtld") == 0)
     {
       assert (argc == 4);
       convert_rtld (argv[2], argv[3]);

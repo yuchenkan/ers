@@ -1,7 +1,7 @@
 #include <compiler.h>
 #include <common.h>
 
-#include <rtld.h>
+#include <live-rtld.h>
 #include <live-thread.h>
 
 #include <lib/malloc.h>
@@ -86,7 +86,7 @@ tst_main (void)
   extern uint8_t tst_live_map_start[];
   extern uint8_t tst_live_map_end[];
 
-  struct eri_rtld_args rtld_args = {
+  struct eri_live_rtld_args rtld_args = {
     .rsp = (uint64_t) tst_clone_top (stack),
     .map_start = (uint64_t) tst_live_map_start,
     .map_end = (uint64_t) tst_live_map_end

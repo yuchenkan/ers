@@ -5,7 +5,7 @@
 
 #include <public/common.h>
 
-#include <rtld.h>
+#include <live-rtld.h>
 #include <common.h>
 #include <helper.h>
 #include <live-signal-thread.h>
@@ -165,7 +165,7 @@ user_on_sig_stack (struct eri_live_thread *th, uint64_t rsp)
 
 static struct thread_group *
 create_group (struct eri_live_signal_thread *sig_th,
-	      struct eri_rtld_args *rtld_args)
+	      struct eri_live_rtld_args *rtld_args)
 {
   /* XXX: parameterize */
   uint64_t atomic_table_size =  2 * 1024 * 1024;
@@ -272,7 +272,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
 
 struct eri_live_thread *
 eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
-			      struct eri_rtld_args *rtld_args)
+			      struct eri_live_rtld_args *rtld_args)
 {
   struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);

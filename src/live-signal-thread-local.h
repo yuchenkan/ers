@@ -13,7 +13,7 @@
 #include <lib/list.h>
 #include <lib/syscall.h>
 
-struct eri_rtld_args;
+struct eri_live_rtld_args;
 struct eri_siginfo;
 
 struct signal_thread_group;
@@ -47,7 +47,7 @@ eri_noreturn void sig_handler (void);
 void sig_handler_frame (struct eri_sigframe *frame);
 
 struct eri_live_signal_thread *init_group (
-		struct eri_rtld_args *rtld_args);
+			struct eri_live_rtld_args *rtld_args);
 eri_noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
 uint8_t sig_mask_async (struct eri_live_signal_thread *sig_th,

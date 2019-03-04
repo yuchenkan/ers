@@ -3,7 +3,7 @@
 
 #include <helper.h>
 #include <common.h>
-#include <rtld.h>
+#include <live-rtld.h>
 #include <live-thread.h>
 
 #include <lib/util.h>
@@ -158,7 +158,7 @@ sig_handler_frame (struct eri_sigframe *frame)
 }
 
 static struct signal_thread_group *
-init_group_memory (struct eri_rtld_args *rtld_args)
+init_group_memory (struct eri_live_rtld_args *rtld_args)
 {
   /* XXX: parameterize */
   const char *config = "ers_config";
@@ -250,7 +250,7 @@ create (struct signal_thread_group *group)
 
 static struct eri_live_signal_thread *
 init_main (struct signal_thread_group *group,
-	   struct eri_rtld_args *rtld_args)
+	   struct eri_live_rtld_args *rtld_args)
 {
   struct eri_live_signal_thread *sig_th = create (group);
 
@@ -267,7 +267,7 @@ init_main (struct signal_thread_group *group,
 }
 
 struct eri_live_signal_thread *
-init_group (struct eri_rtld_args *rtld_args)
+init_group (struct eri_live_rtld_args *rtld_args)
 {
   struct signal_thread_group *group = init_group_memory (rtld_args);
 

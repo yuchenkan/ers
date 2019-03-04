@@ -1,8 +1,9 @@
+#include <live-rtld.h>
 #include <lib/offset.h>
-#include <rtld.h>
 
 #define RTLD_ARGS_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_RTLD_ARGS_, name, struct eri_rtld_args, member)
+  ERI_DECLARE_OFFSET (ERI_LIVE_RTLD_ARGS_, name,			\
+		      struct eri_live_rtld_args, member)
 
 void
 declare (void)

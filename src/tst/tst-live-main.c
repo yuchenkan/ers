@@ -1,8 +1,8 @@
 #include <compiler.h>
 
-#include <live-signal-thread.h>
-#include <rtld.h>
 #include <common.h>
+#include <live-rtld.h>
+#include <live-signal-thread.h>
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
@@ -24,7 +24,7 @@ tst_main (void **args)
   extern uint8_t tst_live_buf_start[];
   extern uint8_t tst_live_buf_end[];
 
-  struct eri_rtld_args rtld_args = {
+  struct eri_live_rtld_args rtld_args = {
     0, 0, (uint64_t) top, (uint64_t) tst_live_start,
     .page_size = 4096,
     .map_start = (uint64_t) tst_live_map_start,

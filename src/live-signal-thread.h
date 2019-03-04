@@ -9,7 +9,7 @@
 struct eri_mtpool;
 
 struct eri_common_args;
-struct eri_rtld_args;
+struct eri_live_rtld_args;
 
 struct eri_helper;
 struct eri_live_thread;
@@ -22,7 +22,7 @@ void eri_live_signal_thread__init_thread_sig_stack (
 		uint8_t *stack, uint64_t stack_size);
 
 eri_noreturn void eri_live_signal_thread__init_main (
-		struct eri_rtld_args *rtld_args);
+		struct eri_live_rtld_args *rtld_args);
 
 struct eri_live_signal_thread__clone_args
 {

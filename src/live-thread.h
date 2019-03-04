@@ -8,7 +8,7 @@ struct eri_siginfo;
 struct eri_ucontext;
 struct eri_sigframe;
 
-struct eri_rtld_args;
+struct eri_live_rtld_args;
 struct eri_helper;
 struct eri_live_thread;
 struct eri_live_signal_thread;
@@ -19,7 +19,7 @@ uint8_t eri_live_thread__sig_digest_act (
 
 struct eri_live_thread *eri_live_thread__create_main (
 				struct eri_live_signal_thread *sig_th,
-				struct eri_rtld_args *rtld_args);
+				struct eri_live_rtld_args *rtld_args);
 void eri_live_thread__clone_main (struct eri_live_thread *th);
 
 struct eri_live_thread__create_args;

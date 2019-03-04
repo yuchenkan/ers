@@ -1,18 +1,20 @@
-#include <rtld.h>
+#include <live-rtld.h>
 
-#ifndef ERI_GENERATED_RECORDER_BINARY_H
-# include <generated/recorder-binary.h>
+#ifndef ERI_GENERATED_LIVE_H_INCLUDED
+# include <generated/live.h>
 #endif
 
-#include <lib/util.c>
+#include <lib/elf.h>
 #include <lib/syscall.h>
+
+#include <lib/util.c>
 #include <lib/printf.c>
 
 void
 rtld (void **args, uint64_t rdx, uint64_t rflags)
 {
   extern uint8_t eri_binary_end[];
-  struct eri_rtld_args rtld_args = {
+  struct eri_live_rtld_args rtld_args = {
     rdx, rflags, (uint64_t) args, (uint64_t) eri_binary_end
   };
   struct eri_sigset set;
@@ -20,16 +22,16 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   eri_assert_syscall (rt_sigprocmask, ERI_SIG_SETMASK, &set,
 		      &rtld_args.sig_mask, ERI_SIG_SETSIZE);
 
-  const char *rec = "recorder";
+  const char *rec = "live";
   uint64_t buf_size = 256 * 1024 * 1024;
   uint64_t page_size = 4096;
 
   uint64_t argc = *(uint64_t *) args;
   char **envp;
   for (envp = (char **) args + 1 + argc + 1; *envp; ++envp)
-    if (eri_strncmp (*envp, "ERS_RECORDER=",
-		     eri_strlen ("ERS_RECORDER=")) == 0)
-      rec = *envp + eri_strlen ("ERS_RECORDER=");
+    if (eri_strncmp (*envp, "ERS_LIVE=",
+		     eri_strlen ("ERS_LIVE=")) == 0)
+      rec = *envp + eri_strlen ("ERS_LIVE=");
   /* XXX: parameterize */
   rtld_args.buf_size = buf_size;
 
@@ -41,7 +43,7 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
 
   uint64_t fd = eri_assert_syscall (open, rec, ERI_O_RDONLY);
 
-  struct eri_seg_args segs[] = ERI_RECORDER_BINARY_SEGMENTS;
+  struct eri_seg segs[] = ERI_LIVE_SEGMENTS;
   uint16_t nsegs = eri_length_of (segs);
 
   uint64_t base;
@@ -107,6 +109,5 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
 
   eri_assert_syscall (close, fd);
 
-  ((void (*) (struct eri_rtld_args *))
-		(base + ERI_RECORDER_BINARY_ENTRY)) (&rtld_args);
+  ((void (*) (void *)) (base + ERI_LIVE_START)) (&rtld_args);
 }

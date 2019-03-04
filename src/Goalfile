@@ -5,13 +5,16 @@ if (env.base (goal) === 'Goalfile') return false;
 if (goal.startsWith ('tst/') && await this.invoke ('tst/Goalfile') !== false) return;
 if (goal.startsWith ('lib/') && await this.invoke ('lib/Goalfile') !== false) return;
 
-if (new Set([ 'rtld-convert.c.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
+if (new Set([ 'live-convert.c.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
 
-if (goal.match (/\bgenerated\/public\/rtld\.h$/)) return await this.invoke ('generated/public/rtld.h.g');
-if (goal.match (/[^-]\brtld$/)) return await this.invoke ('rtld.g');
-if (goal.match (/[^-]\brtld\.c\.o$/)) return await this.invoke ('rtld.c.o.g');
-if (goal.match (/\bgenerated\/recorder-binary\.h$/)) return await this.invoke ('generated/recorder-binary.h.g');
-if (goal.match (/[^-]\brecorder$/)) return await this.invoke ('recorder.g');
+if (goal.match (/\bgenerated\/public\/live-rtld\.h$/))
+  return await this.invoke ('generated/public/live-rtld.h.g');
+
+if (goal.match (/[^-]\blive-rtld$/)) return await this.invoke ('live-rtld.g');
+if (goal.match (/[^-]\blive-rtld\.c\.o$/)) return await this.invoke ('live-rtld.c.o.g');
+if (goal.match (/\bgenerated\/live\.h$/)) return await this.invoke ('generated/live.h.g');
+
+if (goal.match (/[^-]\blive$/)) return await this.invoke ('live.g');
 if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
 
 if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');

@@ -4,14 +4,14 @@
 #include <public/common.h>
 #if 0
 #ifndef _ERS_RTLD
-# include <generated/public/rtld.h>
+# include <generated/public/live-rtld.h>
 #endif
 #endif
 #include <public/entry-offsets.h>
 
 #define _ERS_INIT \
   .align 16, 0x90;							\
-  _ERS_RTLD
+  _ERS_LIVE_RTLD
 
 #define _ERS_REG(e, reg)	_ERS_PP_IF (e, %)%reg
 #define _ERS_RBX(e)		_ERS_REG (e, rbx)

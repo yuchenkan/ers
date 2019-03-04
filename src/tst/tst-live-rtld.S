@@ -1,6 +1,6 @@
 /* vim: set ft=gas: */
 
-#include <tst/rtld/generated/public/rtld.h>
+#include <tst/live-rtld/generated/public/live-rtld.h>
 
 #include <public/impl.h>
 
