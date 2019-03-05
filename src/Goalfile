@@ -2,24 +2,16 @@
 
 if (env.base (goal) === 'Goalfile') return false;
 
-if (goal.startsWith ('tst/') && await this.invoke ('tst/Goalfile') !== false) return;
 if (goal.startsWith ('lib/') && await this.invoke ('lib/Goalfile') !== false) return;
+if (goal.startsWith ('live/') && await this.invoke ('live/Goalfile') !== false) return;
 
-if (new Set([ 'live-convert.c.o'  ]).has (goal)) return await this.invoke (`${goal}.g`);
+if (new Set ([ 'live', 'public/live.h' ]).has (goal)) return await this.invoke ('goal/cp.g', { sub: 'live' });
 
-if (goal.match (/\bgenerated\/public\/live-rtld\.h$/))
-  return await this.invoke ('generated/public/live-rtld.h.g');
-
-if (goal.match (/[^-]\blive-rtld$/)) return await this.invoke ('live-rtld.g');
-if (goal.match (/[^-]\blive-rtld\.c\.o$/)) return await this.invoke ('live-rtld.c.o.g');
-if (goal.match (/\bgenerated\/live\.h$/)) return await this.invoke ('generated/live.h.g');
-
-if (goal.match (/[^-]\blive$/)) return await this.invoke ('live.g');
-if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
-
-if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
   return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);
+
+if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
+if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 
 if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');

@@ -2,8 +2,8 @@
 #define _ERS_PUBLIC_IMPL_H
 
 #include <public/common.h>
-#ifndef _ERS_LIVE_RTLD_H_INCLUDED
-// # include <generated/public/live-rtld.h>
+#ifndef _ERS_PUBLIC_LIVE_H_INCLUDED
+// # include <public/live.h>
 #endif
 #include <public/entry-offsets.h>
 

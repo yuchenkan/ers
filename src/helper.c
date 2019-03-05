@@ -1,8 +1,7 @@
-#include <helper.h>
-
 #include <compiler.h>
-
 #include <common.h>
+
+#include <helper.h>
 
 #include <lib/lock.h>
 #include <lib/syscall.h>

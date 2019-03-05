@@ -1,5 +1,4 @@
 #include <entry.h>
-
 #include <lib/util.h>
 #include <lib/offset.h>
 
