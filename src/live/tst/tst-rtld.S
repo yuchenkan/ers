@@ -3,9 +3,9 @@
 #include <lib/util.h>
 #include <lib/syscall.h>
 
-#include <live/tst/rtld/public/live.h>
+#include <live/tst/rtld/live.h>
 
-#define _ERS_LIVE_RTLD_H_INCLUDED
+#define _ERS_LIVE_LIVE_H_INCLUDED
 #include <public.h>
 
   .text

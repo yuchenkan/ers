@@ -6,12 +6,12 @@ if (base.startsWith ('tst/') && await this.invoke ('live/tst/Goalfile') !== fals
 
 if (new Set ([ 'convert.c.o'  ]).has (base)) return await this.invoke (`${goal}.g`);
 
-if (base.match (/[^-]\bpublic\/live\.h$/)) return await this.invoke ('live/public/live.h.g');
+if (base.match (/([^-]|^)\blive\.h$/)) return await this.invoke ('live/live.h.g');
 
-if (base.match (/[^-]\brtld$/)) return await this.invoke ('live/rtld.g');
-if (base.match (/[^-]\brtld\.c\.o$/)) return await this.invoke ('live/rtld.c.o.g');
+if (base.match (/([^-]|^)\brtld$/)) return await this.invoke ('live/rtld.g');
+if (base.match (/([^-]|^)\brtld\.c\.o$/)) return await this.invoke ('live/rtld.c.o.g');
 
-if (base.match (/[^-]\blive-bin\.h$/)) return await this.invoke ('live/live-bin.h.g');
-if (base.match (/[^-]\blive$/)) return await this.invoke ('live/live.g');
+if (base.match (/([^-]|^)\blive-bin\.h$/)) return await this.invoke ('live/live-bin.h.g');
+if (base.match (/([^-]|^)\blive$/)) return await this.invoke ('live/live.g');
 
 return false;

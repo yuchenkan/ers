@@ -207,6 +207,7 @@ async function mkdir (file) {
   assert (! file.startsWith ('..'));
   const dir = env.dir (file);
 
+  /* XXX: optimize mkdir a/b when a/b/c is done */
   let first = await visit (env.dirs, dir);
   if (! first) return;
 

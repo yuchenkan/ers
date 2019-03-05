@@ -5,8 +5,6 @@ if (env.base (goal) === 'Goalfile') return false;
 if (goal.startsWith ('lib/') && await this.invoke ('lib/Goalfile') !== false) return;
 if (goal.startsWith ('live/') && await this.invoke ('live/Goalfile') !== false) return;
 
-if (new Set ([ 'live', 'public/live.h' ]).has (goal)) return await this.invoke ('goal/cp.g', { sub: 'live' });
-
 if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
   return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);
 

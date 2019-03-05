@@ -2,10 +2,11 @@
 #define _ERS_PUBLIC_IMPL_H
 
 #include <public/common.h>
-#ifndef _ERS_PUBLIC_LIVE_H_INCLUDED
-// # include <public/live.h>
-#endif
 #include <public/entry-offsets.h>
+
+#ifndef _ERS_LIVE_LIVE_H_INCLUDED
+# include <live/live.h>
+#endif
 
 #define _ERS_INIT \
   .align 16, 0x90;							\

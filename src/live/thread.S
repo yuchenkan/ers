@@ -279,8 +279,8 @@ ERI_FUNCTION (entry)
 
 #define PREPARE_ATOMIC(sz, name) \
 ATOMIC_SIZE_LABEL (sz, name):						\
-  leaq	ATOMIC_ACCESS_START_LABEL (sz, name), %rsi;			\
-  leaq	ATOMIC_ACCESS_END_LABEL (sz, name), %rdx;			\
+  leaq	ATOMIC_ACCESS_START_LABEL (sz, name)(%rip), %rsi;		\
+  leaq	ATOMIC_ACCESS_END_LABEL (sz, name)(%rip), %rdx;			\
   TH_CALL (prepare_atomic)
 
 #define COMPLETE_ATOMIC(sz, name) \
