@@ -1,13 +1,10 @@
 #include <lib/elf.h>
-#include <lib/syscall.h>
 #include <lib/util.c>
+#include <lib/syscall.h>
+#include <lib/syscall.c>
 #include <lib/printf.c>
 
 #include <live/rtld.h>
-
-#ifndef ERI_LIVE_LIVE_BIN_H_INCLUDED
-# include <live/live-bin.h>
-#endif
 
 void
 rtld (void **args, uint64_t rdx, uint64_t rflags)
@@ -42,10 +39,17 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
 
   uint64_t fd = eri_assert_syscall (open, rec, ERI_O_RDONLY);
 
-  struct eri_seg segs[] = ERI_LIVE_SEGMENTS;
-  uint16_t nsegs = eri_length_of (segs);
+  uint8_t buf[sizeof (uint64_t) + sizeof (uint16_t)];
+  eri_assert_syscall (lseek, fd, -sizeof buf, ERI_SEEK_END);
+  eri_assert_sys_read (fd, buf, sizeof buf);
+  uint16_t nsegs = *(uint16_t *) buf;
+  uint64_t entry = *(uint64_t *) (buf + sizeof nsegs);
 
-  uint64_t base;
+  struct eri_seg segs[nsegs];
+  eri_assert_syscall (lseek, fd, -(sizeof segs + sizeof buf), ERI_SEEK_END);
+  eri_assert_sys_read (fd, segs, sizeof segs);
+
+  uint64_t base = 0;
   uint16_t i;
   for (i = 0; i < nsegs; ++i)
     {
@@ -108,5 +112,5 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
 
   eri_assert_syscall (close, fd);
 
-  ((void (*) (void *)) (base + ERI_LIVE_START)) (&rtld_args);
+  ((void (*) (void *)) (base + entry)) (&rtld_args);
 }

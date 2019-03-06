@@ -4,9 +4,7 @@
 #include <public/common.h>
 #include <public/entry-offsets.h>
 
-#ifndef _ERS_LIVE_LIVE_H_INCLUDED
-# include <live/live.h>
-#endif
+#include <live/live.h>
 
 #ifndef _ERS_EXPORT
 # define _ERS_EXP_CONST(x)		x

@@ -85,5 +85,8 @@ eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
   do { m4_ns(assert_syscall_nr (nr, status));				\
        eri_assert_unreachable (); } while (0)
 
+void m4_ns(assert_sys_read) (int32_t fd, void *buf, uint64_t size);
+void m4_ns(assert_sys_write) (int32_t fd, void *buf, uint64_t size);
+
 #endif
 #endif

@@ -25,7 +25,7 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
   for (i = 0; i < ehdr.phnum; ++i)
     if (phdrs[i].type == ERI_PT_LOAD) ++j;
 
-  *segs = malloc (sizeof **segs * j);
+  *segs = calloc (j, sizeof **segs);
   *nsegs = j;
   for (i = 0; i < ehdr.phnum; ++i)
     if (phdrs[i].type == ERI_PT_LOAD)
@@ -46,7 +46,7 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
 }
 
 static void
-convert_live (const char *elf, const char *bin, const char *header)
+convert_live (const char *elf, const char *bin)
 {
   FILE *ef = fopen (elf, "rb");
   assert (ef);
@@ -69,17 +69,12 @@ convert_live (const char *elf, const char *bin, const char *header)
       assert (fwrite (b, segs[i].filesz, 1, bf) == 1);
     }
 
-  FILE *hf = fopen (header, "w");
-  assert (hf);
+  assert (fseek (bf, 0, SEEK_END) == 0);
+  /* XXX: endianess */
+  assert (fwrite (segs, sizeof segs[0], nsegs, bf) == nsegs);
+  assert (fwrite (&nsegs, sizeof nsegs, 1, bf) == 1);
+  assert (fwrite (&entry, sizeof entry, 1, bf) == 1);
 
-  fprintf (hf, "#define ERI_LIVE_SEGMENTS\t{ ");
-  for (i = 0; i < nsegs; ++i)
-    fprintf (hf, "{ %d, %lu, %lu, %lu, %lu }, ", segs[i].prot,
-	     segs[i].offset, segs[i].filesz, segs[i].vaddr, segs[i].memsz);
-  fprintf (hf, " }\n");
-  fprintf (hf, "#define ERI_LIVE_START\t%lu\n", entry);
-
-  fclose (hf);
   fclose (bf);
   free (segs);
   fclose (ef);
@@ -127,8 +122,8 @@ main (int argc, const char **argv)
 
   if (strcmp (t, "bin") == 0)
     {
-      assert (argc == 5);
-      convert_live (argv[2], argv[3], argv[4]);
+      assert (argc == 4);
+      convert_live (argv[2], argv[3]);
     }
   else if (strcmp (t, "header") == 0)
     {

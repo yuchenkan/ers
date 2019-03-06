@@ -573,6 +573,7 @@
 
 #define ERI_SEEK_SET		0
 #define ERI_SEEK_CUR		1
+#define ERI_SEEK_END		2
 
 #define ERI_SA_SIGINFO		4
 #define ERI_SA_RESTORER		0x04000000
