@@ -171,7 +171,7 @@ async function build () {
     await env.mkdir (goal);
     if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {
       var src = env.src (goal);
-      if (await ctime (src)) await env.run (`cp ${src} ${goal}`, true);
+      if (await ctime (src)) await env.run (`cp ${src} ${goal} && chmod a-w ${goal}`, true);
     }
 
     env.stats[goal] = { deps: Array.from (first.deps), ctime: env.ctime, src };

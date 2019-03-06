@@ -21,7 +21,7 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   eri_assert_syscall (rt_sigprocmask, ERI_SIG_SETMASK, &set,
 		      &rtld_args.sig_mask, ERI_SIG_SETSIZE);
 
-  const char *rec = "live";
+  const char *rec = "ers/live";
   uint64_t buf_size = 256 * 1024 * 1024;
   uint64_t page_size = 4096;
 

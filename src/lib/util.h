@@ -10,7 +10,7 @@
 #define ERI_PP_IF(t, ...)	_ERS_PP_IF (t, ##__VA_ARGS__)
 
 #define ERI_EMPTY
-#define ERI_EVAL(...)	__VA_ARGS__
+#define ERI_EVAL(...)		__VA_ARGS__
 
 #define ERI_MOV_LM(label, dst, reg) \
   leaq	label(%rip), reg;						\

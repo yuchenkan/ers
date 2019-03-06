@@ -1,0 +1,11 @@
+'use strict'; /* vim: set ft=javascript: */
+
+const base = goal.replace ('ers/', '');
+
+if (base === 'public.h') return await this.invoke ('goal/m4.g');
+
+if (base === 'public.h.in.m4') return await this.invoke (`${goal}.g`);
+
+if (base === 'live') return await this.invoke ('goal/cp.g', { src: 'live/live' });
+
+return false;

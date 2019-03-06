@@ -4,12 +4,14 @@ if (env.base (goal) === 'Goalfile') return false;
 
 if (goal.startsWith ('lib/') && await this.invoke ('lib/Goalfile') !== false) return;
 if (goal.startsWith ('live/') && await this.invoke ('live/Goalfile') !== false) return;
+if (goal.startsWith ('ers/') && await this.invoke ('ers/Goalfile') !== false) return;
 
 if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
   return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);
 
 if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
 if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
+if (new Set ([ 'public.h', 'public.h.in' ]).has (goal)) return await this.invoke ('goal/m4.g');
 
 if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');

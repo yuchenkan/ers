@@ -1,2 +1,0 @@
-set -ex
-../src/replayer "$@"

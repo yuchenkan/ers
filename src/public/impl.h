@@ -8,11 +8,17 @@
 # include <live/live.h>
 #endif
 
+#ifndef _ERS_EXPORT
+# define _ERS_EXP_CONST(x)		x
+# define _ERS_EXP_REG(e, reg)		_ERS_PP_IF (e, %)%reg
+# define _ERS_EXP_ATOMIC_SIZE(sz)	_ERS_ATOMIC_SIZE (sz)
+#endif
+
 #define _ERS_INIT \
   .align 16, 0x90;							\
   _ERS_LIVE_RTLD
 
-#define _ERS_REG(e, reg)	_ERS_PP_IF (e, %)%reg
+#define _ERS_REG(e, reg)	_ERS_EXP_REG (e, reg)
 #define _ERS_RBX(e)		_ERS_REG (e, rbx)
 #define _ERS_RIP(e)		_ERS_REG (e, rip)
 
@@ -31,12 +37,12 @@
 #define _ERS_SAVE_RET(e, label)		_ERS_SAVE_LABEL (e, label, RET)
 
 #define _ERS_OP(code, args, sig_hand) \
-  ((_ERS_PASTE (_ERS_OP_, code) << 16)					\
-   | ((args) << 8) | _ERS_PASTE (_ERS_SIG_HAND_, sig_hand))
+  (_ERS_EXP_CONST ((_ERS_PASTE (_ERS_OP_, code) << 16)			\
+		   | _ERS_PASTE (_ERS_SIG_HAND_, sig_hand)) | ((args) << 8))
 
 #define _ERS_SYSCALL(e) \
 30:									\
-  _ERS_ENTER (e, _ERS_OP (SYSCALL, 0, SYSCALL));			\
+  _ERS_ENTER (e, _ERS_EXP_CONST (_ERS_OP (SYSCALL, 0, SYSCALL)));	\
   _ERS_SAVE_CALL (e, 30b);						\
   _ERS_SAVE_RET (e, 20f);						\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
@@ -44,7 +50,7 @@
 
 #define _ERS_SYNC_ASYNC(e, inst) \
 30:									\
-  _ERS_ENTER (e, _ERS_OP (SYNC_ASYNC, 0, SYNC_ASYNC));			\
+  _ERS_ENTER (e, _ERS_EXP_CONST (_ERS_OP (SYNC_ASYNC, 0, SYNC_ASYNC)));	\
   _ERS_SAVE_CALL (e, 30b);						\
   _ERS_SAVE_RET (e, 20f);						\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
@@ -52,7 +58,7 @@
   inst
 
 #define _ERS_ATOMIC_OP(op, sz) \
-  _ERS_OP (ERI_PASTE (ATOMIC_, op), _ERS_ATOMIC_SIZE (sz), ATOMIC)
+  _ERS_OP (_ERS_PASTE (ATOMIC_, op), _ERS_EXP_ATOMIC_SIZE (sz), ATOMIC)
 
 #define _ERS_ATOMIC_SAVE_VAL(e, sz, val) \
   _ERS_PASTE (mov, sz)	val, _ERS_ENTRY (e, ATOMIC_VAL)
