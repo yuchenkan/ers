@@ -11,7 +11,8 @@ const open = util.promisify (fs.open);
 const close = util.promisify (fs.close);
 const readFile = util.promisify (fs.readFile);
 
-const exec = util.promisify (require ('child_process').exec);
+const child_process = require ('child_process');
+const exec = util.promisify (child_process.exec);
 
 const AsyncFunction = Object.getPrototypeOf (async function () { }).constructor;
 
@@ -291,9 +292,9 @@ function main () {
 
   const circular = () => {
     const goals = env.goals;
-    const left = gs => gs.filter (g => goals[g].waiting).shift ();
+    const left = gs => gs.filter (g => goals[g].waiting && goals[g].waiting.length).shift ();
     let node = left (Object.keys (goals));
-    if (! node) return;
+    assert (node);
 
     const circle = { };
     while (! (node in circle)) {
@@ -316,6 +317,16 @@ function main () {
     info (`cd ${env.dst}`);
     process.chdir (env.dst);
 
+    if (await ctime ('.goal-lock')) {
+      fatal ('locked');
+      process.exit (1);
+    }
+    await env.run ('touch .goal-lock');
+    process.on ('SIGINT', () => {
+      child_process.execSync ('rm .goal-lock');
+      process.exit (1);
+    });
+
     env.phony = new Set (env.phony.map (p => norm (p)));
 
     note ('collecting goal stats...');
@@ -328,8 +339,11 @@ function main () {
 
     process.on ('beforeExit', circular);
 
-    await update.call (context (env, null), goals);
-    note ('every up-to-date');
+    try {
+      await update.call (context (env, null), goals);
+      note ('every up-to-date');
+      process.removeListener ('beforeExit', circular);
+    } finally { await exec ('rm .goal-lock'); }
   };
 
   make (args).catch (err => {
