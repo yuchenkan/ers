@@ -2,9 +2,11 @@
 
 if (env.base (goal) === 'Goalfile') return false;
 
-if (goal.startsWith ('lib/') && await this.invoke ('lib/Goalfile') !== false) return;
-if (goal.startsWith ('live/') && await this.invoke ('live/Goalfile') !== false) return;
-if (goal.startsWith ('ers/') && await this.invoke ('ers/Goalfile') !== false) return;
+const subs = [ 'lib', 'live', 'ers', 'int' ];
+if (await subs.reduce (async (a, s) =>
+      await a || (goal.startsWith (`${s}/`) && await this.invoke (`${s}/Goalfile`) !== false), false))
+  return;
+if (goal === 'all') return await this.invoke (`${goal}.g`, { subs });
 
 if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
   return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);

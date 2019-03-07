@@ -18,7 +18,7 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   eri_assert_syscall (rt_sigprocmask, ERI_SIG_SETMASK, &set,
 		      &rtld_args.sig_mask, ERI_SIG_SETSIZE);
 
-  const char *rec = "ers/live";
+  const char *live = "ers/live";
   uint64_t buf_size = 256 * 1024 * 1024;
   uint64_t page_size = 4096;
 
@@ -27,7 +27,7 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   for (envp = (char **) args + 1 + argc + 1; *envp; ++envp)
     if (eri_strncmp (*envp, "ERS_LIVE=",
 		     eri_strlen ("ERS_LIVE=")) == 0)
-      rec = *envp + eri_strlen ("ERS_LIVE=");
+      live = *envp + eri_strlen ("ERS_LIVE=");
   /* XXX: parameterize */
   rtld_args.buf_size = buf_size;
 
@@ -37,7 +37,14 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
     if (a->type == ERI_AT_PAGESZ) page_size = a->val;
   rtld_args.page_size = page_size;
 
-  uint64_t fd = eri_assert_syscall (open, rec, ERI_O_RDONLY);
+  uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);
+  if (res == ERI_ENOENT)
+    {
+      eri_assert_printf ("ERS_LIVE not found: %s\n", live);
+      eri_assert_syscall (exit, 1);
+    }
+  eri_assert (! eri_syscall_is_error (res));
+  int32_t fd = res;
 
   uint8_t buf[sizeof (uint64_t) + sizeof (uint16_t)];
   eri_assert_syscall (lseek, fd, -sizeof buf, ERI_SEEK_END);
