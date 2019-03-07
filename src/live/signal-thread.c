@@ -422,16 +422,24 @@ remove_from_group (struct eri_live_signal_thread *sig_th)
   eri_unlock (&group->thread_lock);
 }
 
+struct event_type
+{
+  uint32_t type;
+  int32_t lock;
+};
+
+#define INIT_EVENT_TYPE(type)	{ type, 1 }
+
 static void
 release_event (void *event)
 {
-  eri_assert_sys_futex_wake (event, 0);
+  eri_unlock (&((struct event_type *) event)->lock);
 }
 
 static void
-wait_event (uint32_t *event, uint32_t event_type)
+wait_event (struct event_type *event)
 {
-  eri_assert_sys_futex_wait (event, event_type, 0);
+  eri_lock (&event->lock);
 }
 
 static void
@@ -443,9 +451,8 @@ queue_event (struct eri_live_signal_thread *sig_th, void *event)
 static void
 proc_event (struct eri_live_signal_thread *sig_th, void *event)
 {
-  uint32_t event_type = *(uint32_t *) event;
   queue_event (sig_th, event);
-  wait_event (event, event_type);
+  wait_event (event);
 }
 
 #define CLONE_EVENT			1
@@ -477,7 +484,7 @@ static void sig_action (struct eri_live_signal_thread *sig_th,
 
 struct sig_mask_event
 {
-  uint32_t type;
+  struct event_type type;
   const struct eri_sigset *mask;
 
   uint8_t done;
@@ -509,7 +516,7 @@ static void sig_fd_read (struct eri_live_signal_thread *sig_th,
 
 struct syscall_event
 {
-  uint32_t type;
+  struct event_type type;
   struct eri_sys_syscall_args *args;
 };
 
@@ -528,7 +535,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       if (res == ERI_EINTR) continue;
       eri_assert (! eri_syscall_is_error (res));
 
-      uint32_t type = *(uint32_t *) event_type;
+      uint32_t type = ((struct event_type *) event_type)->type;
       eri_debug ("%u\n", type);
       if (type == CLONE_EVENT)
 	clone (sig_th, event_type);
@@ -597,7 +604,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 }
 
 struct clone_event {
-  uint32_t type;
+  struct event_type type;
   struct eri_live_signal_thread__clone_args *args;
 
   int32_t clone_thread_return;
@@ -702,7 +709,8 @@ uint8_t
 eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
 			       struct eri_live_signal_thread__clone_args *args)
 {
-  struct clone_event event = { CLONE_EVENT, args, 1, 1, 1, 1 };
+  struct clone_event event
+		= { INIT_EVENT_TYPE (CLONE_EVENT), args, 1, 1, 1, 1 };
   proc_event (sig_th, &event);
 
   if (args->result == 0) return 0;
@@ -721,7 +729,7 @@ eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
 
 struct exit_event
 {
-  uint32_t type;
+  struct event_type type;
   uint8_t group;
   uint64_t status;
 
@@ -752,7 +760,8 @@ inform_exit_group (struct eri_live_signal_thread *sig_th)
   ERI_LST_FOREACH (thread, group, it)
     if (it != sig_th)
       {
-	uint32_t event = SIG_EXIT_GROUP_EVENT;
+	struct event_type event
+		= INIT_EVENT_TYPE (SIG_EXIT_GROUP_EVENT);
 	proc_event (it, &event);
       }
 }
@@ -839,7 +848,7 @@ eri_live_signal_thread__exit (struct eri_live_signal_thread *sig_th,
 			      uint8_t group, uint64_t status)
 {
   eri_debug ("status = %lu\n", status);
-  struct exit_event event = { EXIT_EVENT, group, status };
+  struct exit_event event = { INIT_EVENT_TYPE (EXIT_EVENT), group, status };
   proc_event (sig_th, &event);
   return event.done;
 }
@@ -855,13 +864,13 @@ signal_exit_group (struct eri_live_signal_thread *sig_th)
 void
 eri_live_signal_thread__die (struct eri_live_signal_thread *sig_th)
 {
-  uint32_t event = DIE_EVENT;
+  struct event_type event = INIT_EVENT_TYPE (DIE_EVENT);
   queue_event (sig_th, &event);
 }
 
 struct sig_action_event
 {
-  uint32_t type;
+  struct event_type type;
 
   int32_t sig;
   const struct eri_sigaction *act;
@@ -902,7 +911,8 @@ eri_live_signal_thread__sig_action (struct eri_live_signal_thread *sig_th,
       return 1;
     }
 
-  struct sig_action_event event = { SIG_ACTION_EVENT, sig, act, old_act };
+  struct sig_action_event event
+		= { INIT_EVENT_TYPE (SIG_ACTION_EVENT), sig, act, old_act };
   proc_event (sig_th, &event);
   return event.done;
 }
@@ -911,7 +921,7 @@ static uint8_t
 thread_do_sig_mask (struct eri_live_signal_thread *sig_th,
 		    uint32_t type, const struct eri_sigset *mask)
 {
-  struct sig_mask_event event = { type, mask };
+  struct sig_mask_event event = { INIT_EVENT_TYPE (type), mask };
   proc_event (sig_th, &event);
   return event.done;
 }
@@ -971,7 +981,7 @@ eri_live_signal_thread__sig_prepare_sync (
 
 struct sig_fd_read_event
 {
-  uint32_t type;
+  struct event_type type;
   struct eri_live_signal_thread__sig_fd_read_args *args;
 
   uint8_t done;
@@ -1030,7 +1040,8 @@ eri_live_signal_thread__sig_fd_read (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_live_signal_thread__sig_fd_read_args *args)
 {
-  struct sig_fd_read_event event = { SIG_FD_READ_EVENT, args };
+  struct sig_fd_read_event event
+		= { INIT_EVENT_TYPE (SIG_FD_READ_EVENT), args };
   proc_event (sig_th, &event);
   return event.done;
 }
@@ -1040,7 +1051,7 @@ eri_live_signal_thread__syscall (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_sys_syscall_args *args)
 {
-  struct syscall_event event = { SYSCALL_EVENT, args };
+  struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
   proc_event (sig_th, &event);
 }
 

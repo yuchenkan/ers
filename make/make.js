@@ -94,24 +94,30 @@ async function collect () {
 
   const infos = env.infos;
   const first = await visit (infos, goal);
-  if (! first) return goal in env.stats;
+  if (! first) return;
   debug (`collect ${goal}`);
 
-  const stat = env.stats[goal];
-  const deps = stat.deps;
-  await Promise.all (deps.map (d => collect.call (context (env, d))));
-  if (! deps.every (d => d in env.stats && stat.ctime >= env.stats[d].ctime)) {
-    debug ('collect dependend file changed');
+  if (env.phony.has (goal)) {
+    debug ('collect phony goal changed');
     delete env.stats[goal];
-  } else if (stat.src
-	     && (stat.src !== env.src (goal)
-		 || def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime))) {
-    debug ('collect source file changed');
-    delete env.stats[goal];
-  } else env.goals[goal] = { };
+  } else {
+    const stat = env.stats[goal];
+    const deps = stat.deps;
+    await Promise.all (deps.map (d => collect.call (context (env, d))));
+    if (env.phony.has (goal)) {
+    } else if (! deps.every (d => d in env.stats && stat.ctime >= env.stats[d].ctime)) {
+      debug ('collect dependend goal changed');
+      delete env.stats[goal];
+    } else if (stat.src
+	       && (stat.src !== env.src (goal)
+		   || def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime))) {
+      debug ('collect source goal changed');
+      delete env.stats[goal];
+    } else env.goals[goal] = { };
+  }
 /*
-if (goal === 'm4/util.m4')
-console.log (goal, stat, await ctime (stat.src), await ctime (goal), goal in env.stats);
+if (goal === 'live/tst/tst-sig-mask-async-ut.out')
+console.log (deps, deps.every (d => d in env.stats), goal in env.stats);
 if (new Set ([ 'tst/tst-common-start.S.o', 'all' ]).has (goal))
 console.log (goal, stat, goal in env.stats);
 */
@@ -218,8 +224,9 @@ async function mkdir (file) {
 
 function main () {
 
-  const args = [ ];
   let maxJobs = 1;
+  const phony = [ ];
+  const args = [ ];
   process.argv.shift ();
   process.argv.shift ();
   try {
@@ -228,8 +235,11 @@ function main () {
       if (a === '-v')
 	verbose = isNaN (Number (process.argv[0])) ? 1 : Number (process.argv.shift ());
       else if (a === '-j') maxJobs = Number (process.argv.shift ());
-      else {
-	assert (a[0] != '-');
+      else if (a === '-p') {
+	assert (process.argv.length);
+	phony.push (process.argv.shift ());
+      } else {
+	assert (a[0] !== '-');
         args.push (a);
       }
     }
@@ -237,7 +247,7 @@ function main () {
     if (maxJobs > 2 * os.cpus ().length) maxJobs = 2 * os.cpus ().length;
     assert (args.length >= 3);
   } catch (err) {
-    fatal ('usage: node make.js [-v N -j N] src dst goal ...');
+    fatal ('usage: node make.js [-v N -j N -p phony] src dst goal ...');
     debug (err.stack);
     process.exit (1);
   }
@@ -275,7 +285,7 @@ function main () {
 
     infos: { }, goals: { }, funcs: { },
 
-    src, dst,
+    src, dst, phony,
     jobs: 0, maxJobs, waiting: [ ]
   };
 
@@ -294,7 +304,7 @@ function main () {
     do {
       node = circle[node];
       link.push (node);
-    } while (node != link[0]);
+    } while (node !== link[0]);
 
     goals[node].waiting.shift ().rej (new Error (`circular dependancy detected:\n  ${link.join (' => ')}`));
   };
@@ -305,6 +315,8 @@ function main () {
     env.src = (rt => r => path.join (rt, r)) (path.relative (env.dst, env.src)),
     info (`cd ${env.dst}`);
     process.chdir (env.dst);
+
+    env.phony = new Set (env.phony.map (p => norm (p)));
 
     note ('collecting goal stats...');
     env.stats = def (await read ('.goal-stats', true), { }, JSON.parse);
