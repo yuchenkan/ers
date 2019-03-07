@@ -1,5 +1,5 @@
-#include "tst/tst-syscall.h"
-#include "live/tst/tst-entry-atomic.h"
+#include <tst/tst-syscall.h>
+#include <live/tst/tst-entry-atomic.h>
 
 struct pack
 {
