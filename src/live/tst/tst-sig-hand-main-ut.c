@@ -75,7 +75,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
 }
 
-uint32_t
+eri_noreturn void
 tst_main (void)
 {
   tst_live_sig_hand_init_pool (&sig_th.pool.pool);
@@ -124,5 +124,5 @@ tst_main (void)
   eri_info ("final raise_at = %u\n", raise_at);
 
   eri_assert_fini_pool (&sig_th.pool.pool);
-  return 0;
+  eri_assert_sys_exit (0);
 }

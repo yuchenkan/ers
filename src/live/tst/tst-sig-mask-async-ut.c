@@ -86,7 +86,9 @@ signal (void)
     }
 }
 
-uint32_t
+eri_noreturn void tst_main (void);
+
+eri_noreturn void
 tst_main (void)
 {
   sig_th.sig_info = 0;
@@ -116,5 +118,5 @@ tst_main (void)
   for (; ! reach_done; ++raise_at) signal ();
 
   eri_assert_printf ("final raise_at = %u\n", raise_at);
-  return 0;
+  eri_assert_sys_exit (0);
 }

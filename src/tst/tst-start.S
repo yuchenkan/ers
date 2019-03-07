@@ -1,14 +1,20 @@
 /* vim: set ft=gas: */
 
 #include <lib/util.h>
-#include <lib/syscall.h>
 
   .text
 
+#ifndef TST_INIT
+# define TST_INIT
+#endif
+
+#ifndef TST_MAIN
+# define TST_MAIN tst_main
+#endif
+
 ERI_FUNCTION (tst_start)
+  TST_INIT
   movq	%rsp, %rdi
-  call	tst_main
-  movl	%eax, %edi
-  movl	$__NR_exit, %eax
-  syscall
+  call	TST_MAIN
+  ERI_ASSERT_FALSE
   ERI_END_FUNCTION (tst_start)

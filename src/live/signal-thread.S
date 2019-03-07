@@ -18,7 +18,7 @@ ERI_FUNCTION (eri_live_signal_thread__init_main)
   subq	$8, %rsp
   call	init_group
 
-  leaq	SIGNAL_THREAD_STACK(%eax), %rsp
+  leaq	SIGNAL_THREAD_STACK(%rax), %rsp
   addq	$SIGNAL_THREAD_STACK_SIZE, %rsp
 
   movq	%rax, %rdi

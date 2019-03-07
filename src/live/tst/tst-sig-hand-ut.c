@@ -183,7 +183,9 @@ start (void)
   eri_assert_unreachable ();
 }
 
-uint32_t
+eri_noreturn void tst_main (void);
+
+eri_noreturn void
 tst_main (void)
 {
   tst_live_sig_hand_init_pool (&sig_th.pool.pool);
@@ -238,5 +240,5 @@ tst_main (void)
   eri_assert_free (&sig_th.pool.pool, step.ctxs);
 
   eri_assert_fini_pool (&sig_th.pool.pool);
-  return 0;
+  eri_assert_sys_exit (0);
 }

@@ -10,12 +10,16 @@ if (new Set ([ 'tst-main.ld', 'tst-sig-hand-ut.ld' ]).has (base))
 
 if (base.match (/^tst-sig-hand-[^.]*-ut$/)) return await this.invoke ('live/tst/tst-sig-hand-ut.g');
 
-if (base.match (/^tst-main-exit-[^.]*.out$/)) return await this.invoke ('live/tst/tst-exit.out.g');
+if (base.match (/^tst-[^.-]*-exit-[^.]*.out$/)) return await this.invoke ('live/tst/tst-exit.out.g');
 
-if (base.match (/^tst-main-entry-atomic-[^.]*$/)) return await this.invoke ('live/tst/tst-entry-atomic.g');
+if (base.match (/^tst-[^.-]*-entry-atomic-[^.]*$/)) return await this.invoke ('live/tst/tst-entry-atomic.g');
 
-if (base.match (/^tst-main-entry-[^.]*$/)) return await this.invoke ('live/tst/tst-entry.g');
+if (base.match (/^tst-[^.-]*-entry-[^.]*$/)) return await this.invoke ('live/tst/tst-entry.g');
 
 if (base.match (/^tst-main-[^.]*$/)) return await this.invoke ('live/tst/tst-main.g');
+
+if (base.match (/^tst-init-[^.]*.out$/)) return await this.invoke ('live/tst/tst-init.out.g');
+
+if (base.match (/^tst-init-[^.]*$/)) return await this.invoke ('live/tst/tst-init.g');
 
 return false;
