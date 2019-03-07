@@ -1,6 +1,6 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const base = goal.replace ('ers/', '');
+const base = goal.replace (/^ers\//, '');
 
 if (base === 'public.h') return await this.invoke ('goal/m4.g');
 
