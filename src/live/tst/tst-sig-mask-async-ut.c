@@ -11,8 +11,8 @@ TST_UNUSED (sig_handler_frame);
 TST_UNUSED (init_group);
 TST_UNUSED (start_group);
 
-TST_UNUSED (eri_lock);
-TST_UNUSED (eri_unlock);
+TST_UNUSED (eri_assert_lock);
+TST_UNUSED (eri_assert_unlock);
 TST_UNUSED (eri_buf_reserve);
 
 static struct eri_siginfo info = { ERI_SIGINT };

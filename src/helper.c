@@ -113,7 +113,7 @@ eri_helper__exit (struct eri_helper *helper)
   struct event *event = 0;
   eri_assert_syscall (write, helper->event_pipe[1], &event, sizeof event);
 
-  eri_lock (&helper->alive);
+  eri_assert_lock (&helper->alive);
   eri_assert_syscall (close, helper->event_pipe[0]);
   eri_assert_syscall (close, helper->event_pipe[1]);
   eri_assert_mtfree (helper->pool, helper);

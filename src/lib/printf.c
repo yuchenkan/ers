@@ -461,9 +461,9 @@ eri_printf (const char *fmt, ...)
 int32_t
 eri_lvfprintf (int32_t *lock, eri_file_t file, const char *fmt, va_list arg)
 {
-  if (lock) eri_lock (lock);
+  if (lock) eri_assert_lock (lock);
   int32_t res = eri_vfprintf (file, fmt, arg);
-  if (lock) eri_unlock (lock);
+  if (lock) eri_assert_unlock (lock);
   return res;
 }
 

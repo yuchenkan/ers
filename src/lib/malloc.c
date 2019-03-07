@@ -182,9 +182,9 @@ int32_t
 eri_mtmalloc (struct eri_mtpool *pool, uint64_t size, void **p)
 {
   int32_t res;
-  eri_lock (&pool->lock);
+  eri_assert_lock (&pool->lock);
   res = eri_malloc (&pool->pool, size, p);
-  eri_unlock (&pool->lock);
+  eri_assert_unlock (&pool->lock);
   return res;
 }
 
@@ -192,8 +192,8 @@ int32_t
 eri_mtfree (struct eri_mtpool *pool, void *p)
 {
   int32_t res;
-  eri_lock (&pool->lock);
+  eri_assert_lock (&pool->lock);
   res = eri_free (&pool->pool, p);
-  eri_unlock (&pool->lock);
+  eri_assert_unlock (&pool->lock);
   return res;
 }

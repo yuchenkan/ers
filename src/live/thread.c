@@ -114,9 +114,9 @@ sig_fd_remove_free (struct thread_group *group, struct sig_fd *fd)
 static struct sig_fd *
 sig_fd_try_lock (struct thread_group *group, int32_t fd)
 {
-  eri_lock (&group->sig_fd_lock);
+  eri_assert_lock (&group->sig_fd_lock);
   struct sig_fd *sig_fd = sig_fd_rbt_get (group, &fd, ERI_RBT_EQ);
-  if (! sig_fd) eri_unlock (&group->sig_fd_lock);
+  if (! sig_fd) eri_assert_unlock (&group->sig_fd_lock);
   return sig_fd;
 }
 
@@ -261,7 +261,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   eri_debug ("%lx %lx\n", th, sig_th);
   th->sig_th = sig_th;
   th->id = eri_atomic_fetch_inc (&group->th_id);
-  th->alive = 0;
+  th->alive = 1;
   th->clear_tid = clear_tid;
   th->rec = eri_live_thread_recorder__create (group->pool, th->id);
 
@@ -304,7 +304,7 @@ start (struct eri_live_thread *th)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->ctx);
 
-  eri_assert_sys_futex_wait (&th->alive, 0, 0);
+  if (th->id) eri_assert_lock (&th->alive);
   eri_debug ("leave %lx %lx\n",
 	     __builtin_return_address (0), th->ctx->sig_frame);
   return th->ctx;
@@ -860,7 +860,7 @@ clear_tid (void *args)
     }
   else unlock_atomic (group, &idx, 0);
 
-  eri_unlock (&a->lock);
+  eri_assert_unlock (&a->lock);
 }
 
 static void
@@ -878,7 +878,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
       struct clear_tid_args args = { th, 1 };
       eri_helper__invoke (helper, clear_tid, &args,
 			  clear_tid_sigsegv_handler);
-      eri_lock (&args.lock);
+      eri_assert_lock (&args.lock);
     }
 
   struct thread_group *group = th->group;
@@ -902,7 +902,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
 void
 eri_live_thread__join (struct eri_live_thread *th)
 {
-  eri_lock (&th->alive);
+  eri_assert_lock (&th->alive);
 }
 
 #define SYSCALL_DONE			0
@@ -996,7 +996,7 @@ DEFINE_SYSCALL (clone)
 	copy_to_user (th, ptid, &args.tid, sizeof args.tid);
       if (flags & ERI_CLONE_CHILD_SETTID)
 	copy_to_user (th, ctid, &args.tid, sizeof args.tid);
-      eri_assert_sys_futex_wake (&create_args.cth->alive, 1);
+      eri_assert_unlock (&create_args.cth->alive);
 
       SYSCALL_RETURN_DONE (th_ctx, args.tid);
     }
@@ -1531,11 +1531,11 @@ syscall_do_signalfd (struct eri_live_thread *th)
       int32_t sig_fd_flags = flags & ERI_SFD_NONBLOCK;
       flags &= ~ERI_SFD_NONBLOCK;
 
-      eri_lock (&group->sig_fd_lock);
+      eri_assert_lock (&group->sig_fd_lock);
       fd = eri_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
       if (! eri_syscall_is_error (fd))
 	sig_fd_alloc_insert (group, fd, &mask, sig_fd_flags);
-      eri_unlock (&group->sig_fd_lock);
+      eri_assert_unlock (&group->sig_fd_lock);
 
       SYSCALL_RETURN_DONE (th_ctx, fd);
     }
@@ -1549,11 +1549,11 @@ syscall_do_signalfd (struct eri_live_thread *th)
       SYSCALL_RETURN_DONE (th_ctx, err);
     }
 
-  eri_lock (&sig_fd->mask->lock);
+  eri_assert_lock (&sig_fd->mask->lock);
   eri_assert_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
   sig_fd->mask->mask = mask;
-  eri_unlock (&sig_fd->mask->lock);
-  eri_unlock (&group->sig_fd_lock);
+  eri_assert_unlock (&sig_fd->mask->lock);
+  eri_assert_unlock (&group->sig_fd_lock);
   SYSCALL_RETURN_DONE (th_ctx, fd);
 }
 
@@ -1590,7 +1590,7 @@ DEFINE_SYSCALL (close)
   th_ctx->sregs.rax = eri_syscall (close, fd);
   if (! eri_syscall_is_error (th_ctx->sregs.rax))
     sig_fd_remove_free (group, sig_fd);
-  eri_unlock (&group->sig_fd_lock);
+  eri_assert_unlock (&group->sig_fd_lock);
   return SYSCALL_DONE;
 
 close:
@@ -1610,7 +1610,7 @@ DEFINE_SYSCALL (dup)
   if (! eri_syscall_is_error (new_fd))
     sig_fd_copy_insert (group, new_fd, sig_fd);
 
-  eri_unlock (&group->sig_fd_lock);
+  eri_assert_unlock (&group->sig_fd_lock);
   SYSCALL_RETURN_DONE (th_ctx, new_fd);
 
 dup:
@@ -1643,7 +1643,7 @@ syscall_do_dup2 (struct eri_live_thread *th)
       sig_fd_copy_insert (group, new_fd, sig_fd);
     }
 
-  eri_unlock (&group->sig_fd_lock);
+  eri_assert_unlock (&group->sig_fd_lock);
   SYSCALL_RETURN_DONE (th_ctx, new_fd);
 
 dup2:
@@ -1687,7 +1687,7 @@ DEFINE_SYSCALL (fcntl)
 	  if (! eri_syscall_is_error (th_ctx->sregs.rax))
 	    sig_fd->flags = sig_fd_flags;
 	}
-      eri_unlock (&group->sig_fd_lock);
+      eri_assert_unlock (&group->sig_fd_lock);
       return SYSCALL_DONE;
     }
 
@@ -1733,7 +1733,7 @@ syscall_do_read (struct eri_live_thread *th)
   eri_atomic_inc (&mask->ref_count);
   eri_barrier ();
   int32_t flags = sig_fd->flags;
-  eri_unlock (&group->sig_fd_lock);
+  eri_assert_unlock (&group->sig_fd_lock);
 
   struct eri_live_signal_thread__sig_fd_read_args args = {
     fd, nr, a, &mask->lock, &mask->mask, flags
