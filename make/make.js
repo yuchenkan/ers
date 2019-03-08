@@ -125,7 +125,8 @@ console.log (deps, deps.every (d => d in env.stats), goal in env.stats);
 if (new Set ([ 'tst/tst-common-start.S.o', 'all' ]).has (goal))
 console.log (goal, stat, goal in env.stats);
 */
-  if (! (goal in env.stats)) await env.run (`rm -f ${goal}`, true);
+  if (! (goal in env.stats) && (! stat.src || ! env.phony.size))
+    await env.run (`rm -f ${goal}`, true);
 
   debug (`collect ${goal} ${goal in env.stats}`);
   finish (first);
@@ -179,7 +180,8 @@ async function build () {
     if (verbose > 0) note (`build ${goal}`);
 
     await env.mkdir (goal);
-    if (goal === 'Goalfile' || await this.invoke ('Goalfile') === false) {
+    if ((goal === 'Goalfile' || await this.invoke ('Goalfile') === false)
+	&& ! env.phony.size) {
       var src = env.src (goal);
       if (await ctime (src)) await env.run (`cp ${src} ${goal} && chmod a-w ${goal}`, true);
     }
