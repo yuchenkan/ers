@@ -1,3 +1,3 @@
 'use strict'; /* vim: set ft=javascript: */
 
-await this.update ([ 'int/tst-syscall.l' ]);
+await this.update ([ 'int/tst-basic.out' ]);

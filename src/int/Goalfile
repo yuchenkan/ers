@@ -1,3 +1,16 @@
 'use strict'; /* vim: set ft=javascript: */
 
+const base = goal.replace (/^int\//, '');
+
+if (base === 'tst-basic.out') {
+  let live = 'ers/live';
+  await this.update ([ env.trim (goal), live ]);
+  return await this.invoke ('goal/tst/out.g', { environ: `ERS_LIVE=../${live}` });
+}
+
+if (base === 'tst-basic') {
+  let srcs = [ 'int/tst-syscall.l', 'int/tst-basic.c.o', 'int/tst-start.S.o' ];
+  return await this.invoke ('goal/link.g', { srcs, ldflags: (_, f) => f });
+}
+
 return false;
