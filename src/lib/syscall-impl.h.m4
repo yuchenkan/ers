@@ -88,5 +88,10 @@ eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
 void m4_ns(assert_sys_read) (int32_t fd, void *buf, uint64_t size);
 void m4_ns(assert_sys_write) (int32_t fd, void *buf, uint64_t size);
 
+#define m4_ns(assert_sys_mkdir)(path, mode) \
+  do { uint64_t _res = m4_ns(syscall) (mkdir, path, mode);		\
+       eri_assert (_res == ERI_EEXIST					\
+		   || ! eri_syscall_is_error (_res)); } while (0)
+
 #endif
 #endif

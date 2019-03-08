@@ -80,6 +80,7 @@ struct thread_group
   uint64_t stack_size;
 
   const char *path;
+  uint64_t file_buf_size;
 };
 
 ERI_DEFINE_RBTREE (static, sig_fd, struct thread_group, struct sig_fd,
@@ -203,6 +204,7 @@ create_group (struct eri_live_signal_thread *sig_th,
   group->th_id = 0;
   group->stack_size = stack_size;
   group->path = common_args->path;
+  group->file_buf_size = common_args->file_buf_size;
 
   return group;
 }
@@ -278,8 +280,8 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_tid = clear_tid;
-  th->rec = eri_live_thread_recorder__create (group->pool,
-					      group->path, th->id);
+  th->rec = eri_live_thread_recorder__create (
+		group->pool, group->path, th->id, group->file_buf_size);
 
   th->ctx = create_context (group->pool, th);
   return th;

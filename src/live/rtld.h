@@ -17,6 +17,7 @@ struct eri_live_rtld_args
 
   struct eri_sigset sig_mask;
 
+  char **envp;
   struct eri_auxv *auxv;
   uint64_t page_size;
 

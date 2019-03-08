@@ -22,11 +22,10 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   uint64_t buf_size = 256 * 1024 * 1024;
   uint64_t page_size = 4096;
 
+  rtld_args.envp = eri_get_envp_from_args (args);
   char **envp;
-  for (envp = eri_get_envp_from_args (args); *envp; ++envp)
-    if (eri_strncmp (*envp, "ERS_LIVE=",
-		     eri_strlen ("ERS_LIVE=")) == 0)
-      live = *envp + eri_strlen ("ERS_LIVE=");
+  for (envp = rtld_args.envp; *envp; ++envp)
+    eri_get_arg_str (*envp, "ERS_LIVE=", (void *) &live);
   /* XXX: parameterize */
   rtld_args.buf_size = buf_size;
 

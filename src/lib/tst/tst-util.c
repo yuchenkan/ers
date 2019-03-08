@@ -4,7 +4,7 @@
   do {									\
     typeof (i) _i = i;							\
     uint8_t _b = b;							\
-    char _a[eri_itoa_len (_i)];						\
+    char _a[eri_itoa_size (_i)];					\
     eri_assert_itoa (_i, _a, _b);					\
     eri_assert (eri_strcmp (_a, e) == 0);				\
     eri_assert (eri_assert_atoi (_a, _b) == _i);			\

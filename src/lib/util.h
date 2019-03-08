@@ -109,7 +109,24 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 
 void eri_assert_itoa (uint64_t i, char *a, uint8_t base);
 uint64_t eri_assert_atoi (char *a, uint8_t base);
-#define eri_itoa_len(i)		(3 * sizeof (i) + 1)
+#define eri_itoa_size(i)	(3 * sizeof (i) + 1)
+
+#define eri_get_arg_str(arg, key, val) \
+  ({ char *_arg = arg;							\
+     char *_key = key;							\
+     char **_val = val;							\
+     uint8_t _g = eri_strncmp (_arg, _key, eri_strlen (_key)) == 0;	\
+     if (_g) *_val = _arg + eri_strlen (_key);				\
+     _g; })
+
+#define eri_get_arg_int(arg, key, val, base) \
+  ({ char *_arg = arg;							\
+     char *_key = key;							\
+     uint64_t *_val = val;						\
+     uint8_t _base = base;						\
+     uint8_t _g = eri_strncmp (_arg, _key, eri_strlen (_key)) == 0;	\
+     if (_g) *_val = eri_assert_atoi (_arg + eri_strlen (_key), _base);	\
+     _g; })
 
 #endif
 

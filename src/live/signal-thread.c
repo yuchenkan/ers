@@ -161,11 +161,19 @@ sig_handler_frame (struct eri_sigframe *frame)
 static struct signal_thread_group *
 init_group_memory (struct eri_live_rtld_args *rtld_args)
 {
-  /* XXX: parameterize */
-  const char *config = "ers_config";
-  const char *path = "ers_data";
+  const char *config = "ers-config";
+  const char *path = "ers-data";
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
+
+  if (rtld_args->envp)
+    {
+      char **p;
+      for (p = rtld_args->envp; *p; ++p)
+	(void) (eri_get_arg_str (*p, "ERS_DATA=", (void *) &path)
+	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
+	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+    }
 
   eri_assert_syscall (mmap, rtld_args->buf, rtld_args->buf_size,
 		/* XXX: security */

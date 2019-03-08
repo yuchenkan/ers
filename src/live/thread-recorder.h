@@ -8,7 +8,8 @@ struct eri_mtpool;
 struct eri_live_thread_recorder;
 
 struct eri_live_thread_recorder *eri_live_thread_recorder__create (
-		struct eri_mtpool *pool, const char *path, uint64_t id);
+		struct eri_mtpool *pool, const char *path, uint64_t id,
+		uint64_t buf_size);
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *rec);
 
