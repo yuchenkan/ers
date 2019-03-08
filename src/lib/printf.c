@@ -327,8 +327,6 @@ eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len)
   return res;
 }
 
-static const char digits[] = "0123456789abcdef";
-
 int32_t
 eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 {
@@ -365,6 +363,8 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 
 	      char *buf = __builtin_alloca (3 * sizeof num);
 	      char *endp = buf + 3 * sizeof num;
+
+	      static const char digits[] = "0123456789abcdef";
 
 	      char *cp = endp;
 	      do
