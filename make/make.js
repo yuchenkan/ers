@@ -98,24 +98,22 @@ async function collect () {
   if (! first) return;
   debug (`collect ${goal}`);
 
+  const stat = env.stats[goal];
+  const deps = stat.deps;
+  await Promise.all (deps.map (d => collect.call (context (env, d))));
   if (env.phony.has (goal)) {
-    debug ('collect phony goal changed');
+  } else if (! deps.every (d => d in env.stats && stat.ctime >= env.stats[d].ctime)) {
+    if (verbose > 0) note (`collect dependend ${goal} changed`);
     delete env.stats[goal];
-  } else {
-    const stat = env.stats[goal];
-    const deps = stat.deps;
-    await Promise.all (deps.map (d => collect.call (context (env, d))));
-    if (env.phony.has (goal)) {
-    } else if (! deps.every (d => d in env.stats && stat.ctime >= env.stats[d].ctime)) {
-      debug ('collect dependend goal changed');
-      delete env.stats[goal];
-    } else if (stat.src
-	       && (stat.src !== env.src (goal)
-		   || def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime))) {
-      debug ('collect source goal changed');
-      delete env.stats[goal];
-    } else env.goals[goal] = { };
-  }
+  } else if (stat.src && await (async () => {
+	       if (! env.phony.size)
+		 return stat.src !== env.src (goal)
+			|| def (await ctime (stat.src), await ctime (goal), t => t >= stat.ctime);
+	       return env.phony.has (stat.src);
+	     }) ()) {
+    if (verbose > 0) note (`collect source ${goal} changed`);
+    delete env.stats[goal];
+  } else env.goals[goal] = { };
 /*
 if (goal === 'live/tst/tst-sig-mask-async-ut.out')
 console.log (deps, deps.every (d => d in env.stats), goal in env.stats);
@@ -238,7 +236,7 @@ function main () {
       else if (a === '-j') maxJobs = Number (process.argv.shift ());
       else if (a === '-p') {
 	assert (process.argv.length);
-	phony.push (process.argv.shift ());
+	phony.push (path.resolve (process.argv.shift ()));
       } else {
 	assert (a[0] !== '-');
         args.push (a);
@@ -255,6 +253,14 @@ function main () {
 
   const src = norm (args.shift ());
   const dst = norm (args.shift ());
+
+  try {
+    phony.map (p => assert (! path.relative (src, p).startsWith ('..')));
+  } catch (err) {
+    fatal ('phony not inside src dst dir');
+    debug (err.stack);
+    process.exit (1);
+  }
 
   try {
     assert (path.relative (src, dst).startsWith ('..'));
@@ -335,7 +341,10 @@ function main () {
 
     await env.run ('touch .goal-ctime', true);
     env.ctime = await ctime ('.goal-ctime');
-    env.save = () => fs.writeFileSync ('.goal-stats', JSON.stringify (env.stats));
+    env.save = () => {
+      if (! env.phony.size)
+	fs.writeFileSync ('.goal-stats', JSON.stringify (env.stats));
+    };
 
     process.on ('beforeExit', circular);
 
