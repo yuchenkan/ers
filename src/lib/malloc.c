@@ -65,6 +65,8 @@ eri_fini_pool (struct eri_pool *pool)
 {
   if (pool->used != 0) return 1;
 
+  if (pool->preserve) return 0;
+
   if (pool->size >= MIN_BLOCK_SIZE)
     {
       struct block *b = (struct block *) pool->buf;
@@ -127,7 +129,7 @@ static void
 guard (struct eri_pool *pool, void *b, uint64_t s)
 {
 #ifndef ERI_NO_CHECK
-  if (! pool->preserve) eri_memset (b, 0xfc, s);
+  eri_memset (b, 0xfc, s);
 #endif
 }
 
@@ -147,10 +149,11 @@ eri_free (struct eri_pool *pool, void *p)
 	      && (uint8_t *) p < pool->buf + pool->size);
 
   struct block *b = (struct block *) ((uint8_t *) p - ALLOC_OFFSET);
-  guard (pool, (uint8_t *) b + sizeof *b, block_size (pool, b) - sizeof *b);
-
   eri_assert (pool->used >= block_size (pool, b));
   pool->used -= block_size (pool, b);
+  if (pool->preserve) return 0;
+  guard (pool, (uint8_t *) b + sizeof *b, block_size (pool, b) - sizeof *b);
+
   b->type = BLK_FREE;
 
   if (b->next && b->next->type == BLK_FREE)

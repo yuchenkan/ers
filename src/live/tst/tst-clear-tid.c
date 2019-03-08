@@ -1,7 +1,6 @@
 #include <compiler.h>
 #include <common.h>
 
-#include <lib/lock.h>
 #include <tst/tst-syscall.h>
 
 #include <live/signal-thread.h>
@@ -33,10 +32,11 @@ tst_live_start (void)
   };
   ctid = set_ctid = 1;
   tst_assert_sys_clone (&args);
-  eri_assert_lock (&ctid);
+  eri_assert_sys_futex_wait (&ctid, 1, 0);
   args.a0 = &set_ctid;
+  ctid = 1;
   tst_assert_sys_clone (&args);
-  eri_assert_lock (&set_ctid);
+  eri_assert_sys_futex_wait (&set_ctid, 1, 0);
   eri_assert (ctid == 1);
   tst_assert_syscall (exit, 0);
   eri_assert_unreachable ();

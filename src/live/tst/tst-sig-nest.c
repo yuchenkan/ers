@@ -11,8 +11,8 @@ static eri_aligned16 uint8_t stack[1024 * 1024];
 static int32_t pid;
 static int32_t tid;
 
-static int32_t int_lock = 1;
-static int32_t term_lock = 1;
+static struct eri_lock int_lock = ERI_INIT_LOCK (1);
+static struct eri_lock term_lock = ERI_INIT_LOCK (1);
 
 static void
 sig_handler (int32_t sig)

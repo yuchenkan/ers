@@ -7,6 +7,7 @@
 #include <lib/syscall.h>
 
 struct eri_mtpool;
+struct eri_lock;
 
 struct eri_common_args;
 struct eri_live_rtld_args;
@@ -73,7 +74,7 @@ struct eri_live_signal_thread__sig_fd_read_args
   int32_t nr;
   const uint64_t *a;
 
-  int32_t *mask_lock;
+  struct eri_lock *mask_lock;
   const struct eri_sigset *mask;
   int32_t flags;
 

@@ -188,7 +188,7 @@ eri_noreturn void tst_main (void);
 eri_noreturn void
 tst_main (void)
 {
-  tst_live_sig_hand_init_pool (&sig_th.pool.pool);
+  tst_live_sig_hand_init_mtpool (&sig_th.pool);
   sig_th.args.stack_size = 8 * 1024 * 1024;
 
   sig_th.pid = eri_assert_syscall (getpid);
@@ -239,6 +239,6 @@ tst_main (void)
     }
   eri_assert_free (&sig_th.pool.pool, step.ctxs);
 
-  eri_assert_fini_pool (&sig_th.pool.pool);
+  eri_assert_fini_mtpool (&sig_th.pool);
   eri_assert_sys_exit (0);
 }

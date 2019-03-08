@@ -53,12 +53,23 @@ void eri_preserve (struct eri_pool *pool);
 
 struct eri_mtpool
 {
-  int32_t lock;
+  struct eri_lock lock;
   struct eri_pool pool;
 };
 
 int32_t eri_mtmalloc (struct eri_mtpool *pool, uint64_t size, void **p);
 int32_t eri_mtfree (struct eri_mtpool *pool, void *p);
+
+#define eri_assert_init_mtpool(mtp, b, s) \
+  do {									\
+    struct eri_mtpool *_mtp = mtp;					\
+    _mtp->lock.wait = 0;						\
+    _mtp->lock.lock = 0;						\
+    eri_assert_init_pool (&_mtp->pool, b, s);				\
+  } while (0)
+
+#define eri_assert_fini_mtpool(mtp) \
+  eri_assert_fini_pool (&(mtp)->pool)
 
 #define eri_assert_mtmalloc(mtp, s) \
   ({									\

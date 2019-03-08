@@ -4,6 +4,7 @@
 #include <helper.h>
 
 #include <lib/util.h>
+#include <lib/lock.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
@@ -26,6 +27,7 @@ struct eri_live_thread
   struct eri_live_signal_thread *sig_th;
   uint64_t id;
   int32_t alive;
+  struct eri_lock start_lock;
   int32_t *clear_tid;
 
   struct eri_live_thread_recorder *rec;
@@ -44,7 +46,7 @@ struct eri_live_thread
 struct sig_fd_mask
 {
   uint64_t ref_count;
-  int32_t lock;
+  struct eri_lock lock;
   struct eri_sigset mask;
 };
 
@@ -67,7 +69,7 @@ struct thread_group
   uint64_t ref_count;
   int32_t pid;
 
-  int32_t sig_fd_lock;
+  struct eri_lock sig_fd_lock;
   ERI_RBT_TREE_FIELDS (sig_fd, struct sig_fd)
 
   uint64_t *atomic_table;
@@ -88,7 +90,7 @@ sig_fd_alloc_insert (struct thread_group *group, int32_t fd,
   sig_fd->fd = fd;
   sig_fd->mask = eri_assert_mtmalloc (group->pool, sizeof *sig_fd->mask);
   sig_fd->mask->ref_count = 1;
-  sig_fd->mask->lock = 0;
+  eri_init_lock (&sig_fd->mask->lock, 0);
   sig_fd->mask->mask = *mask;
   sig_fd->flags = flags;
   sig_fd_rbt_insert (group, sig_fd);
@@ -180,7 +182,7 @@ create_group (struct eri_live_signal_thread *sig_th,
   group->ref_count = 0;
   group->pid = 0;
 
-  group->sig_fd_lock = 0;
+  eri_init_lock (&group->sig_fd_lock, 0);
   ERI_RBT_INIT_TREE (sig_fd, group);
 
   group->atomic_table = eri_assert_mtmalloc (pool,
@@ -262,6 +264,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   th->sig_th = sig_th;
   th->id = eri_atomic_fetch_inc (&group->th_id);
   th->alive = 1;
+  eri_init_lock (&th->start_lock, 1);
   th->clear_tid = clear_tid;
   th->rec = eri_live_thread_recorder__create (group->pool, th->id);
 
@@ -276,6 +279,7 @@ eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
   struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);
   th->alive = 1;
+  eri_init_lock (&th->start_lock, 0);
   struct thread_context *th_ctx = th->ctx;
   th_ctx->ext.op.sig_hand = SIG_HAND_ASYNC;
   th_ctx->ext.op.args = 0;
@@ -304,7 +308,7 @@ start (struct eri_live_thread *th)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->ctx);
 
-  if (th->id) eri_assert_lock (&th->alive);
+  eri_assert_lock (&th->start_lock);
   eri_debug ("leave %lx %lx\n",
 	     __builtin_return_address (0), th->ctx->sig_frame);
   return th->ctx;
@@ -831,7 +835,7 @@ clear_tid_sigsegv_handler (struct eri_siginfo *info,
 struct clear_tid_args
 {
   struct eri_live_thread *th;
-  int32_t lock;
+  struct eri_lock lock;
 };
 
 static void
@@ -875,7 +879,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
 {
   if (helper && th->clear_tid)
     {
-      struct clear_tid_args args = { th, 1 };
+      struct clear_tid_args args = { th, ERI_INIT_LOCK (1) };
       eri_helper__invoke (helper, clear_tid, &args,
 			  clear_tid_sigsegv_handler);
       eri_assert_lock (&args.lock);
@@ -902,7 +906,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
 void
 eri_live_thread__join (struct eri_live_thread *th)
 {
-  eri_assert_lock (&th->alive);
+  eri_assert_sys_futex_wait (&th->alive, 1, 0);
 }
 
 #define SYSCALL_DONE			0
@@ -996,7 +1000,7 @@ DEFINE_SYSCALL (clone)
 	copy_to_user (th, ptid, &args.tid, sizeof args.tid);
       if (flags & ERI_CLONE_CHILD_SETTID)
 	copy_to_user (th, ctid, &args.tid, sizeof args.tid);
-      eri_assert_unlock (&create_args.cth->alive);
+      eri_assert_unlock (&create_args.cth->start_lock);
 
       SYSCALL_RETURN_DONE (th_ctx, args.tid);
     }

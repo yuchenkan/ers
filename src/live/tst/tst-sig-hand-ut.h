@@ -24,7 +24,7 @@ struct tst_live_sig_hand_step
 
 uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
 
-#define tst_live_sig_hand_init_pool(pool) \
+#define tst_live_sig_hand_init_mtpool(pool) \
   do {									\
     extern uint8_t tst_live_buf_start[];				\
     extern uint8_t tst_live_buf_end[];					\
@@ -34,7 +34,7 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
 	ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,			\
 	ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);	\
 									\
-    eri_assert_init_pool (pool, (void *) _buf, _buf_size);		\
+    eri_assert_init_mtpool (pool, (void *) _buf, _buf_size);		\
   } while (0)
 
 #define tst_live_sig_hand_signal(th, info, handler) \

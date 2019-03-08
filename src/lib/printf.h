@@ -61,13 +61,13 @@ int32_t eri_printf (const char *fmt, ...);
 #define eri_assert_printf(fmt, ...) \
   eri_assert (eri_printf (fmt, ##__VA_ARGS__) == 0)
 
-int32_t eri_lvfprintf (int32_t *lock, eri_file_t file,
+int32_t eri_lvfprintf (struct eri_lock *lock, eri_file_t file,
 		       const char *fmt, va_list arg);
-int32_t eri_lfprintf (int32_t *lock, eri_file_t file,
+int32_t eri_lfprintf (struct eri_lock *lock, eri_file_t file,
 		      const char *fmt, ...);
 
-int32_t eri_lvprintf (int32_t *lock, const char *fmt, va_list arg);
-int32_t eri_lprintf (int32_t *lock, const char *fmt, ...);
+int32_t eri_lvprintf (struct eri_lock *lock, const char *fmt, va_list arg);
+int32_t eri_lprintf (struct eri_lock *lock, const char *fmt, ...);
 
 #define eri_assert_lvfprintf(l, f, fmt, arg) \
   eri_assert (eri_lvfprintf (l, f, fmt, arg) == 0)

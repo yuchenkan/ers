@@ -459,7 +459,8 @@ eri_printf (const char *fmt, ...)
 }
 
 int32_t
-eri_lvfprintf (int32_t *lock, eri_file_t file, const char *fmt, va_list arg)
+eri_lvfprintf (struct eri_lock *lock,
+	       eri_file_t file, const char *fmt, va_list arg)
 {
   if (lock) eri_assert_lock (lock);
   int32_t res = eri_vfprintf (file, fmt, arg);
@@ -468,7 +469,8 @@ eri_lvfprintf (int32_t *lock, eri_file_t file, const char *fmt, va_list arg)
 }
 
 int32_t
-eri_lfprintf (int32_t *lock, eri_file_t file, const char *fmt, ...)
+eri_lfprintf (struct eri_lock *lock,
+	      eri_file_t file, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
@@ -478,13 +480,13 @@ eri_lfprintf (int32_t *lock, eri_file_t file, const char *fmt, ...)
 }
 
 int32_t
-eri_lvprintf (int32_t *lock, const char *fmt, va_list arg)
+eri_lvprintf (struct eri_lock *lock, const char *fmt, va_list arg)
 {
   return eri_lvfprintf (lock, ERI_STDOUT, fmt, arg);
 }
 
 int32_t
-eri_lprintf (int32_t *lock, const char *fmt, ...)
+eri_lprintf (struct eri_lock *lock, const char *fmt, ...)
 {
   va_list arg;
   va_start (arg, fmt);
@@ -496,7 +498,7 @@ eri_lprintf (int32_t *lock, const char *fmt, ...)
 int32_t
 eri_gvprintf (const char *fmt, va_list arg)
 {
-  static int32_t gprintf_lock;
+  static struct eri_lock gprintf_lock;
   return eri_lvfprintf (&gprintf_lock, ERI_STDOUT, fmt, arg);
 }
 
