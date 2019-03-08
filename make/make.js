@@ -60,11 +60,16 @@ async function run (cmd, quiet) {
   if (env.jobs === env.maxJobs) await wait (env.waiting);
   else ++env.jobs;
 
-  if (! quiet || verbose > 0) info (cmd);
+  if (! quiet || verbose > 0)
+    {
+      var id = env.jobId++;
+      info (`[${id}] ${cmd}`);
+    }
 
   try {
     let { stdout } = await exec (cmd);
-    if (! quiet) process.stdout.write (stdout);
+    if (! quiet && stdout.length)
+      process.stdout.write (`[${id}]\t${stdout.split ('\n').join ('\n\t').replace (/\t$/, '')}`);
     return stdout;
   } finally {
     if (env.waiting.length) wake (env.waiting, false);
@@ -293,7 +298,7 @@ function main () {
     infos: { }, goals: { }, funcs: { },
 
     src, dst, phony,
-    jobs: 0, maxJobs, waiting: [ ]
+    jobs: 0, maxJobs, waiting: [ ], jobId: 0
   };
 
   const circular = () => {
