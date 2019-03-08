@@ -2009,12 +2009,12 @@ seg_fault:
   eri_debug ("seg_fault\n");
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
-  eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_NONE);
   struct eri_sigframe *sig_frame = (void *) th->stack;
   sig_frame->info.sig = ERI_SIGSEGV;
   sig_frame->info.code = ERI_SI_KERNEL;
   sig_frame->info.kill.pid = 0;
   sig_frame->info.kill.uid = 0;
+  /* XXX: signal is masked in sigreturn */
   eri_assert (eri_live_thread__sig_digest_act (th, &sig_frame->info,
 					       &th_ctx->sig_act));
   sig_set_frame (th_ctx, sig_frame);
