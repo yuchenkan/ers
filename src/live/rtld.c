@@ -22,19 +22,19 @@ rtld (void **args, uint64_t rdx, uint64_t rflags)
   uint64_t buf_size = 256 * 1024 * 1024;
   uint64_t page_size = 4096;
 
-  uint64_t argc = *(uint64_t *) args;
   char **envp;
-  for (envp = (char **) args + 1 + argc + 1; *envp; ++envp)
+  for (envp = eri_get_envp_from_args (args); *envp; ++envp)
     if (eri_strncmp (*envp, "ERS_LIVE=",
 		     eri_strlen ("ERS_LIVE=")) == 0)
       live = *envp + eri_strlen ("ERS_LIVE=");
   /* XXX: parameterize */
   rtld_args.buf_size = buf_size;
 
-  struct eri_auxv *auxv = (struct eri_auxv *) (envp + 1);
-  struct eri_auxv *a;
-  for (a = auxv; a->type != ERI_AT_NULL; ++a)
-    if (a->type == ERI_AT_PAGESZ) page_size = a->val;
+  struct eri_auxv *auxv;
+  for (auxv = (struct eri_auxv *)(envp + 1);
+       auxv->type != ERI_AT_NULL; ++auxv)
+    if (auxv->type == ERI_AT_PAGESZ) page_size = auxv->val;
+  rtld_args.auxv = auxv;
   rtld_args.page_size = page_size;
 
   uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);

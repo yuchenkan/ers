@@ -4,6 +4,7 @@
 #include <helper.h>
 
 #include <lib/util.h>
+#include <lib/elf.h>
 #include <lib/lock.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
@@ -77,6 +78,8 @@ struct thread_group
 
   uint64_t th_id;
   uint64_t stack_size;
+
+  const char *path;
 };
 
 ERI_DEFINE_RBTREE (static, sig_fd, struct thread_group, struct sig_fd,
@@ -164,6 +167,14 @@ user_on_sig_stack (struct eri_live_thread *th, uint64_t rsp)
 	 && rsp > stack->sp && rsp <= stack->sp + stack->size; 
 }
 
+static void
+disable_vdso (struct eri_auxv *auxv)
+{
+  for (; auxv->type != ERI_AT_NULL; ++auxv)
+    if (auxv->type == ERI_AT_SYSINFO || auxv->type == ERI_AT_SYSINFO_EHDR)
+      auxv->type = ERI_AT_IGNORE;
+}
+
 static struct thread_group *
 create_group (struct eri_live_signal_thread *sig_th,
 	      struct eri_live_rtld_args *rtld_args)
@@ -191,6 +202,7 @@ create_group (struct eri_live_signal_thread *sig_th,
 
   group->th_id = 0;
   group->stack_size = stack_size;
+  group->path = common_args->path;
 
   return group;
 }
@@ -266,7 +278,8 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_tid = clear_tid;
-  th->rec = eri_live_thread_recorder__create (group->pool, th->id);
+  th->rec = eri_live_thread_recorder__create (group->pool,
+					      group->path, th->id);
 
   th->ctx = create_context (group->pool, th);
   return th;
@@ -276,6 +289,8 @@ struct eri_live_thread *
 eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
 			      struct eri_live_rtld_args *rtld_args)
 {
+  if (rtld_args->auxv) disable_vdso (rtld_args->auxv);
+
   struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);
   th->alive = 1;
@@ -291,7 +306,7 @@ eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
   return th;
 }
 
-struct thread_context *
+static struct thread_context *
 start (struct eri_live_thread *th)
 {
   eri_debug ("%lx %lx %lx %lx\n",
@@ -312,6 +327,15 @@ start (struct eri_live_thread *th)
   eri_debug ("leave %lx %lx\n",
 	     __builtin_return_address (0), th->ctx->sig_frame);
   return th->ctx;
+}
+
+void
+start_main (struct eri_live_thread *th)
+{
+  struct thread_group *group = th->group;
+  eri_live_thread_recorder__rec_init_maps (
+		th->rec, group->map_start, group->map_end);
+  start (th);
 }
 
 void
@@ -2007,6 +2031,13 @@ done:
   if (nr == __NR_rt_sigreturn) return 1;
   th_ctx->sregs.rcx = th_ctx->ext.ret;
   th_ctx->sregs.r11 = th_ctx->sregs.rflags;
+
+  struct eri_live_thread_recorder__rec_syscall_args args = {
+    th_ctx->sregs.rax, th_ctx->sregs.rdi, th_ctx->sregs.rsi,
+    th_ctx->sregs.rdx, th_ctx->sregs.r10, th_ctx->sregs.r8, th_ctx->sregs.r9
+  };
+  eri_live_thread_recorder__rec_syscall (th->rec, &args);
+
   return 0;
 }
 

@@ -123,7 +123,6 @@ enum
   SIG_HANDS (SIG_HAND_ENUM)
 };
 
-struct thread_context *start (struct eri_live_thread *th);
 void start_main (struct eri_live_thread *th);
 
 eri_noreturn void sig_action (struct eri_live_thread *th);

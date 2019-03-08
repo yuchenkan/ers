@@ -5,6 +5,8 @@
 
 #include <lib/syscall.h>
 
+struct eri_auxv;
+
 struct eri_live_rtld_args
 {
   uint64_t rdx;
@@ -15,6 +17,7 @@ struct eri_live_rtld_args
 
   struct eri_sigset sig_mask;
 
+  struct eri_auxv *auxv;
   uint64_t page_size;
 
   uint64_t map_start;

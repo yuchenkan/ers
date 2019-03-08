@@ -14,13 +14,16 @@ struct eri_auxv
 };
 
 #define ERI_AT_NULL		0
-#define ERI_AT_IGNORE		0
+#define ERI_AT_IGNORE		1
 #define ERI_AT_EXECFD		2
 #define ERI_AT_PHDR		3
 #define ERI_AT_PHENT		4
 #define ERI_AT_PHNUM		5
 #define ERI_AT_PAGESZ		6
 #define ERI_AT_BASE		7
+
+#define ERI_AT_SYSINFO		32
+#define ERI_AT_SYSINFO_EHDR	33
 
 #define ERI_EI_NIDENT		16
 
@@ -66,6 +69,10 @@ struct eri_elf64_phdr
 #define ERI_PF_R		0x4
 
 #define ERI_PT_LOAD		1
+
+#define eri_get_envp_from_args(args) \
+  ({ void *_args = args; uint64_t _argc = *(uint64_t *) _args;		\
+     (char **) _args + 1 + _argc + 1; })
 
 struct eri_seg
 {

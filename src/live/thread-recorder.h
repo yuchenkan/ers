@@ -8,11 +8,29 @@ struct eri_mtpool;
 struct eri_live_thread_recorder;
 
 struct eri_live_thread_recorder *eri_live_thread_recorder__create (
-		struct eri_mtpool *pool, uint64_t id);
+		struct eri_mtpool *pool, const char *path, uint64_t id);
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *rec);
 
+void eri_live_thread_recorder__rec_init_maps (
+		struct eri_live_thread_recorder *rec,
+		uint64_t start, uint64_t end);
+
 /* TODO: record syscall */
+struct eri_live_thread_recorder__rec_syscall_args
+{
+  uint64_t rax;
+  uint64_t rdi;
+  uint64_t rsi;
+  uint64_t rdx;
+  uint64_t r10;
+  uint64_t r8;
+  uint64_t r9;
+};
+
+void eri_live_thread_recorder__rec_syscall (
+		struct eri_live_thread_recorder *rec,
+		struct eri_live_thread_recorder__rec_syscall_args *args);
 
 void eri_live_thread_recorder__rec_sync_async (
 		struct eri_live_thread_recorder *rec);
