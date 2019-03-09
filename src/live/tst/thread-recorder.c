@@ -8,7 +8,7 @@ TST_WEAK_BLANK (ERI_PASTE (eri_live_thread_recorder__, func))
 
 BLANK_ZERO (create);
 BLANK (destroy);
-BLANK (rec_init_maps);
+BLANK (rec_init);
 BLANK (rec_signal);
 BLANK (rec_syscall);
 BLANK (rec_sync_async);

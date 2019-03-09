@@ -335,8 +335,12 @@ void
 start_main (struct eri_live_thread *th)
 {
   struct thread_group *group = th->group;
-  eri_live_thread_recorder__rec_init_maps (
-		th->rec, group->map_start, group->map_end);
+  struct thread_context *th_ctx = th->ctx;
+  struct eri_live_thread_recorder__rec_init_args args = {
+    th_ctx->sregs.rdx, th_ctx->rsp, th_ctx->ext.ret,
+    group->map_start, group->map_end
+  };
+  eri_live_thread_recorder__rec_init (th->rec, &args);
   start (th);
 }
 

@@ -3,8 +3,6 @@
 #include <lib/printf.h>
 #include <live/thread-recorder.h>
 
-/* TODO */
-
 struct eri_live_thread_recorder
 {
   struct eri_mtpool *pool;
@@ -36,10 +34,12 @@ eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *rec)
   eri_assert_mtfree (rec->pool, rec);
 }
 
+/* TODO */
+
 void
-eri_live_thread_recorder__rec_init_maps (
+eri_live_thread_recorder__rec_init (
 			struct eri_live_thread_recorder *rec,
-			uint64_t start, uint64_t end)
+			struct eri_live_thread_recorder__rec_init_args *args)
 {
 }
 

@@ -14,9 +14,19 @@ struct eri_live_thread_recorder *eri_live_thread_recorder__create (
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *rec);
 
-void eri_live_thread_recorder__rec_init_maps (
+struct eri_live_thread_recorder__rec_init_args
+{
+  uint64_t rdx;
+  uint64_t rsp;
+  uint64_t rip;
+
+  uint64_t start;
+  uint64_t end;
+};
+
+void eri_live_thread_recorder__rec_init (
 		struct eri_live_thread_recorder *rec,
-		uint64_t start, uint64_t end);
+		struct eri_live_thread_recorder__rec_init_args *args);
 
 void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *rec,

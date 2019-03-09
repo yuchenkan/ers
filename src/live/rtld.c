@@ -7,11 +7,11 @@
 #include <live/rtld.h>
 
 void
-rtld (void **args, uint64_t rdx, uint64_t rflags)
+rtld (void **args, uint64_t rdx)
 {
   extern uint8_t eri_binary_end[];
   struct eri_live_rtld_args rtld_args = {
-    rdx, rflags, (uint64_t) args, (uint64_t) eri_binary_end
+    rdx, (uint64_t) args, (uint64_t) eri_binary_end
   };
   struct eri_sigset set;
   eri_sig_fill_set (&set);

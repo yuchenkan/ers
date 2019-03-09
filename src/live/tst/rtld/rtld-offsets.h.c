@@ -9,7 +9,6 @@ void
 declare (void)
 {
   RTLD_ARGS_OFFSET (RDX, rdx);
-  RTLD_ARGS_OFFSET (RFLAGS, rflags);
   RTLD_ARGS_OFFSET (RSP, rsp);
   RTLD_ARGS_OFFSET (RIP, rip);
 }

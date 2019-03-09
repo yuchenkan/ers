@@ -10,8 +10,6 @@ struct eri_auxv;
 struct eri_live_rtld_args
 {
   uint64_t rdx;
-  uint64_t rflags;
-
   uint64_t rsp;
   uint64_t rip;
 

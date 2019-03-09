@@ -25,7 +25,7 @@ tst_main (void **args)
   extern uint8_t tst_live_buf_end[];
 
   struct eri_live_rtld_args rtld_args = {
-    0, 0, (uint64_t) top, (uint64_t) tst_live_start,
+    0, (uint64_t) top, (uint64_t) tst_live_start,
     .page_size = 4096,
     .map_start = (uint64_t) tst_live_map_start,
     .map_end = (uint64_t) tst_live_map_end,
