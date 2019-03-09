@@ -172,7 +172,8 @@ init_group_memory (struct eri_live_rtld_args *rtld_args)
       for (p = rtld_args->envp; *p; ++p)
 	(void) (eri_get_arg_str (*p, "ERS_DATA=", (void *) &path)
 	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
-	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
+	|| eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10));
     }
 
   eri_assert_syscall (mmap, rtld_args->buf, rtld_args->buf_size,

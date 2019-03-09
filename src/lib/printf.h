@@ -5,7 +5,9 @@
 #include <stdint.h>
 
 #include <lib/util.h>
-#include <lib/buf.h>
+
+struct eri_buf;
+struct eri_lock;
 
 typedef uint64_t eri_file_t;
 #define eri_file_buf_t			uint8_t __attribute__ ((aligned (16)))
@@ -89,5 +91,8 @@ int32_t eri_gprintf (const char *fmt, ...);
 int32_t eri_file_foreach_line (const char *path, struct eri_buf *buf,
 			       void (*proc) (const char *, uint64_t, void *),
 			       void *data);
+
+#define eri_assert_file_foreach_line(path, buf, proc, data) \
+  eri_assert (eri_file_foreach_line (path, buf, proc, data) == 0)
 
 #endif

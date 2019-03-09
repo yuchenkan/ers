@@ -146,7 +146,7 @@ eri_assert_itoa (uint64_t i, char *a, uint8_t base)
 }
 
 uint64_t
-eri_assert_atoi (char *a, uint8_t base)
+eri_assert_atoi (const char *a, uint8_t base)
 {
   eri_assert (base == 16 || base == 10);
   uint64_t i = 0;

@@ -180,11 +180,19 @@ async function build () {
     if (verbose > 0) note (`build ${goal}`);
 
     await env.mkdir (goal);
+/*
+    let guard = norm (`${env.dir (goal)}/.goal-guard.${env.base (goal)}`);
+    if (await ctime (guard)) await env.run (`rm -f ${goal}`, true);
+    else await env.run (`touch ${guard}`, true);
+*/
     if ((goal === 'Goalfile' || await this.invoke ('Goalfile') === false)
 	&& ! env.phony.size) {
       var src = env.src (goal);
       if (await ctime (src)) await env.run (`cp ${src} ${goal} && chmod a-w ${goal}`, true);
     }
+/*
+    await env.run (`rm ${guard}`, true);
+*/
 
     env.stats[goal] = { deps: Array.from (first.deps), ctime: env.ctime, src };
     env.save ();
@@ -334,7 +342,7 @@ function main () {
       fatal ('locked');
       process.exit (1);
     }
-    await env.run ('touch .goal-lock');
+    await env.run ('touch .goal-lock', true);
     process.on ('SIGINT', () => {
       child_process.execSync ('rm .goal-lock');
       process.exit (1);

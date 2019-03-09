@@ -1,4 +1,5 @@
 #include <lib/util.h>
+#include <lib/buf.h>
 #include <lib/lock.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>

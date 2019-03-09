@@ -8,6 +8,8 @@ if (new Set ([ 'tst-registers.h', 'tst-rtld.S.o', 'tst-rtld.out',
 if (new Set ([ 'tst-main.ld', 'tst-sig-hand-ut.ld' ]).has (base))
   return await this.invoke ('goal/m4.g');
 
+if (base === 'rtld/live') return await this.invoke ('live/live.g');
+
 if (base.match (/^tst-sig-hand-[^.]*-ut$/)) return await this.invoke ('live/tst/tst-sig-hand-ut.g');
 
 if (base.match (/^tst-[^.-]*-exit-[^.]*.out$/)) return await this.invoke ('live/tst/tst-exit.out.g');
