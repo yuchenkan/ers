@@ -485,13 +485,18 @@ sig_action (struct eri_live_thread *th)
   struct eri_live_signal_thread *sig_th = th->sig_th;
 
   uint64_t core_status = 139;
+  struct eri_siginfo *info = &frame->info;
 
   /* XXX: core, die context */
-  if (frame->info.sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP)
+  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP)
     {
       eri_live_signal_thread__die (sig_th);
       eri_assert_sys_thread_die (&th->alive);
     }
+
+  if (! eri_si_sync (info)
+      && th_ctx->sig_act.act != SIG_ACT_STOP)
+    eri_live_thread_recorder__rec_signal (th->rec, info);
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 

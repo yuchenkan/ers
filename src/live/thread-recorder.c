@@ -44,6 +44,13 @@ eri_live_thread_recorder__rec_init_maps (
 }
 
 void
+eri_live_thread_recorder__rec_signal (
+			struct eri_live_thread_recorder *rec,
+			struct eri_siginfo *info)
+{
+}
+
+void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *rec,
 		struct eri_live_thread_recorder__rec_syscall_args *args)

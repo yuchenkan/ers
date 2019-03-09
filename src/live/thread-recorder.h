@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 struct eri_mtpool;
+struct eri_siginfo;
 
 struct eri_live_thread_recorder;
 
@@ -17,7 +18,10 @@ void eri_live_thread_recorder__rec_init_maps (
 		struct eri_live_thread_recorder *rec,
 		uint64_t start, uint64_t end);
 
-/* TODO: record syscall */
+void eri_live_thread_recorder__rec_signal (
+		struct eri_live_thread_recorder *rec,
+		struct eri_siginfo *info);
+
 struct eri_live_thread_recorder__rec_syscall_args
 {
   uint64_t rax;
