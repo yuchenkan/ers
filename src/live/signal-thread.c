@@ -406,7 +406,7 @@ try_lock_exit_group (struct signal_thread_group *group)
   if (eri_atomic_exchange (&group->exit_group, 1) == 1) return 0;
 
   while (! eri_atomic_compare_exchange (&group->exit_group_lock,
-					0, -2147483647))
+					1, -2147483647))
     eri_assert_syscall (sched_yield);
 
   eri_barrier ();
@@ -780,14 +780,20 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   if (! sig_mask_all_async (sig_th)) return;
 
   struct signal_thread_group *group = sig_th->group;
+  if (! try_hold_exit_group (&group->exit_group_lock)) return;
+
+  if (event->group && ! try_lock_exit_group (group))
+    {
+      unhold_exit_group (&group->exit_group_lock);
+      return;
+    }
+
   uint64_t status = event->status;
   struct eri_live_thread *th = sig_th->th;
 
   if (! event->group
       && eri_atomic_dec_fetch (&group->thread_count))
     {
-      if (! try_hold_exit_group (&group->exit_group_lock)) return;
-
       event->done = 1;
       release_event (event);
       eri_live_thread__join (th);
@@ -803,13 +809,10 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       eri_debug ("exit %lx\n", sig_th);
       eri_assert_sys_exit (status);
     }
-
-  eri_debug ("exit group %u\n", event->group);
-
-  if (event->group)
+  else if (! event->group) eri_assert (try_lock_exit_group (group));
+  else
     {
-      if (! try_lock_exit_group (group)) return;
-
+      eri_debug ("exit group\n");
       inform_exit_group (sig_th);
 
       struct eri_live_signal_thread *it, *nit;
@@ -824,7 +827,6 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 	    eri_assert_mtfree (group->pool, it);
 	  }
     }
-  else eri_assert (try_lock_exit_group (group));
 
   eri_debug ("exit last thread\n");
 
