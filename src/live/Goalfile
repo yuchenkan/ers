@@ -4,7 +4,10 @@ const base = goal.replace (/^live\//, '');
 
 if (base.startsWith ('tst/') && await this.invoke ('live/tst/Goalfile') !== false) return;
 
-if (new Set ([ 'convert.c.o', 'live.h', 'rtld', 'rtld.c.o' ]).has (base))
+if (base === 'convert.c.o') return await this.invoke ('convert.c.o.g');
+if (base === 'convert') return await this.invoke ('convert.g');
+
+if (new Set ([ 'live.h', 'rtld', 'rtld.c.o' ]).has (base))
   return await this.invoke (`${goal}.g`);
 
 return false;
