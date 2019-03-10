@@ -169,6 +169,7 @@ eri_live_thread_recorder__rec_init (
   eri_debug ("leave rec_init\n");
 }
 
+/* TODO */
 void
 eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *rec,

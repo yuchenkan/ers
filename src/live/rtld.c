@@ -6,7 +6,9 @@
 
 #include <live/rtld.h>
 
-void
+eri_noreturn void rtld (void **args, uint64_t rdx);
+
+eri_noreturn void
 rtld (void **args, uint64_t rdx)
 {
   extern uint8_t eri_binary_end[];
@@ -119,4 +121,5 @@ rtld (void **args, uint64_t rdx)
   eri_assert_syscall (close, fd);
 
   ((void (*) (void *)) (base + entry)) (&rtld_args);
+  eri_assert_unreachable ();
 }
