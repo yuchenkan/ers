@@ -15,8 +15,6 @@ if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
 if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 if (new Set ([ 'public.h', 'public.h.in' ]).has (goal)) return await this.invoke ('goal/m4.g');
 
-if (new Set ([ 'convert-common.c.o', 'convert.c.o' ]).has (goal)) return await this.invoke ('convert.c.o.g');
-
 if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');
 if (env.ext (goal, 'out')) return await this.invoke ('goal/tst/out.g');
