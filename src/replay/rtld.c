@@ -56,7 +56,9 @@ eri_init_map (struct init_map_args *args)
       uint64_t restart = eri_assert_syscall (mmap, 0, size,
 			ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
 			ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
-      eri_memcpy ((void *) restart, (void *) start, args->size);
+      uint64_t i;
+      for (i = 0; i < args->size; ++i)
+	((uint8_t *) restart)[i] = ((uint8_t *) start)[i];
 
       uint64_t text = restart + args->text_offset;
       ((void (*) (struct init_map_args *)) text) ((void *) restart);
@@ -171,6 +173,8 @@ rtld (void **args)
   //eri_assert_printf ("%lx %lx\n", text, eri_init_map_text_start);
   eri_memcpy ((void *) text, eri_init_map_text_start, text_size);
 
+  //a->map_start = (uint64_t) a;
+  //a->map_end = a->map_start + 64 * 1024 * 1024;
   ((void (*) (struct init_map_args *)) text) (a);
   eri_assert_unreachable ();
 }
