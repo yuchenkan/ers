@@ -14,12 +14,12 @@ typedef uint64_t eri_file_t;
 
 #define _ERI_FILE_RAW			1
 
-#define _ERI_RAW_FILE_FROM_FD(fd) \
+#define eri_raw_file_from_fd(fd) \
   ((eri_file_t) ((fd) << 4 | _ERI_FILE_RAW))
 
-#define ERI_STDIN			_ERI_RAW_FILE_FROM_FD (0)
-#define ERI_STDOUT			_ERI_RAW_FILE_FROM_FD (1)
-#define ERI_STDERR			_ERI_RAW_FILE_FROM_FD (2)
+#define ERI_STDIN			eri_raw_file_from_fd (0)
+#define ERI_STDOUT			eri_raw_file_from_fd (1)
+#define ERI_STDERR			eri_raw_file_from_fd (2)
 
 int32_t eri_fopen (const char *path, uint8_t r, eri_file_t *file,
 		   void *buf, uint64_t buf_size);

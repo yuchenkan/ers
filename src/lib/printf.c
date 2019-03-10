@@ -30,7 +30,7 @@ eri_fopen (const char *path, uint8_t r, eri_file_t *file,
   if (eri_syscall_is_error (res)) return 1;
 
   if (! buf || ! buf_size)
-    *file = _ERI_RAW_FILE_FROM_FD (res);
+    *file = eri_raw_file_from_fd (res);
   else
     {
       /* eri_assert (((uint64_t) buf & 0xf) == 0); */
@@ -97,14 +97,13 @@ ifwrite (int32_t nr, int32_t fd,
   while (size)
     {
       uint64_t res = eri_syscall_nr (nr, fd, buf, size, offset + wrote);
-      if (eri_syscall_is_error (res)
-	  && res != ERI_EAGAIN && res != ERI_EINTR)
+      if (eri_syscall_is_error (res) && res != ERI_EINTR)
 	{
 	  if (len) *len = wrote;
 	  return res;
 	}
 
-      if (res == ERI_EAGAIN || res == ERI_EINTR) continue;
+      if (res == ERI_EINTR) continue;
 
       wrote += res;
       advance (nr == __NR_writev || nr == __NR_pwritev, &buf, &size, res);
@@ -132,6 +131,7 @@ file_pwrite (struct file *f)
   return res;
 }
 
+#if 0
 int32_t
 eri_frelease (eri_file_t file, int32_t *fd)
 {
@@ -150,6 +150,7 @@ eri_frelease (eri_file_t file, int32_t *fd)
     }
   return 0;
 }
+#endif
 
 int32_t
 eri_fclose (eri_file_t file)
@@ -262,8 +263,7 @@ ifread (int32_t nr, int32_t fd, uint64_t buf,
   while (size)
     {
       uint64_t res = eri_syscall_nr (nr, fd, buf, size, offset + read);
-      if (eri_syscall_is_error (res)
-	  && res != ERI_EAGAIN && res != ERI_EINTR)
+      if (eri_syscall_is_error (res) && res != ERI_EINTR)
 	{
 	  if (len) *len = read;
 	  return 1;

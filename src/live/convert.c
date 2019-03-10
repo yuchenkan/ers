@@ -7,7 +7,7 @@
 #define eri_assert	assert
 
 #include <lib/elf.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 
 static uint64_t
 parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
@@ -27,26 +27,17 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
 
   *segs = calloc (j, sizeof **segs);
   *nsegs = j;
+
+  j = 0;
   for (i = 0; i < ehdr.phnum; ++i)
     if (phdrs[i].type == ERI_PT_LOAD)
-      {
-	int32_t prot = 0;
-	if (phdrs[i].flags & ERI_PF_R) prot |= ERI_PROT_READ;
-	if (phdrs[i].flags & ERI_PF_W) prot |= ERI_PROT_WRITE;
-	if (phdrs[i].flags & ERI_PF_X) prot |= ERI_PROT_EXEC;
-	(*segs)[i].prot = prot;
-
-	(*segs)[i].offset = phdrs[i].offset;
-	(*segs)[i].filesz = phdrs[i].filesz;
-	(*segs)[i].vaddr = phdrs[i].vaddr;
-	(*segs)[i].memsz = phdrs[i].memsz;
-      }
+      eri_seg_from_phdr (*segs + j++, phdrs + i);
 
   return ehdr.entry;
 }
 
 static void
-convert_live (const char *elf, const char *bin)
+convert_bin (const char *elf, const char *bin)
 {
   FILE *ef = fopen (elf, "rb");
   assert (ef);
@@ -81,7 +72,7 @@ convert_live (const char *elf, const char *bin)
 }
 
 static void
-convert_rtld (const char *elf, const char *header)
+convert_header (const char *elf, const char *header)
 {
   FILE *ef = fopen (elf, "rb");
   assert (ef);
@@ -123,12 +114,12 @@ main (int argc, const char **argv)
   if (strcmp (t, "bin") == 0)
     {
       assert (argc == 4);
-      convert_live (argv[2], argv[3]);
+      convert_bin (argv[2], argv[3]);
     }
   else if (strcmp (t, "header") == 0)
     {
       assert (argc == 4);
-      convert_rtld (argv[2], argv[3]);
+      convert_header (argv[2], argv[3]);
     }
   else assert (0);
 

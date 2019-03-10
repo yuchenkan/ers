@@ -85,8 +85,35 @@ eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
   do { m4_ns(assert_syscall_nr (nr, status));				\
        eri_assert_unreachable (); } while (0)
 
-void m4_ns(assert_sys_read) (int32_t fd, void *buf, uint64_t size);
-void m4_ns(assert_sys_write) (int32_t fd, void *buf, uint64_t size);
+#define m4_ns(assert_sys_read)(fd, buf, size) \
+  do {									\
+    int32_t _fd = fd;							\
+    uint8_t *_buf = (void *) buf;					\
+    uint64_t _size = size;						\
+    uint8_t *_end = _buf + _size;					\
+    while (_buf != _end)						\
+      {									\
+	uint64_t _res = m4_ns(syscall) (read, _fd, _buf, _end - _buf);	\
+	if (_res == ERI_EINTR) continue;				\
+	eri_assert (! eri_syscall_is_error (_res) && _res);		\
+	_buf += _res;							\
+      }									\
+  } while (0)
+
+#define m4_ns(assert_sys_write)(fd, buf, size) \
+  do {									\
+    int32_t _fd = fd;							\
+    uint8_t *_buf = (void *) buf;					\
+    uint64_t _size = size;						\
+    uint8_t *_end = _buf + _size;					\
+    while (_buf != _end)						\
+      {									\
+	uint64_t _res = m4_ns(syscall) (write, _fd, _buf, _end - _buf);	\
+	if (_res == ERI_EINTR) continue;				\
+	eri_assert (! eri_syscall_is_error (_res));			\
+	_buf += _res;							\
+      }									\
+  } while (0)
 
 #define m4_ns(assert_sys_mkdir)(path, mode) \
   do { uint64_t _res = m4_ns(syscall) (mkdir, path, mode);		\

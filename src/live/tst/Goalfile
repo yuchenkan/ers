@@ -1,8 +1,7 @@
 'use strict'; /* vim: set ft=javascript: */
 
 const base = goal.replace (/^live\/tst\//, '');
-if (new Set ([ 'tst-registers.h', 'tst-rtld.S.o', 'tst-rtld.out',
-	       'main.l', 'sig-hand-ut.l' ]).has (base))
+if (new Set ([ 'tst-registers.h', 'tst-rtld.out', 'main.l', 'sig-hand-ut.l' ]).has (base))
   return await this.invoke (`${goal}.g`);
 
 if (new Set ([ 'tst-main.ld', 'tst-sig-hand-ut.ld' ]).has (base))

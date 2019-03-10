@@ -9,4 +9,4 @@ const post = async () => {
 		+ `-R .dynstr -R .gnu.hash -R .rela.dyn -R .dynamic -R .got -R .got.plt ${goal}`);
 }
 
-await this.invoke ('goal/link.g', { srcs, extra : [ script ], ldflags, post });
+await this.invoke ('goal/link.g', { srcs, extra: [ script ], ldflags, post });

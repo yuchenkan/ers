@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include <compiler.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 
 struct eri_mtpool;
 struct eri_lock;

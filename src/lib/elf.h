@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <lib/syscall-common.h>
+
 struct eri_auxv
 {
   uint64_t type;
@@ -83,5 +85,19 @@ struct eri_seg
   uint64_t vaddr;
   uint64_t memsz;
 };
+
+#define eri_seg_from_phdr(seg, phdr) \
+  do {									\
+    struct eri_seg *_seg = seg;						\
+    struct eri_elf64_phdr *_phdr = phdr;				\
+    _seg->prot = 0;							\
+    if (_phdr->flags & ERI_PF_R) _seg->prot |= ERI_PROT_READ;		\
+    if (_phdr->flags & ERI_PF_W) _seg->prot |= ERI_PROT_WRITE;		\
+    if (_phdr->flags & ERI_PF_X) _seg->prot |= ERI_PROT_EXEC;		\
+    _seg->offset = _phdr->offset;					\
+    _seg->filesz = _phdr->filesz;					\
+    _seg->vaddr = _phdr->vaddr;						\
+    _seg->memsz = _phdr->memsz;						\
+  } while (0)
 
 #endif

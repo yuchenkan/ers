@@ -296,7 +296,7 @@ eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
   struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);
   th->alive = 1;
-  eri_init_lock (&th->start_lock, 0);
+  eri_init_lock (&th->start_lock, 1);
   struct thread_context *th_ctx = th->ctx;
   th_ctx->ext.op.sig_hand = SIG_HAND_ASYNC;
   th_ctx->ext.op.args = 0;
@@ -358,6 +358,7 @@ eri_live_thread__clone_main (struct eri_live_thread *th)
   };
 
   th->group->pid = eri_assert_sys_clone (&args);
+  eri_assert_unlock (&th->start_lock);
 }
 
 #define SIG_ACT_TERM	((void *) 1)

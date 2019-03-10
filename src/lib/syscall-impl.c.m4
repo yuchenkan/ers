@@ -42,29 +42,3 @@ m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
     }
   return 1;
 }
-
-void
-m4_ns(assert_sys_read) (int32_t fd, void *buf, uint64_t size)
-{
-  uint64_t left = size;
-  while (left)
-    {
-      uint64_t res = m4_ns(syscall) (read, fd, buf, size);
-      if (res == ERI_EINTR) continue;
-      eri_assert (! eri_syscall_is_error (res) && res);
-      left -= res;
-    }
-}
-
-void
-m4_ns(assert_sys_write) (int32_t fd, void *buf, uint64_t size)
-{
-  uint64_t left = size;
-  while (left)
-    {
-      uint64_t res = m4_ns(syscall) (write, fd, buf, size);
-      if (res == ERI_EINTR) continue;
-      eri_assert (! eri_syscall_is_error (res) && res);
-      left -= res;
-    }
-}

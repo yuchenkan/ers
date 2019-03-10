@@ -6,7 +6,7 @@
 #include <compiler.h>
 
 #include <entry.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 
 struct eri_siginfo;
 

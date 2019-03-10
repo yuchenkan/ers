@@ -5,7 +5,7 @@
 
 #include <common.h>
 #include <lib/malloc.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 
 struct eri_live_thread;
 
