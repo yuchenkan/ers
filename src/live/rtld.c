@@ -9,9 +9,8 @@
 
 static uint64_t
 map_base (struct eri_seg *segs, uint16_t nsegs,
-	  uint64_t page_size, void *args)
+	  uint64_t page_size, struct eri_live_rtld_args *rtld_args)
 {
-  struct eri_live_rtld_args *rtld_args = args;
   uint64_t buf_size = rtld_args->buf_size;
 
   uint64_t map_start = eri_round_down (segs[0].vaddr, page_size);
@@ -61,13 +60,30 @@ rtld (void **args, uint64_t rdx)
   rtld_args.auxv = auxv;
   rtld_args.page_size = page_size;
 
-  uint64_t entry = eri_map_bin (live, page_size, map_base, &rtld_args);
-  if (! entry)
+  uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);
+  if (res == ERI_ENOENT)
     {
       eri_assert_printf ("failed to load ERS_LIVE: %s\n", live);
       eri_assert_syscall (exit, 1);
     }
+  eri_assert (! eri_syscall_is_error (res));
+  int32_t fd = res;
 
-  ((void (*) (void *)) entry) (&rtld_args);
+  uint8_t buf[sizeof (uint64_t) + sizeof (uint16_t)];
+  eri_assert_syscall (lseek, fd, -sizeof buf, ERI_SEEK_END);
+  eri_assert_sys_read (fd, buf, sizeof buf);
+  uint16_t nsegs = *(uint16_t *) buf;
+  uint64_t entry = *(uint64_t *) (buf + sizeof nsegs);
+
+  eri_assert (nsegs > 0);
+  struct eri_seg segs[nsegs];
+  eri_assert_syscall (lseek, fd, -(sizeof segs + sizeof buf), ERI_SEEK_END);
+  eri_assert_sys_read (fd, segs, sizeof segs);
+
+  uint64_t base = map_base (segs, nsegs, page_size, &rtld_args);
+  eri_map_bin (fd, segs, nsegs, base, page_size);
+  eri_assert_syscall (close, fd);
+
+  ((void (*) (void *)) base + entry) (&rtld_args);
   eri_assert_unreachable ();
 }
