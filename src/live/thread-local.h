@@ -10,34 +10,6 @@
 
 struct eri_siginfo;
 
-/*
- * 16 general registers + rip + rflags =
- *   scratch_registers + extra_registers + rbx + rsp + rip
- */
-
-struct scratch_registers
-{
-  uint64_t rax;
-  uint64_t rdi;
-  uint64_t rsi;
-  uint64_t rdx;
-  uint64_t rcx;
-  uint64_t r8;
-  uint64_t r9;
-  uint64_t r10;
-  uint64_t r11;
-  uint64_t rflags;
-};
-
-struct extra_registers
-{
-  uint64_t rbp;
-  uint64_t r12;
-  uint64_t r13;
-  uint64_t r14;
-  uint64_t r15;
-};
-
 struct atomic_pair
 {
   uint64_t first, second;
@@ -46,14 +18,7 @@ struct atomic_pair
 struct thread_context
 {
   struct eri_thread_entry ext;
-
-  uint64_t entry;
-
-  uint64_t ret;
-  uint64_t top;
-
-  uint64_t rsp;
-  struct scratch_registers sregs;
+  struct eri_thread_context ctx;
 
   struct eri_sigset *sig_force_deliver;
 
@@ -69,7 +34,7 @@ struct thread_context
     {
       struct
 	{
-	  struct extra_registers eregs;
+	  struct eri_extra_registers eregs;
 	  uint8_t swallow_single_step;
 	  uint8_t wait_sig; /* Always zero in user code. */
 	} syscall;
@@ -87,13 +52,8 @@ struct thread_context
 
   struct eri_live_thread *th;
 
-  eri_aligned16 uint8_t text[];
+  eri_aligned16 uint8_t text[0];
 };
-
-extern uint8_t thread_context_text[];
-extern uint8_t thread_context_text_entry[];
-extern uint8_t thread_context_text_return[];
-extern uint8_t thread_context_text_end[];
 
 eri_noreturn void main (void);
 void entry (void);

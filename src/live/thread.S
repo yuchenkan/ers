@@ -30,6 +30,7 @@
 
 #define TC(name)	PASTE (THREAD_CONTEXT_, name)
 #define TCE(name)	TC (PASTE (EXT_, name))
+#define TCC(name)	TC (PASTE (CTX_, name))
 
   .section .rodata
 
@@ -37,7 +38,7 @@
 /* thread_context_text				*/
 /************************************************/
 
-ERI_ENTRY_TEXT (thread_context, TC (SIZE16), TC (ENTRY), TC (EXT))
+ERI_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
 
   .text
 
@@ -78,8 +79,8 @@ ERI_ENTRY_TEXT (thread_context, TC (SIZE16), TC (ENTRY), TC (EXT))
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
   loop	sig_return;							\
 									\
-  movq	TC (SREGS_RCX)(%rbx), %rcx;					\
-  jmp	*TC (RET)(%rbx)
+  movq	TCC (SREGS_RCX)(%rbx), %rcx;					\
+  jmp	*TCC (RET)(%rbx)
 
 #define SIG_SAVE_CTX_REG(creg, reg, frame) \
   movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame)
@@ -87,7 +88,7 @@ ERI_ENTRY_TEXT (thread_context, TC (SIZE16), TC (ENTRY), TC (EXT))
 #define SIG_RETURN_ACTION(action, ret) \
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
   SIG_SAVE_CTX_REG (RSP, rsp, %rcx);					\
-  movq	TC (TOP)(%rbx), %rsp;						\
+  movq	TCC (TOP)(%rbx), %rsp;						\
   pushfq;								\
   popq	ERI_SIGFRAME_CTX_MCTX_RFLAGS(%rcx);				\
   pushq	$0;								\
@@ -97,7 +98,7 @@ ERI_ENTRY_TEXT (thread_context, TC (SIZE16), TC (ENTRY), TC (EXT))
 	      ERI_SIGFRAME_CTX_MCTX_RBX(%rcx), %rax);			\
   ERI_MOV_MM (TCE (ERI_PP_IIF (ret, RET, CALL))(%rbx),			\
 	      ERI_SIGFRAME_CTX_MCTX_RIP(%rcx), %rax);			\
-  ERI_MOV_MM (TC (SREGS_RCX)(%rbx),					\
+  ERI_MOV_MM (TCC (SREGS_RCX)(%rbx),					\
 	      ERI_SIGFRAME_CTX_MCTX_RCX(%rcx), %rax);			\
   FOREACH_EREG (SIG_SAVE_CTX_REG, %rcx);				\
   TH_CALL (action)
@@ -116,7 +117,7 @@ ERI_FUNCTION (main)
   TH_CALL (start_main)
 
   movq	$0, TCE (RBX)(%rbx)
-  movq	$0, TC (SREGS_RCX)(%rbx)
+  movq	$0, TCC (SREGS_RCX)(%rbx)
 
 #define ZERO_REG(creg, reg) \
   xorq	%reg, %reg
@@ -124,10 +125,10 @@ ERI_FUNCTION (main)
   FOREACH_SGREG_NO_RCX_RDX (ZERO_REG)
   FOREACH_EREG (ZERO_REG)
 
-  movq	TC (SREGS_RDX)(%rbx), %rdx
+  movq	TCC (SREGS_RDX)(%rbx), %rdx
   pushq	$0
   popfq
-  movq	TC (RSP)(%rbx), %rsp
+  movq	TCC (RSP)(%rbx), %rsp
 
   SIG_RETURN_TO_USER (.lmain_sig_return)
 
@@ -144,35 +145,16 @@ ERI_FUNCTION (main)
   movq	PASTE (ERROR_, code), %r14;					\
   jmp	.lerror
 
-ERI_FUNCTION (entry)
-
-  movq	%rsp, TC (RSP)(%rbx)
-  movq	TC (TOP)(%rbx), %rsp
-
-  pushfq
-  popq	TC (SREGS_RFLAGS)(%rbx)
-
-  pushq	$0
-  popfq
-
-  movq	%rax, TC (SREGS_RAX)(%rbx)
-  movq	%rdi, TC (SREGS_RDI)(%rbx)
-  movq	%rsi, TC (SREGS_RSI)(%rbx)
-  movq	%rdx, TC (SREGS_RDX)(%rbx)
-  movq	%rcx, TC (SREGS_RCX)(%rbx)
-  movq	%r8, TC (SREGS_R8)(%rbx)
-  movq	%r9, TC (SREGS_R9)(%rbx)
-  movq	%r10, TC (SREGS_R10)(%rbx)
-  movq	%r11, TC (SREGS_R11)(%rbx)
+ERI_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
 #define RESTORE_SGREG(creg, reg) \
-  movq	TC (PASTE (SREGS_, creg))(%rbx), %reg				\
+  movq	TCC (PASTE (SREGS_, creg))(%rbx), %reg				\
 
 #define RESTORE_NO_RCX \
   FOREACH_SGREG_NO_RCX (RESTORE_SGREG);					\
-  pushq	TC (SREGS_RFLAGS)(%rbx);					\
+  pushq	TCC (SREGS_RFLAGS)(%rbx);					\
   popfq;								\
-  movq	TC (RSP)(%rbx), %rsp
+  movq	TCC (RSP)(%rbx), %rsp
 
 #define RESTORE \
   RESTORE_SGREG (RCX, rcx);						\
@@ -278,20 +260,20 @@ ATOMIC_SIZE_LABEL (sz, name):						\
   SIG_RETURN_TO_USER (ATOMIC_SIZE_LABEL (sz, PASTE (name, _sig_return)))
 
 #define ATOMIC_LOAD_RFLAGS \
-  pushq	TC (SREGS_RFLAGS)(%rbx);					\
+  pushq	TCC (SREGS_RFLAGS)(%rbx);					\
   popfq
 
 #define ATOMIC_SAVE_RFLAGS \
   pushfq;								\
-  popq	TC (SREGS_RFLAGS)(%rbx)
+  popq	TCC (SREGS_RFLAGS)(%rbx)
 
 /************************************************/
 /* entry: atomic_ext_return			*/
 /************************************************/
 
 .latomic_ext_return:
-  movq	%rcx, TC (SREGS_RCX)(%rbx)
-  ERI_MOV_LM (entry, TC (ENTRY)(%rbx), %rcx)
+  movq	%rcx, TCC (SREGS_RCX)(%rbx)
+  ERI_MOV_LM (entry, TCC (ENTRY)(%rbx), %rcx)
   ERI_MOV_MM (TCE (ATOMIC_RET)(%rbx), TCE (RET)(%rbx), %rcx)
 
   SIG_RETURN_TO_USER (.latomic_ext_return_sig_return)
@@ -299,9 +281,9 @@ ATOMIC_SIZE_LABEL (sz, name):						\
 #define EXT_COMPLETE_ATOMIC \
   TH_CALL (complete_atomic);						\
 									\
-  ERI_MOV_LM (.latomic_ext_return, TC (ENTRY)(%rbx), %rax);		\
+  ERI_MOV_LM (.latomic_ext_return, TCC (ENTRY)(%rbx), %rax);		\
   RESTORE;								\
-  jmp	*TC (RET)(%rbx)
+  jmp	*TCC (RET)(%rbx)
 
 /************************************************/
 /* eri_live_entry: atomic_load			*/
@@ -375,7 +357,7 @@ PREPARE_ATOMIC (sz, cmpxchg);						\
 									\
   movq	TCE (ATOMIC_VAL)(%rbx), %r11;					\
   movq	%rax, %rdi;							\
-  movq	TC (SREGS_RAX)(%rbx), %rax;					\
+  movq	TCC (SREGS_RAX)(%rbx), %rax;					\
   ATOMIC_LOAD_RFLAGS;							\
 ATOMIC_ACCESS_START_LABEL (sz, cmpxchg):				\
   PASTE (mov, sz)	(%rdi), %RSI (sz);				\
@@ -383,7 +365,7 @@ ATOMIC_ACCESS_START_LABEL (sz, cmpxchg):				\
 ATOMIC_ACCESS_END_LABEL (sz, cmpxchg):					\
 									\
   ATOMIC_SAVE_RFLAGS;							\
-  movq	%rax, TC (SREGS_RAX)(%rbx);					\
+  movq	%rax, TCC (SREGS_RAX)(%rbx);					\
   movq	%rsi, TCE (ATOMIC_VAL)(%rbx);					\
   COMPLETE_ATOMIC (sz, cmpxchg)
 
