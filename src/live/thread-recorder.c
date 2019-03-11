@@ -101,8 +101,8 @@ record_smaps_entry (struct eri_live_thread_recorder *rec,
   uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
   eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
 
-  struct eri_init_map_record init_map = {
-    ERI_INIT_RECORD, start, end, perms, !! path
+  struct eri_marked_init_map_record init_map = {
+    ERI_INIT_MAP_RECORD, { start, end, perms, !! path }
   };
   eri_assert_fwrite (rec->file, &init_map, sizeof init_map, 0);
 
@@ -151,8 +151,9 @@ eri_live_thread_recorder__rec_init (
 {
   if (eri_global_enable_debug) eri_dump_maps ();
 
-  struct eri_init_record init = {
-    0, args->rdx, args->rsp, args->rip, args->start, args->end
+  struct eri_marked_init_record init = {
+    ERI_INIT_RECORD,
+    { 0, args->rdx, args->rsp, args->rip, args->start, args->end }
   };
   eri_assert_fwrite (rec->file, &init, sizeof init, 0);
 

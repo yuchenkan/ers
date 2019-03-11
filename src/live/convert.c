@@ -105,8 +105,8 @@ convert_header (const char *elf, const char *header)
   fclose (ef);
 }
 
-int
-main (int argc, const char **argv)
+int32_t
+main (int32_t argc, const char **argv)
 {
   assert (argc >= 2);
   const char *t = argv[1];
