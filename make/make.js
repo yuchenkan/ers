@@ -313,13 +313,14 @@ function main () {
 
   const circular = () => {
     const goals = env.goals;
-    const left = gs => gs.filter (g => goals[g].waiting && goals[g].waiting.length).shift ();
+    const left = gs => gs.filter (g => goals[g].waiting)[0];
     let node = left (Object.keys (goals));
     assert (node);
 
     const circle = { };
     while (! (node in circle)) {
       circle[node] = left (goals[node].edges);
+      assert (circle[node]);
       node = circle[node];
     }
     const link = [ node ];
