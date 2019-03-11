@@ -13,6 +13,11 @@ struct thread_group
   struct eri_common_args args;
 };
 
+struct thread
+{
+  struct thread_group *group;
+};
+
 eri_noreturn void
 eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {

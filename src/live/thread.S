@@ -5,6 +5,7 @@
 #include <lib/syscall-offsets.h>
 #include <lib/registers.h>
 
+#include <entry.h>
 #include <public/common.h>
 #include <live/thread-local-offsets.h>
 
@@ -36,20 +37,7 @@
 /* thread_context_text				*/
 /************************************************/
 
-  .align 16
-ERI_SYMBOL (thread_context_text)
-#define RIP_RELA(off)	thread_context_text - TC (SIZE16) + off(%rip)
-
-ERI_SYMBOL (thread_context_text_entry)
-  leaq	RIP_RELA (0), %rbx
-  jmp	*RIP_RELA (TC (ENTRY))
-
-  .align 16
-ERI_SYMBOL (thread_context_text_return)
-  movq	RIP_RELA (TCE (RBX)), %rbx
-  jmp	*RIP_RELA (TCE (RET))
-
-ERI_SYMBOL (thread_context_text_end)
+ERI_ENTRY_TEXT (thread_context, TC (SIZE16), TC (ENTRY), TC (EXT))
 
   .text
 

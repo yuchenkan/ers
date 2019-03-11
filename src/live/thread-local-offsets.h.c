@@ -7,6 +7,8 @@
 void
 declare (void)
 {
+  THREAD_CONTEXT_OFFSET (EXT, ext);
+
   THREAD_CONTEXT_OFFSET (EXT_OP_SIG_HAND, ext.op.sig_hand);
   THREAD_CONTEXT_OFFSET (EXT_OP_ARGS, ext.op.args);
   THREAD_CONTEXT_OFFSET (EXT_OP_CODE, ext.op.code);
