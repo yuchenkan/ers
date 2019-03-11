@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <lib/syscall-common.h>
+
 struct eri_mtpool;
 struct eri_siginfo;
 
@@ -19,6 +21,8 @@ struct eri_live_thread_recorder__rec_init_args
   uint64_t rdx;
   uint64_t rsp;
   uint64_t rip;
+
+  struct eri_sigset sig_mask;
 
   uint64_t start;
   uint64_t end;

@@ -58,7 +58,6 @@ rtld (void **args, uint64_t rdx)
        auxv->type != ERI_AT_NULL; ++auxv)
     if (auxv->type == ERI_AT_PAGESZ) page_size = auxv->val;
   rtld_args.auxv = auxv;
-  rtld_args.page_size = page_size;
 
   uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);
   if (res == ERI_ENOENT)

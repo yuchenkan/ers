@@ -5,6 +5,6 @@
 
 struct eri_replay_rtld_args;
 
-eri_noreturn void eri_replay_start (struct eri_replay_rtld_args *args);
+eri_noreturn void eri_replay_start (struct eri_replay_rtld_args *rtld_args);
 
 #endif

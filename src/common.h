@@ -6,14 +6,29 @@
 
 struct eri_common_args
 {
-  const char *config;
+  //const char *config;
   const char *path;
-
-  uint64_t page_size;
 
   uint64_t stack_size;
   uint64_t file_buf_size;
 };
+
+#define eri_init_mtpool_from_buf(buf, size, exec) \
+  ({									\
+    uint8_t *_buf = (void *) buf;					\
+    uint64_t _size = size;						\
+    eri_assert_syscall (mmap, _buf, _size,				\
+	/* XXX: exec security */					\
+	ERI_PROT_READ | ERI_PROT_WRITE | ((exec) ? ERI_PROT_EXEC : 0),	\
+	ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);	\
+									\
+    struct eri_mtpool *_pool = (void *) _buf;				\
+    uint64_t _pool_size = eri_size_of (*_pool, 16);			\
+    eri_assert (_size >= _pool_size);					\
+    eri_assert_init_mtpool (_pool, _buf + _pool_size,			\
+			    _size - _pool_size);			\
+    _pool;								\
+  })
 
 #define eri_build_path_len(path, name, id) \
   (eri_strlen (path) + 1 + eri_strlen (name) + eri_itoa_size (id))

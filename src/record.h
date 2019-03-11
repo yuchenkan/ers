@@ -5,6 +5,8 @@
 
 #include <compiler.h>
 
+#include <lib/syscall-common.h>
+
 struct eri_packed eri_init_record
 {
   uint64_t ver;
@@ -12,6 +14,8 @@ struct eri_packed eri_init_record
   uint64_t rdx;
   uint64_t rsp;
   uint64_t rip;
+
+  struct eri_sigset sig_mask;
 
   uint64_t start;
   uint64_t end;

@@ -44,7 +44,7 @@ ERI_DEFINE_RBTREE1 (static, block, struct eri_pool, struct block, less_than)
 int32_t
 eri_init_pool (struct eri_pool *pool, uint8_t *buf, uint64_t size)
 {
-  eri_assert ((unsigned long) buf % 16 == 0);
+  if ((uint64_t) buf % 16) return 1;
 
   eri_memset (pool, 0, sizeof *pool);
 

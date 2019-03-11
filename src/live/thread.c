@@ -338,6 +338,7 @@ start_main (struct eri_live_thread *th)
   struct thread_context *th_ctx = th->ctx;
   struct eri_live_thread_recorder__rec_init_args args = {
     th_ctx->sregs.rdx, th_ctx->rsp, th_ctx->ext.ret,
+    *eri_live_signal_thread__get_sig_mask (th->sig_th),
     group->map_start, group->map_end
   };
   eri_live_thread_recorder__rec_init (th->rec, &args);

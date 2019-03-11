@@ -161,7 +161,6 @@ sig_handler_frame (struct eri_sigframe *frame)
 static struct signal_thread_group *
 init_group_memory (struct eri_live_rtld_args *rtld_args)
 {
-  const char *config = "ers-config";
   const char *path = "ers-data";
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
@@ -176,25 +175,14 @@ init_group_memory (struct eri_live_rtld_args *rtld_args)
 	|| eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10));
     }
 
-  eri_assert_syscall (mmap, rtld_args->buf, rtld_args->buf_size,
-		/* XXX: security */
-		ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
-		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
-
-  struct eri_mtpool *pool = (void *) rtld_args->buf;
-  eri_assert_init_mtpool (pool,
-			  (void *) (rtld_args->buf + eri_size_of (*pool, 16)),
-			  rtld_args->buf_size - eri_size_of (*pool, 16));
-
+  struct eri_mtpool *pool = eri_init_mtpool_from_buf (
+				rtld_args->buf, rtld_args->buf_size, 1);
   struct signal_thread_group *group
-	= eri_assert_malloc (&pool->pool, sizeof *group);
-
+			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
 
-  group->args.config = config;
   group->args.path = path;
 
-  group->args.page_size = rtld_args->page_size;
   group->args.stack_size = stack_size;
   group->args.file_buf_size = file_buf_size;
 

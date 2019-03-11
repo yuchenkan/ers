@@ -17,7 +17,6 @@ struct eri_live_rtld_args
 
   char **envp;
   struct eri_auxv *auxv;
-  uint64_t page_size;
 
   uint64_t map_start;
   uint64_t map_end;

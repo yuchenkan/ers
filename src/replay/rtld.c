@@ -19,6 +19,9 @@ struct init_map_args
   int32_t fd;
   uint64_t page_size;
 
+  uint64_t stack_size;
+  uint64_t file_buf_size;
+
   uint64_t map_start;
   uint64_t map_end;
   uint64_t map_entry_offset;
@@ -85,7 +88,8 @@ eri_init_map (struct init_map_args *args)
   uint64_t segs_map_size = segs_map_end - segs_map_start;
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
-    path, map_start + segs_map_size, map_end - map_start - segs_map_size
+    path, args->stack_size, args->file_buf_size,
+    map_start + segs_map_size, map_end - map_start - segs_map_size
   };
   ((void (*) (struct eri_replay_rtld_args *)) entry) (&rtld_args);
   eri_assert_unreachable ();
@@ -97,9 +101,13 @@ eri_noreturn void
 rtld (void **args)
 {
   char *path = "ers-data";
+  uint64_t stack_size = 2 * 1024 * 1024;
+  uint64_t file_buf_size = 64 * 1024;
   char **envp;
   for (envp = eri_get_envp_from_args (args); *envp; ++envp)
-    eri_get_arg_str (*envp, "ERS_DATA=", &path);
+    (void) (eri_get_arg_str (*envp, "ERS_DATA=", &path)
+    || eri_get_arg_int (*envp, "ERS_STACK_SIZE=", &stack_size, 10)
+    || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
 
   struct eri_elf64_phdr *phdrs = 0;
   uint64_t phnum = 0;
@@ -145,6 +153,7 @@ rtld (void **args)
   struct init_map_args init_args = {
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size,
+    .stack_size = stack_size, .file_buf_size = file_buf_size,
     .map_start = init.rec.start, .map_end = init.rec.end,
     .map_entry_offset
 	= (uint64_t) eri_replay_start - (uint64_t) eri_start,

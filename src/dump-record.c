@@ -25,6 +25,7 @@ main (int32_t argc, const char **argv)
 	printf ("  ver: %lu", init.ver);
 	printf ("  rdx: 0x%lx, rsp: 0x%lx, rip: 0x%lx\n",
 		init.rdx, init.rsp, init.rip);
+	printf ("  sig_mask: 0x%lx\n", init.sig_mask.val[0]);
 	printf ("  start: 0x%lx, end: 0x%lx\n", init.start, init.end);
       }
     else if (mark == ERI_INIT_MAP_RECORD)

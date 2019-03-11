@@ -9,6 +9,9 @@ struct eri_replay_rtld_args
 {
   const char *path;
 
+  uint64_t stack_size;
+  uint64_t file_buf_size;
+
   uint64_t buf;
   uint64_t buf_size;
 };
