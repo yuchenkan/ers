@@ -9,6 +9,7 @@
 #include <lib/printf.h>
 
 #include <replay/rtld.h>
+#include <replay/thread.h>
 
 struct init_map_args
 {
@@ -89,8 +90,6 @@ eri_init_map (struct init_map_args *args)
   ((void (*) (struct eri_replay_rtld_args *)) entry) (&rtld_args);
   eri_assert_unreachable ();
 }
-
-eri_noreturn void eri_replay_start (struct eri_replay_rtld_args *args);
 
 eri_noreturn void rtld (void **args);
 
