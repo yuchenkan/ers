@@ -90,7 +90,6 @@ eri_init_map (struct init_map_args *args)
   eri_assert_unreachable ();
 }
 
-/* TODO */
 eri_noreturn void eri_replay_start (struct eri_replay_rtld_args *args);
 
 eri_noreturn void rtld (void **args);
@@ -129,28 +128,25 @@ rtld (void **args)
     if (phdrs[i].type == ERI_PT_LOAD)
       eri_seg_from_phdr (segs + j++, phdrs + i);
 
-/* TODO */
-#if 0
   char name[eri_build_path_len (path, "t", 0)];
   eri_build_path (path, "t", 0, name);
 
   eri_file_t file;
-  eri_assert_fopen (name, 1, &file, 0, 0);
+  if (eri_fopen (name, 1, &file, 0, 0))
+    {
+      eri_assert_fprintf (ERI_STDERR, "failed to open data: %s\n", name);
+      eri_assert_syscall (exit, 1);
+    }
 
   struct eri_marked_init_record init;
   eri_assert_fread (file, &init, sizeof init, 0);
   eri_assert_fclose (file);
   eri_assert (init.mark == ERI_INIT_RECORD);
-#endif
 
   struct init_map_args init_args = {
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size,
-#if 0
     .map_start = init.rec.start, .map_end = init.rec.end,
-#else
-    .map_start = 1024 * 1024 * 1024, .map_end = 1088 * 1024 * 1024,
-#endif
     .map_entry_offset
 	= (uint64_t) eri_replay_start - (uint64_t) eri_start,
     .nsegs = nsegs

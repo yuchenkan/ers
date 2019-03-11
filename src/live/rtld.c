@@ -63,7 +63,7 @@ rtld (void **args, uint64_t rdx)
   uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);
   if (res == ERI_ENOENT)
     {
-      eri_assert_printf ("failed to load ERS_LIVE: %s\n", live);
+      eri_assert_fprintf (ERI_STDERR, "failed to load ERS_LIVE: %s\n", live);
       eri_assert_syscall (exit, 1);
     }
   eri_assert (! eri_syscall_is_error (res));
