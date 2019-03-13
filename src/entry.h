@@ -2,17 +2,51 @@
 #define ERI_ENTRY_H
 
 #include <lib/util.h>
+#include <lib/syscall.h>
 
-#define ERI_THREAD_ENTRY_SIG_HANDS(p) \
+#define ERI_ENTRY_THREAD_ENTRY_SIG_HANDS(p) \
   p (SIG_HAND_SYSCALL, sig_hand_syscall)				\
   p (SIG_HAND_SYNC_ASYNC, sig_hand_sync_async)				\
   p (SIG_HAND_ATOMIC, sig_hand_atomic)
+
+/*
+ * 16 general registers + rip + rflags =
+ *   eri_scratch_registers + eri_extra_registers + rbx + rsp + rip
+ */
+
+#define ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX(p, ...) \
+  p (RAX, rax, ##__VA_ARGS__)						\
+  p (RDI, rdi, ##__VA_ARGS__)						\
+  p (RSI, rsi, ##__VA_ARGS__)						\
+  p (R8, r8, ##__VA_ARGS__)						\
+  p (R9, r9, ##__VA_ARGS__)						\
+  p (R10, r10, ##__VA_ARGS__)						\
+  p (R11, r11, ##__VA_ARGS__)
+
+#define ERI_ENTRY_FOREACH_SGREG_NO_RCX(p, ...) \
+  ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX(p, ##__VA_ARGS__)			\
+  p (RDX, rdx, ##__VA_ARGS__)
+
+#define ERI_ENTRY_FOREACH_SGREG(p, ...) \
+  ERI_ENTRY_FOREACH_SGREG_NO_RCX(p, ##__VA_ARGS__)			\
+  p (RCX, rcx, ##__VA_ARGS__)
+
+#define ERI_ENTRY_FOREACH_SREG(p, ...) \
+  ERI_ENTRY_FOREACH_SGREG(p, ##__VA_ARGS__)				\
+  p (RFLAGS, rflags, ##__VA_ARGS__)
+
+#define ERI_ENTRY_FOREACH_EREG(p, ...) \
+  p (RBP, rbp, ##__VA_ARGS__)						\
+  p (R12, r12, ##__VA_ARGS__)						\
+  p (R13, r13, ##__VA_ARGS__)						\
+  p (R14, r14, ##__VA_ARGS__)						\
+  p (R15, r15, ##__VA_ARGS__)
 
 #ifndef __ASSEMBLER__
 
 #include <stdint.h>
 
-struct eri_thread_entry
+struct eri_entry_thread_entry
 {
   uint64_t zero; /* so that %gs:0 is always zero */
 
@@ -42,35 +76,19 @@ struct eri_thread_entry
     };
 };
 
-/*
- * 16 general registers + rip + rflags =
- *   eri_scratch_registers + eri_extra_registers + rbx + rsp + rip
- */
+#define _ERI_ENTRY_DECLARE_REG(creg, reg)	uint64_t reg;
 
-struct eri_scratch_registers
+struct eri_entry_scratch_registers
 {
-  uint64_t rax;
-  uint64_t rdi;
-  uint64_t rsi;
-  uint64_t rdx;
-  uint64_t rcx;
-  uint64_t r8;
-  uint64_t r9;
-  uint64_t r10;
-  uint64_t r11;
-  uint64_t rflags;
+  ERI_ENTRY_FOREACH_SREG (_ERI_ENTRY_DECLARE_REG)
 };
 
-struct eri_extra_registers
+struct eri_entry_extra_registers
 {
-  uint64_t rbp;
-  uint64_t r12;
-  uint64_t r13;
-  uint64_t r14;
-  uint64_t r15;
+  ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_DECLARE_REG)
 };
 
-struct eri_thread_context
+struct eri_entry_thread_context
 {
   uint64_t entry;
   uint64_t ret;
@@ -78,91 +96,125 @@ struct eri_thread_context
   uint64_t top;
   uint64_t rsp;
 
-  struct eri_scratch_registers sregs;
+  struct eri_entry_scratch_registers sregs;
 };
 
 #include <lib/offset.h>
 
-#define _ERI_THREAD_ENTRY_OFFSET(ns, name, member) \
-  ERI_DECLARE_OFFSET (ERI_PASTE (ns, _THREAD_ENTRY_), name,		\
-		      struct eri_thread_entry, member)
+#define _ERI_ENTRY_THREAD_ENTRY_OFFSET(ns, name, member) \
+  ERI_DECLARE_OFFSET (ERI_PASTE (ns, _ENTRY_THREAD_ENTRY_), name,	\
+		      struct eri_entry_thread_entry, member)
 
-#define ERI_THREAD_ENTRY_OFFSETS(ns) \
-  _ERI_THREAD_ENTRY_OFFSET (ns, OP, op);				\
-  _ERI_THREAD_ENTRY_OFFSET (ns, RBX, rbx);				\
+#define ERI_ENTRY_THREAD_ENTRY_OFFSETS(ns) \
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, OP, op);				\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RBX, rbx);			\
 									\
-  _ERI_THREAD_ENTRY_OFFSET (ns, CALL, call);				\
-  _ERI_THREAD_ENTRY_OFFSET (ns, RET, ret);				\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, CALL, call);			\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RET, ret);			\
 									\
-  _ERI_THREAD_ENTRY_OFFSET (ns, ENTRY, entry);				\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ENTRY, entry);			\
 									\
-  _ERI_THREAD_ENTRY_OFFSET (ns, ATOMIC_VAL, atomic.val);		\
-  _ERI_THREAD_ENTRY_OFFSET (ns, ATOMIC_MEM, atomic.mem);		\
-  _ERI_THREAD_ENTRY_OFFSET (ns, ATOMIC_RET, atomic.ret);		\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_VAL, atomic.val);		\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_MEM, atomic.mem);		\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_RET, atomic.ret);		\
 
 #endif
 
-#ifndef ERI_BUILD_ENTRY_OFFSETS_H
+#ifndef ERI_ENTRY_BUILD_ENTRY_OFFSETS_H
 # include <entry-offsets.h>
 #endif
 
-#define _ERI_THREAD_ENTRY_TEXT_RIP_RELA(name, size, off) \
+#define _ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA(name, size, off) \
   ERI_PASTE (name, _text) - (size) + (off)(%rip)
 
-#define ERI_THREAD_ENTRY_TEXT(name, size, entry, offset) \
+#define ERI_ENTRY_THREAD_ENTRY_TEXT(name, size, entry, offset) \
   .align 16;								\
 ERI_SYMBOL (ERI_PASTE (name, _text))					\
 ERI_SYMBOL (ERI_PASTE (name, _text_entry))				\
-  leaq	_ERI_THREAD_ENTRY_TEXT_RIP_RELA (name, size, 0), %rbx;		\
-  jmp	*_ERI_THREAD_ENTRY_TEXT_RIP_RELA (name, size, entry);		\
+  leaq	_ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA (name, size, 0), %rbx;	\
+  jmp	*_ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA (name, size, entry);	\
 									\
   .align 16;								\
 ERI_SYMBOL (ERI_PASTE (name, _text_return))				\
-  movq	_ERI_THREAD_ENTRY_TEXT_RIP_RELA (name, size,			\
-		(offset) + ERI_THREAD_ENTRY_RBX), %rbx;			\
-  jmp	*_ERI_THREAD_ENTRY_TEXT_RIP_RELA (name, size,			\
-		(offset) + ERI_THREAD_ENTRY_RET);			\
+  movq	_ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA (name, size,		\
+		(offset) + ERI_ENTRY_THREAD_ENTRY_RBX), %rbx;		\
+  jmp	*_ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA (name, size,		\
+		(offset) + ERI_ENTRY_THREAD_ENTRY_RET);			\
 									\
 ERI_SYMBOL (ERI_PASTE (name, _text_end))
 
-#define ERI_THREAD_CONTEXT_ENTRY(name, offset)				\
+#define _ERI_ENTRY_THREAD_CONTEXT_ENTRY_SAVE_SGREG(creg, reg, off) \
+  movq	%reg, (off) + ERI_PASTE (ERI_ENTRY_THREAD_CONTEXT_SREGS_, creg)(%rbx);
+#define _ERI_ENTRY_THREAD_CONTEXT_ENTRY_RESTORE_SGREG(creg, reg, off) \
+  movq	(off) + ERI_PASTE (ERI_ENTRY_THREAD_CONTEXT_SREGS_, creg)(%rbx), %reg;
+
+#define ERI_ENTRY_THREAD_CONTEXT_ENTRY(name, offset) \
 ERI_FUNCTION (name)							\
-  movq	%rsp, (offset) + ERI_THREAD_CONTEXT_RSP(%rbx);			\
-  movq	(offset) + ERI_THREAD_CONTEXT_TOP(%rbx), %rsp;			\
+  movq	%rsp, (offset) + ERI_ENTRY_THREAD_CONTEXT_RSP(%rbx);		\
+  movq	(offset) + ERI_ENTRY_THREAD_CONTEXT_TOP(%rbx), %rsp;		\
 									\
   pushfq;								\
-  popq	(offset) + ERI_THREAD_CONTEXT_SREGS_RFLAGS(%rbx);		\
+  popq	(offset) + ERI_ENTRY_THREAD_CONTEXT_SREGS_RFLAGS(%rbx);		\
 									\
   pushq	$0;								\
   popfq;								\
 									\
-  movq	%rax, (offset) + ERI_THREAD_CONTEXT_SREGS_RAX(%rbx);		\
-  movq	%rdi, (offset) + ERI_THREAD_CONTEXT_SREGS_RDI(%rbx);		\
-  movq	%rsi, (offset) + ERI_THREAD_CONTEXT_SREGS_RSI(%rbx);		\
-  movq	%rdx, (offset) + ERI_THREAD_CONTEXT_SREGS_RDX(%rbx);		\
-  movq	%rcx, (offset) + ERI_THREAD_CONTEXT_SREGS_RCX(%rbx);		\
-  movq	%r8, (offset) + ERI_THREAD_CONTEXT_SREGS_R8(%rbx);		\
-  movq	%r9, (offset) + ERI_THREAD_CONTEXT_SREGS_R9(%rbx);		\
-  movq	%r10, (offset) + ERI_THREAD_CONTEXT_SREGS_R10(%rbx);		\
-  movq	%r11, (offset) + ERI_THREAD_CONTEXT_SREGS_R11(%rbx)
+  ERI_ENTRY_FOREACH_SGREG (						\
+		_ERI_ENTRY_THREAD_CONTEXT_ENTRY_SAVE_SGREG, offset)
+
+#define ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX(offset) \
+  ERI_ENTRY_FOREACH_SGREG_NO_RCX (					\
+		_ERI_ENTRY_THREAD_CONTEXT_ENTRY_RESTORE_SGREG, offset)	\
+  pushq	(offset) + ERI_ENTRY_THREAD_CONTEXT_SREGS_RFLAGS(%rbx);		\
+  popfq;								\
+  movq	(offset) + ERI_ENTRY_THREAD_CONTEXT_RSP(%rbx), %rsp
+
+#define ERI_ENTRY_THREAD_CONTEXT_RESTORE(offset) \
+  _ERI_ENTRY_THREAD_CONTEXT_ENTRY_RESTORE_SGREG (RCX, rcx, offset)	\
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (offset)
+
+#define _ERI_ENTRY_SAVE_EREG(creg, reg, off) \
+  movq	%reg, (off) + ERI_PASTE (ERI_ENTRY_EXTRA_REGISTERS_, creg)(%rbx);
+#define _ERI_ENTRY_RESTORE_EREG(creg, reg, off) \
+  movq	(off) + ERI_PASTE (ERI_ENTRY_EXTRA_REGISTERS_, creg)(%rbx), %reg;
+
+#define ERI_ENTRY_SYSCALL_MAY_SAVE_EREGS(offset, prefix) \
+  cmpl	$__NR_clone, %eax;						\
+  je	ERI_PASTE2 (.L, prefix, _extra_save);				\
+  cmpl	$__NR_rt_sigreturn, %eax;					\
+  je	ERI_PASTE2 (.L, prefix, _extra_save);				\
+  jmp	ERI_PASTE2 (.L, prefix, _no_extra_save);			\
+ERI_PASTE2 (.L, prefix, _extra_save):					\
+  ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_SAVE_EREG, offset)			\
+ERI_PASTE2 (.L, prefix, _no_extra_save):
+
+#define ERI_ENTRY_SYSCALL_MAY_RESTORE_EREGS(offset, prefix) \
+  testq	%rax, %rax;							\
+  jz	ERI_PASTE2 (.L, prefix, _no_extra_restore);			\
+  cmpq	$1, %rax;							\
+  je	ERI_PASTE2 (.L, prefix, _extra_restore);			\
+  movq	%rax, %rbx; /* clone child start */				\
+ERI_PASTE2 (.L, prefix, _extra_restore):				\
+  ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)		\
+ERI_PASTE2 (.L, prefix, _no_extra_restore):
 
 #ifndef __ASSEMBLER__
 
-#define eri_thread_entry_text_size(name) \
+#define eri_entry_thread_entry_text_size(name) \
   ({ extern uint8_t ERI_PASTE (name, _text)[];				\
      extern uint8_t ERI_PASTE (name, _text_end)[];			\
      ERI_PASTE (name, _text_end) - ERI_PASTE (name, _text); })
 
-#define eri_thread_entry_text(name, th_text, text) \
+#define eri_entry_thread_entry_text(name, th_text, text) \
   ({ extern uint8_t ERI_PASTE (name, _text)[];				\
      extern uint8_t ERI_PASTE2 (name, _text_, text)[];			\
      (uint64_t) (th_text) + ERI_PASTE2 (name, _text_, text)		\
 				 - ERI_PASTE (name, _text); })
 
-#define eri_thread_entry_copy_text(name, th_text) \
+#define eri_entry_thread_entry_copy_text(name, th_text) \
   do {									\
     extern uint8_t ERI_PASTE (name, _text)[];				\
-    uint64_t _size = eri_thread_entry_text_size (name);			\
+    uint64_t _size = eri_entry_thread_entry_text_size (name);		\
     eri_memcpy ((void *) (th_text), ERI_PASTE (name, _text), _size);	\
   } while (0)
 

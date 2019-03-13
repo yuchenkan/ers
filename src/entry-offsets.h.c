@@ -1,27 +1,30 @@
-#define ERI_BUILD_ENTRY_OFFSETS_H /* kill circular dependancy */
+#define ERI_ENTRY_BUILD_ENTRY_OFFSETS_H /* kill circular dependancy */
 #include <entry.h>
 
+#include <lib/util.h>
 #include <lib/offset.h>
 
-#define ERI_THREAD_CONTEXT_OFFSET(name, member) \
-  ERI_DECLARE_OFFSET (ERI_THREAD_CONTEXT_, name,		\
-		      struct eri_thread_context, member)
+#define ENTRY_THREAD_CONTEXT_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_ENTRY_THREAD_CONTEXT_, name,		\
+		      struct eri_entry_thread_context, member)
+
+#define ERTRY_EXTRA_REGISTERS_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_ENTRY_EXTRA_REGISTERS_, name,		\
+		      struct eri_entry_extra_registers, member)
 
 void
 declare (void)
 {
-  ERI_THREAD_ENTRY_OFFSETS (ERI)
+  ERI_ENTRY_THREAD_ENTRY_OFFSETS (ERI)
 
-  ERI_THREAD_CONTEXT_OFFSET (TOP, top);
-  ERI_THREAD_CONTEXT_OFFSET (RSP, rsp);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RAX, sregs.rax);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RDI, sregs.rdi);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RSI, sregs.rsi);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RDX, sregs.rdx);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RCX, sregs.rcx);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_R8, sregs.r8);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_R9, sregs.r9);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_R10, sregs.r10);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_R11, sregs.r11);
-  ERI_THREAD_CONTEXT_OFFSET (SREGS_RFLAGS, sregs.rflags);
+  ENTRY_THREAD_CONTEXT_OFFSET (TOP, top);
+  ENTRY_THREAD_CONTEXT_OFFSET (RSP, rsp);
+
+#define ENTRY_THREAD_CONTEXT_SREG_OFFSET(creg, reg) \
+  ENTRY_THREAD_CONTEXT_OFFSET (ERI_PASTE (SREGS_, creg), sregs.reg);
+  ERI_ENTRY_FOREACH_SREG (ENTRY_THREAD_CONTEXT_SREG_OFFSET)
+
+#define ENTRY_EXTRA_REGISTERS_EREG_OFFSET(creg, reg) \
+  ERTRY_EXTRA_REGISTERS_OFFSET (creg, reg);
+  ERI_ENTRY_FOREACH_EREG (ENTRY_EXTRA_REGISTERS_EREG_OFFSET)
 }

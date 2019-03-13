@@ -20,6 +20,26 @@
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
 
+#define SET_CTX_SREG_FROM_TH_CTX(creg, reg, c, th) \
+  (c)->mctx.reg = (th)->ctx.sregs.reg;
+
+#define set_ctx_sregs_from_th_ctx(ctx, th_ctx) \
+  do {									\
+    struct eri_ucontext *_ctx = ctx;					\
+    struct thread_context *_th_ctx = th_ctx;				\
+    ERI_ENTRY_FOREACH_SREG (SET_CTX_SREG_FROM_TH_CTX, _ctx, _th_ctx)	\
+  } while (0)
+
+#define SET_TH_CTX_SREG_FROM_CTX(creg, reg, th, c) \
+  (th)->ctx.sregs.reg = (c)->mctx.reg;
+
+#define set_th_ctx_sregs_from_ctx(th_ctx, ctx) \
+  do {									\
+    struct thread_context *_th_ctx = th_ctx;				\
+    struct eri_ucontext *_ctx = ctx;					\
+    ERI_ENTRY_FOREACH_SREG (SET_TH_CTX_SREG_FROM_CTX, _th_ctx, _ctx)	\
+  } while (0)
+
 struct thread_group;
 
 struct eri_live_thread
@@ -238,16 +258,18 @@ static struct thread_context *
 create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = eri_assert_mtmalloc (pool,
-		sizeof *th_ctx + eri_thread_entry_text_size (thread_context));
+	sizeof *th_ctx + eri_entry_thread_entry_text_size (thread_context));
 
   uint8_t *th_text = th_ctx->text;
-  eri_thread_entry_copy_text (thread_context, th_text);
+  eri_entry_thread_entry_copy_text (thread_context, th_text);
 
   th_ctx->ext.zero = 0;
-  th_ctx->ext.entry = eri_thread_entry_text (thread_context, th_text, entry);
+  th_ctx->ext.entry
+	= eri_entry_thread_entry_text (thread_context, th_text, entry);
 
   th_ctx->ctx.entry = (uint64_t) entry;
-  th_ctx->ctx.ret = eri_thread_entry_text (thread_context, th_text, return);
+  th_ctx->ctx.ret
+	= eri_entry_thread_entry_text (thread_context, th_text, return);
   th_ctx->ctx.top = (uint64_t) th->stack + th->group->stack_size;
   th_ctx->sig_force_deliver = 0;
   sig_set_frame (th_ctx, 0);
@@ -717,17 +739,7 @@ sig_restart_set_ctx (struct thread_context *th_ctx)
   ctx->mctx.rip = th_ctx->ext.call;
 
   ctx->mctx.rsp = th_ctx->ctx.rsp;
-
-  ctx->mctx.rax = th_ctx->ctx.sregs.rax;
-  ctx->mctx.rdi = th_ctx->ctx.sregs.rdi;
-  ctx->mctx.rsi = th_ctx->ctx.sregs.rsi;
-  ctx->mctx.rdx = th_ctx->ctx.sregs.rdx;
-  ctx->mctx.rcx = th_ctx->ctx.sregs.rcx;
-  ctx->mctx.r8 = th_ctx->ctx.sregs.r8;
-  ctx->mctx.r9 = th_ctx->ctx.sregs.r9;
-  ctx->mctx.r10 = th_ctx->ctx.sregs.r10;
-  ctx->mctx.r11 = th_ctx->ctx.sregs.r11;
-  ctx->mctx.rflags = th_ctx->ctx.sregs.rflags;
+  set_ctx_sregs_from_th_ctx (ctx, th_ctx);
 }
 
 struct eri_live_thread__create_args
@@ -1372,21 +1384,10 @@ DEFINE_SYSCALL (rt_sigreturn)
   th_ctx->ext.rbx = ctx->mctx.rbx;
   th_ctx->ext.ret = ctx->mctx.rip;
   th_ctx->ctx.rsp = ctx->mctx.rsp;
-  th_ctx->ctx.sregs.rax = ctx->mctx.rax;
-  th_ctx->ctx.sregs.rdi = ctx->mctx.rdi;
-  th_ctx->ctx.sregs.rsi = ctx->mctx.rsi;
-  th_ctx->ctx.sregs.rdx = ctx->mctx.rdx;
-  th_ctx->ctx.sregs.rcx = ctx->mctx.rcx;
-  th_ctx->ctx.sregs.r8 = ctx->mctx.r8;
-  th_ctx->ctx.sregs.r9 = ctx->mctx.r9;
-  th_ctx->ctx.sregs.r10 = ctx->mctx.r10;
-  th_ctx->ctx.sregs.r11 = ctx->mctx.r11;
-  th_ctx->ctx.sregs.rflags = ctx->mctx.rflags;
-  th_ctx->syscall.eregs.rbp = ctx->mctx.rbp;
-  th_ctx->syscall.eregs.r12 = ctx->mctx.r12;
-  th_ctx->syscall.eregs.r13 = ctx->mctx.r13;
-  th_ctx->syscall.eregs.r14 = ctx->mctx.r14;
-  th_ctx->syscall.eregs.r15 = ctx->mctx.r15;
+  set_th_ctx_sregs_from_ctx (th_ctx, ctx);
+#define SET_SYSCALL_EREG(creg, reg) \
+  th_ctx->syscall.eregs.reg = ctx->mctx.reg;
+  ERI_ENTRY_FOREACH_EREG (SET_SYSCALL_EREG)
   ctx->mctx.rflags = 0;
 
   frame.restorer = eri_assert_sys_sigreturn;

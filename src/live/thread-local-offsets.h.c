@@ -1,3 +1,4 @@
+#include <lib/util.h>
 #include <lib/offset.h>
 #include <live/thread-local.h>
 
@@ -26,16 +27,9 @@ declare (void)
   THREAD_CONTEXT_OFFSET (CTX_TOP, ctx.top);
   THREAD_CONTEXT_OFFSET (CTX_RSP, ctx.rsp);
 
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RAX, ctx.sregs.rax);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RDI, ctx.sregs.rdi);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RSI, ctx.sregs.rsi);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RDX, ctx.sregs.rdx);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RCX, ctx.sregs.rcx);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_R8, ctx.sregs.r8);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_R9, ctx.sregs.r9);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_R10, ctx.sregs.r10);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_R11, ctx.sregs.r11);
-  THREAD_CONTEXT_OFFSET (CTX_SREGS_RFLAGS, ctx.sregs.rflags);
+#define THREAD_CONTEXT_SREG_OFFSET(creg, reg) \
+  THREAD_CONTEXT_OFFSET (ERI_PASTE (CTX_SREGS_, creg), ctx.sregs.reg);
+  ERI_ENTRY_FOREACH_SREG (THREAD_CONTEXT_SREG_OFFSET)
 
   THREAD_CONTEXT_OFFSET (SIG_FRAME, sig_frame);
   THREAD_CONTEXT_OFFSET (SIG_ACT_ACT, sig_act.act);
@@ -44,11 +38,7 @@ declare (void)
   THREAD_CONTEXT_OFFSET (ACCESS, access);
   THREAD_CONTEXT_OFFSET (ACCESS_FAULT, access_fault);
 
-  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS_RBP, syscall.eregs.rbp);
-  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS_R12, syscall.eregs.r12);
-  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS_R13, syscall.eregs.r13);
-  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS_R14, syscall.eregs.r14);
-  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS_R15, syscall.eregs.r15);
+  THREAD_CONTEXT_OFFSET (SYSCALL_EREGS, syscall.eregs);
 
   THREAD_CONTEXT_OFFSET (TH, th);
 

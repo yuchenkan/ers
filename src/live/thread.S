@@ -1,11 +1,12 @@
 /* vim: set ft=gas: */
 
+#include <entry.h>
+
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/syscall-offsets.h>
 #include <lib/registers.h>
 
-#include <entry.h>
 #include <public/common.h>
 #include <live/thread-local-offsets.h>
 
@@ -38,31 +39,11 @@
 /* thread_context_text				*/
 /************************************************/
 
-ERI_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
+ERI_ENTRY_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
 
   .text
 
 #define LABEL(name)			PASTE (.L, name)
-
-#define FOREACH_SGREG_NO_RCX_RDX(p, ...) \
-  p (RAX, rax, ##__VA_ARGS__);						\
-  p (RDI, rdi, ##__VA_ARGS__);						\
-  p (RSI, rsi, ##__VA_ARGS__);						\
-  p (R8, r8, ##__VA_ARGS__);						\
-  p (R9, r9, ##__VA_ARGS__);						\
-  p (R10, r10, ##__VA_ARGS__);						\
-  p (R11, r11, ##__VA_ARGS__)
-
-#define FOREACH_SGREG_NO_RCX(p, ...) \
-  FOREACH_SGREG_NO_RCX_RDX (p, ##__VA_ARGS__);				\
-  p (RDX, rdx, ##__VA_ARGS__)
-
-#define FOREACH_EREG(p, ...) \
-  p (RBP, rbp, ##__VA_ARGS__);						\
-  p (R12, r12, ##__VA_ARGS__);						\
-  p (R13, r13, ##__VA_ARGS__);						\
-  p (R14, r14, ##__VA_ARGS__);						\
-  p (R15, r15, ##__VA_ARGS__)
 
 #define TH_CALL(fn) \
   movq	TC (TH)(%rbx), %rdi;						\
@@ -83,24 +64,24 @@ ERI_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
   jmp	*TCC (RET)(%rbx)
 
 #define SIG_SAVE_CTX_REG(creg, reg, frame) \
-  movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame)
+  movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame);
 
 #define SIG_RETURN_ACTION(action, ret) \
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
-  SIG_SAVE_CTX_REG (RSP, rsp, %rcx);					\
+  SIG_SAVE_CTX_REG (RSP, rsp, %rcx)					\
   movq	TCC (TOP)(%rbx), %rsp;						\
   pushfq;								\
   popq	ERI_SIGFRAME_CTX_MCTX_RFLAGS(%rcx);				\
   pushq	$0;								\
   popfq;								\
-  FOREACH_SGREG_NO_RCX (SIG_SAVE_CTX_REG, %rcx);			\
+  ERI_ENTRY_FOREACH_SGREG_NO_RCX (SIG_SAVE_CTX_REG, %rcx)		\
   ERI_MOV_MM (TCE (RBX)(%rbx),						\
 	      ERI_SIGFRAME_CTX_MCTX_RBX(%rcx), %rax);			\
   ERI_MOV_MM (TCE (ERI_PP_IIF (ret, RET, CALL))(%rbx),			\
 	      ERI_SIGFRAME_CTX_MCTX_RIP(%rcx), %rax);			\
   ERI_MOV_MM (TCC (SREGS_RCX)(%rbx),					\
 	      ERI_SIGFRAME_CTX_MCTX_RCX(%rcx), %rax);			\
-  FOREACH_EREG (SIG_SAVE_CTX_REG, %rcx);				\
+  ERI_ENTRY_FOREACH_EREG (SIG_SAVE_CTX_REG, %rcx)			\
   TH_CALL (action)
 
 #define SIG_RETURN_TO_USER(label) \
@@ -120,10 +101,10 @@ ERI_FUNCTION (main)
   movq	$0, TCC (SREGS_RCX)(%rbx)
 
 #define ZERO_REG(creg, reg) \
-  xorq	%reg, %reg
+  xorq	%reg, %reg;
 
-  FOREACH_SGREG_NO_RCX_RDX (ZERO_REG)
-  FOREACH_EREG (ZERO_REG)
+  ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX (ZERO_REG)
+  ERI_ENTRY_FOREACH_EREG (ZERO_REG)
 
   movq	TCC (SREGS_RDX)(%rbx), %rdx
   pushq	$0
@@ -145,20 +126,7 @@ ERI_FUNCTION (main)
   movq	PASTE (ERROR_, code), %r14;					\
   jmp	.lerror
 
-ERI_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
-
-#define RESTORE_SGREG(creg, reg) \
-  movq	TCC (PASTE (SREGS_, creg))(%rbx), %reg				\
-
-#define RESTORE_NO_RCX \
-  FOREACH_SGREG_NO_RCX (RESTORE_SGREG);					\
-  pushq	TCC (SREGS_RFLAGS)(%rbx);					\
-  popfq;								\
-  movq	TCC (RSP)(%rbx), %rsp
-
-#define RESTORE \
-  RESTORE_SGREG (RCX, rcx);						\
-  RESTORE_NO_RCX
+ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
   movw	TCE (OP_CODE)(%rbx), %r11w
 
@@ -189,36 +157,13 @@ ERI_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 /************************************************/
 
 .lsyscall:
-  cmpl	$__NR_clone, %eax
-  je	.lsyscall_extra_save
-  cmpl	$__NR_rt_sigreturn, %eax
-  je	.lsyscall_extra_save
-  jmp	.lsyscall_no_extra_save
+  ERI_ENTRY_SYSCALL_MAY_SAVE_EREGS (TC (SYSCALL_EREGS), syscall)
 
-.lsyscall_extra_save:
-
-#define SYSCALL_SAVE_EREG(creg, reg) \
-  movq	%reg, TC (PASTE (SYSCALL_EREGS_, creg))(%rbx)
-
-  FOREACH_EREG (SYSCALL_SAVE_EREG)
-
-.lsyscall_no_extra_save:
   TH_CALL (syscall)
 
-  testq	%rax, %rax
-  jz	.lsyscall_no_extra_restore
-  cmpq	$1, %rax
-  je	.lsyscall_extra_restore
-  movq	%rax, %rbx /* clone child start */
+  ERI_ENTRY_SYSCALL_MAY_RESTORE_EREGS (TC (SYSCALL_EREGS), syscall)
 
-.lsyscall_extra_restore:
-#define SYSCALL_RESTORE_EREG(creg, reg) \
-  movq	TC (PASTE (SYSCALL_EREGS_, creg))(%rbx), %reg
-
-  FOREACH_EREG (SYSCALL_RESTORE_EREG)
-
-.lsyscall_no_extra_restore:
-  RESTORE_NO_RCX
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (TC (CTX))
   SIG_RETURN_TO_USER (.lsyscall_sig_return)
 
 /************************************************/
@@ -230,7 +175,7 @@ ERI_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
   movq	%rcx, %rsi
   TH_CALL (sync_async)
 
-  RESTORE_NO_RCX
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (TC (CTX))
   SIG_RETURN (SYNC_ASYNC_RETURN_TO_USER, .lsync_async_sig_return)
 
 .lsync_async_sig_return:
@@ -256,7 +201,7 @@ ATOMIC_SIZE_LABEL (sz, name):						\
 #define COMPLETE_ATOMIC(sz, name) \
   TH_CALL (complete_atomic);						\
 									\
-  RESTORE_NO_RCX;							\
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (TC (CTX));			\
   SIG_RETURN_TO_USER (ATOMIC_SIZE_LABEL (sz, PASTE (name, _sig_return)))
 
 #define ATOMIC_LOAD_RFLAGS \
@@ -282,7 +227,7 @@ ATOMIC_SIZE_LABEL (sz, name):						\
   TH_CALL (complete_atomic);						\
 									\
   ERI_MOV_LM (.latomic_ext_return, TCC (ENTRY)(%rbx), %rax);		\
-  RESTORE;								\
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE (TC (CTX));				\
   jmp	*TCC (RET)(%rbx)
 
 /************************************************/

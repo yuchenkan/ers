@@ -17,8 +17,8 @@ struct atomic_pair
 
 struct thread_context
 {
-  struct eri_thread_entry ext;
-  struct eri_thread_context ctx;
+  struct eri_entry_thread_entry ext;
+  struct eri_entry_thread_context ctx;
 
   struct eri_sigset *sig_force_deliver;
 
@@ -34,7 +34,7 @@ struct thread_context
     {
       struct
 	{
-	  struct eri_extra_registers eregs;
+	  struct eri_entry_extra_registers eregs;
 	  uint8_t swallow_single_step;
 	  uint8_t wait_sig; /* Always zero in user code. */
 	} syscall;
@@ -69,7 +69,7 @@ eri_noreturn void sig_return (struct eri_sigframe *frame);
 void sig_return_back (struct eri_sigframe *frame);
 
 #define SIG_HANDS(p) \
-  ERI_THREAD_ENTRY_SIG_HANDS (p)					\
+  ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (p)					\
   p (SIG_HAND_ASYNC, sig_hand_async)					\
   p (SIG_HAND_NONE, sig_hand_none)					\
   p (SIG_HAND_SIG_ACTION, sig_hand_sig_action)				\
