@@ -11,8 +11,11 @@
 #include <replay/rtld.h>
 #include <replay/thread.h>
 
+#define INIT_STACK_SIZE		(2 * 4096)
+
 struct init_map_args
 {
+  uint64_t init_size;
   uint64_t size;
   uint64_t text_offset;
 
@@ -30,13 +33,22 @@ struct init_map_args
   struct eri_seg segs[0];
 };
 
+eri_noreturn void init_map (uint64_t stack, struct init_map_args *args);
+
+#define call_init_map(a) \
+  do {									\
+    struct init_map_args *_a = a;					\
+    ((typeof (&init_map)) ((uint64_t) _a + _a->text_offset)) (		\
+					(uint64_t) _a + _a->size, _a);	\
+  } while (0)
+
 eri_noreturn void eri_init_map (struct init_map_args *args);
 
 eri_noreturn void
 eri_init_map (struct init_map_args *args)
 {
   uint64_t page_size = args->page_size;
-  uint64_t size = eri_round_up (args->size, page_size);
+  uint64_t size = args->size;
   uint64_t start = (uint64_t) args;
   uint64_t end = start + size;
   uint64_t map_start = args->map_start;
@@ -61,12 +73,10 @@ eri_init_map (struct init_map_args *args)
 			ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
 			ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
       uint64_t i;
-      for (i = 0; i < args->size; ++i)
+      for (i = 0; i < args->init_size; ++i)
 	((uint8_t *) restart)[i] = ((uint8_t *) start)[i];
 
-      uint64_t text = restart + args->text_offset;
-      ((void (*) (struct init_map_args *)) text) ((void *) restart);
-      eri_assert_unreachable ();
+      call_init_map ((void *) restart);
     }
 
   int32_t fd = args->fd;
@@ -160,26 +170,28 @@ rtld (void **args)
     .nsegs = nsegs
   };
   uint64_t data_size = sizeof init_args + sizeof segs + eri_strlen (path) + 1;
-  init_args.text_offset = eri_round_up (data_size, 16);
+  uint64_t text_start_offset = eri_round_up (data_size, 16);
 
   extern uint8_t eri_init_map_text_start[];
   extern uint8_t eri_init_map_text_end[];
   uint64_t text_size = eri_init_map_text_end - eri_init_map_text_start;
-  init_args.size = init_args.text_offset + text_size;
+  init_args.init_size = text_start_offset + text_size;
+  init_args.size
+	= eri_round_up (init_args.init_size + INIT_STACK_SIZE, page_size);
+  init_args.text_offset
+	= text_start_offset + (uint8_t *) init_map - eri_init_map_text_start;
 
   struct init_map_args *a = (void *) eri_assert_syscall (mmap, 0,
-			eri_round_up (init_args.size, page_size),
-			ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
-			ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+		init_args.size, ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
+		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
   eri_memcpy (a, &init_args, sizeof *a);
   eri_memcpy (a->segs, segs, sizeof segs);
   eri_strcpy ((void *) (a->segs + nsegs), path);
-  uint64_t text = (uint64_t) a + a->text_offset;
+  uint64_t text_start = (uint64_t) a + text_start_offset;
   //eri_assert_printf ("%lx %lx\n", text, eri_init_map_text_start);
-  eri_memcpy ((void *) text, eri_init_map_text_start, text_size);
+  eri_memcpy ((void *) text_start, eri_init_map_text_start, text_size);
 
   //a->map_start = (uint64_t) a;
   //a->map_end = a->map_start + 64 * 1024 * 1024;
-  ((void (*) (struct init_map_args *)) text) (a);
-  eri_assert_unreachable ();
+  call_init_map (a);
 }

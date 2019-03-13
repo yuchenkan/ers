@@ -5,6 +5,7 @@
 
 #include <replay/rtld.h>
 #include <replay/thread.h>
+#include <replay/thread-local.h>
 
 struct thread_group
 {
@@ -16,6 +17,8 @@ struct thread_group
 struct thread
 {
   struct thread_group *group;
+
+  struct thread_context *ctx;
 };
 
 eri_noreturn void
@@ -35,3 +38,29 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   eri_assert_printf ("eri_replay_start\n");
   while (1) continue;
 }
+
+#if 0
+static uint64_t
+do_relax (struct thread *th)
+{
+  struct thread_context *th_ctx = th->ctx;
+  if (th_ctx.atomic_ext_return)
+    {
+      th_ctx.ext.ret = th_ctx.ext.atomic.ret;
+      th_ctx.atomic_ext_return = 0;
+      return 0;
+    }
+  /* TODO */
+}
+
+uint64_t
+relax (struct thread *th)
+{
+  uint64_t res = do_relax (th);
+  if (/* TODO: async signal */)
+    {
+      /* sigreturn */
+    }
+  return res;
+}
+#endif
