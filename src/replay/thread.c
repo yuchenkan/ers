@@ -1,3 +1,4 @@
+#include <compiler.h>
 #include <common.h>
 
 #include <lib/malloc.h>
@@ -19,10 +20,12 @@ struct thread
   struct thread_group *group;
 
   struct thread_context *ctx;
+
+  eri_aligned16 uint8_t stack[0];
 };
 
-eri_noreturn void
-eri_replay_start (struct eri_replay_rtld_args *rtld_args)
+static struct thread_group *
+create_group (const struct eri_replay_rtld_args *rtld_args)
 {
   struct eri_mtpool *pool = eri_init_mtpool_from_buf (
 				rtld_args->buf, rtld_args->buf_size, 1);
@@ -34,12 +37,24 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   group->args.stack_size = rtld_args->stack_size;
   group->args.file_buf_size = rtld_args->file_buf_size;
 
+  return group;
+}
+
+static struct thread *
+create (struct thread_group *group)
+{
+}
+
+eri_noreturn void
+eri_replay_start (struct eri_replay_rtld_args *rtld_args)
+{
+  struct thread_group *group = create_group (rtld_args);
+
   /* TODO */
   eri_assert_printf ("eri_replay_start\n");
   while (1) continue;
 }
 
-#if 0
 static uint64_t
 do_relax (struct thread *th)
 {
@@ -63,4 +78,3 @@ relax (struct thread *th)
     }
   return res;
 }
-#endif

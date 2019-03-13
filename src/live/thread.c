@@ -473,24 +473,26 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
       uint32_t fpstate_size = ctx->mctx.fpstate->size;
       rsp = eri_round_down (rsp - fpstate_size, 64);
       if (! copy_to_user (th, (void *) rsp, ctx->mctx.fpstate, fpstate_size))
-	{
-	  frame->info.sig = ERI_SIGSEGV;
-	  return 0;
-	}
+	return 0;
       ctx->mctx.fpstate = (void *) rsp;
     }
 
   struct eri_sigframe *user_frame
 	= (void *) (eri_round_down (rsp - sizeof *user_frame, 16) - 8);
   if (! copy_to_user (th, user_frame, frame, sizeof *user_frame))
-    {
-      frame->info.sig = ERI_SIGSEGV;
-      return 0;
-    }
+    return 0;
 
   th_ctx->sig_act_frame = user_frame;
   eri_debug ("leave\n");
   return 1;
+}
+
+static eri_noreturn void
+die (struct eri_live_thread *th)
+{
+  eri_live_thread_recorder__rec_signal (th->rec, 0);
+  eri_live_signal_thread__die (th->sig_th);
+  eri_assert_sys_thread_die (&th->alive);
 }
 
 eri_noreturn void
@@ -509,15 +511,7 @@ sig_action (struct eri_live_thread *th)
   struct eri_siginfo *info = &frame->info;
 
   /* XXX: core, die context */
-  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP)
-    {
-      eri_live_signal_thread__die (sig_th);
-      eri_assert_sys_thread_die (&th->alive);
-    }
-
-  if (! eri_si_sync (info)
-      && th_ctx->sig_act.act != SIG_ACT_STOP)
-    eri_live_thread_recorder__rec_signal (th->rec, info);
+  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) die (th);
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 
@@ -527,6 +521,9 @@ sig_action (struct eri_live_thread *th)
 	th_ctx->syscall.swallow_single_step = 0;
 
       if (! sig_setup_user_frame (th, frame)) goto core;
+
+      if (! eri_si_sync (info))
+	eri_live_thread_recorder__rec_signal (th->rec, info);
 
       struct eri_stack st = {
 	(uint64_t) th->sig_stack, 0, 2 * THREAD_SIG_STACK_SIZE
@@ -559,14 +556,13 @@ core:
   eri_debug ("core\n");
   if (eri_live_signal_thread__exit (sig_th, 1, core_status))
     {
+      if (! eri_si_sync (info))
+	eri_live_thread_recorder__rec_signal (th->rec, info);
+
       if (core_status == 130) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
     }
-  else
-    {
-      eri_live_signal_thread__die (sig_th);
-      eri_assert_sys_thread_die (&th->alive);
-    }
+  else die (th);
 }
 
 static void
