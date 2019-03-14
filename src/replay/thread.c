@@ -13,6 +13,13 @@
 #include <replay/thread.h>
 #include <replay/thread-local.h>
 
+enum
+{
+#define SIG_HAND_ENUM(chand, hand)	chand,
+  ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (SIG_HAND_ENUM)
+  SIG_HAND_RETURN_TO_USER
+};
+
 struct thread_group
 {
   struct eri_mtpool *pool;
@@ -44,6 +51,11 @@ static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (! eri_si_sync (info)) return;
+
+  if (eri_si_single_step (info))
+    {
+      /* TODO */
+    }
 
   /* TODO */
 }
@@ -104,14 +116,25 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   th_ctx->ext.op.code = _ERS_OP_SYSCALL;
 
   th_ctx->ext.rbx = 0;
-#define ZERO_REG(creg, reg)	th_ctx->ctx.sregs.reg = 0;
-  ERI_ENTRY_FOREACH_SREG (ZERO_REG)
+#define ZERO_REG(creg, reg, regs)	(regs)->reg = 0;
+  ERI_ENTRY_FOREACH_SREG (ZERO_REG, &th_ctx->ctx.sregs)
+  ERI_ENTRY_FOREACH_EREG (ZERO_REG, &th_ctx->eregs)
 
   main (th_ctx);
 }
 
+static eri_noreturn void async_signal (struct thread *th);
+
+static eri_noreturn void
+async_signal (struct thread *th)
+{
+  struct thread_context *th_ctx = th->ctx;
+  if (th_ctx->ext.op.code != _ERS_OP_SYNC_ASYNC)
+  /* TODO */
+}
+
 static struct thread_context *
-start (struct thread *th, uint8_t mark)
+start (struct thread *th, uint8_t rec)
 {
   struct eri_stack st = {
     (uint64_t) th->sig_stack, 0, THREAD_SIG_STACK_SIZE
@@ -124,20 +147,16 @@ start (struct thread *th, uint8_t mark)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->ctx);
 
-  if (mark == ERI_ASYNC_RECORD)
-    {
-      /* TODO: next async signal */
-    }
-
+  if (rec == ERI_ASYNC_RECORD) async_signal (th);
   return th->ctx;
 }
 
 static uint8_t
-next_mark (struct thread *th)
+next_record (struct thread *th)
 {
-  uint8_t mark;
-  eri_assert_fread (th->file, &mark, sizeof mark, 0);
-  return mark;
+  uint8_t rec;
+  eri_assert_fread (th->file, &rec, sizeof rec, 0);
+  return rec;
 }
 
 void
@@ -155,8 +174,8 @@ start_main (struct thread *th)
   th->group->map_start = init.start;
   th->group->map_end = init.end;
 
-  uint8_t mark;
-  while ((mark = next_mark (th)) == ERI_INIT_MAP_RECORD)
+  uint8_t rec;
+  while ((rec = next_record (th)) == ERI_INIT_MAP_RECORD)
     {
       struct eri_init_map_record init_map;
       eri_assert_fread (th->file, &init_map, sizeof init_map, 0);
@@ -179,29 +198,47 @@ start_main (struct thread *th)
 	eri_assert_syscall (mprotect, init_map.start, size, prot);
     }
 
-  start (th, mark);
+  start (th, rec);
+}
+
+static uint64_t
+syscall (struct thread *th)
+{
+  /* TODO */
+  return 0;
+}
+
+static void
+sync_async (struct thread *th)
+{
+  /* TODO */
 }
 
 static uint64_t
 do_relax (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  if (th_ctx.atomic_ext_return)
+  if (th_ctx->atomic_ext_return)
     {
-      th_ctx.ext.ret = th_ctx.ext.atomic.ret;
-      th_ctx.atomic_ext_return = 0;
+      th_ctx->ext.ret = th_ctx->ext.atomic.ret;
+      th_ctx->atomic_ext_return = 0;
       return 0;
     }
+
+  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
+    return syscall (th);
+
+  if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC)
+    sync_async (th);
   /* TODO */
+
+  return 0;
 }
 
 uint64_t
 relax (struct thread *th)
 {
   uint64_t res = do_relax (th);
-  if (/* TODO: next async signal */)
-    {
-      /* sigreturn */
-    }
+  if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
   return res;
 }

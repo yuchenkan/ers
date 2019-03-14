@@ -31,15 +31,11 @@ ERI_FUNCTION (main)
 
 ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
-  movw	TCE (OP_CODE)(%rbx), %r11w
-  cmpw	$_ERS_OP_SYSCALL, %r11w
-  jne	.lentry_not_syscall
-  ERI_ENTRY_SYSCALL_MAY_SAVE_EREGS (TC (EREGS), entry_syscall)
+  ERI_ENTRY_SAVE_EREGS (TC (EREGS))
 
-.lentry_not_syscall:
   TH_CALL (relax)
 
-  ERI_ENTRY_SYSCALL_MAY_RESTORE_EREGS (TC (EREGS), entry_syscall)
+  ERI_ENTRY_SYSCALL_MAY_RESTORE_EREGS (TC (EREGS), entry)
 
   ERI_ENTRY_THREAD_CONTEXT_RESTORE (TC (CTX))
   jmp	*TCC (RET)(%rbx)

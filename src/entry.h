@@ -178,6 +178,8 @@ ERI_FUNCTION (name)							\
 #define _ERI_ENTRY_RESTORE_EREG(creg, reg, off) \
   movq	(off) + ERI_PASTE (ERI_ENTRY_EXTRA_REGISTERS_, creg)(%rbx), %reg;
 
+#define ERI_ENTRY_SAVE_EREGS(offset) \
+  ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_SAVE_EREG, offset)
 #define ERI_ENTRY_RESTORE_EREGS(offset) \
   ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)
 

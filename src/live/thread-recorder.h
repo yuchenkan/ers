@@ -52,7 +52,7 @@ void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder__rec_syscall_args *args);
 
 void eri_live_thread_recorder__rec_sync_async (
-		struct eri_live_thread_recorder *rec);
+		struct eri_live_thread_recorder *rec, uint64_t cnt);
 void eri_live_thread_recorder__rec_restart_sync_async (
 		struct eri_live_thread_recorder *rec, uint64_t cnt);
 

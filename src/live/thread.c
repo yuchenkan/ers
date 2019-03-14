@@ -2068,7 +2068,7 @@ void
 sync_async (struct eri_live_thread *th, uint64_t cnt)
 {
   eri_atomic_store (&th->ctx->sync_async.single_step, 0);
-  eri_live_thread_recorder__rec_sync_async (th->rec);
+  eri_live_thread_recorder__rec_sync_async (th->rec, cnt);
 }
 
 eri_noreturn void

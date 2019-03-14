@@ -47,9 +47,20 @@ main (int32_t argc, const char **argv)
 	  }
       }
     else if (mark == ERI_SYNC_RECORD)
-      printf ("ERI_SYNC_RECORD\n");
+      {
+	printf ("ERI_SYNC_RECORD\n");
+	uint8_t magic;
+	assert (fread (&magic, sizeof magic, 1, f) == 1);
+	if (magic == ERI_SYNC_ASYNC_MAGIC)
+	  {
+	    uint64_t steps;
+	    assert (fread (&steps, sizeof steps, 1, f) == 1);
+	    printf ("  sync_async.steps = %lu\n", steps);
+	  }
+	/* TODO */
+      }
     else if (mark == ERI_ASYNC_RECORD)
-      printf ("ERI_ASYNC_RECORD\n");
+      printf ("ERI_ASYNC_RECORD\n"); /* TODO */
     else assert (0);
 
   fclose (f);

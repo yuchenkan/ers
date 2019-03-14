@@ -7,9 +7,17 @@
 
 #include <live/thread-recorder.h>
 
+#define PENDING_SYNC_ASYNC		1
+#define PENDING_RESTART_SYNC_ASYNC	2
+
 struct eri_live_thread_recorder
 {
   struct eri_mtpool *pool;
+
+  uint8_t pending_sync_async;
+  uint64_t sync_async_cnt;
+  uint64_t restart_sync_async_cnt;
+
   eri_file_t file;
   uint8_t buf[0];
 };
@@ -23,6 +31,8 @@ eri_live_thread_recorder__create (struct eri_mtpool *pool,
 			= eri_assert_mtmalloc (pool, sizeof *rec + buf_size);
   rec->pool = pool;
 
+  rec->pending_sync_async = 0;
+
   eri_mkdir (path);
   char name[eri_build_path_len (path, "t", id)];
   eri_build_path (path, "t", id, name);
@@ -31,9 +41,30 @@ eri_live_thread_recorder__create (struct eri_mtpool *pool,
   return rec;
 }
 
+static void
+submit_sync_async (struct eri_live_thread_recorder *rec)
+{
+  if (! rec->pending_sync_async) return;
+
+  if (rec->pending_sync_async == PENDING_RESTART_SYNC_ASYNC
+      && rec->sync_async_cnt == rec->restart_sync_async_cnt)
+    {
+      rec->pending_sync_async = 0;
+      return;
+    }
+
+  uint64_t steps = rec->pending_sync_async == PENDING_RESTART_SYNC_ASYNC
+		? rec->sync_async_cnt - rec->restart_sync_async_cnt : 0;
+  struct eri_marked_sync_async_record sync = {
+    ERI_SYNC_RECORD, { ERI_SYNC_ASYNC_MAGIC, steps }
+  };
+  eri_assert_fwrite (rec->file, &sync, sizeof sync, 0);
+}
+
 void
 eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *rec)
 {
+  submit_sync_async (rec);
   eri_assert_fclose (rec->file);
   eri_assert_mtfree (rec->pool, rec);
 }
@@ -173,12 +204,13 @@ eri_live_thread_recorder__rec_init (
   eri_debug ("leave rec_init\n");
 }
 
-/* TODO */
 void
 eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *rec,
 			struct eri_siginfo *info)
 {
+  submit_sync_async (rec);
+  /* TODO */
 }
 
 void
@@ -186,18 +218,28 @@ eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *rec,
 		struct eri_live_thread_recorder__rec_syscall_args *args)
 {
+  submit_sync_async (rec);
+  /* TODO */
 }
 
 void
 eri_live_thread_recorder__rec_sync_async (
-			struct eri_live_thread_recorder *rec)
+			struct eri_live_thread_recorder *rec, uint64_t cnt)
 {
+  if (rec->pending_sync_async != PENDING_RESTART_SYNC_ASYNC)
+    submit_sync_async (rec);
+
+  rec->pending_sync_async = PENDING_SYNC_ASYNC;
+  rec->sync_async_cnt = cnt;
 }
 
 void
 eri_live_thread_recorder__rec_restart_sync_async (
 			struct eri_live_thread_recorder *rec, uint64_t cnt)
 {
+  eri_assert (rec->pending_sync_async == PENDING_SYNC_ASYNC);
+  rec->pending_sync_async = PENDING_RESTART_SYNC_ASYNC;
+  rec->restart_sync_async_cnt = cnt;
 }
 
 void
@@ -205,6 +247,8 @@ eri_live_thread_recorder__rec_atomic (
 			struct eri_live_thread_recorder *rec,
 			const uint64_t *ver)
 {
+  submit_sync_async (rec);
+  /* TODO */
 }
 
 void
@@ -212,4 +256,6 @@ eri_live_thread_recorder__rec_atomic_load (
 			struct eri_live_thread_recorder *rec,
 			const uint64_t *ver, uint64_t val)
 {
+  submit_sync_async (rec);
+  /* TODO */
 }

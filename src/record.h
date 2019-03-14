@@ -37,6 +37,14 @@ struct eri_packed eri_init_map_record
   struct eri_init_map_data_record data[0];
 };
 
+#define ERI_SYNC_ASYNC_MAGIC	0
+
+struct eri_packed eri_sync_async_record
+{
+  uint8_t magic;
+  uint64_t steps;
+};
+
 #define ERI_INIT_RECORD		0
 #define ERI_INIT_MAP_RECORD	1
 #define ERI_SYNC_RECORD		2
@@ -52,6 +60,12 @@ struct eri_packed eri_marked_init_map_record
 {
   uint8_t mark;
   struct eri_init_map_record rec;
+};
+
+struct eri_packed eri_marked_sync_async_record
+{
+  uint8_t mark;
+  struct eri_sync_async_record rec;
 };
 
 #endif
