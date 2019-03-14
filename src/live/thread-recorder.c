@@ -59,6 +59,7 @@ submit_sync_async (struct eri_live_thread_recorder *rec)
     ERI_SYNC_RECORD, { ERI_SYNC_ASYNC_MAGIC, steps }
   };
   eri_assert_fwrite (rec->file, &sync, sizeof sync, 0);
+  rec->pending_sync_async = 0;
 }
 
 void
