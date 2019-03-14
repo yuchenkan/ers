@@ -1,6 +1,7 @@
 #include <compiler.h>
 #include <common.h>
 
+#include <lib/util.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 #include <tst/tst-syscall.h>
@@ -44,7 +45,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (! raise)
     {
-      enter_frame = tst_struct (info, struct eri_sigframe, info);
+      enter_frame = eri_struct_of (info, typeof (*enter_frame), info);
       enter_info = *info;
       enter_ctx = ctx->mctx;
 
@@ -53,8 +54,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 
   struct eri_siginfo *prev_info = (void *) ctx->mctx.rsi;
-  eri_assert (enter_frame == tst_struct (prev_info,
-					 struct eri_sigframe, info));
+  eri_assert (enter_frame == eri_struct_of (prev_info,
+					    typeof (*enter_frame), info));
   eri_assert (ctx->mctx.rdi == enter_info.sig);
   eri_assert (prev_info->sig == enter_info.sig);
   eri_assert (prev_info->code == enter_info.code);

@@ -97,19 +97,8 @@ ERI_FUNCTION (main)
   movq	%rdi, %rbx
   TH_CALL (start_main)
 
-  movq	$0, TCE (RBX)(%rbx)
-  movq	$0, TCC (SREGS_RCX)(%rbx)
-
-#define ZERO_REG(creg, reg) \
-  xorq	%reg, %reg;
-
-  ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX (ZERO_REG)
-  ERI_ENTRY_FOREACH_EREG (ZERO_REG)
-
-  movq	TCC (SREGS_RDX)(%rbx), %rdx
-  pushq	$0
-  popfq
-  movq	TCC (RSP)(%rbx), %rsp
+  ERI_ENTRY_RESTORE_EREGS (TC (SYSCALL_EREGS))
+  ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (TC (CTX))
 
   SIG_RETURN_TO_USER (.lmain_sig_return)
 

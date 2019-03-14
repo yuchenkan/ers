@@ -33,8 +33,9 @@ main (int32_t argc, const char **argv)
 	printf ("ERI_INIT_MAP_RECORD\n");
 	struct eri_init_map_record init_map;
 	assert (fread (&init_map, sizeof init_map, 1, f) == 1);
-	printf ("  start: 0x%lx, end: 0x%lx, perms: %u\n",
-		 init_map.start, init_map.end, init_map.perms);
+	printf ("  start: 0x%lx, end: 0x%lx, prot: %u, grows_down %u\n",
+		init_map.start, init_map.end,
+		init_map.prot, init_map.grows_down);
 	uint8_t i;
 	for (i = 0; i < init_map.data_count; ++i)
 	  {

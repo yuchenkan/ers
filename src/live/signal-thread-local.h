@@ -42,9 +42,6 @@ struct eri_live_signal_thread
   struct eri_live_thread *th;
 };
 
-eri_noreturn void sig_handler (void);
-void sig_handler_frame (struct eri_sigframe *frame);
-
 struct eri_live_signal_thread *init_group (
 			struct eri_live_rtld_args *rtld_args);
 eri_noreturn void start_group (struct eri_live_signal_thread *sig_th);

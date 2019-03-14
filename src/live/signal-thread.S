@@ -9,11 +9,6 @@
 
   .text
 
-ERI_FUNCTION (sig_handler)
-  movq	%rsp, %rdi
-  jmp	sig_handler_frame
-  ERI_END_FUNCTION (sig_handler)
-
 ERI_FUNCTION (eri_live_signal_thread__init_main)
   subq	$8, %rsp
   call	init_group

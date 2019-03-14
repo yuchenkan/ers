@@ -39,8 +39,7 @@ rtld (void **args, uint64_t rdx)
   };
   struct eri_sigset set;
   eri_sig_fill_set (&set);
-  eri_assert_syscall (rt_sigprocmask, ERI_SIG_SETMASK, &set,
-		      &rtld_args.sig_mask, ERI_SIG_SETSIZE);
+  eri_assert_sys_sigprocmask (&set, &rtld_args.sig_mask);
 
   const char *live = "ers/live";
   uint64_t buf_size = 256 * 1024 * 1024;

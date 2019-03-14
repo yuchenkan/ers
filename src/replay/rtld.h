@@ -4,10 +4,14 @@
 #include <stdint.h>
 
 #include <compiler.h>
+#include <entry.h>
+
+#include <lib/syscall-common.h>
 
 struct eri_replay_rtld_args
 {
   const char *path;
+  struct eri_sigset sig_mask;
 
   uint64_t stack_size;
   uint64_t file_buf_size;
@@ -17,5 +21,12 @@ struct eri_replay_rtld_args
 };
 
 eri_noreturn void eri_start (void);
+
+enum
+{
+#define SIG_HAND_ENUM(chand, hand)	chand,
+  ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (SIG_HAND_ENUM)
+  SIG_HAND_RETURN_TO_USER
+}
 
 #endif

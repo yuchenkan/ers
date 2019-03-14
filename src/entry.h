@@ -46,6 +46,8 @@
 
 #include <stdint.h>
 
+#include <lib/offset.h>
+
 struct eri_entry_thread_entry
 {
   uint64_t zero; /* so that %gs:0 is always zero */
@@ -76,6 +78,23 @@ struct eri_entry_thread_entry
     };
 };
 
+#define _ERI_ENTRY_THREAD_ENTRY_OFFSET(ns, name, member) \
+  ERI_DECLARE_OFFSET (ERI_PASTE (ns, _ENTRY_THREAD_ENTRY_), name,	\
+		      struct eri_entry_thread_entry, member)
+
+#define ERI_ENTRY_THREAD_ENTRY_OFFSETS(ns) \
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, OP, op);				\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RBX, rbx);			\
+									\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, CALL, call);			\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RET, ret);			\
+									\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ENTRY, entry);			\
+									\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_VAL, atomic.val);		\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_MEM, atomic.mem);		\
+  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_RET, atomic.ret);		\
+
 #define _ERI_ENTRY_DECLARE_REG(creg, reg)	uint64_t reg;
 
 struct eri_entry_scratch_registers
@@ -98,25 +117,6 @@ struct eri_entry_thread_context
 
   struct eri_entry_scratch_registers sregs;
 };
-
-#include <lib/offset.h>
-
-#define _ERI_ENTRY_THREAD_ENTRY_OFFSET(ns, name, member) \
-  ERI_DECLARE_OFFSET (ERI_PASTE (ns, _ENTRY_THREAD_ENTRY_), name,	\
-		      struct eri_entry_thread_entry, member)
-
-#define ERI_ENTRY_THREAD_ENTRY_OFFSETS(ns) \
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, OP, op);				\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RBX, rbx);			\
-									\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, CALL, call);			\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, RET, ret);			\
-									\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ENTRY, entry);			\
-									\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_VAL, atomic.val);		\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_MEM, atomic.mem);		\
-  _ERI_ENTRY_THREAD_ENTRY_OFFSET (ns, ATOMIC_RET, atomic.ret);		\
 
 #endif
 
@@ -178,6 +178,9 @@ ERI_FUNCTION (name)							\
 #define _ERI_ENTRY_RESTORE_EREG(creg, reg, off) \
   movq	(off) + ERI_PASTE (ERI_ENTRY_EXTRA_REGISTERS_, creg)(%rbx), %reg;
 
+#define ERI_ENTRY_RESTORE_EREGS(offset) \
+  ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)
+
 #define ERI_ENTRY_SYSCALL_MAY_SAVE_EREGS(offset, prefix) \
   cmpl	$__NR_clone, %eax;						\
   je	ERI_PASTE2 (.L, prefix, _extra_save);				\
@@ -216,6 +219,19 @@ ERI_PASTE2 (.L, prefix, _no_extra_restore):
     extern uint8_t ERI_PASTE (name, _text)[];				\
     uint64_t _size = eri_entry_thread_entry_text_size (name);		\
     eri_memcpy ((void *) (th_text), ERI_PASTE (name, _text), _size);	\
+  } while (0)
+
+#define eri_entry_init(ent, ctx, text, th_text, e, t) \
+  do {									\
+    struct eri_entry_thread_entry *_ent = ent;				\
+    struct eri_entry_thread_context *_ctx = ctx;			\
+    uint8_t *_th_text = th_text;					\
+    eri_entry_thread_entry_copy_text (text, _th_text);			\
+    _ent->zero = 0;							\
+    _ent->entry = eri_entry_thread_entry_text(text, _th_text, entry);	\
+    _ctx->entry = (uint64_t) (e);					\
+    _ctx->ret = eri_entry_thread_entry_text(text, _th_text, return);	\
+    _ctx->top = (uint64_t) (t);						\
   } while (0)
 
 #endif

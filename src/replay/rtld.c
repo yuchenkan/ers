@@ -7,6 +7,7 @@
 #include <lib/util.h>
 #include <lib/elf.h>
 #include <lib/printf.h>
+#include <lib/syscall.h>
 
 #include <replay/rtld.h>
 #include <replay/thread.h>
@@ -22,6 +23,7 @@ struct init_map_args
   int32_t fd;
   uint64_t page_size;
 
+  struct eri_sigset sig_mask;
   uint64_t stack_size;
   uint64_t file_buf_size;
 
@@ -98,7 +100,7 @@ eri_init_map (struct init_map_args *args)
   uint64_t segs_map_size = segs_map_end - segs_map_start;
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
-    path, args->stack_size, args->file_buf_size,
+    path, args->sig_mask, args->stack_size, args->file_buf_size,
     map_start + segs_map_size, map_end - map_start - segs_map_size
   };
   ((void (*) (struct eri_replay_rtld_args *)) entry) (&rtld_args);
@@ -110,6 +112,11 @@ eri_noreturn void rtld (void **args);
 eri_noreturn void
 rtld (void **args)
 {
+  struct eri_sigset set;
+  eri_sig_fill_set (&set);
+  struct eri_sigset sig_mask;
+  eri_assert_sys_sigprocmask (&set, &sig_mask);
+
   char *path = "ers-data";
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
@@ -162,7 +169,7 @@ rtld (void **args)
 
   struct init_map_args init_args = {
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
-    .page_size = page_size,
+    .page_size = page_size, .sig_mask = sig_mask,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
     .map_start = init.rec.start, .map_end = init.rec.end,
     .map_entry_offset

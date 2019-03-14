@@ -105,10 +105,10 @@ sig_get_act (struct signal_thread_group *group, int32_t sig,
   eri_assert_unlock (&sig_act->lock);
 }
 
-void
-sig_handler_frame (struct eri_sigframe *frame)
+static void
+sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  struct eri_ucontext *ctx = &frame->ctx;
+  struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
 
   struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
   if (sig_th->sig_stack != (void *) ctx->stack.sp)
@@ -118,7 +118,6 @@ sig_handler_frame (struct eri_sigframe *frame)
     }
 
   struct eri_live_thread *th = sig_th->th;
-  struct eri_siginfo *info = &frame->info;
 
   eri_assert (! eri_si_sync (info));
 

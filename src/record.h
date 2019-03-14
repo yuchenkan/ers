@@ -30,7 +30,8 @@ struct eri_packed eri_init_map_data_record
 struct eri_packed eri_init_map_record
 {
   uint64_t start, end;
-  uint8_t perms;
+  uint8_t prot;
+  uint8_t grows_down;
 
   uint8_t data_count;
   struct eri_init_map_data_record data[0];

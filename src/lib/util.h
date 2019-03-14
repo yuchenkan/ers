@@ -104,8 +104,10 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 #define eri_round_down(x, u) ((x) & ~((u) - 1))
 
 #define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
-
 #define eri_size_of(x, r) (eri_round_up (sizeof (x), r))
+
+#define eri_struct_of(v, t, f) \
+  ((t *) ((uint64_t) v - __builtin_offsetof (t, f)))
 
 void eri_assert_itoa (uint64_t i, char *a, uint8_t base);
 uint64_t eri_assert_atoi (const char *a, uint8_t base);

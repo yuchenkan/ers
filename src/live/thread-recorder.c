@@ -60,7 +60,9 @@ record_smaps_entry (struct eri_live_thread_recorder *rec,
     }
 
   eri_assert (d[1] && d[2] && d[3] && d[4] && d[5] && d[6]);
-  uint8_t perms = (d[1] != '-') | ((d[2] != '-') << 1) | ((d[3] != '-') << 2);
+  uint8_t prot = (d[1] != '-' ? ERI_PROT_READ : 0)
+		  | (d[2] != '-' ? ERI_PROT_WRITE : 0)
+		  | (d[3] != '-' ? ERI_PROT_EXEC : 0);
   eri_assert (d[4] == 'p'); /* XXX: handle error */
 
   eri_assert (d = eri_strtok (d + 6, ' '));
@@ -96,13 +98,13 @@ record_smaps_entry (struct eri_live_thread_recorder *rec,
     }
 
   eri_debug ("%s %lx %lx %u %u\n",
-	     path ? : "<>", start, end, perms, grows_done);
+	     path ? : "<>", start, end, prot, grows_done);
 
   uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
   eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
 
   struct eri_marked_init_map_record init_map = {
-    ERI_INIT_MAP_RECORD, { start, end, perms, !! path }
+    ERI_INIT_MAP_RECORD, { start, end, prot, grows_done, !! path }
   };
   eri_assert_fwrite (rec->file, &init_map, sizeof init_map, 0);
 

@@ -59,7 +59,7 @@ struct eri_live_thread
 
   struct eri_stack sig_alt_stack;
 
-  uint8_t sig_stack[2 * THREAD_SIG_STACK_SIZE];
+  eri_aligned16 uint8_t sig_stack[2 * THREAD_SIG_STACK_SIZE];
 
   eri_aligned16 uint8_t stack[0];
 };
@@ -260,17 +260,9 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   struct thread_context *th_ctx = eri_assert_mtmalloc (pool,
 	sizeof *th_ctx + eri_entry_thread_entry_text_size (thread_context));
 
-  uint8_t *th_text = th_ctx->text;
-  eri_entry_thread_entry_copy_text (thread_context, th_text);
+  eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
+		  entry, th->stack + th->group->stack_size);
 
-  th_ctx->ext.zero = 0;
-  th_ctx->ext.entry
-	= eri_entry_thread_entry_text (thread_context, th_text, entry);
-
-  th_ctx->ctx.entry = (uint64_t) entry;
-  th_ctx->ctx.ret
-	= eri_entry_thread_entry_text (thread_context, th_text, return);
-  th_ctx->ctx.top = (uint64_t) th->stack + th->group->stack_size;
   th_ctx->sig_force_deliver = 0;
   sig_set_frame (th_ctx, 0);
   th_ctx->access = 0;
@@ -316,9 +308,13 @@ eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
   th_ctx->ext.op.sig_hand = SIG_HAND_ASYNC;
   th_ctx->ext.op.args = 0;
   th_ctx->ext.op.code = _ERS_OP_SYSCALL;
+  th_ctx->ext.rbx = 0;
   th_ctx->ext.ret = rtld_args->rip;
   th_ctx->ctx.rsp = rtld_args->rsp;
+#define ZERO_REG(creg, reg, regs)	(regs)->reg = 0;
+  ERI_ENTRY_FOREACH_SREG (ZERO_REG, &th_ctx->ctx.sregs)
   th_ctx->ctx.sregs.rdx = rtld_args->rdx;
+  ERI_ENTRY_FOREACH_EREG (ZERO_REG, &th_ctx->syscall.eregs)
   eri_assert_syscall (sigaltstack, 0, &th->sig_alt_stack);
   return th;
 }
