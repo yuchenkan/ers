@@ -55,12 +55,17 @@ main (int32_t argc, const char **argv)
 	  {
 	    uint64_t steps;
 	    assert (fread (&steps, sizeof steps, 1, f) == 1);
-	    printf ("  sync_async.steps = %lu\n", steps);
+	    printf ("  sync_async.steps: %lu\n", steps);
 	  }
 	/* TODO */
       }
     else if (mark == ERI_ASYNC_RECORD)
-      printf ("ERI_ASYNC_RECORD\n"); /* TODO */
+      {
+	printf ("ERI_ASYNC_RECORD\n");
+	struct eri_siginfo info;
+	assert (fread (&info, sizeof info, 1, f) == 1);
+	printf ("  sig: %d, code: %d\n", info.sig, info.code);
+      }
     else assert (0);
 
   fclose (f);

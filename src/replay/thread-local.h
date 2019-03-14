@@ -8,9 +8,6 @@
 
 struct thread;
 
-#define SYNC_ASYNC_TRACE_ASYNC	1
-#define SYNC_ASYNC_TRACE_BOTH	2
-
 struct thread_context
 {
   struct eri_entry_thread_entry ext;

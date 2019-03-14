@@ -210,7 +210,11 @@ eri_live_thread_recorder__rec_signal (
 			struct eri_siginfo *info)
 {
   submit_sync_async (rec);
-  /* TODO */
+
+  struct eri_marked_signal_record sig = { ERI_ASYNC_RECORD };
+  if (info) sig.info = *info;
+
+  eri_assert_fwrite (rec->file, &sig, sizeof sig, 0);
 }
 
 void

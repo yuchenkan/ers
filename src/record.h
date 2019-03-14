@@ -68,4 +68,10 @@ struct eri_packed eri_marked_sync_async_record
   struct eri_sync_async_record rec;
 };
 
+struct eri_packed eri_marked_signal_record
+{
+  uint8_t mark;
+  struct eri_siginfo info;
+};
+
 #endif
