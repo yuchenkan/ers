@@ -1,0 +1,7 @@
+#ifndef ERI_LIB_CPU_H
+#define ERI_LIB_CPU_H
+
+#define ERI_RFLAGS_TRACE_BIT_OFFSET	8
+#define ERI_RFLAGS_TRACE_MASK		(1 << ERI_RFLAGS_TRACE_BIT_OFFSET)
+
+#endif

@@ -1,5 +1,7 @@
 #include <common.h>
 
+#include <lib/cpu.h>
+
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
 #include <live/tst/tst-entry.h>
@@ -28,7 +30,7 @@ trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 #define INIT(cr, r)	ctx->mctx.r = pack->tctx->r;
       TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (SAVE)
       TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (INIT)
-      ctx->mctx.rflags |= TST_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
       pack->init = 1;
       return;
     }
@@ -42,7 +44,7 @@ trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     {
 #define RESTORE(cr, r)	ctx->mctx.r = pack->old_tctx.r;
       TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (RESTORE)
-      ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
     }
 };
 

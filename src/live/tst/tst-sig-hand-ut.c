@@ -1,6 +1,7 @@
 #include <compiler.h>
 #include <common.h>
 
+#include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 #include <tst/tst-syscall.h>
@@ -114,7 +115,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 static void
 step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  //ctx->mctx.rflags |= TST_RFLAGS_TRACE_MASK;
+  //ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
 
   if (! step.raise)
     {
@@ -138,7 +139,7 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       if (ctx->mctx.rip == step.step.repeat) step.repeated = 1;
 
       if (ctx->mctx.rip == step.step.leave)
-	ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
+	ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
       return;
     }
 

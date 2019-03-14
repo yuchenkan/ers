@@ -1,6 +1,7 @@
 #include <common.h>
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/atomic.h>
 #include <lib/syscall.h>
 
@@ -43,7 +44,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   if (done)
     {
       reach_done = 1;
-      ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
       return;
     }
 
@@ -51,7 +52,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     {
       sig_ctx = ctx;
       eri_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
-      ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
     }
 }
 

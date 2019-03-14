@@ -2,6 +2,7 @@
 #include <common.h>
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 #include <tst/tst-syscall.h>
@@ -90,7 +91,7 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
       if (raise)
 	{
-	  ctx->mctx.rflags |= TST_RFLAGS_TRACE_MASK;
+	  ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
 	  sig_th.sig_reset = 0;
 	}
       return;

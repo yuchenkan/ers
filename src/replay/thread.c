@@ -47,13 +47,34 @@ struct thread
   eri_aligned16 uint8_t stack[0];
 };
 
+static uint8_t
+internal (struct thread_group *group, uint64_t addr)
+{
+  return addr >= group->map_start && addr < group->map_end;
+}
+
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (! eri_si_sync (info)) return;
 
+  struct thread *th = *(void **) ctx->stack.sp;
+  struct thread_context *th_ctx = th->ctx;
   if (eri_si_single_step (info))
     {
+      if (th_ctx->ext.op.sig_hand != SIG_HAND_RETURN_TO_USER) return;
+      if (internal (th->group, ctx->mctx.rip)) return;
+
+      if (th_ctx->ext.op.code == _ERS_OP_SYSCALL
+	  && th_ctx->swallow_single_step)
+	{
+	  th_ctx->swallow_single_step = 0;
+	  return;
+	}
+
+      if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC)
+
+      eri_assert (! th_ctx->swallow_single_step);
       /* TODO */
     }
 
@@ -92,7 +113,11 @@ create (struct thread_group *group, uint64_t id)
   eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
 		  entry, th->stack + group->args.stack_size);
 
+  th_ctx->swallow_single_step = 0;
+  th_ctx->sync_async_trace = 0;
+  th_ctx->sync_async_trace_steps = 0;
   th_ctx->atomic_ext_return = 0;
+
   th_ctx->th = th;
   char name[eri_build_path_len (group->args.path, "t", id)];
   eri_build_path (group->args.path, "t", id, name);
@@ -101,6 +126,7 @@ create (struct thread_group *group, uint64_t id)
   th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
   eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
 
+  *(void **) th->sig_stack = th;
   return th;
 }
 
@@ -129,7 +155,7 @@ static eri_noreturn void
 async_signal (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  if (th_ctx->ext.op.code != _ERS_OP_SYNC_ASYNC)
+  eri_assert (th_ctx->ext.op.code != _ERS_OP_SYNC_ASYNC);
   /* TODO */
 }
 
@@ -204,41 +230,76 @@ start_main (struct thread *th)
 static uint64_t
 syscall (struct thread *th)
 {
+  struct thread_context *th_ctx = th->ctx;
+  uint64_t res = 0;
   /* TODO */
-  return 0;
+
+  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
+  if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
+
+  if (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+    th_ctx->swallow_single_step = 1;
+  return res;
 }
 
 static void
 sync_async (struct thread *th)
 {
-  /* TODO */
+  struct eri_marked_sync_async_record sync;
+  eri_assert_fread (th->file, &sync, sizeof sync, 0);
+  eri_assert (sync.magic == ERI_SYNC_ASYNC_MAGIC);
+
+  struct thread_context *th_ctx = th->ctx;
+  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
+
+  uint8_t async = next_record (th) == ERI_ASYNC_RECORD;
+  if (sync.steps) eri_assert (async);
+
+  if (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+
+  if (! async) return;
+
+  th_ctx->sync_async_trace
+		= (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
+  th_ctx->sync_async_trace_steps = sync.steps;
+  /* XXX: this is slow with large repeats... */
+  th_ctx->ctx.sregs.rflags |= ERI_RFLAGS_TRACE_MASK;
 }
 
-static uint64_t
-do_relax (struct thread *th)
+static void
+atomic (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
+
   if (th_ctx->atomic_ext_return)
     {
+      th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
       th_ctx->ext.ret = th_ctx->ext.atomic.ret;
       th_ctx->atomic_ext_return = 0;
-      return 0;
+    }
+  else
+    {
+      /* TODO */
+      if (th_ctx->ext.op.code == _ERS_OP_ATOMIC_LOAD
+	  || th_ctx->ext.op.code == _ERS_OP_ATOMIC_XCHG)
+	th_ctx->atomic_ext_return = 1;
+      else
+	th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
     }
 
-  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
-    return syscall (th);
-
-  if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC)
-    sync_async (th);
-  /* TODO */
-
-  return 0;
+  if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
 }
 
 uint64_t
 relax (struct thread *th)
 {
-  uint64_t res = do_relax (th);
-  if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
-  return res;
+  struct thread_context *th_ctx = th->ctx;
+  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
+    return syscall (th);
+
+  if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC) sync_async (th);
+  else atomic (th);
+
+  return 0;
 }

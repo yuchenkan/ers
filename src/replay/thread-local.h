@@ -8,13 +8,22 @@
 
 struct thread;
 
+#define SYNC_ASYNC_TRACE_ASYNC	1
+#define SYNC_ASYNC_TRACE_BOTH	2
+
 struct thread_context
 {
   struct eri_entry_thread_entry ext;
   struct eri_entry_thread_context ctx;
   struct eri_entry_extra_registers eregs;
 
+  uint8_t swallow_single_step;
+
+  uint8_t sync_async_trace;
+  uint64_t sync_async_trace_steps;
+
   uint8_t atomic_ext_return;
+
   struct thread *th;
 
   eri_aligned16 uint8_t text[0];

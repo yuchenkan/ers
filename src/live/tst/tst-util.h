@@ -2,6 +2,7 @@
 #define TST_LIVE_TST_TST_UTIL_H
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/syscall.h>
 
 #define tst_yield(n) \
@@ -13,9 +14,6 @@
 
 #define tst_get_tls() \
   ({ void *_tls; asm ("movq	%%fs:0, %0" : "=r" (_tls)); _tls; })
-
-#define TST_RFLAGS_TRACE_BIT_OFFSET	8
-#define TST_RFLAGS_TRACE_MASK		(1 << TST_RFLAGS_TRACE_BIT_OFFSET)
 
 /* XXX: check other flags */
 #define TST_RFLAGS_STATUS_MASK		0xd5
@@ -36,6 +34,6 @@ asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
 asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
 
 #define tst_enable_trace() \
-asm ("pushq	%0; popfq" : : "n" (TST_RFLAGS_TRACE_MASK) : "cc", "memory");
+asm ("pushq	%0; popfq" : : "n" (ERI_RFLAGS_TRACE_MASK) : "cc", "memory");
 
 #endif

@@ -149,7 +149,7 @@ sig_fd_try_lock (struct thread_group *group, int32_t fd)
 static uint8_t
 internal (struct thread_group *group, uint64_t addr)
 {
-  return (addr >= group->map_start && addr < group->map_end);
+  return addr >= group->map_start && addr < group->map_end;
 }
 
 static uint8_t
@@ -159,7 +159,7 @@ internal_range (struct thread_group *group, uint64_t start, uint64_t size)
   uint64_t map_end = group->map_end;
   uint64_t end = start + size;
 
-  return (end > map_start && start < map_end);
+  return end > map_start && start < map_end;
 }
 
 static uint8_t
@@ -694,8 +694,7 @@ sig_hand_return_to_user (
   if (intern && eri_si_single_step (info)) return;
 
   if (th_ctx->ext.op.code == _ERS_OP_SYSCALL
-      && th_ctx->syscall.swallow_single_step
-      && ctx->mctx.rip == th_ctx->ext.ret && eri_si_single_step (info))
+      && th_ctx->syscall.swallow_single_step && eri_si_single_step (info))
     {
       th_ctx->syscall.swallow_single_step = 0;
       return;

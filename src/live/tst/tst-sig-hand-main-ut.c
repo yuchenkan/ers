@@ -1,6 +1,7 @@
 #include <compiler.h>
 #include <common.h>
 
+#include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 #include <tst/tst-syscall.h>
@@ -49,13 +50,13 @@ static uint8_t reach_done;
 static void
 step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  ctx->mctx.rflags |= TST_RFLAGS_TRACE_MASK;
+  ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
 
   if (! sig_th.sig_alt_stack_installed) return;
 
   if (eri_assert_syscall (gettid) == sig_th.tid)
     {
-      ctx->mctx.rflags &= ~TST_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
       return;
     }
 
