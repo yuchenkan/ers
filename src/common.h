@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <lib/util.h>
+#include <lib/lock.h>
+#include <lib/syscall-common.h>
 
 struct eri_common_args
 {
@@ -37,6 +39,19 @@ void eri_build_path (const char *path, const char *name,
 		     uint64_t id, char *buf);
 
 void eri_mkdir (const char *path);
+
+struct eri_sig_act
+{
+  struct eri_lock lock;
+  struct eri_sigaction act;
+};
+
+void eri_sig_init_acts (struct eri_sig_act *sig_acts, eri_sig_handler_t hand);
+void eri_sig_get_act (struct eri_sig_act *sig_acts, int32_t sig,
+		      struct eri_sigaction *act);
+void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
+		      const struct eri_sigaction *act,
+		      struct eri_sigaction *old_act);
 
 #include <compiler.h>
 #include <lib/printf.h>

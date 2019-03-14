@@ -833,6 +833,9 @@ struct eri_sigframe
   struct eri_siginfo info;
 };
 
+typedef void (*eri_sig_handler_t) (int32_t, struct eri_siginfo *,
+				   struct eri_ucontext *);
+
 #define eri_sig_fill_set(set) \
   eri_memset (set, 0xff, sizeof (struct eri_sigset))
 #define eri_sig_empty_set(set) \

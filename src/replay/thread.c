@@ -22,7 +22,7 @@ struct thread_group
 
   struct eri_common_args args;
 
-  struct eri_lock sig_acts[ERI_NSIG - 1];
+  struct eri_sig_act sig_acts[ERI_NSIG - 1];
 };
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
@@ -63,21 +63,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->args.stack_size = rtld_args->stack_size;
   group->args.file_buf_size = rtld_args->file_buf_size;
 
-  int32_t sig;
-  for (sig = 1; sig < ERI_NSIG; ++sig)
-    {
-      if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
-
-      eri_init_lock (group->sig_acts + sig - 1, 0);
-
-      struct eri_sigaction act = {
-	sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
-	eri_assert_sys_sigreturn
-      };
-      eri_sig_fill_set (&act.mask);
-      eri_assert_sys_sigaction (sig, &act, 0);
-    }
-
+  eri_sig_init_acts (group->sig_acts, sig_handler);
   return group;
 }
 

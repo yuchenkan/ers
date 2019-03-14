@@ -12,12 +12,6 @@
 #include <live/signal-thread.h>
 #include <live/signal-thread-local.h>
 
-struct sig_act
-{
-  struct eri_lock lock;
-  struct eri_sigaction act;
-};
-
 struct watch
 {
   int32_t alive;
@@ -32,7 +26,7 @@ struct signal_thread_group
 
   int32_t pid;
 
-  struct sig_act sig_acts[ERI_NSIG - 1];
+  struct eri_sig_act sig_acts[ERI_NSIG - 1];
   struct eri_siginfo sig_sync_info;
   struct eri_siginfo sig_exit_group_info;
 
@@ -99,10 +93,7 @@ static void
 sig_get_act (struct signal_thread_group *group, int32_t sig,
 	     struct eri_sigaction *act)
 {
-  struct sig_act *sig_act = &group->sig_acts[sig - 1];
-  eri_assert_lock (&sig_act->lock);
-  *act = sig_act->act;
-  eri_assert_unlock (&sig_act->lock);
+  eri_sig_get_act (group->sig_acts, sig, act);
 }
 
 static void
@@ -191,19 +182,8 @@ init_group_memory (struct eri_live_rtld_args *rtld_args)
 static void
 init_group_signal (struct signal_thread_group *group)
 {
-  int32_t sig;
-  for (sig = 1; sig < ERI_NSIG; ++sig)
-    {
-      if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
+  eri_sig_init_acts (group->sig_acts, sig_handler);
 
-      eri_init_lock (&group->sig_acts[sig - 1].lock, 0);
-      struct eri_sigaction act = {
-	sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
-	eri_assert_sys_sigreturn
-      };
-      eri_sig_fill_set (&act.mask);
-      eri_assert_sys_sigaction (sig, &act, &group->sig_acts[sig - 1].act);
-    }
   group->sig_sync_info.sig = 0;
   group->sig_exit_group_info.sig = ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP;
 }
@@ -886,13 +866,8 @@ sig_action (struct eri_live_signal_thread *sig_th,
 
   if (! sig_mask_async (sig_th, &mask)) return;
 
-  struct sig_act *sig_act = &sig_th->group->sig_acts[event->sig - 1];
-  eri_assert_lock (&sig_act->lock);
-
-  if (event->old_act) *event->old_act = sig_act->act;
-  sig_act->act = *event->act;
-
-  eri_assert_unlock (&sig_act->lock);
+  eri_sig_set_act (sig_th->group->sig_acts, event->sig,
+		   event->act, event->old_act);
 
   event->done = 1;
   restore_sig_mask (sig_th);
