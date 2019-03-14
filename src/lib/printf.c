@@ -48,10 +48,10 @@ eri_fopen (const char *path, uint8_t r, eri_file_t *file,
   return 0;
 }
 
-#define FTYPE(file) (file & 0xf)
+#define ftype(file) (file & 0xf)
 
-#define FRAW_P(file) (FTYPE (file) == _ERI_FILE_RAW)
-#define FRAW_FD(file) (file >> 4)
+#define fraw(file) (ftype (file) == _ERI_FILE_RAW)
+#define fraw_fd(file) (file >> 4)
 
 struct iovec
 {
@@ -136,7 +136,7 @@ int32_t
 eri_frelease (eri_file_t file, int32_t *fd)
 {
   if (file == 0) *fd = -1;
-  else if (FRAW_P (file)) *fd = FRAW_FD (file);
+  else if (fraw (file)) *fd = fraw_fd (file);
   else
     {
       struct file *f = (struct file *) file;
@@ -157,8 +157,8 @@ eri_fclose (eri_file_t file)
 {
   if (! file) return 1;
 
-  if (FRAW_P (file))
-    return eri_syscall_is_error (eri_syscall (close, FRAW_FD (file)));
+  if (fraw (file))
+    return eri_syscall_is_error (eri_syscall (close, fraw_fd (file)));
 
   struct file *f = (struct file *) file;
   if (f->fd < 0) return 1;
@@ -181,9 +181,9 @@ eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
 {
   if (! file) return 1;
 
-  if (FRAW_P (file))
+  if (fraw (file))
     {
-      uint64_t res = eri_syscall (lseek, FRAW_FD (file), offset, whence);
+      uint64_t res = eri_syscall (lseek, fraw_fd (file), offset, whence);
       if (eri_syscall_is_error (res)) return 1;
       if (res_offset) *res_offset = res;
       return 0;
@@ -225,8 +225,8 @@ eri_fwrite (eri_file_t file, const void *buf, uint64_t size, uint64_t *len)
 {
   if (! file) return 1;
 
-  if (FRAW_P (file))
-    return ifwrite (__NR_write, FRAW_FD (file),
+  if (fraw (file))
+    return ifwrite (__NR_write, fraw_fd (file),
 		    (uint64_t) buf, size, 0, len);
 
   struct file *f = (struct file *) file;
@@ -283,10 +283,10 @@ eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len)
 {
   if (! file) return 1;
 
-  if (FRAW_P (file))
+  if (fraw (file))
     {
       uint64_t read;
-      int32_t res = ifread (__NR_read, FRAW_FD (file),
+      int32_t res = ifread (__NR_read, fraw_fd (file),
 			    (uint64_t) buf, size, 0, &read);
       if (len) *len = read;
       else if (res == 0 && read != size) return 1;
@@ -400,8 +400,8 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
       ++niov;
     }
 
-  if (FRAW_P (file))
-    return ifwrite (__NR_writev, FRAW_FD (file),
+  if (fraw (file))
+    return ifwrite (__NR_writev, fraw_fd (file),
 		    (uint64_t) (iov + 1), niov - 1, 0, 0);
 
   struct file *f = (struct file *) file;
