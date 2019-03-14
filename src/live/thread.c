@@ -255,6 +255,13 @@ sig_wait_frame (struct thread_context *th_ctx,
   return eri_assert_sys_futex_wait (&th_ctx->sig_frame, 1, timeout);
 }
 
+static void
+swallow_single_step (struct thread_context *th_ctx)
+{
+  if (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+    eri_atomic_store (&th_ctx->swallow_single_step, 1);
+}
+
 static struct thread_context *
 create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
 {
@@ -690,12 +697,7 @@ sig_hand_return_to_user (
 
   struct thread_context *th_ctx = th->ctx;
 
-  if (intern && single_step)
-    {
-      if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
-	th_ctx->swallow_single_step = 1;
-      return;
-    }
+  if (intern && single_step) return;
 
   if (single_step && th_ctx->swallow_single_step)
     {
@@ -2031,6 +2033,7 @@ sig_wait_restart:
 
 done:
   eri_debug ("%u done\n", nr);
+  swallow_single_step (th_ctx);
   if (nr == __NR_rt_sigreturn) return 1;
   th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
   th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
@@ -2069,6 +2072,7 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
 void
 sync_async (struct eri_live_thread *th, uint64_t cnt)
 {
+  swallow_single_step (th->ctx);
   eri_live_thread_recorder__rec_sync_async (th->rec, cnt);
 }
 
@@ -2095,11 +2099,7 @@ sig_hand_sync_async_return_to_user (
   uint8_t inst = ctx->mctx.rip == th_ctx->ext.ret;
   uint8_t single_step = eri_si_single_step (info);
 
-  if (intern && single_step)
-    {
-      th_ctx->swallow_single_step = 1;
-      return;
-    }
+  if (intern && single_step) return;
 
   if (intern) eri_assert (! eri_si_sync (info));
 
