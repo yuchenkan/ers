@@ -30,18 +30,14 @@ struct thread_context
   uint64_t access; /* Always zero in user code. */
   uint64_t access_fault;
 
+  uint8_t swallow_single_step;
   union
     {
       struct
 	{
 	  struct eri_entry_extra_registers eregs;
-	  uint8_t swallow_single_step;
 	  uint8_t wait_sig; /* Always zero in user code. */
 	} syscall;
-      struct
-	{
-	  uint8_t single_step;
-	} sync_async;
       struct
 	{
 	  uint64_t access_start;

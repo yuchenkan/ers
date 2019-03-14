@@ -4,6 +4,7 @@
 #include <helper.h>
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/elf.h>
 #include <lib/lock.h>
 #include <lib/rbtree.h>
@@ -266,7 +267,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   th_ctx->sig_force_deliver = 0;
   sig_set_frame (th_ctx, 0);
   th_ctx->access = 0;
-  th_ctx->syscall.swallow_single_step = 0;
+  th_ctx->swallow_single_step = 0;
   th_ctx->syscall.wait_sig = 0;
   th_ctx->atomic.access_end = 0;
   th_ctx->th = th;
@@ -513,8 +514,8 @@ sig_action (struct eri_live_thread *th)
 
   if (! SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
     {
-      if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
-	th_ctx->syscall.swallow_single_step = 0;
+      /* XXX: swallow or not */
+      th_ctx->swallow_single_step = 0;
 
       if (! sig_setup_user_frame (th, frame)) goto core;
 
@@ -685,18 +686,20 @@ sig_hand_return_to_user (
   struct eri_ucontext *ctx = &frame->ctx;
 
   uint8_t intern = internal (th->group, ctx->mctx.rip);
+  uint8_t single_step = eri_si_single_step (info);
 
   struct thread_context *th_ctx = th->ctx;
-  if (intern && eri_si_single_step (info)
-      && th_ctx->ext.op.code == _ERS_OP_SYSCALL)
-    th_ctx->syscall.swallow_single_step = 1;
 
-  if (intern && eri_si_single_step (info)) return;
-
-  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL
-      && th_ctx->syscall.swallow_single_step && eri_si_single_step (info))
+  if (intern && single_step)
     {
-      th_ctx->syscall.swallow_single_step = 0;
+      if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
+	th_ctx->swallow_single_step = 1;
+      return;
+    }
+
+  if (single_step && th_ctx->swallow_single_step)
+    {
+      th_ctx->swallow_single_step = 0;
       return;
     }
 
@@ -2066,7 +2069,6 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
 void
 sync_async (struct eri_live_thread *th, uint64_t cnt)
 {
-  eri_atomic_store (&th->ctx->sync_async.single_step, 0);
   eri_live_thread_recorder__rec_sync_async (th->rec, cnt);
 }
 
@@ -2093,13 +2095,17 @@ sig_hand_sync_async_return_to_user (
   uint8_t inst = ctx->mctx.rip == th_ctx->ext.ret;
   uint8_t single_step = eri_si_single_step (info);
 
-  if (intern && single_step) return;
+  if (intern && single_step)
+    {
+      th_ctx->swallow_single_step = 1;
+      return;
+    }
 
   if (intern) eri_assert (! eri_si_sync (info));
 
-  if (inst && single_step && ! th_ctx->sync_async.single_step)
+  if (single_step && th_ctx->swallow_single_step)
     {
-      th_ctx->sync_async.single_step = 1;
+      th_ctx->swallow_single_step = 0;
       return;
     }
 
