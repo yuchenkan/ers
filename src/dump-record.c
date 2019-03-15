@@ -68,13 +68,6 @@ main (int32_t argc, const char **argv)
 	    struct eri_atomic_record at;
 	    read_without_magic (&at, f);
 	    printf ("  atomic.updated: %u\n", at.updated);
-	    printf ("  atomic.ver: %lu %lu\n", at.ver[0], at.ver[1]);
-	  }
-	else if (magic == ERI_ATOMIC_LOAD_MAGIC)
-	  {
-	    struct eri_atomic_load_record at;
-	    read_without_magic (&at, f);
-	    printf ("  atomic.updated: %u\n", at.updated);
 	    printf ("  atomic_load.ver: %lu %lu\n", at.ver[0], at.ver[1]);
 	    printf ("  atomic_load.val: 0x%lx\n", at.val);
 	  }

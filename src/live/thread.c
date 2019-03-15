@@ -899,7 +899,8 @@ clear_tid (void *args)
   if (! fault)
     {
       struct atomic_pair ver = unlock_atomic (group, &idx, !! old_val);
-      eri_live_thread_recorder__rec_atomic (th->rec, !! old_val, &ver.first);
+      eri_live_thread_recorder__rec_atomic (th->rec, !! old_val,
+					    &ver.first, 0);
       eri_syscall (futex, clear_tid, ERI_FUTEX_WAKE, 1);
     }
   else unlock_atomic (group, &idx, 0);
@@ -2176,7 +2177,8 @@ complete_atomic (struct eri_live_thread *th, uint64_t old_val)
   uint8_t update;
   if (code == _ERS_OP_ATOMIC_STORE || code == _ERS_OP_ATOMIC_XCHG)
     update = updated (size, old_val, src);
-  else if (code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC) update = 1;
+  else if (code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC)
+    update = 1;
   else if (code == _ERS_OP_ATOMIC_LOAD) update = 0;
   else if (code == _ERS_OP_ATOMIC_CMPXCHG)
     update = (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_ZERO_MASK)
@@ -2191,22 +2193,11 @@ complete_atomic (struct eri_live_thread *th, uint64_t old_val)
     th_ctx->ext.atomic.val = old_val;
 
   struct eri_live_thread_recorder *rec = th->rec;
+  if (code == _ERS_OP_ATOMIC_STORE
+      || code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC)
+    old_val = 0;
   /* XXX: cmpxchg16b */
-  uint64_t val = th_ctx->ext.atomic.val;
-  switch (code)
-    {
-    case _ERS_OP_ATOMIC_STORE:
-    case _ERS_OP_ATOMIC_INC:
-    case _ERS_OP_ATOMIC_DEC:
-      eri_live_thread_recorder__rec_atomic (rec, update, &ver.first);
-      break;
-    case _ERS_OP_ATOMIC_LOAD:
-    case _ERS_OP_ATOMIC_XCHG:
-    case _ERS_OP_ATOMIC_CMPXCHG:
-      eri_live_thread_recorder__rec_atomic_load (rec, update,
-						 &ver.first, val);
-      break;
-    }
+  eri_live_thread_recorder__rec_atomic (rec, update, &ver.first, old_val);
 }
 
 static eri_noreturn void sig_restart_atomic (struct eri_live_thread *th);
