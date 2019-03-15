@@ -1,9 +1,8 @@
 #include <public.h>
 #include <common.h>
-#include <entry.h>
 
 #include <lib/util.h>
-#include <lib/registers.h>
+#include <lib/cpu.h>
 #include <live/tst/tst-registers.h>
 #include <live/tst/tst-entry-atomic.h>
 
@@ -16,7 +15,7 @@ TST_LIVE_ENTRY_ATOMIC_ASM (OP (inc, mem, sz),				\
 	ERI_PASTE (ERS_ATOMIC_, cinc) (0, sz, (%mem)))
 
 #define ASM(cmem, mem, cinc, inc) \
-ERI_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, cinc, inc, mem)
+ERI_FOREACH_REG_SIZE (ASM_SIZE, cinc, inc, mem)
 
 TST_FOREACH_GENERAL_REG (ASM, INC, inc)
 TST_FOREACH_GENERAL_REG (ASM, DEC, dec)
@@ -64,7 +63,7 @@ static struct caze cases[] = {
 					   mem, INFO) },
 
 #define CASE(cmem, mem) \
-  ERI_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, mem)
+  ERI_FOREACH_REG_SIZE (CASE_SIZE, mem)
 
   TST_FOREACH_GENERAL_REG (CASE)
 };

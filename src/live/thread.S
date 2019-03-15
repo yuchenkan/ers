@@ -3,9 +3,9 @@
 #include <entry.h>
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/syscall.h>
 #include <lib/syscall-offsets.h>
-#include <lib/registers.h>
 
 #include <public/common.h>
 #include <live/thread-local-offsets.h>
@@ -27,7 +27,8 @@
 #define R14(sz)		ERI_R14 (sz)
 #define R15(sz)		ERI_R15 (sz)
 
-#define PASTE		ERI_PASTE
+#define PASTE(x, y)	ERI_PASTE (x, y)
+#define PASTE2(x, y, z)	ERI_PASTE2 (x, y, z)
 
 #define TC(name)	PASTE (THREAD_CONTEXT_, name)
 #define TCE(name)	TC (PASTE (EXT_, name))
@@ -64,7 +65,7 @@ ERI_ENTRY_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
   jmp	*TCC (RET)(%rbx)
 
 #define SIG_SAVE_CTX_REG(creg, reg, frame) \
-  movq	%reg, ERI_PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame);
+  movq	%reg, PASTE (ERI_SIGFRAME_CTX_MCTX_, creg)(frame);
 
 #define SIG_RETURN_ACTION(action, ret) \
   movq	TC (SIG_FRAME)(%rbx), %rcx;					\
@@ -309,13 +310,12 @@ ATOMIC_ACCESS_END_LABEL (sz, cmpxchg):					\
 #define ATOMIC_OP_SIZE(sz, op)		op (sz);
 
 #define ATOMIC_OP(cname) \
-  ERI_ENTRY_ATOMIC_FOREACH_SIZE (ATOMIC_OP_SIZE,			\
-				 PASTE (ATOMIC_, cname))
+  ERI_FOREACH_REG_SIZE (ATOMIC_OP_SIZE,	PASTE (ATOMIC_, cname))
 
 #define ATOMIC(cname, name) \
 ATOMIC_LABEL (name):							\
   movb	TCE (OP_ARGS)(%rbx), %r11b;					\
-  ERI_ENTRY_ATOMIC_FOREACH_SIZE (IF_ATOMIC_SIZE, name)			\
+  ERI_FOREACH_REG_SIZE (IF_ATOMIC_SIZE, name)				\
   ERROR (ATOMIC_SIZE);							\
 									\
   ATOMIC_OP (cname)
@@ -337,9 +337,9 @@ ATOMIC_LABEL (name):							\
 /************************************************/
 
 #define COPY_SET_ACCESS(op) \
-  ERI_MOV_LM (ERI_PASTE2 (.lcopy_, op, _user),				\
+  ERI_MOV_LM (PASTE2 (.lcopy_, op, _user),				\
 	      TC (ACCESS)(%rdi), %rax);					\
-  ERI_MOV_LM (ERI_PASTE2 (.lcopy_, op, _user_fault),			\
+  ERI_MOV_LM (PASTE2 (.lcopy_, op, _user_fault),			\
 	      TC (ACCESS_FAULT)(%rdi), %rax)
 
 #define COPY_RETURN(res) \
