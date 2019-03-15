@@ -250,12 +250,12 @@ eri_live_thread_recorder__rec_restart_sync_async (
 void
 eri_live_thread_recorder__rec_atomic (
 			struct eri_live_thread_recorder *rec,
-			const uint64_t *ver)
+			uint8_t updated, const uint64_t *ver)
 {
   submit_sync_async (rec);
 
   struct eri_marked_atomic_record at = {
-    ERI_SYNC_RECORD, { ERI_ATOMIC_MAGIC, { ver[0], ver[1] } }
+    ERI_SYNC_RECORD, { ERI_ATOMIC_MAGIC, updated, { ver[0], ver[1] } }
   };
   eri_assert_fwrite (rec->file, &at, sizeof at, 0);
 }
@@ -263,13 +263,13 @@ eri_live_thread_recorder__rec_atomic (
 void
 eri_live_thread_recorder__rec_atomic_load (
 			struct eri_live_thread_recorder *rec,
-			const uint64_t *ver, uint64_t val)
+			uint8_t updated, const uint64_t *ver, uint64_t val)
 {
   submit_sync_async (rec);
 
   struct eri_marked_atomic_load_record at = {
     ERI_SYNC_RECORD,
-    { ERI_ATOMIC_LOAD_MAGIC, { ver[0], ver[1] }, val }
+    { ERI_ATOMIC_LOAD_MAGIC, updated, { ver[0], ver[1] }, val }
   };
   eri_assert_fwrite (rec->file, &at, sizeof at, 0);
 }

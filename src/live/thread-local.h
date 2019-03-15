@@ -90,6 +90,6 @@ eri_noreturn void sig_restart_sync_async (struct eri_live_thread *th);
 
 uint64_t prepare_atomic (struct eri_live_thread *th,
 			 uint64_t access_start, uint64_t access_end);
-void complete_atomic (struct eri_live_thread *th);
+void complete_atomic (struct eri_live_thread *th, uint64_t old_val);
 
 #endif

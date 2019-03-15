@@ -54,12 +54,14 @@ struct eri_packed eri_sync_async_record
 struct eri_packed eri_atomic_record
 {
   uint8_t magic;
+  uint8_t updated;
   uint64_t ver[2];
 };
 
 struct eri_packed eri_atomic_load_record
 {
   uint8_t magic;
+  uint8_t updated;
   uint64_t ver[2];
   uint64_t val;
 };

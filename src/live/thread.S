@@ -225,10 +225,9 @@ ATOMIC_SIZE_LABEL (sz, name):						\
 PREPARE_ATOMIC (sz, load);						\
 									\
 ATOMIC_ACCESS_START_LABEL (sz, load):					\
-  PASTE (mov, sz)	(%rax), %R11 (sz);				\
+  PASTE (mov, sz)	(%rax), %RSI (sz);				\
 ATOMIC_ACCESS_END_LABEL (sz, load):					\
 									\
-  movq	%r11, TCE (ATOMIC_VAL)(%rbx);					\
   EXT_COMPLETE_ATOMIC
 
 /************************************************/
@@ -238,9 +237,10 @@ ATOMIC_ACCESS_END_LABEL (sz, load):					\
 #define ATOMIC_STORE(sz) \
 PREPARE_ATOMIC (sz, store);						\
 									\
-  movq	TCE (ATOMIC_VAL)(%rbx), %r11;					\
+  movq	TCE (ATOMIC_VAL)(%rbx), %rdx;					\
 ATOMIC_ACCESS_START_LABEL (sz, store):					\
-  PASTE (mov, sz)	%R11 (sz), (%rax);				\
+  PASTE (mov, sz)	(%rax), %RSI (sz);				\
+  PASTE (mov, sz)	%RDX (sz), (%rax);				\
 ATOMIC_ACCESS_END_LABEL (sz, store):					\
 									\
   COMPLETE_ATOMIC (sz, store)
@@ -254,12 +254,10 @@ PREPARE_ATOMIC (sz, inc);						\
 									\
   ATOMIC_LOAD_RFLAGS;							\
 ATOMIC_ACCESS_START_LABEL (sz, inc):					\
-  PASTE (mov, sz)	(%rax), %R11 (sz);				\
   PASTE (inc, sz)	(%rax);						\
 ATOMIC_ACCESS_END_LABEL (sz, inc):					\
 									\
   ATOMIC_SAVE_RFLAGS;							\
-  movq	%r11, TCE (ATOMIC_VAL)(%rbx);					\
   COMPLETE_ATOMIC (sz, inc)
 
 #define ATOMIC_INC(sz)	ATOMIC_INC_DEC (sz, inc)
@@ -272,12 +270,12 @@ ATOMIC_ACCESS_END_LABEL (sz, inc):					\
 #define ATOMIC_XCHG(sz) \
 PREPARE_ATOMIC (sz, xchg);						\
 									\
-  movq	TCE (ATOMIC_VAL)(%rbx), %r11;					\
+  movq	TCE (ATOMIC_VAL)(%rbx), %rdx;					\
 ATOMIC_ACCESS_START_LABEL (sz, xchg):					\
-  PASTE (xchg, sz)	%R11 (sz), (%rax);				\
+  PASTE (mov, sz)	(%rax), %RSI (sz);				\
+  PASTE (mov, sz)	%RDX (sz), (%rax);				\
 ATOMIC_ACCESS_END_LABEL (sz, xchg):					\
 									\
-  movq	%r11, TCE (ATOMIC_VAL)(%rbx);					\
   EXT_COMPLETE_ATOMIC
 
 /************************************************/
@@ -287,18 +285,17 @@ ATOMIC_ACCESS_END_LABEL (sz, xchg):					\
 #define ATOMIC_CMPXCHG(sz) \
 PREPARE_ATOMIC (sz, cmpxchg);						\
 									\
-  movq	TCE (ATOMIC_VAL)(%rbx), %r11;					\
-  movq	%rax, %rdi;							\
+  movq	TCE (ATOMIC_VAL)(%rbx), %rdx;					\
+  movq	%rax, %r11;							\
   movq	TCC (SREGS_RAX)(%rbx), %rax;					\
   ATOMIC_LOAD_RFLAGS;							\
 ATOMIC_ACCESS_START_LABEL (sz, cmpxchg):				\
-  PASTE (mov, sz)	(%rdi), %RSI (sz);				\
-  PASTE (cmpxchg, sz)	%R11 (sz), (%rdi);				\
+  PASTE (mov, sz)	(%r11), %RSI (sz);				\
+  PASTE (cmpxchg, sz)	%RDX (sz), (%r11);				\
 ATOMIC_ACCESS_END_LABEL (sz, cmpxchg):					\
 									\
   ATOMIC_SAVE_RFLAGS;							\
   movq	%rax, TCC (SREGS_RAX)(%rbx);					\
-  movq	%rsi, TCE (ATOMIC_VAL)(%rbx);					\
   COMPLETE_ATOMIC (sz, cmpxchg)
 
 /************************************************/

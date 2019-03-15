@@ -51,24 +51,32 @@ main (int32_t argc, const char **argv)
 	printf ("ERI_SYNC_RECORD\n");
 	uint8_t magic;
 	assert (fread (&magic, sizeof magic, 1, f) == 1);
+#define read_without_magic(t, f) \
+  do { typeof (t) _t = t;						\
+       assert (fread ((uint8_t *) _t + sizeof (uint8_t),		\
+		      sizeof *_t - sizeof (uint8_t), 1, f) == 1);	\
+  } while (0)
+
 	if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  {
-	    uint64_t steps;
-	    assert (fread (&steps, sizeof steps, 1, f) == 1);
-	    printf ("  sync_async.steps: %lu\n", steps);
+	    struct eri_sync_async_record sync;
+	    read_without_magic (&sync, f);
+	    printf ("  sync_async.steps: %lu\n", sync.steps);
 	  }
 	else if (magic == ERI_ATOMIC_MAGIC)
 	  {
-	    uint64_t v[2];
-	    assert (fread (v, sizeof v, 1, f) == 1);
-	    printf ("  atomic.ver: %lu %lu\n", v[0], v[1]);
+	    struct eri_atomic_record at;
+	    read_without_magic (&at, f);
+	    printf ("  atomic.updated: %u\n", at.updated);
+	    printf ("  atomic.ver: %lu %lu\n", at.ver[0], at.ver[1]);
 	  }
 	else if (magic == ERI_ATOMIC_LOAD_MAGIC)
 	  {
-	    uint64_t v[3];
-	    assert (fread (v, sizeof v, 1, f) == 1);
-	    printf ("  atomic_load.ver: %lu %lu\n", v[0], v[1]);
-	    printf ("  atomic_load.val: 0x%lx\n", v[2]);
+	    struct eri_atomic_load_record at;
+	    read_without_magic (&at, f);
+	    printf ("  atomic.updated: %u\n", at.updated);
+	    printf ("  atomic_load.ver: %lu %lu\n", at.ver[0], at.ver[1]);
+	    printf ("  atomic_load.val: 0x%lx\n", at.val);
 	  }
 	/* TODO */
       }

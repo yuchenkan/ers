@@ -58,9 +58,9 @@ void eri_live_thread_recorder__rec_restart_sync_async (
 
 void eri_live_thread_recorder__rec_atomic (
 		struct eri_live_thread_recorder *rec,
-		const uint64_t *ver);
+		uint8_t updated, const uint64_t *ver);
 void eri_live_thread_recorder__rec_atomic_load (
 		struct eri_live_thread_recorder *rec,
-		const uint64_t *ver, uint64_t val);
+		uint8_t updated, const uint64_t *ver, uint64_t val);
 
 #endif
