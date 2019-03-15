@@ -53,6 +53,13 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
 		      const struct eri_sigaction *act,
 		      struct eri_sigaction *old_act);
 
+#define eri_atomic_slot(mem)		((mem) & ~0xf)
+#define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
+
+#define eri_atomic_cross_slot(mem, size) \
+  ({ uint64_t _mem = mem;						\
+     eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
+
 #include <compiler.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>

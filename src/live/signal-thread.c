@@ -374,7 +374,7 @@ try_lock_exit_group (struct signal_thread_group *group)
   if (eri_atomic_exchange (&group->exit_group, 1) == 1) return 0;
 
   while (! eri_atomic_compare_exchange (&group->exit_group_lock,
-					1, -2147483647))
+					1, ERI_INT_MIN))
     eri_assert_syscall (sched_yield);
 
   eri_barrier ();

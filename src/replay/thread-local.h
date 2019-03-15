@@ -35,6 +35,12 @@ void do_atomic_read_user (struct thread_context *th_ctx,
 void do_atomic_read_write_user (struct thread_context *th_ctx,
 				uint64_t mem, uint8_t size);
 
+void atomic_store (uint8_t size, uint64_t mem, uint64_t val);
+void atomic_inc (uint8_t size, uint64_t mem, uint64_t *rflags);
+void atomic_dec (uint8_t size, uint64_t mem, uint64_t *rflags);
+void atomic_cmpxchg_regs (uint8_t size, uint64_t *rax, uint64_t *rflags,
+			  uint64_t old_val);
+
 void start_main (struct thread *th);
 uint64_t relax (struct thread *th);
 

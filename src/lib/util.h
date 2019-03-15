@@ -53,6 +53,9 @@ func:
   movq	$0, %r15;							\
   movq	$0, (%r15)
 
+#define ERI_INT_MAX	2147483647
+#define ERI_INT_MIN	(-ERI_INT_MAX - 1)
+
 #ifndef __ASSEMBLER__
 
 #include <stdint.h>

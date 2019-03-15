@@ -809,9 +809,9 @@ hash (uint64_t x)
 }
 
 static uint64_t
-do_lock_atomic (struct thread_group *group, uint64_t addr)
+do_lock_atomic (struct thread_group *group, uint64_t slot)
 {
-  uint64_t idx = hash (addr & ~0xf) % group->atomic_table_size;
+  uint64_t idx = hash (slot) % group->atomic_table_size;
 
   uint32_t i = 0;
   while (eri_atomic_bit_test_set (group->atomic_table + idx, 0))
@@ -821,11 +821,11 @@ do_lock_atomic (struct thread_group *group, uint64_t addr)
 }
 
 static struct atomic_pair
-lock_atomic (struct thread_group *group, uint64_t addr, uint8_t size)
+lock_atomic (struct thread_group *group, uint64_t mem, uint8_t size)
 {
-  struct atomic_pair idx = { do_lock_atomic (group, addr) };
-  idx.second = (addr & ~0xf) != ((addr + size - 1) & ~0xf)
-		 ? do_lock_atomic (group, addr + size - 1) : idx.first;
+  struct atomic_pair idx = { do_lock_atomic (group, eri_atomic_slot (mem)) };
+  idx.second = eri_atomic_cross_slot (mem, size)
+	? do_lock_atomic (group, eri_atomic_slot2 (mem, size)) : idx.first;
   return idx;
 }
 
@@ -840,11 +840,11 @@ static struct atomic_pair
 unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
 	       uint8_t update)
 {
-  uint8_t aligned = idx->first == idx->second;
+  uint8_t cross = idx->first != idx->second;
   if (update)
     {
       group->atomic_table[idx->first] += 2;
-      if (! aligned) group->atomic_table[idx->second] += 2;
+      if (cross) group->atomic_table[idx->second] += 2;
     }
 
   struct atomic_pair ver = {
@@ -853,7 +853,7 @@ unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
   };
 
   do_unlock_atomic (group, idx->first);
-  if (! aligned) do_unlock_atomic (group, idx->second);
+  if (cross) do_unlock_atomic (group, idx->second);
   return ver;
 }
 
@@ -2143,6 +2143,7 @@ prepare_atomic (struct eri_live_thread *th,
   uint8_t size = 1 << th_ctx->ext.op.args;
   eri_assert (size <= 16);
   struct thread_group *group = th->group;
+  /* XXX: always cause sigsegv? */
   if (internal_range (group, mem, size)) mem = 0;
   th_ctx->atomic.idx = lock_atomic (group, mem, size);
   return mem;

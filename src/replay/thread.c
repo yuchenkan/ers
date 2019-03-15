@@ -4,6 +4,7 @@
 #include <entry.h>
 
 #include <lib/util.h>
+#include <lib/atomic.h>
 #include <lib/malloc.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>
@@ -23,6 +24,13 @@ enum
 #define SYNC_ASYNC_TRACE_ASYNC	1
 #define SYNC_ASYNC_TRACE_BOTH	2
 
+struct atomic_slot
+{
+  uint64_t slot;
+  uint64_t ver;
+  uint64_t wait;
+};
+
 struct thread_group
 {
   struct eri_mtpool *pool;
@@ -35,7 +43,13 @@ struct thread_group
   int32_t pid;
 
   struct eri_sig_act sig_acts[ERI_NSIG - 1];
+
+  struct eri_lock atomic_slot_lock;
+  ERI_RBT_TREE_FIELDS (atomic_slot, struct atomic_slot)
 };
+
+ERI_DEFINE_RBTREE (static, atomic_slot, struct thread_group,
+		   struct atomic_slot, uint64_t, eri_less_than)
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
 
@@ -152,10 +166,23 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	}
     }
 
+  /* TODO: syscall internal */
+
   if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
     ctx->mctx.rip = th_ctx->ext.call;
 
-  /* TODO: internal */
+  if (th_ctx->atomic_access_fault
+      && ctx->mctx.rip == th_ctx->atomic_access_fault)
+    {
+      th_ctx->atomic_access_fault = 0;
+
+      ERI_ENTRY_FOREACH_SREG (SET_SREG)
+      ERI_ENTRY_FOREACH_EREG (SET_EREG)
+      ctx->mctx.rsp = th_ctx->ctx.rsp;
+      ctx->mctx.rbx = th_ctx->ext.rbx;
+      ctx->mctx.rip = th_ctx->ext.call;
+    }
+
   eri_assert (! internal (th->group, ctx->mctx.rip));
 
   raise (th, info, ctx, 0);
@@ -178,6 +205,9 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 
   group->pid = eri_assert_syscall (getpid);
   eri_sig_init_acts (group->sig_acts, sig_handler);
+
+  eri_init_lock (&group->atomic_slot_lock, 0);
+  ERI_RBT_INIT_TREE (atomic_slot, group);
   return group;
 }
 
@@ -354,6 +384,74 @@ atomic_read_write_user (struct thread *th, uint64_t mem,
 }
 
 static void
+do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
+{
+  if (ver == 0) return;
+
+  eri_assert_lock (&group->atomic_slot_lock);
+  struct atomic_slot *at = atomic_slot_rbt_get (group, &slot, ERI_RBT_EQ);
+  if (! at)
+    {
+      /* XXX: these memory not freed before exit */
+      at = eri_assert_mtmalloc (group->pool, sizeof *at);
+      at->slot = slot;
+      atomic_slot_rbt_insert (group, at);
+
+      at->ver = 0;
+      at->wait = 1;
+    }
+  uint64_t now = at->ver;
+  eri_assert_unlock (&group->atomic_slot_lock);
+
+  if (now >= ver) return;
+
+  eri_atomic_inc (&at->wait);
+  eri_barrier ();
+  do
+    eri_assert_sys_futex_wait (&at->ver, now, 0);
+  while ((now = eri_atomic_load (&at->ver)) < ver);
+  eri_atomic_dec (&at->wait);
+}
+
+static void
+atomic_wait (struct thread_group *group, uint64_t mem, uint8_t size,
+	     uint8_t updated, uint64_t *ver)
+{
+  do_atomic_wait (group, eri_atomic_slot (mem), ver[0] - updated);
+  if (eri_atomic_cross_slot (mem, size))
+    do_atomic_wait (group, eri_atomic_slot2 (mem, size), ver[1] - updated);
+}
+
+static void
+do_atomic_update (struct thread_group *group, uint64_t slot)
+{
+  eri_assert_lock (&group->atomic_slot_lock);
+  struct atomic_slot *at = atomic_slot_rbt_get (group, &slot, ERI_RBT_EQ);
+  if (! at)
+    {
+      at = eri_assert_mtmalloc (group->pool, sizeof *at);
+      at->slot = slot;
+      atomic_slot_rbt_insert (group, at);
+
+      at->ver = 1;
+      at->wait = 0;
+    }
+  else ++at->ver;
+  eri_assert_unlock (&group->atomic_slot_lock);
+
+  if (eri_atomic_load_acq (&at->wait))
+    eri_assert_syscall (futext, &at->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
+}
+
+static void
+atomic_update (struct thread_group *group, uint64_t mem, uint8_t size)
+{
+  do_atomic_update (group, eri_atomic_slot (mem));
+  if (eri_atomic_cross_slot (mem, size))
+    do_atomic_update (group, eri_atomic_slot2 (mem, size));
+}
+
+static void
 atomic (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -367,19 +465,55 @@ atomic (struct thread *th)
   else
     {
       uint16_t code = th_ctx->ext.op.code;
-      uint8_t size = th_ctx->ext.op.args;
       uint64_t mem = th_ctx->ext.atomic.mem;
+      uint8_t size = th_ctx->ext.op.args;
       atomic_read_write_user (th, mem, size, code == _ERS_OP_ATOMIC_LOAD);
 
       struct eri_atomic_record rec;
       eri_assert_fread (th->file, &rec, sizeof rec, 0);
       eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
 
-      // LOAD STORE INC DEC XCHG CMPXCHG
+      uint8_t updated = rec.updated;
+      uint64_t ver[2] = { rec.ver[0], rec.ver[1] };
+      uint64_t old_val = rec.val;
 
-      /* TODO */
+      /* XXX: not necessary/right for pure write, but prevents ver holes */
+      atomic_wait (th->group, mem, size, updated, ver);
+
+      uint64_t val = th_ctx->ext.atomic.val;
+      if (code == _ERS_OP_ATOMIC_STORE && updated)
+	{
+	  atomic_store (size, mem, val);
+	  atomic_update (th->group, mem, size);
+	}
+
+      if (code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC)
+	{
+	  eri_assert (updated);
+	  (code == _ERS_OP_ATOMIC_INC ? atomic_inc : atomic_dec) (size, mem,
+						&th_ctx->ctx.sregs.rflags);
+	  atomic_update (th->group, mem, size);
+	}
+
+      if (code == _ERS_OP_ATOMIC_XCHG && updated)
+	{
+	  atomic_store (mem, size, val);
+	  atomic_update (th->group, mem, size);
+	}
+
+      if (code == _ERS_OP_ATOMIC_CMPXCHG)
+	{
+	  atomic_cmpxchg_regs (size, &th_ctx->ctx.sregs.rax,
+			       &th_ctx->ctx.sregs.rflags, old_val);
+	  if ((th_ctx->ctx.sregs.rflags & ERI_RFLAGS_ZERO_MASK) && updated)
+	    {
+	      atomic_store (mem, size, val);
+	      atomic_update (th->group, mem, size);
+	    }
+	}
+
       if (code == _ERS_OP_ATOMIC_LOAD || code == _ERS_OP_ATOMIC_XCHG)
-	th->ctx->ext.atomic.val = rec.val;
+	th->ctx->ext.atomic.val = old_val;
 
       if (code == _ERS_OP_ATOMIC_LOAD || code == _ERS_OP_ATOMIC_XCHG)
 	th_ctx->atomic_ext_return = 1;
