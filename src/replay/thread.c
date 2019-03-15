@@ -60,6 +60,12 @@ internal (struct thread_group *group, uint64_t addr)
   return addr >= group->map_start && addr < group->map_end;
 }
 
+static uint8_t
+internal_range (struct thread_group *group, uint64_t addr, uint64_t size)
+{
+  return addr + size > group->map_start && addr < group->map_end;
+}
+
 static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
 				struct eri_ucontext *ctx, uint8_t next_async);
 
@@ -109,6 +115,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (! eri_si_sync (info)) return;
 
+  uint16_t code = th_ctx->ext.op.code;
   if (eri_si_single_step (info))
     {
       if (th_ctx->ext.op.sig_hand != SIG_HAND_RETURN_TO_USER) return;
@@ -120,8 +127,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	  return;
 	}
 
-      if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC
-	  && th_ctx->sync_async_trace)
+      if (code == _ERS_OP_SYNC_ASYNC && th_ctx->sync_async_trace)
 	{
 	  uint8_t async = 0;
 	  if (th_ctx->sync_async_trace_steps)
@@ -145,6 +151,12 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
 	}
     }
+
+  if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
+    ctx->mctx.rip = th_ctx->ext.call;
+
+  /* TODO: internal */
+  eri_assert (! internal (th->group, ctx->mctx.rip));
 
   raise (th, info, ctx, 0);
 }
@@ -184,6 +196,7 @@ create (struct thread_group *group, uint64_t id)
 
   th_ctx->swallow_single_step = 0;
   th_ctx->sync_async_trace = 0;
+  th_ctx->atomic_access_fault = 0;
   th_ctx->atomic_ext_return = 0;
 
   th_ctx->th = th;
@@ -320,10 +333,7 @@ sync_async (struct thread *th)
 
   swallow_single_step (th_ctx);
 
-  uint8_t async = next_record (th) == ERI_ASYNC_RECORD;
-  if (sync.steps) eri_assert (async);
-
-  if (! async) return;
+  if (next_record (th) != ERI_ASYNC_RECORD) return;
 
   th_ctx->sync_async_trace
 		= (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
@@ -334,24 +344,13 @@ sync_async (struct thread *th)
 }
 
 static void
-load_atomic (struct thread *th, uint64_t *ver)
+atomic_read_write_user (struct thread *th, uint64_t mem,
+			uint8_t size, uint8_t read_only)
 {
-  struct eri_atomic_record rec;
-  eri_assert_fread (th->file, &rec, sizeof rec, 0);
-  eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
-  ver[0] = rec.ver[0];
-  ver[1] = rec.ver[1];
-}
+  if (internal_range (th->group, mem, size)) mem = 0;
 
-static void
-load_atomic_load (struct thread *th, uint64_t *ver)
-{
-  struct eri_atomic_load_record rec;
-  eri_assert_fread (th->file, &rec, sizeof rec, 0);
-  eri_assert (rec.magic == ERI_ATOMIC_LOAD_MAGIC);
-  ver[0] = rec.ver[0];
-  ver[1] = rec.ver[1];
-  th->ctx->ext.atomic.val = rec.val;
+  (read_only ? do_atomic_read_user
+	     : do_atomic_read_write_user) (th->ctx, mem, size);
 }
 
 static void
@@ -367,24 +366,22 @@ atomic (struct thread *th)
     }
   else
     {
-      uint64_t ver[2];
-      switch (th_ctx->ext.op.code)
-	{
-	case _ERS_OP_ATOMIC_STORE:
-	case _ERS_OP_ATOMIC_INC:
-	case _ERS_OP_ATOMIC_DEC:
-	  load_atomic (th, ver);
-	  break;
-	case _ERS_OP_ATOMIC_LOAD:
-	case _ERS_OP_ATOMIC_XCHG:
-	case _ERS_OP_ATOMIC_CMPXCHG:
-	  load_atomic_load (th, ver);
-	default: eri_assert (0);
-	}
-      /* TODO */
+      uint16_t code = th_ctx->ext.op.code;
+      uint8_t size = th_ctx->ext.op.args;
+      uint64_t mem = th_ctx->ext.atomic.mem;
+      atomic_read_write_user (th, mem, size, code == _ERS_OP_ATOMIC_LOAD);
 
-      if (th_ctx->ext.op.code == _ERS_OP_ATOMIC_LOAD
-	  || th_ctx->ext.op.code == _ERS_OP_ATOMIC_XCHG)
+      struct eri_atomic_record rec;
+      eri_assert_fread (th->file, &rec, sizeof rec, 0);
+      eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
+
+      // LOAD STORE INC DEC XCHG CMPXCHG
+
+      /* TODO */
+      if (code == _ERS_OP_ATOMIC_LOAD || code == _ERS_OP_ATOMIC_XCHG)
+	th->ctx->ext.atomic.val = rec.val;
+
+      if (code == _ERS_OP_ATOMIC_LOAD || code == _ERS_OP_ATOMIC_XCHG)
 	th_ctx->atomic_ext_return = 1;
       else
 	th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;

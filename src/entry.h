@@ -203,6 +203,15 @@ ERI_PASTE2 (.L, prefix, _extra_restore):				\
   ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)		\
 ERI_PASTE2 (.L, prefix, _no_extra_restore):
 
+#define ERI_ENTRY_ATOMIC_FOREACH_SIZE3(p, ...) \
+  p (b, ##__VA_ARGS__)							\
+  p (w, ##__VA_ARGS__)							\
+  p (l, ##__VA_ARGS__)
+
+#define ERI_ENTRY_ATOMIC_FOREACH_SIZE(p, ...) \
+  ERI_ENTRY_ATOMIC_FOREACH_SIZE3 (p, ##__VA_ARGS__)			\
+  p (q, ##__VA_ARGS__)
+
 #ifndef __ASSEMBLER__
 
 #define eri_entry_thread_entry_text_size(name) \

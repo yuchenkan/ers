@@ -1,5 +1,6 @@
 #include <public.h>
 #include <common.h>
+#include <entry.h>
 
 #include <lib/util.h>
 #include <lib/registers.h>
@@ -16,7 +17,7 @@ TST_LIVE_ENTRY_ATOMIC_ASM (OP (src, dst, sz),				\
 	ERS_ATOMIC_STORE (0, sz, %ERI_PASTE (ERI_, csrc) (sz), (%dst)))
 
 #define ASM(csrc, src, cdst, dst) \
-TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, csrc, src, dst)
+ERI_ENTRY_ATOMIC_FOREACH_SIZE (ASM_SIZE, csrc, src, dst)
 
 TST_FOREACH_GENERAL_REG2 (ASM)
 
@@ -30,7 +31,7 @@ TST_LIVE_ENTRY_ATOMIC_ASM (OP (imm, dst, sz),				\
 	ERS_ATOMIC_STORE (0, sz, ERI_PASTE (IMM_, sz), (%dst)))
 
 #define ASM_IMM(cdst, dst) \
-TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE3 (ASM_IMM_SIZE, dst)
+ERI_ENTRY_ATOMIC_FOREACH_SIZE3 (ASM_IMM_SIZE, dst)
 
 TST_FOREACH_GENERAL_REG (ASM_IMM)
 
@@ -47,10 +48,10 @@ static struct tst_live_entry_atomic_case cases[] = {
   TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (imm, dst, sz), dst, INFO),
 
 #define CASE(csrc, src, cdst, dst) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, src, dst)
+  ERI_ENTRY_ATOMIC_FOREACH_SIZE (CASE_SIZE, src, dst)
 
 #define CASE_IMM(cdst, dst) \
-  TST_LIVE_ENTRY_ATOMIC_FOREACH_SIZE3 (CASE_IMM_SIZE, dst)
+  ERI_ENTRY_ATOMIC_FOREACH_SIZE3 (CASE_IMM_SIZE, dst)
 
   TST_FOREACH_GENERAL_REG2 (CASE)
   TST_FOREACH_GENERAL_REG (CASE_IMM)

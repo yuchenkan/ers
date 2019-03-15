@@ -304,21 +304,18 @@ ATOMIC_ACCESS_END_LABEL (sz, cmpxchg):					\
 
 #define IF_ATOMIC_SIZE(sz, name) \
   cmpb	$_ERS_ATOMIC_SIZE (sz), %r11b;					\
-  je	ATOMIC_SIZE_LABEL (sz, name)
+  je	ATOMIC_SIZE_LABEL (sz, name);
 
- #define ATOMIC_OP(cname) \
-  PASTE (ATOMIC_, cname) (b);						\
-  PASTE (ATOMIC_, cname) (w);						\
-  PASTE (ATOMIC_, cname) (l);						\
-  PASTE (ATOMIC_, cname) (q)
+#define ATOMIC_OP_SIZE(sz, op)		op (sz);
+
+#define ATOMIC_OP(cname) \
+  ERI_ENTRY_ATOMIC_FOREACH_SIZE (ATOMIC_OP_SIZE,			\
+				 PASTE (ATOMIC_, cname))
 
 #define ATOMIC(cname, name) \
 ATOMIC_LABEL (name):							\
   movb	TCE (OP_ARGS)(%rbx), %r11b;					\
-  IF_ATOMIC_SIZE (b, name);						\
-  IF_ATOMIC_SIZE (w, name);						\
-  IF_ATOMIC_SIZE (l, name);						\
-  IF_ATOMIC_SIZE (q, name);						\
+  ERI_ENTRY_ATOMIC_FOREACH_SIZE (IF_ATOMIC_SIZE, name)			\
   ERROR (ATOMIC_SIZE);							\
 									\
   ATOMIC_OP (cname)

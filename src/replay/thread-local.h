@@ -19,6 +19,7 @@ struct thread_context
   uint8_t sync_async_trace;
   uint64_t sync_async_trace_steps;
 
+  uint64_t atomic_access_fault;
   uint8_t atomic_ext_return;
 
   struct thread *th;
@@ -28,6 +29,11 @@ struct thread_context
 
 eri_noreturn main (struct thread_context *th_ctx);
 void entry (void);
+
+void do_atomic_read_user (struct thread_context *th_ctx,
+			  uint64_t mem, uint8_t size);
+void do_atomic_read_write_user (struct thread_context *th_ctx,
+				uint64_t mem, uint8_t size);
 
 void start_main (struct thread *th);
 uint64_t relax (struct thread *th);

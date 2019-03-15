@@ -154,13 +154,9 @@ internal (struct thread_group *group, uint64_t addr)
 }
 
 static uint8_t
-internal_range (struct thread_group *group, uint64_t start, uint64_t size)
+internal_range (struct thread_group *group, uint64_t addr, uint64_t size)
 {
-  uint64_t map_start = group->map_start;
-  uint64_t map_end = group->map_end;
-  uint64_t end = start + size;
-
-  return end > map_start && start < map_end;
+  return addr + size > group->map_start && addr < group->map_end;
 }
 
 static uint8_t
