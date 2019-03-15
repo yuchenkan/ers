@@ -897,7 +897,7 @@ clear_tid (void *args)
        "1:" : "=m" (*clear_tid), "+r" (fault));
   if (! fault)
     {
-      struct atomic_pair ver = unlock_atomic (group, &idx, 0);
+      struct atomic_pair ver = unlock_atomic (group, &idx, 1);
       eri_live_thread_recorder__rec_atomic (th->rec, &ver.first);
       eri_syscall (futex, clear_tid, ERI_FUTEX_WAKE, 1);
     }
@@ -2154,12 +2154,23 @@ void
 complete_atomic (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  struct atomic_pair ver = unlock_atomic (th->group, &th_ctx->atomic.idx, 1);
+  uint16_t code = th_ctx->ext.op.code;
+  uint8_t update;
+  if (code == _ERS_OP_ATOMIC_STORE) update = 1;
+  else if (code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC) update = 1;
+  else if (code == _ERS_OP_ATOMIC_LOAD) update = 0;
+  else if (code == _ERS_OP_ATOMIC_XCHG) update = 1;
+  else if (code == _ERS_OP_ATOMIC_CMPXCHG) update = 1;
+  else eri_assert_unreachable ();
+
+  struct atomic_pair ver
+	= unlock_atomic (th->group, &th_ctx->atomic.idx, update);
   eri_atomic_store (&th_ctx->atomic.access_end, 0);
 
   struct eri_live_thread_recorder *rec = th->rec;
+  /* XXX: cmpxchg16b */
   uint64_t val = th_ctx->ext.atomic.val;
-  switch (th_ctx->ext.op.code)
+  switch (code)
     {
     case _ERS_OP_ATOMIC_STORE:
     case _ERS_OP_ATOMIC_INC:
@@ -2171,7 +2182,6 @@ complete_atomic (struct eri_live_thread *th)
     case _ERS_OP_ATOMIC_CMPXCHG:
       eri_live_thread_recorder__rec_atomic_load (rec, &ver.first, val);
       break;
-    default: eri_assert (0);
     }
 }
 

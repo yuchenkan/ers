@@ -37,7 +37,13 @@ struct eri_packed eri_init_map_record
   struct eri_init_map_data_record data[0];
 };
 
-#define ERI_SYNC_ASYNC_MAGIC	0
+enum
+{
+  ERI_SYNC_ASYNC_MAGIC,
+
+  ERI_ATOMIC_MAGIC,
+  ERI_ATOMIC_LOAD_MAGIC
+};
 
 struct eri_packed eri_sync_async_record
 {
@@ -45,33 +51,45 @@ struct eri_packed eri_sync_async_record
   uint64_t steps;
 };
 
-#define ERI_INIT_RECORD		0
-#define ERI_INIT_MAP_RECORD	1
-#define ERI_SYNC_RECORD		2
-#define ERI_ASYNC_RECORD	3
-
-struct eri_packed eri_marked_init_record
+struct eri_packed eri_atomic_record
 {
-  uint8_t mark;
-  struct eri_init_record rec;
+  uint8_t magic;
+  uint64_t ver[2];
 };
 
-struct eri_packed eri_marked_init_map_record
+struct eri_packed eri_atomic_load_record
 {
-  uint8_t mark;
-  struct eri_init_map_record rec;
+  uint8_t magic;
+  uint64_t ver[2];
+  uint64_t val;
 };
 
-struct eri_packed eri_marked_sync_async_record
+enum
 {
-  uint8_t mark;
-  struct eri_sync_async_record rec;
+  ERI_INIT_RECORD,
+  ERI_INIT_MAP_RECORD,
+  ERI_SYNC_RECORD,
+  ERI_ASYNC_RECORD
 };
+
+#define _ERI_DEFINE_MARKED_RECORD(t) \
+struct eri_packed ERI_PASTE2 (eri_marked_, t, _record)			\
+{									\
+  uint8_t mark;								\
+  struct ERI_PASTE2 (eri_, t, _record) rec;				\
+}
+
+_ERI_DEFINE_MARKED_RECORD (init);
+_ERI_DEFINE_MARKED_RECORD (init_map);
 
 struct eri_packed eri_marked_signal_record
 {
   uint8_t mark;
   struct eri_siginfo info;
 };
+
+_ERI_DEFINE_MARKED_RECORD (sync_async);
+_ERI_DEFINE_MARKED_RECORD (atomic);
+_ERI_DEFINE_MARKED_RECORD (atomic_load);
 
 #endif

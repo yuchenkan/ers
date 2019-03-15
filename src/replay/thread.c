@@ -334,6 +334,27 @@ sync_async (struct thread *th)
 }
 
 static void
+load_atomic (struct thread *th, uint64_t *ver)
+{
+  struct eri_atomic_record rec;
+  eri_assert_fread (th->file, &rec, sizeof rec, 0);
+  eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
+  ver[0] = rec.ver[0];
+  ver[1] = rec.ver[1];
+}
+
+static void
+load_atomic_load (struct thread *th, uint64_t *ver)
+{
+  struct eri_atomic_load_record rec;
+  eri_assert_fread (th->file, &rec, sizeof rec, 0);
+  eri_assert (rec.magic == ERI_ATOMIC_LOAD_MAGIC);
+  ver[0] = rec.ver[0];
+  ver[1] = rec.ver[1];
+  th->ctx->ext.atomic.val = rec.val;
+}
+
+static void
 atomic (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -346,7 +367,22 @@ atomic (struct thread *th)
     }
   else
     {
+      uint64_t ver[2];
+      switch (th_ctx->ext.op.code)
+	{
+	case _ERS_OP_ATOMIC_STORE:
+	case _ERS_OP_ATOMIC_INC:
+	case _ERS_OP_ATOMIC_DEC:
+	  load_atomic (th, ver);
+	  break;
+	case _ERS_OP_ATOMIC_LOAD:
+	case _ERS_OP_ATOMIC_XCHG:
+	case _ERS_OP_ATOMIC_CMPXCHG:
+	  load_atomic_load (th, ver);
+	default: eri_assert (0);
+	}
       /* TODO */
+
       if (th_ctx->ext.op.code == _ERS_OP_ATOMIC_LOAD
 	  || th_ctx->ext.op.code == _ERS_OP_ATOMIC_XCHG)
 	th_ctx->atomic_ext_return = 1;

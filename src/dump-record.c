@@ -57,6 +57,19 @@ main (int32_t argc, const char **argv)
 	    assert (fread (&steps, sizeof steps, 1, f) == 1);
 	    printf ("  sync_async.steps: %lu\n", steps);
 	  }
+	else if (magic == ERI_ATOMIC_MAGIC)
+	  {
+	    uint64_t v[2];
+	    assert (fread (v, sizeof v, 1, f) == 1);
+	    printf ("  atomic.ver: %lu %lu\n", v[0], v[1]);
+	  }
+	else if (magic == ERI_ATOMIC_LOAD_MAGIC)
+	  {
+	    uint64_t v[3];
+	    assert (fread (v, sizeof v, 1, f) == 1);
+	    printf ("  atomic_load.ver: %lu %lu\n", v[0], v[1]);
+	    printf ("  atomic_load.val: 0x%lx\n", v[2]);
+	  }
 	/* TODO */
       }
     else if (mark == ERI_ASYNC_RECORD)
