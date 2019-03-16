@@ -147,35 +147,7 @@ sig_fd_try_lock (struct thread_group *group, int32_t fd)
   return sig_fd;
 }
 
-static uint8_t
-internal (struct thread_group *group, uint64_t addr)
-{
-  return addr >= group->map_start && addr < group->map_end;
-}
-
-static uint8_t
-internal_range (struct thread_group *group, uint64_t addr, uint64_t size)
-{
-  return addr + size > group->map_start && addr < group->map_end;
-}
-
-static uint8_t
-copy_from_user (struct eri_live_thread *th,
-		void *dst, const void *src, uint64_t size)
-{
-  if (! src) return 0;
-  if (internal_range (th->group, (uint64_t) src, size)) return 0;
-  return do_copy_from_user (th->ctx, dst, src, size);
-}
-
-static uint8_t
-copy_to_user (struct eri_live_thread *th,
-	      void *dst, const void *src, uint64_t size)
-{
-  if (! dst) return 0;
-  if (internal_range (th->group, (uint64_t) dst, size)) return 0;
-  return do_copy_to_user (th->ctx, dst, src, size);
-}
+ERI_DEFINE_THREAD_UTILS (struct eri_live_thread)
 
 static uint8_t
 user_on_sig_stack (struct eri_live_thread *th, uint64_t rsp)
@@ -528,7 +500,7 @@ sig_action (struct eri_live_thread *th)
 
   if (! SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
     {
-      /* XXX: swallow or not */
+      /* XXX: swallow? */
       th_ctx->swallow_single_step = 0;
 
       if (! sig_setup_user_frame (th, frame)) goto core;
@@ -960,7 +932,8 @@ eri_live_thread__join (struct eri_live_thread *th)
 
 #define DEFINE_SYSCALL(name) \
 static uint32_t								\
-ERI_PASTE (syscall_, name) (struct eri_live_thread *th)
+ERI_PASTE (syscall_, name) (struct eri_live_thread *th,			\
+	struct eri_live_thread_recorder__rec_syscall_ex_args *rec_args)
 
 #define SYSCALL_TO_IMPL(name) \
   DEFINE_SYSCALL (name) { SYSCALL_RETURN_DONE (th->ctx, ERI_ENOSYS); }
@@ -1022,8 +995,8 @@ DEFINE_SYSCALL (clone)
   struct thread_context *th_ctx = th->ctx;
 
   int32_t flags = th_ctx->ctx.sregs.rdi;
-  int32_t *ptid = (void *) th_ctx->ctx.sregs.rdx;
-  int32_t *ctid = (void *) th_ctx->ctx.sregs.r10;
+  int32_t *user_ptid = (void *) th_ctx->ctx.sregs.rdx;
+  int32_t *user_ctid = (void *) th_ctx->ctx.sregs.r10;
   /* XXX: support more */
   eri_assert (flags == ERI_CLONE_SUPPORTED_FLAGS);
 
@@ -1036,9 +1009,10 @@ DEFINE_SYSCALL (clone)
   if (! eri_syscall_is_error (args.result))
     {
       if (flags & ERI_CLONE_PARENT_SETTID)
-	copy_to_user (th, ptid, &args.tid, sizeof args.tid);
+	copy_to_user (th, user_ptid, &args.tid, sizeof *user_ptid);
       if (flags & ERI_CLONE_CHILD_SETTID)
-	copy_to_user (th, ctid, &args.tid, sizeof args.tid);
+	copy_to_user (th, user_ctid, &args.tid, sizeof *user_ctid);
+      rec_args->clone_id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
 
       SYSCALL_RETURN_DONE (th_ctx, args.tid);
@@ -1990,10 +1964,11 @@ syscall (struct eri_live_thread *th)
   struct thread_context *th_ctx = th->ctx;
 
   int32_t nr = th_ctx->ctx.sregs.rax;
+  struct eri_live_thread_recorder__rec_syscall_ex_args rec_args;
 
 #define SYSCALL(name) \
   do {									\
-    switch (ERI_PASTE (syscall_, name) (th))				\
+    switch (ERI_PASTE (syscall_, name) (th, &rec_args))			\
       {									\
       case SYSCALL_DONE: goto done;					\
       case SYSCALL_SIG_WAIT_RESTART: goto sig_wait_restart;		\
@@ -2016,7 +1991,7 @@ seg_fault:
   sig_frame->info.code = ERI_SI_KERNEL;
   sig_frame->info.kill.pid = 0;
   sig_frame->info.kill.uid = 0;
-  /* XXX: signal is masked in sigreturn */
+  /* XXX: signal is masked (in sigreturn), ucontext? */
   eri_assert (eri_live_thread__sig_digest_act (th, &sig_frame->info,
 					       &th_ctx->sig_act));
   sig_set_frame (th_ctx, sig_frame);
@@ -2038,7 +2013,7 @@ done:
   struct eri_live_thread_recorder__rec_syscall_args args = {
     th_ctx->ctx.sregs.rax, th_ctx->ctx.sregs.rdi, th_ctx->ctx.sregs.rsi,
     th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10, th_ctx->ctx.sregs.r8,
-    th_ctx->ctx.sregs.r9
+    th_ctx->ctx.sregs.r9, &rec_args
   };
   eri_live_thread_recorder__rec_syscall (th->rec, &args);
 

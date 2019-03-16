@@ -203,6 +203,56 @@ ERI_PASTE2 (.L, prefix, _extra_restore):				\
   ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)		\
 ERI_PASTE2 (.L, prefix, _no_extra_restore):
 
+#define _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS(op, access, fault) \
+  ERI_MOV_LM (ERI_PASTE2 (.ldo_copy_, op, _user), access(%rdi), %rax);	\
+  ERI_MOV_LM (ERI_PASTE2 (.ldo_copy_, op, _user_fault), fault(%rdi), %rax)
+
+#define _ERI_ENTRY_DEFINE_COPY_USER_RETURN(res, access) \
+  movq	$0, access(%rdi);						\
+  movb	$res, %al;							\
+  ret
+
+#define ERI_ENTRY_DEFINE_COPY_USER(access, fault) \
+ERI_FUNCTION (do_copy_from_user)					\
+  .cfi_startproc;							\
+									\
+  _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS (load, access, fault);		\
+.ldo_copy_load:								\
+.ldo_copy_load_user:							\
+  movb	(%rdx), %al;							\
+  movb	%al, (%rsi);							\
+  incq	%rdx;								\
+  incq	%rsi;								\
+  loop	.ldo_copy_load;							\
+									\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (1, access);			\
+									\
+.ldo_copy_load_user_fault:						\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (0, access);			\
+									\
+  .cfi_endproc;								\
+  ERI_END_FUNCTION (do_copy_from_user);					\
+									\
+ERI_FUNCTION (do_copy_to_user)						\
+  .cfi_startproc;							\
+									\
+  _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS (store, access, fault);	\
+.ldo_copy_store:							\
+  movb	(%rdx), %al;							\
+.ldo_copy_store_user:							\
+  movb	%al, (%rsi);							\
+  incq	%rdx;								\
+  incq	%rsi;								\
+  loop	.ldo_copy_store;						\
+									\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (1, access);			\
+									\
+.ldo_copy_store_user_fault:						\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (0, access);			\
+									\
+  .cfi_endproc;								\
+  ERI_END_FUNCTION (do_copy_to_user)
+
 #ifndef __ASSEMBLER__
 
 #define eri_entry_thread_entry_text_size(name) \

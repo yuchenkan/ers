@@ -41,9 +41,16 @@ struct eri_packed eri_init_map_record
 
 enum
 {
+  ERI_SYSCALL_CLONE_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
-
   ERI_ATOMIC_MAGIC
+};
+
+struct eri_packed eri_syscall_clone_record
+{
+  uint8_t magic;
+  uint64_t result;
+  uint64_t id;
 };
 
 struct eri_packed eri_sync_async_record
@@ -84,6 +91,7 @@ struct eri_packed eri_marked_signal_record
   struct eri_siginfo info;
 };
 
+_ERI_DEFINE_MARKED_RECORD (syscall_clone);
 _ERI_DEFINE_MARKED_RECORD (sync_async);
 _ERI_DEFINE_MARKED_RECORD (atomic);
 

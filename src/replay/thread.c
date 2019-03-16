@@ -61,22 +61,16 @@ struct thread
   uint8_t *file_buf;
 
   int32_t tid;
+  int32_t alive;
+
+  struct eri_sigset sig_mask;
+  struct eri_stack sig_alt_stack;
 
   eri_aligned16 uint8_t sig_stack[THREAD_SIG_STACK_SIZE];
   eri_aligned16 uint8_t stack[0];
 };
 
-static uint8_t
-internal (struct thread_group *group, uint64_t addr)
-{
-  return addr >= group->map_start && addr < group->map_end;
-}
-
-static uint8_t
-internal_range (struct thread_group *group, uint64_t addr, uint64_t size)
-{
-  return addr + size > group->map_start && addr < group->map_end;
-}
+ERI_DEFINE_THREAD_UTILS (struct thread)
 
 static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
 				struct eri_ucontext *ctx, uint8_t next_async);
@@ -234,6 +228,7 @@ create (struct thread_group *group, uint64_t id)
   th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
   eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
 
+  th->alive = 1;
   *(void **) th->sig_stack = th;
   return th;
 }
@@ -347,8 +342,62 @@ ERI_PASTE (syscall_, name) (struct thread *th)
 
 #define SYSCALL_TO_IMPL(name)	DEFINE_SYSCALL (name) { }
 
+DEFINE_SYSCALL (clone)
+{
+  struct eri_syscall_clone_record rec;
+  eri_assert_fread (th->file, &rec, sizeof rec, 0);
+  eri_assert (rec.magic == ERI_SYSCALL_CLONE_MAGIC);
+
+  struct thread_context *th_ctx = th->ctx;
+
+  th_ctx->sregs.rax = rec.result;
+  if (eri_syscall_is_error (th_ctx->sregs.rax)) return;
+
+  int32_t flags = th_ctx->ctx.sregs.rdi;
+  int32_t *user_ptid = (void *) th_ctx->ctx.sregs.rdx;
+  int32_t *user_ctid = (void *) th_ctx->ctx.sregs.r10;
+  if (flags & ERI_CLONE_PARENT_SETTID)
+    copy_to_user (th, user_ptid, &th_ctx->sregs.rax, sizeof *user_ptid);
+  if (flags & ERI_CLONE_CHILD_SETTID)
+    copy_to_user (th, user_ctid, &th_ctx->sregs.rax, sizeof *user_ctid);
+
+  struct thread *cth = create (th->group, rec.id);
+  struct thread_context *cth_ctx = ctx->ctx;
+  cth_ctx->ext.op = th_ctx->ext.op;
+  cth_ctx->ext.rbx = th_ctx->ext.rbx;
+  cth_ctx->ext.ret = th_ctx->ext.ret;
+  cth_ctx->ctx.rsp = th_ctx->ctx.sregs.rsi;
+  cth_ctx->ctx.sregs = th_ctx->ctx.sregs;
+  cth_ctx->ctx.sregs.rax = 0;
+  cth_ctx->eregs = th_ctx->eregs;
+
+  *(uint64_t *) (cth_ctx->ctx.top - 8) = *(uint64_t *) (th_ctx->ctx.top - 8);
+
+  cth->sig_mask = th->sig_mask;
+  cth->sig_alt_stack = th->sig_alt_stack;
+
+  struct eri_sigset mask;
+  eri_sig_fill_set (&mask);
+  eri_assert_sys_sigprocmask (&mask, 0);
+
+  void *new_tls = (void *) th_ctx->ctx.sregs.r8;
+  struct eri_sys_clone_args args = {
+    ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
+    | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD
+    | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID
+    | (new_tls ? ERI_CLONE_SETTLS : 0),
+
+    (void *) (cth_ctx->ctx.top - 8),
+    &cth->tid, &cth->alive, new_tls, start, cth
+  };
+
+  eri_assert_sys_clone (&args);
+
+  eri_sig_empty_set (&mask);
+  eri_assert_sys_sigprocmask (&mask, 0);
+}
+
 /* TODO */
-SYSCALL_TO_IMPL (clone)
 SYSCALL_TO_IMPL (unshare)
 SYSCALL_TO_IMPL (kcmp)
 SYSCALL_TO_IMPL (fork)
@@ -756,10 +805,11 @@ syscall (struct thread *th)
 
   int32_t nr = th_ctx->ctx.sregs.rax;
 
+  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
+
   th_ctx->ctx.sregs.rax = ERI_ENOSYS;
   th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
   th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
-  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
 
 #define SYSCALL(name)	ERI_PASTE (syscall_, name) (th)
   ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)

@@ -333,63 +333,10 @@ ATOMIC_LABEL (name):							\
   ERI_END_FUNCTION (entry)
 
 /************************************************/
-/* do_copy_from_user				*/
+/* do_copy_user					*/
 /************************************************/
 
-#define COPY_SET_ACCESS(op) \
-  ERI_MOV_LM (PASTE2 (.lcopy_, op, _user),				\
-	      TC (ACCESS)(%rdi), %rax);					\
-  ERI_MOV_LM (PASTE2 (.lcopy_, op, _user_fault),			\
-	      TC (ACCESS_FAULT)(%rdi), %rax)
-
-#define COPY_RETURN(res) \
-  movq	$0, TC (ACCESS)(%rdi);						\
-  movb	$res, %al;							\
-  ret
-
-ERI_FUNCTION (do_copy_from_user)
-  .cfi_startproc
-
-  COPY_SET_ACCESS (load)
-.lcopy_load:
-.lcopy_load_user:
-  movb	(%rdx), %al
-  movb	%al, (%rsi)
-  incq	%rdx
-  incq	%rsi
-  loop	.lcopy_load
-
-  COPY_RETURN (1)
-
-.lcopy_load_user_fault:
-  COPY_RETURN (0)
-
-  .cfi_endproc
-  ERI_END_FUNCTION (do_copy_from_user)
-
-/************************************************/
-/* do_copy_to_user				*/
-/************************************************/
-
-ERI_FUNCTION (do_copy_to_user)
-  .cfi_startproc
-
-  COPY_SET_ACCESS (save)
-.lcopy_save:
-  movb	(%rdx), %al
-.lcopy_save_user:
-  movb	%al, (%rsi)
-  incq	%rdx
-  incq	%rsi
-  loop	.lcopy_save
-
-  COPY_RETURN (1)
-
-.lcopy_save_user_fault:
-  COPY_RETURN (0)
-
-  .cfi_endproc
-  ERI_END_FUNCTION (do_copy_to_user)
+ERI_ENTRY_DEFINE_COPY_USER (TC (ACCESS), TC (ACCESS_FAULT))
 
 /************************************************/
 /* sig_to					*/
