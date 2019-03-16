@@ -80,7 +80,6 @@ eri_noreturn void
 tst_main (void)
 {
   tst_live_sig_hand_init_mtpool (&sig_th.pool);
-  sig_th.args.stack_size = 8 * 1024 * 1024;
 
   sig_th.pid = eri_assert_syscall (getpid);
   sig_th.tid = eri_assert_syscall (gettid);

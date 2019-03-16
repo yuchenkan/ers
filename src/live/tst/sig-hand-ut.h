@@ -12,7 +12,6 @@ struct eri_live_thread;
 struct eri_live_signal_thread
 {
   struct eri_mtpool pool;
-  struct eri_common_args args;
 
   struct eri_sigset mask;
 

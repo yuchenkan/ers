@@ -22,8 +22,6 @@ struct signal_thread_group
 {
   struct eri_mtpool *pool;
 
-  struct eri_common_args args;
-
   int32_t pid;
 
   struct eri_sig_act sig_acts[ERI_NSIG - 1];
@@ -151,31 +149,11 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 static struct signal_thread_group *
 init_group_memory (struct eri_live_rtld_args *rtld_args)
 {
-  const char *path = "ers-data";
-  uint64_t stack_size = 2 * 1024 * 1024;
-  uint64_t file_buf_size = 64 * 1024;
-
-  if (rtld_args->envp)
-    {
-      char **p;
-      for (p = rtld_args->envp; *p; ++p)
-	(void) (eri_get_arg_str (*p, "ERS_DATA=", (void *) &path)
-	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
-	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
-	|| eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10));
-    }
-
   struct eri_mtpool *pool = eri_init_mtpool_from_buf (
 				rtld_args->buf, rtld_args->buf_size, 1);
   struct signal_thread_group *group
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
-
-  group->args.path = path;
-
-  group->args.stack_size = stack_size;
-  group->args.file_buf_size = file_buf_size;
-
   return group;
 }
 
@@ -246,6 +224,13 @@ init_main (struct signal_thread_group *group,
 struct eri_live_signal_thread *
 init_group (struct eri_live_rtld_args *rtld_args)
 {
+  if (rtld_args->envp)
+    {
+      char **p;
+      for (p = rtld_args->envp; *p; ++p)
+	eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10);
+    }
+
   struct signal_thread_group *group = init_group_memory (rtld_args);
 
   group->pid = eri_assert_syscall (getpid);
@@ -1033,12 +1018,6 @@ eri_live_signal_thread__signaled (
 			struct eri_live_signal_thread *sig_th)
 {
   return !! eri_atomic_load (&sig_th->sig_info);
-}
-
-const struct eri_common_args *
-eri_live_signal_thread__get_args (const struct eri_live_signal_thread *sig_th)
-{
-  return &sig_th->group->args;
 }
 
 struct eri_mtpool *

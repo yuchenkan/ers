@@ -6,15 +6,6 @@
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
 
-struct eri_common_args
-{
-  //const char *config;
-  const char *path;
-
-  uint64_t stack_size;
-  uint64_t file_buf_size;
-};
-
 #define eri_init_mtpool_from_buf(buf, size, exec) \
   ({									\
     uint8_t *_buf = (void *) buf;					\

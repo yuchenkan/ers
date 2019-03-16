@@ -27,6 +27,7 @@ main (int32_t argc, const char **argv)
 		init.rdx, init.rsp, init.rip);
 	printf ("  sig_mask: 0x%lx\n", init.sig_mask.val[0]);
 	printf ("  start: 0x%lx, end: 0x%lx\n", init.start, init.end);
+	printf ("  atomic_table_size: %lu\n", init.atomic_table_size);
       }
     else if (mark == ERI_INIT_MAP_RECORD)
       {

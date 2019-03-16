@@ -35,13 +35,6 @@ eri_live_signal_thread__sig_reset (
   eri_atomic_store (&sig_th->sig_reset, 1);
 }
 
-const struct eri_common_args *
-eri_live_signal_thread__get_args (
-		const struct eri_live_signal_thread *sig_th)
-{
-  return &sig_th->args;
-}
-
 struct eri_mtpool *
 eri_live_signal_thread__get_pool (
 		struct eri_live_signal_thread *sig_th)

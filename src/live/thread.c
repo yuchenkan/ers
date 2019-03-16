@@ -182,7 +182,7 @@ user_on_sig_stack (struct eri_live_thread *th, uint64_t rsp)
 {
   struct eri_stack *stack = &th->sig_alt_stack;
   return ! (stack->flags & ERI_SS_AUTODISARM)
-	 && rsp > stack->sp && rsp <= stack->sp + stack->size; 
+	 && rsp > stack->sp && rsp <= stack->sp + stack->size;
 }
 
 static void
@@ -197,11 +197,22 @@ static struct thread_group *
 create_group (struct eri_live_signal_thread *sig_th,
 	      struct eri_live_rtld_args *rtld_args)
 {
-  /* XXX: parameterize */
   uint64_t atomic_table_size =  2 * 1024 * 1024;
-  const struct eri_common_args *common_args
-			= eri_live_signal_thread__get_args (sig_th);
-  uint64_t stack_size = common_args->stack_size;
+
+  uint64_t stack_size = 2 * 1024 * 1024;
+  const char *path = "ers-data";
+  uint64_t file_buf_size = 64 * 1024;
+
+  if (rtld_args->envp)
+    {
+      char **p;
+      for (p = rtld_args->envp; *p; ++p)
+	(void) (eri_get_arg_int (*p, "ERS_ATOMIC_TABLE_SIZE=",
+				 &atomic_table_size, 10)
+	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
+	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path)
+	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+    }
 
   struct eri_mtpool *pool = eri_live_signal_thread__get_pool (sig_th);
   struct thread_group *group = eri_assert_mtmalloc (pool, sizeof *group);
@@ -220,8 +231,8 @@ create_group (struct eri_live_signal_thread *sig_th,
 
   group->th_id = 0;
   group->stack_size = stack_size;
-  group->path = common_args->path;
-  group->file_buf_size = common_args->file_buf_size;
+  group->path = path;
+  group->file_buf_size = file_buf_size;
 
   return group;
 }
@@ -354,7 +365,7 @@ start_main (struct eri_live_thread *th)
   struct eri_live_thread_recorder__rec_init_args args = {
     th_ctx->ctx.sregs.rdx, th_ctx->ctx.rsp, th_ctx->ext.ret,
     *eri_live_signal_thread__get_sig_mask (th->sig_th),
-    group->map_start, group->map_end
+    group->map_start, group->map_end, group->atomic_table_size
   };
   eri_live_thread_recorder__rec_init (th->rec, &args);
   start (th);

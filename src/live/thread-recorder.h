@@ -26,6 +26,8 @@ struct eri_live_thread_recorder__rec_init_args
 
   uint64_t start;
   uint64_t end;
+
+  uint64_t atomic_table_size;
 };
 
 void eri_live_thread_recorder__rec_init (

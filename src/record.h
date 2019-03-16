@@ -19,6 +19,8 @@ struct eri_packed eri_init_record
 
   uint64_t start;
   uint64_t end;
+
+  uint64_t atomic_table_size;
 };
 
 struct eri_packed eri_init_map_data_record
