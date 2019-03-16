@@ -345,14 +345,17 @@ static uint64_t
 syscall (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  uint64_t res = 0;
+
+  int32_t nr = th_ctx->ctx.sregs.rax;
+#define SYSCALL(name)	ERI_PASTE (syscall_, name) (th)
+  ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
   /* TODO */
 
   th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
   if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
 
   swallow_single_step (th_ctx);
-  return res;
+  return nr == __NR_rt_sigreturn;
 }
 
 static void
@@ -390,8 +393,6 @@ atomic_read_write_user (struct thread *th, uint64_t mem,
 static void
 do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
 {
-  if (ver == 0) return;
-
   uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
   struct atomic_table_slot *tab = group->atomic_table + idx;
 
@@ -460,7 +461,6 @@ atomic (struct thread *th)
       uint64_t ver[2] = { rec.ver[0], rec.ver[1] };
       uint64_t old_val = rec.val;
 
-      /* XXX: not necessary/right for pure write, but prevents ver holes */
       atomic_wait (th->group, mem, size, updated, ver);
 
       uint64_t val = th_ctx->ext.atomic.val;
@@ -511,11 +511,7 @@ uint64_t
 relax (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL)
-    return syscall (th);
-
-  if (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC) sync_async (th);
-  else atomic (th);
-
+  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL) return syscall (th);
+  (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC ? sync_async : atomic) (th);
   return 0;
 }

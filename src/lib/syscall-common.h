@@ -5,407 +5,407 @@
 
 #include <lib/util.h>
 
-#define ERI_SYSCALLS(p) \
-  p (clone)								\
-  p (unshare)								\
-  p (kcmp)								\
-  p (fork)								\
-  p (vfork)								\
-  p (setns)								\
-									\
-  p (set_tid_address)							\
-									\
-  p (exit)								\
-  p (exit_group)							\
-									\
-  p (wait4)								\
-  p (waitid)								\
-									\
-  p (execve)								\
-  p (execveat)								\
-  p (ptrace)								\
-  p (syslog)								\
-  p (seccomp)								\
-									\
-  p (uname)								\
-  p (sysinfo)								\
-  p (getcpu)								\
-  p (getrandom)								\
-									\
-  p (setuid)								\
-  p (getuid)								\
-  p (setgid)								\
-  p (getgid)								\
-  p (geteuid)								\
-  p (getegid)								\
-									\
-  p (gettid)								\
-  p (getpid)								\
-  p (getppid)								\
-  p (setreuid)								\
-  p (setregid)								\
-									\
-  p (setresuid)								\
-  p (getresuid)								\
-  p (setresgid)								\
-  p (getresgid)								\
-									\
-  p (setfsuid)								\
-  p (setfsgid)								\
-									\
-  p (setgroups)								\
-  p (getgroups)								\
-									\
-  p (setsid)								\
-  p (getsid)								\
-  p (setpgid)								\
-  p (getpgid)								\
-  p (getpgrp)								\
-									\
-  p (settimeofday)							\
-  p (gettimeofday)							\
-  p (time)								\
-  p (times)								\
-  p (adjtimex)								\
-									\
-  p (clock_settime)							\
-  p (clock_gettime)							\
-  p (clock_getres)							\
-  p (clock_nanosleep)							\
-  p (clock_adjtime)							\
-									\
-  p (nanosleep)								\
-									\
-  p (alarm)								\
-  p (setitimer)								\
-  p (getitimer)								\
-									\
-  p (timer_create)							\
-  p (timer_settime)							\
-  p (timer_gettime)							\
-  p (timer_getoverrun)							\
-  p (timer_delete)							\
-									\
-  p (setrlimit)								\
-  p (getrlimit)								\
-  p (prlimit64)								\
-  p (getrusage)								\
-									\
-  p (capset)								\
-  p (capget)								\
-									\
-  p (personality)							\
-  p (prctl)								\
-  p (arch_prctl)							\
-									\
-  p (quotactl)								\
-  p (acct)								\
-									\
-  p (setpriority)							\
-  p (getpriority)							\
-  p (sched_yield)							\
-  p (sched_setparam)							\
-  p (sched_getparam)							\
-  p (sched_setscheduler)						\
-  p (sched_getscheduler)						\
-  p (sched_get_priority_max)						\
-  p (sched_get_priority_min)						\
-  p (sched_rr_get_interval)						\
-  p (sched_setaffinity)							\
-  p (sched_getaffinity)							\
-  p (sched_setattr)							\
-  p (sched_getattr)							\
-									\
-  p (ioprio_set)							\
-  p (ioprio_get)							\
-									\
-  p (rt_sigprocmask)							\
-  p (rt_sigaction)							\
-  p (sigaltstack)							\
-  p (rt_sigreturn)							\
-  p (rt_sigpending)							\
-									\
-  p (pause)								\
-  p (rt_sigtimedwait)							\
-  p (rt_sigsuspend)							\
-									\
-  p (kill)								\
-  p (tkill)								\
-  p (tgkill)								\
-  p (rt_sigqueueinfo)							\
-  p (rt_tgsigqueueinfo)							\
-									\
-  p (restart_syscall)							\
-									\
-  p (socket)								\
-  p (connect)								\
-  p (accept)								\
-  p (accept4)								\
-  p (sendto)								\
-  p (recvfrom)								\
-  p (sendmsg)								\
-  p (sendmmsg)								\
-  p (recvmsg)								\
-  p (recvmmsg)								\
-  p (shutdown)								\
-  p (bind)								\
-  p (listen)								\
-  p (getsockname)							\
-  p (getpeername)							\
-  p (socketpair)							\
-  p (setsockopt)							\
-  p (getsockopt)							\
-									\
-  p (sethostname)							\
-  p (setdomainname)							\
-									\
-  p (bpf)								\
-									\
-  p (memfd_create)							\
-									\
-  p (timerfd_create)							\
-  p (timerfd_settime)							\
-  p (timerfd_gettime)							\
-									\
-  p (eventfd)								\
-  p (eventfd2)								\
-									\
-  p (signalfd)								\
-  p (signalfd4)								\
-  p (pipe)								\
-  p (pipe2)								\
-									\
-  p (inotify_init)							\
-  p (inotify_init1)							\
-  p (inotify_add_watch)							\
-  p (inotify_rm_watch)							\
-									\
-  p (fanotify_init)							\
-  p (fanotify_mark)							\
-									\
-  p (userfaultfd)							\
-  p (perf_event_open)							\
-									\
-  p (open)								\
-  p (openat)								\
-  p (creat)								\
-  p (close)								\
-									\
-  p (dup)								\
-  p (dup2)								\
-  p (dup3)								\
-									\
-  p (name_to_handle_at)							\
-  p (open_by_handle_at)							\
-									\
-  p (fcntl)								\
-  p (flock)								\
-  p (fadvise64)								\
-									\
-  p (truncate)								\
-  p (ftruncate)								\
-									\
-  p (select)								\
-  p (pselect6)								\
-  p (poll)								\
-  p (ppoll)								\
-									\
-  p (epoll_create)							\
-  p (epoll_create1)							\
-  p (epoll_wait)							\
-  p (epoll_pwait)							\
-  p (epoll_ctl)								\
-									\
-  p (read)								\
-  p (pread64)								\
-  p (readv)								\
-  p (preadv)								\
-  p (preadv2)								\
-  p (write)								\
-  p (pwrite64)								\
-  p (writev)								\
-  p (pwritev)								\
-  p (pwritev2)								\
-									\
-  p (fallocate)								\
-									\
-  p (fsync)								\
-  p (fdatasync)								\
-  p (sync_file_range)							\
-									\
-  p (readahead)								\
-  p (sendfile)								\
-  p (copy_file_range)							\
-  p (splice)								\
-  p (vmsplice)								\
-  p (tee)								\
-									\
-  p (io_setup)								\
-  p (io_destroy)							\
-  p (io_getevents)							\
-  p (io_submit)								\
-  p (io_cancel)								\
-									\
-  p (lseek)								\
-  p (ioctl)								\
-									\
-  p (stat)								\
-  p (fstat)								\
-  p (newfstatat)							\
-  p (lstat)								\
-  p (access)								\
-  p (faccessat)								\
-									\
-  p (setxattr)								\
-  p (fsetxattr)								\
-  p (lsetxattr)								\
-  p (getxattr)								\
-  p (fgetxattr)								\
-  p (lgetxattr)								\
-									\
-  p (listxattr)								\
-  p (flistxattr)							\
-  p (llistxattr)							\
-									\
-  p (removexattr)							\
-  p (fremovexattr)							\
-  p (lremovexattr)							\
-									\
-  p (getdents)								\
-  p (getdents64)							\
-									\
-  p (getcwd)								\
-  p (chdir)								\
-  p (fchdir)								\
-  p (rename)								\
-  p (renameat)								\
-  p (renameat2)								\
-  p (mkdir)								\
-  p (mkdirat)								\
-  p (rmdir)								\
-									\
-  p (link)								\
-  p (linkat)								\
-  p (unlink)								\
-  p (unlinkat)								\
-  p (symlink)								\
-  p (symlinkat)								\
-  p (readlink)								\
-  p (readlinkat)							\
-									\
-  p (mknod)								\
-  p (mknodat)								\
-									\
-  p (umask)								\
-									\
-  p (chmod)								\
-  p (fchmod)								\
-  p (fchmodat)								\
-									\
-  p (chown)								\
-  p (fchown)								\
-  p (fchownat)								\
-  p (lchown)								\
-									\
-  p (utime)								\
-  p (utimes)								\
-  p (futimesat)								\
-  p (utimensat)								\
-									\
-  p (ustat)								\
-  p (statfs)								\
-  p (fstatfs)								\
-									\
-  p (sysfs)								\
-  p (sync)								\
-  p (syncfs)								\
-									\
-  p (mount)								\
-  p (umount2)								\
-									\
-  p (chroot)								\
-  p (pivot_root)							\
-									\
-  p (mmap)								\
-  p (mprotect)								\
-  p (munmap)								\
-  p (mremap)								\
-  p (madvise)								\
-  p (brk)								\
-									\
-  p (msync)								\
-  p (mincore)								\
-  p (mlock)								\
-  p (mlock2)								\
-  p (mlockall)								\
-  p (munlock)								\
-  p (munlockall)							\
-									\
-  p (modify_ldt)							\
-  p (swapon)								\
-  p (swapoff)								\
-									\
-  p (futex)								\
-  p (set_robust_list)							\
-  p (get_robust_list)							\
-									\
-  p (pkey_mprotect)							\
-  p (pkey_alloc)							\
-  p (pkey_free)								\
-									\
-  p (membarrier)							\
-									\
-  p (mbind)								\
-  p (set_mempolicy)							\
-  p (get_mempolicy)							\
-  p (migrate_pages)							\
-  p (move_pages)							\
-									\
-  p (shmget)								\
-  p (shmat)								\
-  p (shmctl)								\
-  p (shmdt)								\
-									\
-  p (semget)								\
-  p (semop)								\
-  p (semtimedop)							\
-  p (semctl)								\
-									\
-  p (msgget)								\
-  p (msgsnd)								\
-  p (msgrcv)								\
-  p (msgctl)								\
-									\
-  p (mq_open)								\
-  p (mq_unlink)								\
-  p (mq_timedsend)							\
-  p (mq_timedreceive)							\
-  p (mq_notify)								\
-  p (mq_getsetattr)							\
-									\
-  p (add_key)								\
-  p (request_key)							\
-  p (keyctl)								\
-									\
-  p (vhangup)								\
-									\
-  p (reboot)								\
-  p (kexec_load)							\
-  p (kexec_file_load)							\
-									\
-  p (iopl)								\
-  p (ioperm)								\
-									\
-  p (init_module)							\
-  p (finit_module)							\
-  p (delete_module)							\
-									\
-  p (lookup_dcookie)							\
-									\
-  p (process_vm_readv)							\
-  p (process_vm_writev)							\
-									\
-  p (remap_file_pages) /* deprecated */
+#define ERI_SYSCALLS(p, ...) \
+  p (clone, ##__VA_ARGS__)						\
+  p (unshare, ##__VA_ARGS__)						\
+  p (kcmp, ##__VA_ARGS__)						\
+  p (fork, ##__VA_ARGS__)						\
+  p (vfork, ##__VA_ARGS__)						\
+  p (setns, ##__VA_ARGS__)						\
+									\
+  p (set_tid_address, ##__VA_ARGS__)					\
+									\
+  p (exit, ##__VA_ARGS__)						\
+  p (exit_group, ##__VA_ARGS__)						\
+									\
+  p (wait4, ##__VA_ARGS__)						\
+  p (waitid, ##__VA_ARGS__)						\
+									\
+  p (execve, ##__VA_ARGS__)						\
+  p (execveat, ##__VA_ARGS__)						\
+  p (ptrace, ##__VA_ARGS__)						\
+  p (syslog, ##__VA_ARGS__)						\
+  p (seccomp, ##__VA_ARGS__)						\
+									\
+  p (uname, ##__VA_ARGS__)						\
+  p (sysinfo, ##__VA_ARGS__)						\
+  p (getcpu, ##__VA_ARGS__)						\
+  p (getrandom, ##__VA_ARGS__)						\
+									\
+  p (setuid, ##__VA_ARGS__)						\
+  p (getuid, ##__VA_ARGS__)						\
+  p (setgid, ##__VA_ARGS__)						\
+  p (getgid, ##__VA_ARGS__)						\
+  p (geteuid, ##__VA_ARGS__)						\
+  p (getegid, ##__VA_ARGS__)						\
+									\
+  p (gettid, ##__VA_ARGS__)						\
+  p (getpid, ##__VA_ARGS__)						\
+  p (getppid, ##__VA_ARGS__)						\
+  p (setreuid, ##__VA_ARGS__)						\
+  p (setregid, ##__VA_ARGS__)						\
+									\
+  p (setresuid, ##__VA_ARGS__)						\
+  p (getresuid, ##__VA_ARGS__)						\
+  p (setresgid, ##__VA_ARGS__)						\
+  p (getresgid, ##__VA_ARGS__)						\
+									\
+  p (setfsuid, ##__VA_ARGS__)						\
+  p (setfsgid, ##__VA_ARGS__)						\
+									\
+  p (setgroups, ##__VA_ARGS__)						\
+  p (getgroups, ##__VA_ARGS__)						\
+									\
+  p (setsid, ##__VA_ARGS__)						\
+  p (getsid, ##__VA_ARGS__)						\
+  p (setpgid, ##__VA_ARGS__)						\
+  p (getpgid, ##__VA_ARGS__)						\
+  p (getpgrp, ##__VA_ARGS__)						\
+									\
+  p (settimeofday, ##__VA_ARGS__)					\
+  p (gettimeofday, ##__VA_ARGS__)					\
+  p (time, ##__VA_ARGS__)						\
+  p (times, ##__VA_ARGS__)						\
+  p (adjtimex, ##__VA_ARGS__)						\
+									\
+  p (clock_settime, ##__VA_ARGS__)					\
+  p (clock_gettime, ##__VA_ARGS__)					\
+  p (clock_getres, ##__VA_ARGS__)					\
+  p (clock_nanosleep, ##__VA_ARGS__)					\
+  p (clock_adjtime, ##__VA_ARGS__)					\
+									\
+  p (nanosleep, ##__VA_ARGS__)						\
+									\
+  p (alarm, ##__VA_ARGS__)						\
+  p (setitimer, ##__VA_ARGS__)						\
+  p (getitimer, ##__VA_ARGS__)						\
+									\
+  p (timer_create, ##__VA_ARGS__)					\
+  p (timer_settime, ##__VA_ARGS__)					\
+  p (timer_gettime, ##__VA_ARGS__)					\
+  p (timer_getoverrun, ##__VA_ARGS__)					\
+  p (timer_delete, ##__VA_ARGS__)					\
+									\
+  p (setrlimit, ##__VA_ARGS__)						\
+  p (getrlimit, ##__VA_ARGS__)						\
+  p (prlimit64, ##__VA_ARGS__)						\
+  p (getrusage, ##__VA_ARGS__)						\
+									\
+  p (capset, ##__VA_ARGS__)						\
+  p (capget, ##__VA_ARGS__)						\
+									\
+  p (personality, ##__VA_ARGS__)					\
+  p (prctl, ##__VA_ARGS__)						\
+  p (arch_prctl, ##__VA_ARGS__)						\
+									\
+  p (quotactl, ##__VA_ARGS__)						\
+  p (acct, ##__VA_ARGS__)						\
+									\
+  p (setpriority, ##__VA_ARGS__)					\
+  p (getpriority, ##__VA_ARGS__)					\
+  p (sched_yield, ##__VA_ARGS__)					\
+  p (sched_setparam, ##__VA_ARGS__)					\
+  p (sched_getparam, ##__VA_ARGS__)					\
+  p (sched_setscheduler, ##__VA_ARGS__)					\
+  p (sched_getscheduler, ##__VA_ARGS__)					\
+  p (sched_get_priority_max, ##__VA_ARGS__)				\
+  p (sched_get_priority_min, ##__VA_ARGS__)				\
+  p (sched_rr_get_interval, ##__VA_ARGS__)				\
+  p (sched_setaffinity, ##__VA_ARGS__)					\
+  p (sched_getaffinity, ##__VA_ARGS__)					\
+  p (sched_setattr, ##__VA_ARGS__)					\
+  p (sched_getattr, ##__VA_ARGS__)					\
+									\
+  p (ioprio_set, ##__VA_ARGS__)						\
+  p (ioprio_get, ##__VA_ARGS__)						\
+									\
+  p (rt_sigprocmask, ##__VA_ARGS__)					\
+  p (rt_sigaction, ##__VA_ARGS__)					\
+  p (sigaltstack, ##__VA_ARGS__)					\
+  p (rt_sigreturn, ##__VA_ARGS__)					\
+  p (rt_sigpending, ##__VA_ARGS__)					\
+									\
+  p (pause, ##__VA_ARGS__)						\
+  p (rt_sigtimedwait, ##__VA_ARGS__)					\
+  p (rt_sigsuspend, ##__VA_ARGS__)					\
+									\
+  p (kill, ##__VA_ARGS__)						\
+  p (tkill, ##__VA_ARGS__)						\
+  p (tgkill, ##__VA_ARGS__)						\
+  p (rt_sigqueueinfo, ##__VA_ARGS__)					\
+  p (rt_tgsigqueueinfo, ##__VA_ARGS__)					\
+									\
+  p (restart_syscall, ##__VA_ARGS__)					\
+									\
+  p (socket, ##__VA_ARGS__)						\
+  p (connect, ##__VA_ARGS__)						\
+  p (accept, ##__VA_ARGS__)						\
+  p (accept4, ##__VA_ARGS__)						\
+  p (sendto, ##__VA_ARGS__)						\
+  p (recvfrom, ##__VA_ARGS__)						\
+  p (sendmsg, ##__VA_ARGS__)						\
+  p (sendmmsg, ##__VA_ARGS__)						\
+  p (recvmsg, ##__VA_ARGS__)						\
+  p (recvmmsg, ##__VA_ARGS__)						\
+  p (shutdown, ##__VA_ARGS__)						\
+  p (bind, ##__VA_ARGS__)						\
+  p (listen, ##__VA_ARGS__)						\
+  p (getsockname, ##__VA_ARGS__)					\
+  p (getpeername, ##__VA_ARGS__)					\
+  p (socketpair, ##__VA_ARGS__)						\
+  p (setsockopt, ##__VA_ARGS__)						\
+  p (getsockopt, ##__VA_ARGS__)						\
+									\
+  p (sethostname, ##__VA_ARGS__)					\
+  p (setdomainname, ##__VA_ARGS__)					\
+									\
+  p (bpf, ##__VA_ARGS__)						\
+									\
+  p (memfd_create, ##__VA_ARGS__)					\
+									\
+  p (timerfd_create, ##__VA_ARGS__)					\
+  p (timerfd_settime, ##__VA_ARGS__)					\
+  p (timerfd_gettime, ##__VA_ARGS__)					\
+									\
+  p (eventfd, ##__VA_ARGS__)						\
+  p (eventfd2, ##__VA_ARGS__)						\
+									\
+  p (signalfd, ##__VA_ARGS__)						\
+  p (signalfd4, ##__VA_ARGS__)						\
+  p (pipe, ##__VA_ARGS__)						\
+  p (pipe2, ##__VA_ARGS__)						\
+									\
+  p (inotify_init, ##__VA_ARGS__)					\
+  p (inotify_init1, ##__VA_ARGS__)					\
+  p (inotify_add_watch, ##__VA_ARGS__)					\
+  p (inotify_rm_watch, ##__VA_ARGS__)					\
+									\
+  p (fanotify_init, ##__VA_ARGS__)					\
+  p (fanotify_mark, ##__VA_ARGS__)					\
+									\
+  p (userfaultfd, ##__VA_ARGS__)					\
+  p (perf_event_open, ##__VA_ARGS__)					\
+									\
+  p (open, ##__VA_ARGS__)						\
+  p (openat, ##__VA_ARGS__)						\
+  p (creat, ##__VA_ARGS__)						\
+  p (close, ##__VA_ARGS__)						\
+									\
+  p (dup, ##__VA_ARGS__)						\
+  p (dup2, ##__VA_ARGS__)						\
+  p (dup3, ##__VA_ARGS__)						\
+									\
+  p (name_to_handle_at, ##__VA_ARGS__)					\
+  p (open_by_handle_at, ##__VA_ARGS__)					\
+									\
+  p (fcntl, ##__VA_ARGS__)						\
+  p (flock, ##__VA_ARGS__)						\
+  p (fadvise64, ##__VA_ARGS__)						\
+									\
+  p (truncate, ##__VA_ARGS__)						\
+  p (ftruncate, ##__VA_ARGS__)						\
+									\
+  p (select, ##__VA_ARGS__)						\
+  p (pselect6, ##__VA_ARGS__)						\
+  p (poll, ##__VA_ARGS__)						\
+  p (ppoll, ##__VA_ARGS__)						\
+									\
+  p (epoll_create, ##__VA_ARGS__)					\
+  p (epoll_create1, ##__VA_ARGS__)					\
+  p (epoll_wait, ##__VA_ARGS__)						\
+  p (epoll_pwait, ##__VA_ARGS__)					\
+  p (epoll_ctl, ##__VA_ARGS__)						\
+									\
+  p (read, ##__VA_ARGS__)						\
+  p (pread64, ##__VA_ARGS__)						\
+  p (readv, ##__VA_ARGS__)						\
+  p (preadv, ##__VA_ARGS__)						\
+  p (preadv2, ##__VA_ARGS__)						\
+  p (write, ##__VA_ARGS__)						\
+  p (pwrite64, ##__VA_ARGS__)						\
+  p (writev, ##__VA_ARGS__)						\
+  p (pwritev, ##__VA_ARGS__)						\
+  p (pwritev2, ##__VA_ARGS__)						\
+									\
+  p (fallocate, ##__VA_ARGS__)						\
+									\
+  p (fsync, ##__VA_ARGS__)						\
+  p (fdatasync, ##__VA_ARGS__)						\
+  p (sync_file_range, ##__VA_ARGS__)					\
+									\
+  p (readahead, ##__VA_ARGS__)						\
+  p (sendfile, ##__VA_ARGS__)						\
+  p (copy_file_range, ##__VA_ARGS__)					\
+  p (splice, ##__VA_ARGS__)						\
+  p (vmsplice, ##__VA_ARGS__)						\
+  p (tee, ##__VA_ARGS__)						\
+									\
+  p (io_setup, ##__VA_ARGS__)						\
+  p (io_destroy, ##__VA_ARGS__)						\
+  p (io_getevents, ##__VA_ARGS__)					\
+  p (io_submit, ##__VA_ARGS__)						\
+  p (io_cancel, ##__VA_ARGS__)						\
+									\
+  p (lseek, ##__VA_ARGS__)						\
+  p (ioctl, ##__VA_ARGS__)						\
+									\
+  p (stat, ##__VA_ARGS__)						\
+  p (fstat, ##__VA_ARGS__)						\
+  p (newfstatat, ##__VA_ARGS__)						\
+  p (lstat, ##__VA_ARGS__)						\
+  p (access, ##__VA_ARGS__)						\
+  p (faccessat, ##__VA_ARGS__)						\
+									\
+  p (setxattr, ##__VA_ARGS__)						\
+  p (fsetxattr, ##__VA_ARGS__)						\
+  p (lsetxattr, ##__VA_ARGS__)						\
+  p (getxattr, ##__VA_ARGS__)						\
+  p (fgetxattr, ##__VA_ARGS__)						\
+  p (lgetxattr, ##__VA_ARGS__)						\
+									\
+  p (listxattr, ##__VA_ARGS__)						\
+  p (flistxattr, ##__VA_ARGS__)						\
+  p (llistxattr, ##__VA_ARGS__)						\
+									\
+  p (removexattr, ##__VA_ARGS__)					\
+  p (fremovexattr, ##__VA_ARGS__)					\
+  p (lremovexattr, ##__VA_ARGS__)					\
+									\
+  p (getdents, ##__VA_ARGS__)						\
+  p (getdents64, ##__VA_ARGS__)						\
+									\
+  p (getcwd, ##__VA_ARGS__)						\
+  p (chdir, ##__VA_ARGS__)						\
+  p (fchdir, ##__VA_ARGS__)						\
+  p (rename, ##__VA_ARGS__)						\
+  p (renameat, ##__VA_ARGS__)						\
+  p (renameat2, ##__VA_ARGS__)						\
+  p (mkdir, ##__VA_ARGS__)						\
+  p (mkdirat, ##__VA_ARGS__)						\
+  p (rmdir, ##__VA_ARGS__)						\
+									\
+  p (link, ##__VA_ARGS__)						\
+  p (linkat, ##__VA_ARGS__)						\
+  p (unlink, ##__VA_ARGS__)						\
+  p (unlinkat, ##__VA_ARGS__)						\
+  p (symlink, ##__VA_ARGS__)						\
+  p (symlinkat, ##__VA_ARGS__)						\
+  p (readlink, ##__VA_ARGS__)						\
+  p (readlinkat, ##__VA_ARGS__)						\
+									\
+  p (mknod, ##__VA_ARGS__)						\
+  p (mknodat, ##__VA_ARGS__)						\
+									\
+  p (umask, ##__VA_ARGS__)						\
+									\
+  p (chmod, ##__VA_ARGS__)						\
+  p (fchmod, ##__VA_ARGS__)						\
+  p (fchmodat, ##__VA_ARGS__)						\
+									\
+  p (chown, ##__VA_ARGS__)						\
+  p (fchown, ##__VA_ARGS__)						\
+  p (fchownat, ##__VA_ARGS__)						\
+  p (lchown, ##__VA_ARGS__)						\
+									\
+  p (utime, ##__VA_ARGS__)						\
+  p (utimes, ##__VA_ARGS__)						\
+  p (futimesat, ##__VA_ARGS__)						\
+  p (utimensat, ##__VA_ARGS__)						\
+									\
+  p (ustat, ##__VA_ARGS__)						\
+  p (statfs, ##__VA_ARGS__)						\
+  p (fstatfs, ##__VA_ARGS__)						\
+									\
+  p (sysfs, ##__VA_ARGS__)						\
+  p (sync, ##__VA_ARGS__)						\
+  p (syncfs, ##__VA_ARGS__)						\
+									\
+  p (mount, ##__VA_ARGS__)						\
+  p (umount2, ##__VA_ARGS__)						\
+									\
+  p (chroot, ##__VA_ARGS__)						\
+  p (pivot_root, ##__VA_ARGS__)						\
+									\
+  p (mmap, ##__VA_ARGS__)						\
+  p (mprotect, ##__VA_ARGS__)						\
+  p (munmap, ##__VA_ARGS__)						\
+  p (mremap, ##__VA_ARGS__)						\
+  p (madvise, ##__VA_ARGS__)						\
+  p (brk, ##__VA_ARGS__)						\
+									\
+  p (msync, ##__VA_ARGS__)						\
+  p (mincore, ##__VA_ARGS__)						\
+  p (mlock, ##__VA_ARGS__)						\
+  p (mlock2, ##__VA_ARGS__)						\
+  p (mlockall, ##__VA_ARGS__)						\
+  p (munlock, ##__VA_ARGS__)						\
+  p (munlockall, ##__VA_ARGS__)						\
+									\
+  p (modify_ldt, ##__VA_ARGS__)						\
+  p (swapon, ##__VA_ARGS__)						\
+  p (swapoff, ##__VA_ARGS__)						\
+									\
+  p (futex, ##__VA_ARGS__)						\
+  p (set_robust_list, ##__VA_ARGS__)					\
+  p (get_robust_list, ##__VA_ARGS__)					\
+									\
+  p (pkey_mprotect, ##__VA_ARGS__)					\
+  p (pkey_alloc, ##__VA_ARGS__)						\
+  p (pkey_free, ##__VA_ARGS__)						\
+									\
+  p (membarrier, ##__VA_ARGS__)						\
+									\
+  p (mbind, ##__VA_ARGS__)						\
+  p (set_mempolicy, ##__VA_ARGS__)					\
+  p (get_mempolicy, ##__VA_ARGS__)					\
+  p (migrate_pages, ##__VA_ARGS__)					\
+  p (move_pages, ##__VA_ARGS__)						\
+									\
+  p (shmget, ##__VA_ARGS__)						\
+  p (shmat, ##__VA_ARGS__)						\
+  p (shmctl, ##__VA_ARGS__)						\
+  p (shmdt, ##__VA_ARGS__)						\
+									\
+  p (semget, ##__VA_ARGS__)						\
+  p (semop, ##__VA_ARGS__)						\
+  p (semtimedop, ##__VA_ARGS__)						\
+  p (semctl, ##__VA_ARGS__)						\
+									\
+  p (msgget, ##__VA_ARGS__)						\
+  p (msgsnd, ##__VA_ARGS__)						\
+  p (msgrcv, ##__VA_ARGS__)						\
+  p (msgctl, ##__VA_ARGS__)						\
+									\
+  p (mq_open, ##__VA_ARGS__)						\
+  p (mq_unlink, ##__VA_ARGS__)						\
+  p (mq_timedsend, ##__VA_ARGS__)					\
+  p (mq_timedreceive, ##__VA_ARGS__)					\
+  p (mq_notify, ##__VA_ARGS__)						\
+  p (mq_getsetattr, ##__VA_ARGS__)					\
+									\
+  p (add_key, ##__VA_ARGS__)						\
+  p (request_key, ##__VA_ARGS__)					\
+  p (keyctl, ##__VA_ARGS__)						\
+									\
+  p (vhangup, ##__VA_ARGS__)						\
+									\
+  p (reboot, ##__VA_ARGS__)						\
+  p (kexec_load, ##__VA_ARGS__)						\
+  p (kexec_file_load, ##__VA_ARGS__)					\
+									\
+  p (iopl, ##__VA_ARGS__)						\
+  p (ioperm, ##__VA_ARGS__)						\
+									\
+  p (init_module, ##__VA_ARGS__)					\
+  p (finit_module, ##__VA_ARGS__)					\
+  p (delete_module, ##__VA_ARGS__)					\
+									\
+  p (lookup_dcookie, ##__VA_ARGS__)					\
+									\
+  p (process_vm_readv, ##__VA_ARGS__)					\
+  p (process_vm_writev, ##__VA_ARGS__)					\
+									\
+  p (remap_file_pages, ##__VA_ARGS__) /* deprecated */
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>

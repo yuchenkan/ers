@@ -2002,10 +2002,7 @@ syscall (struct eri_live_thread *th)
       }									\
   } while (0)
 
-#define IF_SYSCALL(name) \
-  if (nr == ERI_PASTE (__NR_, name)) SYSCALL (name);
-
-  ERI_SYSCALLS (IF_SYSCALL)
+  ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
 
   th_ctx->ctx.sregs.rax = ERI_ENOSYS;
   goto done;

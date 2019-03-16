@@ -51,8 +51,10 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
   ({ uint64_t _mem = mem;						\
      eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
 
-#define eri_atomic_hash(slot, size) \
-  (eri_hash (slot) % (size))
+#define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
+
+#define ERI_IF_SYSCALL(name, nr, op, ...) \
+  if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
 
 #include <compiler.h>
 #include <lib/printf.h>
