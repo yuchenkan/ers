@@ -691,14 +691,6 @@ struct eri_sigset
   uint64_t val[1];
 };
 
-#if 0
-struct eri_sigmask
-{
-  uint8_t mask_all;
-  struct eri_sigset mask;
-};
-#endif
-
 struct eri_stack
 {
   uint64_t sp;

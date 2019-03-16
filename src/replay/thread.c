@@ -341,17 +341,429 @@ swallow_single_step (struct thread_context *th_ctx)
     th_ctx->swallow_single_step = 1;
 }
 
+#define DEFINE_SYSCALL(name) \
+static void								\
+ERI_PASTE (syscall_, name) (struct thread *th)
+
+#define SYSCALL_TO_IMPL(name)	DEFINE_SYSCALL (name) { }
+
+/* TODO */
+SYSCALL_TO_IMPL (clone)
+SYSCALL_TO_IMPL (unshare)
+SYSCALL_TO_IMPL (kcmp)
+SYSCALL_TO_IMPL (fork)
+SYSCALL_TO_IMPL (vfork)
+SYSCALL_TO_IMPL (setns)
+
+SYSCALL_TO_IMPL (set_tid_address)
+
+SYSCALL_TO_IMPL (exit)
+SYSCALL_TO_IMPL (exit_group)
+
+SYSCALL_TO_IMPL (wait4)
+SYSCALL_TO_IMPL (waitid)
+
+SYSCALL_TO_IMPL (execve)
+SYSCALL_TO_IMPL (execveat)
+SYSCALL_TO_IMPL (ptrace)
+SYSCALL_TO_IMPL (syslog)
+SYSCALL_TO_IMPL (seccomp)
+
+SYSCALL_TO_IMPL (uname)
+SYSCALL_TO_IMPL (sysinfo)
+SYSCALL_TO_IMPL (getcpu)
+SYSCALL_TO_IMPL (getrandom)
+
+SYSCALL_TO_IMPL (setuid)
+SYSCALL_TO_IMPL (getuid)
+SYSCALL_TO_IMPL (setgid)
+SYSCALL_TO_IMPL (getgid)
+SYSCALL_TO_IMPL (geteuid)
+SYSCALL_TO_IMPL (getegid)
+
+SYSCALL_TO_IMPL (gettid)
+SYSCALL_TO_IMPL (getpid)
+SYSCALL_TO_IMPL (getppid)
+SYSCALL_TO_IMPL (setreuid)
+SYSCALL_TO_IMPL (setregid)
+
+SYSCALL_TO_IMPL (setresuid)
+SYSCALL_TO_IMPL (getresuid)
+SYSCALL_TO_IMPL (setresgid)
+SYSCALL_TO_IMPL (getresgid)
+
+SYSCALL_TO_IMPL (setfsuid)
+SYSCALL_TO_IMPL (setfsgid)
+
+SYSCALL_TO_IMPL (setgroups)
+SYSCALL_TO_IMPL (getgroups)
+
+SYSCALL_TO_IMPL (setsid)
+SYSCALL_TO_IMPL (getsid)
+SYSCALL_TO_IMPL (setpgid)
+SYSCALL_TO_IMPL (getpgid)
+SYSCALL_TO_IMPL (getpgrp)
+
+SYSCALL_TO_IMPL (settimeofday)
+SYSCALL_TO_IMPL (gettimeofday)
+SYSCALL_TO_IMPL (time)
+SYSCALL_TO_IMPL (times)
+SYSCALL_TO_IMPL (adjtimex)
+
+SYSCALL_TO_IMPL (clock_settime)
+SYSCALL_TO_IMPL (clock_gettime)
+SYSCALL_TO_IMPL (clock_getres)
+SYSCALL_TO_IMPL (clock_nanosleep)
+SYSCALL_TO_IMPL (clock_adjtime)
+
+SYSCALL_TO_IMPL (nanosleep)
+
+SYSCALL_TO_IMPL (alarm)
+SYSCALL_TO_IMPL (setitimer)
+SYSCALL_TO_IMPL (getitimer)
+
+SYSCALL_TO_IMPL (timer_create)
+SYSCALL_TO_IMPL (timer_settime)
+SYSCALL_TO_IMPL (timer_gettime)
+SYSCALL_TO_IMPL (timer_getoverrun)
+SYSCALL_TO_IMPL (timer_delete)
+
+SYSCALL_TO_IMPL (setrlimit)
+SYSCALL_TO_IMPL (getrlimit)
+SYSCALL_TO_IMPL (prlimit64)
+SYSCALL_TO_IMPL (getrusage)
+
+SYSCALL_TO_IMPL (capset)
+SYSCALL_TO_IMPL (capget)
+
+SYSCALL_TO_IMPL (personality)
+SYSCALL_TO_IMPL (prctl)
+SYSCALL_TO_IMPL (arch_prctl)
+
+SYSCALL_TO_IMPL (quotactl)
+SYSCALL_TO_IMPL (acct)
+
+SYSCALL_TO_IMPL (setpriority)
+SYSCALL_TO_IMPL (getpriority)
+SYSCALL_TO_IMPL (sched_yield)
+SYSCALL_TO_IMPL (sched_setparam)
+SYSCALL_TO_IMPL (sched_getparam)
+SYSCALL_TO_IMPL (sched_setscheduler)
+SYSCALL_TO_IMPL (sched_getscheduler)
+SYSCALL_TO_IMPL (sched_get_priority_max)
+SYSCALL_TO_IMPL (sched_get_priority_min)
+SYSCALL_TO_IMPL (sched_rr_get_interval)
+SYSCALL_TO_IMPL (sched_setaffinity)
+SYSCALL_TO_IMPL (sched_getaffinity)
+SYSCALL_TO_IMPL (sched_setattr)
+SYSCALL_TO_IMPL (sched_getattr)
+
+SYSCALL_TO_IMPL (ioprio_set)
+SYSCALL_TO_IMPL (ioprio_get)
+
+SYSCALL_TO_IMPL (rt_sigprocmask)
+SYSCALL_TO_IMPL (rt_sigaction)
+SYSCALL_TO_IMPL (sigaltstack)
+SYSCALL_TO_IMPL (rt_sigreturn)
+SYSCALL_TO_IMPL (rt_sigpending)
+
+SYSCALL_TO_IMPL (pause)
+SYSCALL_TO_IMPL (rt_sigtimedwait)
+SYSCALL_TO_IMPL (rt_sigsuspend)
+
+SYSCALL_TO_IMPL (kill)
+SYSCALL_TO_IMPL (tkill)
+SYSCALL_TO_IMPL (tgkill)
+SYSCALL_TO_IMPL (rt_sigqueueinfo)
+SYSCALL_TO_IMPL (rt_tgsigqueueinfo)
+
+SYSCALL_TO_IMPL (restart_syscall)
+
+SYSCALL_TO_IMPL (socket)
+SYSCALL_TO_IMPL (connect)
+SYSCALL_TO_IMPL (accept)
+SYSCALL_TO_IMPL (accept4)
+SYSCALL_TO_IMPL (sendto)
+SYSCALL_TO_IMPL (recvfrom)
+SYSCALL_TO_IMPL (sendmsg)
+SYSCALL_TO_IMPL (sendmmsg)
+SYSCALL_TO_IMPL (recvmsg)
+SYSCALL_TO_IMPL (recvmmsg)
+SYSCALL_TO_IMPL (shutdown)
+SYSCALL_TO_IMPL (bind)
+SYSCALL_TO_IMPL (listen)
+SYSCALL_TO_IMPL (getsockname)
+SYSCALL_TO_IMPL (getpeername)
+SYSCALL_TO_IMPL (socketpair)
+SYSCALL_TO_IMPL (setsockopt)
+SYSCALL_TO_IMPL (getsockopt)
+
+SYSCALL_TO_IMPL (sethostname)
+SYSCALL_TO_IMPL (setdomainname)
+
+SYSCALL_TO_IMPL (bpf)
+
+SYSCALL_TO_IMPL (memfd_create)
+
+SYSCALL_TO_IMPL (timerfd_create)
+SYSCALL_TO_IMPL (timerfd_settime)
+SYSCALL_TO_IMPL (timerfd_gettime)
+
+SYSCALL_TO_IMPL (eventfd)
+SYSCALL_TO_IMPL (eventfd2)
+
+SYSCALL_TO_IMPL (signalfd)
+SYSCALL_TO_IMPL (signalfd4)
+SYSCALL_TO_IMPL (pipe)
+SYSCALL_TO_IMPL (pipe2)
+
+SYSCALL_TO_IMPL (inotify_init)
+SYSCALL_TO_IMPL (inotify_init1)
+SYSCALL_TO_IMPL (inotify_add_watch)
+SYSCALL_TO_IMPL (inotify_rm_watch)
+
+SYSCALL_TO_IMPL (fanotify_init)
+SYSCALL_TO_IMPL (fanotify_mark)
+
+SYSCALL_TO_IMPL (userfaultfd)
+SYSCALL_TO_IMPL (perf_event_open)
+
+SYSCALL_TO_IMPL (open)
+SYSCALL_TO_IMPL (openat)
+SYSCALL_TO_IMPL (creat)
+SYSCALL_TO_IMPL (close)
+
+SYSCALL_TO_IMPL (dup)
+SYSCALL_TO_IMPL (dup2)
+SYSCALL_TO_IMPL (dup3)
+
+SYSCALL_TO_IMPL (name_to_handle_at)
+SYSCALL_TO_IMPL (open_by_handle_at)
+
+SYSCALL_TO_IMPL (fcntl)
+SYSCALL_TO_IMPL (flock)
+SYSCALL_TO_IMPL (fadvise64)
+
+SYSCALL_TO_IMPL (truncate)
+SYSCALL_TO_IMPL (ftruncate)
+
+SYSCALL_TO_IMPL (select)
+SYSCALL_TO_IMPL (pselect6)
+SYSCALL_TO_IMPL (poll)
+SYSCALL_TO_IMPL (ppoll)
+
+SYSCALL_TO_IMPL (epoll_create)
+SYSCALL_TO_IMPL (epoll_create1)
+SYSCALL_TO_IMPL (epoll_wait)
+SYSCALL_TO_IMPL (epoll_pwait)
+SYSCALL_TO_IMPL (epoll_ctl)
+
+SYSCALL_TO_IMPL (read)
+SYSCALL_TO_IMPL (pread64)
+SYSCALL_TO_IMPL (readv)
+SYSCALL_TO_IMPL (preadv)
+SYSCALL_TO_IMPL (preadv2)
+SYSCALL_TO_IMPL (write)
+SYSCALL_TO_IMPL (pwrite64)
+SYSCALL_TO_IMPL (writev)
+SYSCALL_TO_IMPL (pwritev)
+SYSCALL_TO_IMPL (pwritev2)
+
+SYSCALL_TO_IMPL (fallocate)
+
+SYSCALL_TO_IMPL (fsync)
+SYSCALL_TO_IMPL (fdatasync)
+SYSCALL_TO_IMPL (sync_file_range)
+
+SYSCALL_TO_IMPL (readahead)
+SYSCALL_TO_IMPL (sendfile)
+SYSCALL_TO_IMPL (copy_file_range)
+SYSCALL_TO_IMPL (splice)
+SYSCALL_TO_IMPL (vmsplice)
+SYSCALL_TO_IMPL (tee)
+
+SYSCALL_TO_IMPL (io_setup)
+SYSCALL_TO_IMPL (io_destroy)
+SYSCALL_TO_IMPL (io_getevents)
+SYSCALL_TO_IMPL (io_submit)
+SYSCALL_TO_IMPL (io_cancel)
+
+SYSCALL_TO_IMPL (lseek)
+SYSCALL_TO_IMPL (ioctl)
+
+SYSCALL_TO_IMPL (stat)
+SYSCALL_TO_IMPL (fstat)
+SYSCALL_TO_IMPL (newfstatat)
+SYSCALL_TO_IMPL (lstat)
+SYSCALL_TO_IMPL (access)
+SYSCALL_TO_IMPL (faccessat)
+
+SYSCALL_TO_IMPL (setxattr)
+SYSCALL_TO_IMPL (fsetxattr)
+SYSCALL_TO_IMPL (lsetxattr)
+SYSCALL_TO_IMPL (getxattr)
+SYSCALL_TO_IMPL (fgetxattr)
+SYSCALL_TO_IMPL (lgetxattr)
+
+SYSCALL_TO_IMPL (listxattr)
+SYSCALL_TO_IMPL (flistxattr)
+SYSCALL_TO_IMPL (llistxattr)
+
+SYSCALL_TO_IMPL (removexattr)
+SYSCALL_TO_IMPL (fremovexattr)
+SYSCALL_TO_IMPL (lremovexattr)
+
+SYSCALL_TO_IMPL (getdents)
+SYSCALL_TO_IMPL (getdents64)
+
+SYSCALL_TO_IMPL (getcwd)
+SYSCALL_TO_IMPL (chdir)
+SYSCALL_TO_IMPL (fchdir)
+SYSCALL_TO_IMPL (rename)
+SYSCALL_TO_IMPL (renameat)
+SYSCALL_TO_IMPL (renameat2)
+SYSCALL_TO_IMPL (mkdir)
+SYSCALL_TO_IMPL (mkdirat)
+SYSCALL_TO_IMPL (rmdir)
+
+SYSCALL_TO_IMPL (link)
+SYSCALL_TO_IMPL (linkat)
+SYSCALL_TO_IMPL (unlink)
+SYSCALL_TO_IMPL (unlinkat)
+SYSCALL_TO_IMPL (symlink)
+SYSCALL_TO_IMPL (symlinkat)
+SYSCALL_TO_IMPL (readlink)
+SYSCALL_TO_IMPL (readlinkat)
+
+SYSCALL_TO_IMPL (mknod)
+SYSCALL_TO_IMPL (mknodat)
+
+SYSCALL_TO_IMPL (umask)
+
+SYSCALL_TO_IMPL (chmod)
+SYSCALL_TO_IMPL (fchmod)
+SYSCALL_TO_IMPL (fchmodat)
+
+SYSCALL_TO_IMPL (chown)
+SYSCALL_TO_IMPL (fchown)
+SYSCALL_TO_IMPL (fchownat)
+SYSCALL_TO_IMPL (lchown)
+
+SYSCALL_TO_IMPL (utime)
+SYSCALL_TO_IMPL (utimes)
+SYSCALL_TO_IMPL (futimesat)
+SYSCALL_TO_IMPL (utimensat)
+
+SYSCALL_TO_IMPL (ustat)
+SYSCALL_TO_IMPL (statfs)
+SYSCALL_TO_IMPL (fstatfs)
+
+SYSCALL_TO_IMPL (sysfs)
+SYSCALL_TO_IMPL (sync)
+SYSCALL_TO_IMPL (syncfs)
+
+SYSCALL_TO_IMPL (mount)
+SYSCALL_TO_IMPL (umount2)
+
+SYSCALL_TO_IMPL (chroot)
+SYSCALL_TO_IMPL (pivot_root)
+
+SYSCALL_TO_IMPL (mmap)
+SYSCALL_TO_IMPL (mprotect)
+SYSCALL_TO_IMPL (munmap)
+SYSCALL_TO_IMPL (mremap)
+SYSCALL_TO_IMPL (madvise)
+SYSCALL_TO_IMPL (brk)
+
+SYSCALL_TO_IMPL (msync)
+SYSCALL_TO_IMPL (mincore)
+SYSCALL_TO_IMPL (mlock)
+SYSCALL_TO_IMPL (mlock2)
+SYSCALL_TO_IMPL (mlockall)
+SYSCALL_TO_IMPL (munlock)
+SYSCALL_TO_IMPL (munlockall)
+
+SYSCALL_TO_IMPL (modify_ldt)
+SYSCALL_TO_IMPL (swapon)
+SYSCALL_TO_IMPL (swapoff)
+
+SYSCALL_TO_IMPL (futex)
+SYSCALL_TO_IMPL (set_robust_list)
+SYSCALL_TO_IMPL (get_robust_list)
+
+SYSCALL_TO_IMPL (pkey_mprotect)
+SYSCALL_TO_IMPL (pkey_alloc)
+SYSCALL_TO_IMPL (pkey_free)
+
+SYSCALL_TO_IMPL (membarrier)
+
+SYSCALL_TO_IMPL (mbind)
+SYSCALL_TO_IMPL (set_mempolicy)
+SYSCALL_TO_IMPL (get_mempolicy)
+SYSCALL_TO_IMPL (migrate_pages)
+SYSCALL_TO_IMPL (move_pages)
+
+SYSCALL_TO_IMPL (shmget)
+SYSCALL_TO_IMPL (shmat)
+SYSCALL_TO_IMPL (shmctl)
+SYSCALL_TO_IMPL (shmdt)
+
+SYSCALL_TO_IMPL (semget)
+SYSCALL_TO_IMPL (semop)
+SYSCALL_TO_IMPL (semtimedop)
+SYSCALL_TO_IMPL (semctl)
+
+SYSCALL_TO_IMPL (msgget)
+SYSCALL_TO_IMPL (msgsnd)
+SYSCALL_TO_IMPL (msgrcv)
+SYSCALL_TO_IMPL (msgctl)
+
+SYSCALL_TO_IMPL (mq_open)
+SYSCALL_TO_IMPL (mq_unlink)
+SYSCALL_TO_IMPL (mq_timedsend)
+SYSCALL_TO_IMPL (mq_timedreceive)
+SYSCALL_TO_IMPL (mq_notify)
+SYSCALL_TO_IMPL (mq_getsetattr)
+
+SYSCALL_TO_IMPL (add_key)
+SYSCALL_TO_IMPL (request_key)
+SYSCALL_TO_IMPL (keyctl)
+
+SYSCALL_TO_IMPL (vhangup)
+
+SYSCALL_TO_IMPL (reboot)
+SYSCALL_TO_IMPL (kexec_load)
+SYSCALL_TO_IMPL (kexec_file_load)
+
+SYSCALL_TO_IMPL (iopl)
+SYSCALL_TO_IMPL (ioperm)
+
+SYSCALL_TO_IMPL (init_module)
+SYSCALL_TO_IMPL (finit_module)
+SYSCALL_TO_IMPL (delete_module)
+
+SYSCALL_TO_IMPL (lookup_dcookie)
+
+SYSCALL_TO_IMPL (process_vm_readv)
+SYSCALL_TO_IMPL (process_vm_writev)
+
+SYSCALL_TO_IMPL (remap_file_pages) /* deprecated */
+
 static uint64_t
 syscall (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
 
   int32_t nr = th_ctx->ctx.sregs.rax;
+
+  th_ctx->ctx.sregs.rax = ERI_ENOSYS;
+  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
+  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
+  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
+
 #define SYSCALL(name)	ERI_PASTE (syscall_, name) (th)
   ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
-  /* TODO */
 
-  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
   if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
 
   swallow_single_step (th_ctx);
