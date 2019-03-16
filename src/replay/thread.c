@@ -24,9 +24,8 @@ enum
 #define SYNC_ASYNC_TRACE_ASYNC	1
 #define SYNC_ASYNC_TRACE_BOTH	2
 
-struct atomic_slot
+struct atomic_table_slot
 {
-  uint64_t slot;
   uint64_t ver;
   uint64_t wait;
 };
@@ -38,18 +37,17 @@ struct thread_group
   uint64_t map_start;
   uint64_t map_end;
 
-  struct eri_common_args args;
+  const char *path;
+  uint64_t stack_size;
+  uint64_t file_buf_size;
 
   int32_t pid;
 
   struct eri_sig_act sig_acts[ERI_NSIG - 1];
 
-  struct eri_lock atomic_slot_lock;
-  ERI_RBT_TREE_FIELDS (atomic_slot, struct atomic_slot)
+  struct atomic_table_slot *atomic_table;
+  uint64_t atomic_table_size;
 };
-
-ERI_DEFINE_RBTREE (static, atomic_slot, struct thread_group,
-		   struct atomic_slot, uint64_t, eri_less_than)
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
 
@@ -197,17 +195,16 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
 
-  group->args.path = eri_assert_malloc (&pool->pool,
+  /* TODO: free */
+  group->path = eri_assert_malloc (&pool->pool,
 					eri_strlen (rtld_args->path) + 1);
-  eri_strcpy ((void *) group->args.path, rtld_args->path);
-  group->args.stack_size = rtld_args->stack_size;
-  group->args.file_buf_size = rtld_args->file_buf_size;
+  eri_strcpy ((void *) group->path, rtld_args->path);
+  group->stack_size = rtld_args->stack_size;
+  group->file_buf_size = rtld_args->file_buf_size;
 
   group->pid = eri_assert_syscall (getpid);
   eri_sig_init_acts (group->sig_acts, sig_handler);
 
-  eri_init_lock (&group->atomic_slot_lock, 0);
-  ERI_RBT_INIT_TREE (atomic_slot, group);
   return group;
 }
 
@@ -215,14 +212,14 @@ static struct thread *
 create (struct thread_group *group, uint64_t id)
 {
   struct thread *th = eri_assert_mtmalloc (group->pool,
-				sizeof *th + group->args.stack_size);
+				sizeof *th + group->stack_size);
   th->group = group;
   struct thread_context *th_ctx = eri_assert_mtmalloc (group->pool,
 	sizeof *th->ctx + eri_entry_thread_entry_text_size (thread_context));
   th->ctx = th_ctx;
 
   eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
-		  entry, th->stack + group->args.stack_size);
+		  entry, th->stack + group->stack_size);
 
   th_ctx->swallow_single_step = 0;
   th_ctx->sync_async_trace = 0;
@@ -230,10 +227,10 @@ create (struct thread_group *group, uint64_t id)
   th_ctx->atomic_ext_return = 0;
 
   th_ctx->th = th;
-  char name[eri_build_path_len (group->args.path, "t", id)];
-  eri_build_path (group->args.path, "t", id, name);
+  char name[eri_build_path_len (group->path, "t", id)];
+  eri_build_path (group->path, "t", id, name);
 
-  uint64_t file_buf_size = group->args.file_buf_size;
+  uint64_t file_buf_size = group->file_buf_size;
   th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
   eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
 
@@ -300,8 +297,15 @@ start_main (struct thread *th)
   th_ctx->ctx.sregs.rdx = init.rdx;
 
   th->sig_mask = init.sig_mask;
-  th->group->map_start = init.start;
-  th->group->map_end = init.end;
+
+  struct thread_group *group = th->group;
+  group->map_start = init.start;
+  group->map_end = init.end;
+
+  uint64_t atomic_table_size = init.atomic_table_size;
+  group->atomic_table = eri_assert_calloc (&group->pool->pool,
+			sizeof *group->atomic_table * atomic_table_size);
+  group->atomic_table_size = atomic_table_size;
 
   uint8_t next;
   while ((next = next_record (th)) == ERI_INIT_MAP_RECORD)
@@ -388,29 +392,18 @@ do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
 {
   if (ver == 0) return;
 
-  eri_assert_lock (&group->atomic_slot_lock);
-  struct atomic_slot *at = atomic_slot_rbt_get (group, &slot, ERI_RBT_EQ);
-  if (! at)
-    {
-      /* XXX: these memory not freed before exit */
-      at = eri_assert_mtmalloc (group->pool, sizeof *at);
-      at->slot = slot;
-      atomic_slot_rbt_insert (group, at);
+  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  struct atomic_table_slot *tab = group->atomic_table + idx;
 
-      at->ver = 0;
-      at->wait = 1;
-    }
-  uint64_t now = at->ver;
-  eri_assert_unlock (&group->atomic_slot_lock);
+  uint64_t now;
+  if ((now = eri_atomic_load (&tab->ver)) >= ver) return;
 
-  if (now >= ver) return;
-
-  eri_atomic_inc (&at->wait);
+  eri_atomic_inc (&tab->wait);
   eri_barrier ();
   do
-    eri_assert_sys_futex_wait (&at->ver, now, 0);
-  while ((now = eri_atomic_load (&at->ver)) < ver);
-  eri_atomic_dec (&at->wait);
+    eri_assert_sys_futex_wait (&tab->ver, now, 0);
+  while ((now = eri_atomic_load (&tab->ver)) < ver);
+  eri_atomic_dec (&tab->wait);
 }
 
 static void
@@ -425,22 +418,12 @@ atomic_wait (struct thread_group *group, uint64_t mem, uint8_t size,
 static void
 do_atomic_update (struct thread_group *group, uint64_t slot)
 {
-  eri_assert_lock (&group->atomic_slot_lock);
-  struct atomic_slot *at = atomic_slot_rbt_get (group, &slot, ERI_RBT_EQ);
-  if (! at)
-    {
-      at = eri_assert_mtmalloc (group->pool, sizeof *at);
-      at->slot = slot;
-      atomic_slot_rbt_insert (group, at);
-
-      at->ver = 1;
-      at->wait = 0;
-    }
-  else ++at->ver;
-  eri_assert_unlock (&group->atomic_slot_lock);
-
-  if (eri_atomic_load_acq (&at->wait))
-    eri_assert_syscall (futext, &at->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
+  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  struct atomic_table_slot *tab = group->atomic_table + idx;
+  eri_atomic_inc (&tab->ver);
+  eri_barrier ();
+  if (eri_atomic_load_acq (&tab->wait))
+    eri_assert_syscall (futex, &tab->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
 }
 
 static void

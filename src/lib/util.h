@@ -71,16 +71,24 @@ func:
 
 #define eri_min(a, b) \
   ({									\
-    typeof (a) __a = a;							\
-    typeof (b) __b = b;							\
-    __a < __b ? __a : __b;						\
+    typeof (a) _a = a;							\
+    typeof (b) _b = b;							\
+    _a < _b ? _a : _b;							\
   })
 
 #define eri_max(a, b) \
   ({									\
-    typeof (a) __a = a;							\
-    typeof (b) __b = b;							\
-    __a > __b ? __a : __b;						\
+    typeof (a) _a = a;							\
+    typeof (b) _b = b;							\
+    _a > _b ? _a : _b;							\
+  })
+
+#define eri_hash(x) \
+  ({									\
+    uint64_t _x = x;							\
+    _x = (_x ^ (_x >> 30)) * 0xbf58476d1ce4e5b9;			\
+    _x = (_x ^ (_x >> 27)) * 0x94d049bb133111eb;			\
+    _x ^ (_x >> 31);							\
   })
 
 void eri_memset (void *s, char c, uint64_t n);
@@ -99,9 +107,9 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 
 #define eri_round_up_mask(x, mask) \
   ({									\
-    typeof (x) __x = x;							\
-    typeof (__x) __m = (typeof (__x)) (mask);				\
-    (__x + __m) & ~__m;							\
+    typeof (x) _x = x;							\
+    typeof (_x) _m = (typeof (_x)) (mask);				\
+    (_x + _m) & ~_m;							\
   })
 #define eri_round_up(x, u) eri_round_up_mask (x, (u) - 1)
 #define eri_round_down(x, u) ((x) & ~((u) - 1))

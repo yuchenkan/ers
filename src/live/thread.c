@@ -811,18 +811,9 @@ eri_live_thread__clone (struct eri_live_thread *th)
 }
 
 static uint64_t
-hash (uint64_t x)
-{
-  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9;
-  x = (x ^ (x >> 27)) * 0x94d049bb133111eb;
-  x = x ^ (x >> 31);
-  return x;
-}
-
-static uint64_t
 do_lock_atomic (struct thread_group *group, uint64_t slot)
 {
-  uint64_t idx = hash (slot) % group->atomic_table_size;
+  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
 
   uint32_t i = 0;
   while (eri_atomic_bit_test_set (group->atomic_table + idx, 0))
