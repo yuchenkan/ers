@@ -766,6 +766,11 @@ struct eri_signalfd_siginfo {
   ({ const struct eri_siginfo *_info = info;				\
      _info->sig == ERI_SIGTRAP && _info->code == ERI_TRAP_TRACE; })
 
+#define eri_si_access_fault(info) \
+  ({ const struct eri_siginfo *_info = info;				\
+     eri_si_from_kernel (_info)						\
+     && (_info->sig == ERI_SIGSEGV || _info->sig == ERI_SIGBUS); })
+
 struct eri_fpstate
 {
   uint8_t pad[464];

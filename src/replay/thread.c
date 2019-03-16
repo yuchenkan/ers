@@ -215,7 +215,11 @@ create (struct thread_group *group, uint64_t id)
   eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
 		  entry, th->stack + group->stack_size);
 
+  th_ctx->access = 0;
+  th_ctx->force_access = 0;
+
   th_ctx->swallow_single_step = 0;
+
   th_ctx->sync_async_trace = 0;
   th_ctx->atomic_access_fault = 0;
   th_ctx->atomic_ext_return = 0;

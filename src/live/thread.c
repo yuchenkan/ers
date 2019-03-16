@@ -21,8 +21,8 @@
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
 
-#define SET_CTX_SREG_FROM_TH_CTX(creg, reg, c, th) \
-  (c)->mctx.reg = (th)->ctx.sregs.reg;
+#define SET_CTX_SREG_FROM_TH_CTX(creg, reg, c, t) \
+  (c)->mctx.reg = (t)->ctx.sregs.reg;
 
 #define set_ctx_sregs_from_th_ctx(ctx, th_ctx) \
   do {									\
@@ -253,6 +253,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   th_ctx->sig_force_deliver = 0;
   sig_set_frame (th_ctx, 0);
   th_ctx->access = 0;
+  th_ctx->force_access = 0;
   th_ctx->swallow_single_step = 0;
   th_ctx->syscall.wait_sig = 0;
   th_ctx->atomic.access_end = 0;
@@ -580,21 +581,6 @@ sig_return_to (struct eri_live_thread *th,
 }
 
 static uint8_t
-sig_access_fault (struct thread_context *th_ctx,
-		  struct eri_siginfo *info, struct eri_ucontext *ctx)
-{
-  if (eri_si_sync (info)
-      && (info->sig == ERI_SIGSEGV || info->sig == ERI_SIGBUS)
-      && ctx->mctx.rip == th_ctx->access)
-    {
-      ctx->mctx.rip = th_ctx->access_fault;
-      return 1;
-    }
-
-  return 0;
-}
-
-static uint8_t
 sig_prepare_sync (struct eri_live_thread *th, struct eri_siginfo *info,
 		  struct eri_sigaction *act)
 {
@@ -638,7 +624,7 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
 
   if (internal (th->group, ctx->mctx.rip))
     {
-      if (sig_access_fault (th_ctx, info, ctx)) return;
+      if (sig_access_fault (th_ctx, info, ctx, 0)) return;
       if (eri_si_single_step (info)) return;
       eri_assert (! eri_si_sync (info));
 
@@ -684,12 +670,7 @@ sig_hand_return_to_user (
       return;
     }
 
-  if (intern)
-    {
-      /* May happen when we are setting up sig alt stack.  */
-      if (sig_access_fault (th_ctx, info, ctx)) return;
-      eri_assert (! eri_si_sync (info));
-    }
+  if (intern) eri_assert (! eri_si_sync (info));
 
   if (eri_si_sync (info) && ! sig_prepare_sync (th, info, act))
     return;
@@ -1323,7 +1304,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   uint64_t rsp = (uint64_t) th->stack + ERI_MINSIGSTKSZ;
 
   struct eri_sigframe frame;
-  if (! copy_from_user (th, &frame, user_frame, sizeof frame))
+  if (! force_copy_from_user (th, &frame, user_frame, sizeof frame))
     return SYSCALL_SEG_FAULT;
 
   struct eri_ucontext *ctx = &frame.ctx;
@@ -1331,13 +1312,18 @@ DEFINE_SYSCALL (rt_sigreturn)
     {
       const struct eri_fpstate *user_fpstate = ctx->mctx.fpstate;
       struct eri_fpstate fpstate;
-      if (! copy_from_user (th, &fpstate, user_fpstate, sizeof fpstate))
+      if (! force_copy_from_user (th, &fpstate,
+				  user_fpstate, sizeof fpstate))
 	return SYSCALL_SEG_FAULT;
       if (fpstate.size + 64 + sizeof frame + 16 + 8 >= ERI_MINSIGSTKSZ)
-	return SYSCALL_SEG_FAULT;
+	{
+	  force_copy_from_user (th, 0, 0, 1);
+	  return SYSCALL_SEG_FAULT;
+	}
 
       rsp = eri_round_down (rsp - fpstate.size, 64);
-      if (! copy_from_user (th, (void *) rsp, user_fpstate, fpstate.size))
+      if (! force_copy_from_user (th, (void *) rsp,
+				  user_fpstate, fpstate.size))
 	return SYSCALL_SEG_FAULT;
 
       ctx->mctx.fpstate = (void *) rsp;
@@ -1982,27 +1968,6 @@ syscall (struct eri_live_thread *th)
   th_ctx->ctx.sregs.rax = ERI_ENOSYS;
   goto done;
 
-seg_fault:
-  eri_debug ("seg_fault\n");
-  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
-  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
-  struct eri_sigframe *sig_frame = (void *) th->stack;
-  sig_frame->info.sig = ERI_SIGSEGV;
-  sig_frame->info.code = ERI_SI_KERNEL;
-  sig_frame->info.kill.pid = 0;
-  sig_frame->info.kill.uid = 0;
-  /* XXX: signal is masked (in sigreturn), ucontext? */
-  eri_assert (eri_live_thread__sig_digest_act (th, &sig_frame->info,
-					       &th_ctx->sig_act));
-  sig_set_frame (th_ctx, sig_frame);
-  return 0;
-
-sig_wait_restart:
-  eri_debug ("sig_wait_restart\n");
-  syscall_sig_wait (th_ctx, 0);
-  th_ctx->ext.ret = th_ctx->ext.call;
-  return 0;
-
 done:
   eri_debug ("%u done\n", nr);
   swallow_single_step (th_ctx);
@@ -2018,6 +1983,19 @@ done:
   eri_live_thread_recorder__rec_syscall (th->rec, &args);
 
   return 0;
+
+sig_wait_restart:
+  eri_debug ("sig_wait_restart\n");
+  syscall_sig_wait (th_ctx, 0);
+  th_ctx->ext.ret = th_ctx->ext.call;
+  return 0;
+
+seg_fault:
+  eri_debug ("seg_fault\n");
+  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
+  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
+  th_ctx->ext.ret = th_ctx->ext.call;
+  return 0;
 }
 
 static void
@@ -2031,7 +2009,16 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
 
   struct thread_context *th_ctx = th->ctx;
 
-  if (sig_access_fault (th_ctx, info, ctx)) return;
+  if (sig_access_fault (th_ctx, info, ctx, 0)) return;
+
+  if (sig_access_fault (th_ctx, info, ctx, 1))
+    {
+      /* XXX: sig masked all */
+      eri_assert (eri_live_thread__sig_digest_act (th, info, act));
+      eri_assert (act->act == SIG_ACT_CORE);
+      sig_set (th_ctx, frame, act, SIG_HAND_NONE);
+      return;
+    }
 
   /* XXX: SIGSYS */
   eri_assert (! eri_si_sync (info));

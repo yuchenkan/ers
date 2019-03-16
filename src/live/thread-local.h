@@ -28,6 +28,7 @@ struct thread_context
   struct eri_sigframe *sig_act_frame;
 
   uint64_t access; /* Always zero in user code. */
+  uint64_t force_access; /* Always zero in user code. */
   uint64_t access_fault;
 
   uint8_t swallow_single_step;
@@ -54,10 +55,7 @@ struct thread_context
 eri_noreturn void main (void);
 void entry (void);
 
-uint8_t do_copy_from_user (struct thread_context *th_ctx,
-			   void *dst, const void *src, uint64_t size);
-uint8_t do_copy_to_user (struct thread_context *th_ctx,
-			 void *dst, const void *src, uint64_t size);
+ERI_ENTRY_DECLARE_DO_COPY_USERS ()
 
 eri_noreturn void sig_to (void);
 eri_noreturn void sig_act (struct thread_context *th_ctx);

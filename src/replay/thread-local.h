@@ -14,6 +14,9 @@ struct thread_context
   struct eri_entry_thread_context ctx;
   struct eri_entry_extra_registers eregs;
 
+  uint64_t access;
+  uint64_t access_fault;
+
   uint8_t swallow_single_step;
 
   uint8_t sync_async_trace;
@@ -29,6 +32,8 @@ struct thread_context
 
 eri_noreturn main (struct thread_context *th_ctx);
 void entry (void);
+
+ERI_ENTRY_DECLARE_DO_COPY_USERS ()
 
 void do_atomic_read_user (struct thread_context *th_ctx,
 			  uint64_t mem, uint8_t size);

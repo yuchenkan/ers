@@ -2,6 +2,8 @@
 #define ERI_COMMON_H
 
 #include <stdint.h>
+
+#include <compiler.h>
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
@@ -57,20 +59,20 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
   if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
 
 #define ERI_DEFINE_THREAD_UTILS(thread_type) \
-static uint8_t								\
+static eri_unused uint8_t						\
 internal (struct thread_group *group, uint64_t addr)			\
 {									\
   return addr >= group->map_start && addr < group->map_end;		\
 }									\
 									\
-static uint8_t								\
+static eri_unused uint8_t						\
 internal_range (struct thread_group *group,				\
 		uint64_t addr, uint64_t size)				\
 {									\
   return addr + size > group->map_start && addr < group->map_end;	\
 }									\
 									\
-static uint8_t								\
+static eri_unused uint8_t						\
 copy_from_user (thread_type *th,					\
 		void *dst, const void *src, uint64_t size)		\
 {									\
@@ -79,13 +81,43 @@ copy_from_user (thread_type *th,					\
   return do_copy_from_user (th->ctx, dst, src, size);			\
 }									\
 									\
-static uint8_t								\
+static eri_unused uint8_t						\
 copy_to_user (thread_type *th,						\
 	      void *dst, const void *src, uint64_t size)		\
 {									\
   if (! dst) return 0;							\
   if (internal_range (th->group, (uint64_t) dst, size)) return 0;	\
   return do_copy_to_user (th->ctx, dst, src, size);			\
+}									\
+									\
+static eri_unused uint8_t						\
+force_copy_from_user (thread_type *th,					\
+		      void *dst, const void *src, uint64_t size)	\
+{									\
+  if (internal_range (th->group, (uint64_t) src, size)) src = 0;	\
+  return do_force_copy_from_user (th->ctx, dst, src, size);		\
+}									\
+									\
+static eri_unused uint8_t						\
+force_copy_to_user (thread_type *th,					\
+		    void *dst, const void *src, uint64_t size)		\
+{									\
+  if (internal_range (th->group, (uint64_t) dst, size)) dst = 0;	\
+  return do_force_copy_to_user (th->ctx, dst, src, size);		\
+}									\
+									\
+static eri_unused uint8_t						\
+sig_access_fault (struct thread_context *th_ctx,			\
+		  struct eri_siginfo *info, struct eri_ucontext *ctx,	\
+		  uint8_t force)					\
+{									\
+  if (! eri_si_access_fault (info)					\
+      || ctx->mctx.rip != (force					\
+			? th_ctx->force_access : th_ctx->access))	\
+    return 0;								\
+									\
+  ctx->mctx.rip = th_ctx->access_fault;					\
+  return 1;								\
 }
 
 #include <compiler.h>

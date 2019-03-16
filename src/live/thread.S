@@ -336,7 +336,7 @@ ATOMIC_LABEL (name):							\
 /* do_copy_user					*/
 /************************************************/
 
-ERI_ENTRY_DEFINE_COPY_USER (TC (ACCESS), TC (ACCESS_FAULT))
+ERI_ENTRY_DEFINE_DO_COPY_USERS ()
 
 /************************************************/
 /* sig_to					*/
