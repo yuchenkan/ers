@@ -21,6 +21,8 @@ struct eri_packed eri_init_record
   uint64_t end;
 
   uint64_t atomic_table_size;
+
+  int32_t user_pid;
 };
 
 struct eri_packed eri_init_map_data_record

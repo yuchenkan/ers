@@ -55,6 +55,8 @@ struct thread_group
 
   struct eri_lock exit_lock;
   uint64_t thread_count;
+
+  int32_t user_pid;
 };
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
@@ -72,6 +74,7 @@ struct thread
   int32_t alive;
 
   int32_t *clear_user_tid;
+  int32_t user_tid;
 
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
@@ -382,6 +385,9 @@ start_main (struct thread *th)
 			sizeof *group->atomic_table * atomic_table_size);
   group->atomic_table_size = atomic_table_size;
 
+  th->user_tid = init.user_pid;
+  group->user_pid = init.user_pid;
+
   uint8_t next;
   while ((next = next_record (th)) == ERI_INIT_MAP_RECORD)
     {
@@ -432,8 +438,8 @@ DEFINE_SYSCALL (clone)
 
   struct thread_context *th_ctx = th->ctx;
 
-  th_ctx->sregs.rax = rec.result;
-  if (eri_syscall_is_error (th_ctx->sregs.rax)) return;
+  uint64_t result = th_ctx->sregs.rax = rec.result;
+  if (eri_syscall_is_error (result)) return;
 
   eri_atomic_inc (&th->group->thread_count);
   eri_barrier ();
@@ -442,9 +448,9 @@ DEFINE_SYSCALL (clone)
   int32_t *user_ptid = (void *) th_ctx->ctx.sregs.rdx;
   int32_t *user_ctid = (void *) th_ctx->ctx.sregs.r10;
   if (flags & ERI_CLONE_PARENT_SETTID)
-    copy_to_user (th, user_ptid, &th_ctx->sregs.rax, sizeof *user_ptid);
+    copy_to_user (th, user_ptid, &result, sizeof *user_ptid);
   if (flags & ERI_CLONE_CHILD_SETTID)
-    copy_to_user (th, user_ctid, &th_ctx->sregs.rax, sizeof *user_ctid);
+    copy_to_user (th, user_ctid, &result, sizeof *user_ctid);
 
   int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
   struct thread *cth = create (th->group, rec.id, clear_user_tid);
@@ -459,6 +465,7 @@ DEFINE_SYSCALL (clone)
 
   *(uint64_t *) (cth_ctx->ctx.top - 8) = *(uint64_t *) (th_ctx->ctx.top - 8);
 
+  cth->user_tid = result;
   cth->sig_mask = th->sig_mask;
   cth->sig_alt_stack = th->sig_alt_stack;
 
@@ -567,8 +574,9 @@ SYSCALL_TO_IMPL (getgid)
 SYSCALL_TO_IMPL (geteuid)
 SYSCALL_TO_IMPL (getegid)
 
-SYSCALL_TO_IMPL (gettid)
-SYSCALL_TO_IMPL (getpid)
+DEFINE_SYSCALL (gettid) { th->ctx->ctx.sregs.rax = th->user_tid; }
+DEFINE_SYSCALL (getpid) { th->ctx->ctx.sregs.rax = th->group->user_pid; }
+
 SYSCALL_TO_IMPL (getppid)
 SYSCALL_TO_IMPL (setreuid)
 SYSCALL_TO_IMPL (setregid)

@@ -337,7 +337,8 @@ start_main (struct eri_live_thread *th)
   struct eri_live_thread_recorder__rec_init_args args = {
     th_ctx->ctx.sregs.rdx, th_ctx->ctx.rsp, th_ctx->ext.ret,
     *eri_live_signal_thread__get_sig_mask (th->sig_th),
-    group->map_start, group->map_end, group->atomic_table_size
+    group->map_start, group->map_end, group->atomic_table_size,
+    eri_live_signal_thread__get_pid (th->sig_th)
   };
   eri_live_thread_recorder__rec_init (th->rec, &args);
   start (th);
@@ -1929,7 +1930,7 @@ done:
   th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
 
   struct eri_live_thread_recorder__rec_syscall_args args = {
-    th_ctx->ctx.sregs.rax, th_ctx->ctx.sregs.rdi, th_ctx->ctx.sregs.rsi,
+    nr, th_ctx->ctx.sregs.rax, th_ctx->ctx.sregs.rdi, th_ctx->ctx.sregs.rsi,
     th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10, th_ctx->ctx.sregs.r8,
     th_ctx->ctx.sregs.r9, &rec_args
   };

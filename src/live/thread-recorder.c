@@ -175,7 +175,8 @@ eri_live_thread_recorder__rec_init (
   struct eri_marked_init_record init = {
     ERI_INIT_RECORD,
     { 0, args->rdx, args->rsp, args->rip,
-      args->sig_mask, args->start, args->end, args->atomic_table_size }
+      args->sig_mask, args->start, args->end, args->atomic_table_size,
+      args->user_pid }
   };
   eri_assert_fwrite (rec->file, &init, sizeof init, 0);
 
@@ -211,6 +212,17 @@ eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder__rec_syscall_args *args)
 {
   submit_sync_async (rec);
+
+  int32_t nr = args->nr;
+  if (nr == __NR_clone)
+    {
+      struct eri_marked_syscall_clone_record sys = {
+	ERI_SYNC_RECORD,
+	{ ERI_SYSCALL_CLONE_MAGIC, args->rax, args->ex->clone_id }
+      };
+      eri_assert_fwrite (rec->file, &sys, sizeof sys, 0);
+    }
+
   /* TODO */
 }
 

@@ -2,7 +2,6 @@
 #include <common.h>
 
 #include <tst/tst-syscall.h>
-#include <live/tst/tst-util.h>
 
 #include <live/signal-thread.h>
 #include <live/tst/tst-syscall.h>
@@ -42,7 +41,6 @@ tst_live_start (void)
 #if 0
   args.a0 = (void *) 1;
   tst_assert_sys_clone (&args);
-  tst_yield (64);
   eri_assert_sys_futex_wait (&ctid, 1, 0);
 #endif
   tst_assert_sys_exit (0);

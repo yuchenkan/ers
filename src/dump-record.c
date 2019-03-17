@@ -28,6 +28,7 @@ main (int32_t argc, const char **argv)
 	printf ("  sig_mask: 0x%lx\n", init.sig_mask.val[0]);
 	printf ("  start: 0x%lx, end: 0x%lx\n", init.start, init.end);
 	printf ("  atomic_table_size: %lu\n", init.atomic_table_size);
+	printf ("  user_pid: %u\n", init.user_pid);
       }
     else if (mark == ERI_INIT_MAP_RECORD)
       {
@@ -58,7 +59,15 @@ main (int32_t argc, const char **argv)
 		      sizeof *_t - sizeof (uint8_t), 1, f) == 1);	\
   } while (0)
 
-	if (magic == ERI_SYNC_ASYNC_MAGIC)
+	/* TODO */
+	if (magic == ERI_SYSCALL_CLONE_MAGIC)
+	  {
+	    struct eri_syscall_clone_record sys;
+	    read_without_magic (&sys, f);
+	    printf ("  syscall.clone.result: %lu, syscall.clone.id: %lu\n",
+		    sys.result, sys.id);
+	  }
+	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  {
 	    struct eri_sync_async_record sync;
 	    read_without_magic (&sync, f);
@@ -69,10 +78,10 @@ main (int32_t argc, const char **argv)
 	    struct eri_atomic_record at;
 	    read_without_magic (&at, f);
 	    printf ("  atomic.updated: %u\n", at.updated);
-	    printf ("  atomic_load.ver: %lu %lu\n", at.ver[0], at.ver[1]);
-	    printf ("  atomic_load.val: 0x%lx\n", at.val);
+	    printf ("  atomic.ver: %lu %lu\n", at.ver[0], at.ver[1]);
+	    printf ("  atomic.val: 0x%lx\n", at.val);
 	  }
-	/* TODO */
+	else assert (0);
       }
     else if (mark == ERI_ASYNC_RECORD)
       {

@@ -28,6 +28,8 @@ struct eri_live_thread_recorder__rec_init_args
   uint64_t end;
 
   uint64_t atomic_table_size;
+
+  int32_t user_pid;
 };
 
 void eri_live_thread_recorder__rec_init (
@@ -48,6 +50,8 @@ struct eri_live_thread_recorder__rec_syscall_ex_args
 
 struct eri_live_thread_recorder__rec_syscall_args
 {
+  int32_t nr;
+
   uint64_t rax;
 
   uint64_t rdi;
