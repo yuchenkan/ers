@@ -22,11 +22,4 @@ struct eri_replay_rtld_args
 
 eri_noreturn void eri_start (void);
 
-enum
-{
-#define SIG_HAND_ENUM(chand, hand)	chand,
-  ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (SIG_HAND_ENUM)
-  SIG_HAND_RETURN_TO_USER
-}
-
 #endif

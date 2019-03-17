@@ -15,6 +15,7 @@ struct thread_context
   struct eri_entry_extra_registers eregs;
 
   uint64_t access;
+  uint64_t force_access;
   uint64_t access_fault;
 
   uint8_t swallow_single_step;
@@ -30,7 +31,7 @@ struct thread_context
   eri_aligned16 uint8_t text[0];
 };
 
-eri_noreturn main (struct thread_context *th_ctx);
+eri_noreturn void main (struct thread_context *th_ctx);
 void entry (void);
 
 ERI_ENTRY_DECLARE_DO_COPY_USERS ()

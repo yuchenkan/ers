@@ -2,6 +2,7 @@
 
 #include <entry.h>
 #include <lib/util.h>
+#include <lib/cpu.h>
 
 #include <public/common.h>
 #include <replay/thread-local-offsets.h>
@@ -46,7 +47,7 @@ ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
   ERI_END_FUNCTION (entry)
 
 #define IF_ATOMIC_SIZE(sz, size, name) \
-  cmpb	$PASTE (_ERS_ATOMIC_SIZE_, sz),	%size (sz);			\
+  cmpb	$PASTE (_ERS_ATOMIC_SIZE_, sz),	size;				\
   je	PASTE2 (.L, name, sz);
 
 #define ATOMIC_SIZE(sz, name, op, ...) \
@@ -66,7 +67,7 @@ ERI_FOREACH_REG_SIZE (ATOMIC_SIZE, name, op, ##__VA_ARGS__)		\
 
 #define ATOMIC_ACCESS(sz, cname, name) \
   ERI_MOV_LM (ATOMIC_ACCESS_LABEL (sz, name),				\
-	      TC (ATOMIC_ACCESS_FAULT)(%rdi));				\
+	      TC (ATOMIC_ACCESS_FAULT)(%rdi), %rax);			\
 ATOMIC_ACCESS_LABEL (sz, name):						\
   PASTE2 (DO_ATOMIC_, cname, _USER) (sz);				\
   movq	$0, TC (ATOMIC_ACCESS_FAULT)(%rdi)
@@ -77,7 +78,7 @@ ATOMIC_ACCESS_LABEL (sz, name):						\
   PASTE (or, sz)	$0, (%rsi)
 
 #define DEFINE_ATOMIC_ACCESS_FUNCTION(cname, name) \
-DEFINE_ATOMIC_FUNCTION (PASTE2 (do_atomic_, name, _user), ERI_RDX,	\
+DEFINE_ATOMIC_FUNCTION (PASTE2 (do_atomic_, name, _user), %dl,		\
 			ATOMIC_ACCESS, cname, name)
 
 DEFINE_ATOMIC_ACCESS_FUNCTION (READ, read)
@@ -102,9 +103,9 @@ DEFINE_ATOMIC_ACCESS_FUNCTION (READ_WRITE, read_write)
   popq	(%rdx);								\
   movq	%rax, (%rsi)
 
-DEFINE_ATOMIC_FUNCTION (atomic_store, ERI_RDI, ATOMIC_STORE)
-DEFINE_ATOMIC_FUNCTION (atomic_inc, ERI_RDI, ATOMIC_INC_DEC, inc)
-DEFINE_ATOMIC_FUNCTION (atomic_dec, ERI_RDI, ATOMIC_INC_DEC, dec)
-DEFINE_ATOMIC_FUNCTION (atomic_cmpxchg_regs, ERI_RDI, ATOMIC_CMPXCHG_REGS)
+DEFINE_ATOMIC_FUNCTION (atomic_store, %dil, ATOMIC_STORE)
+DEFINE_ATOMIC_FUNCTION (atomic_inc, %dil, ATOMIC_INC_DEC, inc)
+DEFINE_ATOMIC_FUNCTION (atomic_dec, %dil, ATOMIC_INC_DEC, dec)
+DEFINE_ATOMIC_FUNCTION (atomic_cmpxchg_regs, %dil, ATOMIC_CMPXCHG_REGS)
 
 ERI_ENTRY_DEFINE_DO_COPY_USERS ()

@@ -3,8 +3,10 @@
 
 #include <entry.h>
 #include <helper.h>
+#include <record.h>
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/atomic.h>
 #include <lib/malloc.h>
 #include <lib/printf.h>
@@ -85,6 +87,9 @@ struct thread
 
 ERI_DEFINE_THREAD_UTILS (struct thread)
 
+static void sig_handler (int32_t sig, struct eri_siginfo *info,
+			 struct eri_ucontext *ctx);
+
 static struct thread_group *
 create_group (const struct eri_replay_rtld_args *rtld_args)
 {
@@ -103,7 +108,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->pid = eri_assert_syscall (getpid);
   eri_sig_init_acts (group->sig_acts, sig_handler);
 
-  eri_init_lock (&group->ext_lock, 0);
+  eri_init_lock (&group->exit_lock, 0);
   group->thread_count = 1;
   return group;
 }
@@ -112,7 +117,7 @@ static void
 destroy_group (struct thread_group *group)
 {
   struct eri_pool *pool = &group->pool->pool;
-  eri_assert_free (pool, group->path);
+  eri_assert_free (pool, (void *) group->path);
   eri_assert_free (pool, group);
   eri_assert_fini_pool (pool);
 }
@@ -164,8 +169,9 @@ destroy (struct thread *th)
 }
 
 static void
-cleanup (struct thread *th)
+cleanup (void *args)
 {
+  struct thread *th = args;
   eri_assert_sys_futex_wait (&th->alive, 1, 0);
   destroy (th);
 }
@@ -220,6 +226,7 @@ raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
   if (! eri_sig_act_internal_act (act.act))
     {
       /* TODO: next_record (th) */
+      eri_assert_unreachable ();
     }
   else exit (th);
 }
@@ -369,24 +376,25 @@ start_main (struct thread *th)
   struct thread_context *th_ctx = th->ctx;
   struct eri_marked_init_record init;
   eri_assert_fread (th->file, &init, sizeof init, 0);
+  eri_assert (init.mark == ERI_INIT_RECORD);
 
-  th_ctx->ext.ret = init.rip;
-  th_ctx->ctx.rsp = init.rsp;
-  th_ctx->ctx.sregs.rdx = init.rdx;
+  th_ctx->ext.ret = init.rec.rip;
+  th_ctx->ctx.rsp = init.rec.rsp;
+  th_ctx->ctx.sregs.rdx = init.rec.rdx;
 
-  th->sig_mask = init.sig_mask;
+  th->sig_mask = init.rec.sig_mask;
 
   struct thread_group *group = th->group;
-  group->map_start = init.start;
-  group->map_end = init.end;
+  group->map_start = init.rec.start;
+  group->map_end = init.rec.end;
 
-  uint64_t atomic_table_size = init.atomic_table_size;
+  uint64_t atomic_table_size = init.rec.atomic_table_size;
   group->atomic_table = eri_assert_calloc (&group->pool->pool,
 			sizeof *group->atomic_table * atomic_table_size);
   group->atomic_table_size = atomic_table_size;
 
-  th->user_tid = init.user_pid;
-  group->user_pid = init.user_pid;
+  th->user_tid = init.rec.user_pid;
+  group->user_pid = init.rec.user_pid;
 
   uint8_t next;
   while ((next = next_record (th)) == ERI_INIT_MAP_RECORD)
@@ -424,6 +432,51 @@ swallow_single_step (struct thread_context *th_ctx)
     th_ctx->swallow_single_step = 1;
 }
 
+static void
+do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
+{
+  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  struct atomic_table_slot *tab = group->atomic_table + idx;
+
+  uint64_t now;
+  if ((now = eri_atomic_load (&tab->ver)) >= ver) return;
+
+  eri_atomic_inc (&tab->wait);
+  eri_barrier ();
+  do
+    eri_assert_sys_futex_wait (&tab->ver, now, 0);
+  while ((now = eri_atomic_load (&tab->ver)) < ver);
+  eri_atomic_dec (&tab->wait);
+}
+
+static void
+atomic_wait (struct thread_group *group, uint64_t mem, uint8_t size,
+	     uint8_t updated, uint64_t *ver)
+{
+  do_atomic_wait (group, eri_atomic_slot (mem), ver[0] - updated);
+  if (eri_atomic_cross_slot (mem, size))
+    do_atomic_wait (group, eri_atomic_slot2 (mem, size), ver[1] - updated);
+}
+
+static void
+do_atomic_update (struct thread_group *group, uint64_t slot)
+{
+  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  struct atomic_table_slot *tab = group->atomic_table + idx;
+  eri_atomic_inc (&tab->ver);
+  eri_barrier ();
+  if (eri_atomic_load_acq (&tab->wait))
+    eri_assert_syscall (futex, &tab->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
+}
+
+static void
+atomic_update (struct thread_group *group, uint64_t mem, uint8_t size)
+{
+  do_atomic_update (group, eri_atomic_slot (mem));
+  if (eri_atomic_cross_slot (mem, size))
+    do_atomic_update (group, eri_atomic_slot2 (mem, size));
+}
+
 #define DEFINE_SYSCALL(name) \
 static void								\
 ERI_PASTE (syscall_, name) (struct thread *th)
@@ -438,7 +491,7 @@ DEFINE_SYSCALL (clone)
 
   struct thread_context *th_ctx = th->ctx;
 
-  uint64_t result = th_ctx->sregs.rax = rec.result;
+  uint64_t result = th_ctx->ctx.sregs.rax = rec.result;
   if (eri_syscall_is_error (result)) return;
 
   eri_atomic_inc (&th->group->thread_count);
@@ -454,7 +507,7 @@ DEFINE_SYSCALL (clone)
 
   int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
   struct thread *cth = create (th->group, rec.id, clear_user_tid);
-  struct thread_context *cth_ctx = ctx->ctx;
+  struct thread_context *cth_ctx = cth->ctx;
   cth_ctx->ext.op = th_ctx->ext.op;
   cth_ctx->ext.rbx = th_ctx->ext.rbx;
   cth_ctx->ext.ret = th_ctx->ext.ret;
@@ -496,7 +549,11 @@ SYSCALL_TO_IMPL (fork)
 SYSCALL_TO_IMPL (vfork)
 SYSCALL_TO_IMPL (setns)
 
-SYSCALL_TO_IMPL (set_tid_address)
+DEFINE_SYSCALL (set_tid_address)
+{
+  th->clear_user_tid = (void *) th->ctx->ctx.sregs.rdi;
+  th->ctx->ctx.sregs.rax = 0;
+}
 
 static uint8_t
 read_write_user_tid (struct thread_context *th_ctx, int32_t *user_tid)
@@ -522,8 +579,8 @@ read_write_user_tid (struct thread_context *th_ctx, int32_t *user_tid)
 static void
 read_atomic_record (struct thread *th, struct eri_atomic_record *rec)
 {
-  eri_assert_fread (th->file, rec, sizeof rec, 0);
-  eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
+  eri_assert_fread (th->file, rec, sizeof *rec, 0);
+  eri_assert (rec->magic == ERI_ATOMIC_MAGIC);
 }
 
 static void
@@ -968,7 +1025,7 @@ syscall (struct thread *th)
 static void
 sync_async (struct thread *th)
 {
-  struct eri_marked_sync_async_record sync;
+  struct eri_sync_async_record sync;
   eri_assert_fread (th->file, &sync, sizeof sync, 0);
   eri_assert (sync.magic == ERI_SYNC_ASYNC_MAGIC);
 
@@ -995,51 +1052,6 @@ atomic_read_write_user (struct thread *th, uint64_t mem,
 
   (read_only ? do_atomic_read_user
 	     : do_atomic_read_write_user) (th->ctx, mem, size);
-}
-
-static void
-do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
-{
-  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
-  struct atomic_table_slot *tab = group->atomic_table + idx;
-
-  uint64_t now;
-  if ((now = eri_atomic_load (&tab->ver)) >= ver) return;
-
-  eri_atomic_inc (&tab->wait);
-  eri_barrier ();
-  do
-    eri_assert_sys_futex_wait (&tab->ver, now, 0);
-  while ((now = eri_atomic_load (&tab->ver)) < ver);
-  eri_atomic_dec (&tab->wait);
-}
-
-static void
-atomic_wait (struct thread_group *group, uint64_t mem, uint8_t size,
-	     uint8_t updated, uint64_t *ver)
-{
-  do_atomic_wait (group, eri_atomic_slot (mem), ver[0] - updated);
-  if (eri_atomic_cross_slot (mem, size))
-    do_atomic_wait (group, eri_atomic_slot2 (mem, size), ver[1] - updated);
-}
-
-static void
-do_atomic_update (struct thread_group *group, uint64_t slot)
-{
-  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
-  struct atomic_table_slot *tab = group->atomic_table + idx;
-  eri_atomic_inc (&tab->ver);
-  eri_barrier ();
-  if (eri_atomic_load_acq (&tab->wait))
-    eri_assert_syscall (futex, &tab->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
-}
-
-static void
-atomic_update (struct thread_group *group, uint64_t mem, uint8_t size)
-{
-  do_atomic_update (group, eri_atomic_slot (mem));
-  if (eri_atomic_cross_slot (mem, size))
-    do_atomic_update (group, eri_atomic_slot2 (mem, size));
 }
 
 static void
