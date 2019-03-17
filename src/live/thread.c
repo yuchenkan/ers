@@ -779,17 +779,7 @@ unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
   return ver;
 }
 
-static void
-clear_tid_sig_handler (int32_t sig, struct eri_siginfo *info,
-		       struct eri_ucontext *ctx)
-{
-  eri_assert (eri_si_access_fault (info));
-
-  extern uint8_t clear_tid_clear_user[];
-  extern uint8_t clear_tid_clear_user_fault[];
-  eri_assert (ctx->mctx.rip == (uint64_t) clear_tid_clear_user);
-  ctx->mctx.rip = (uint64_t) clear_tid_clear_user_fault;
-}
+ERI_DEFINE_CLEAR_USER_TID_SIG_HANDLER ()
 
 struct clear_tid_args
 {
@@ -808,15 +798,8 @@ clear_tid (void *args)
   struct atomic_pair idx
 	= lock_atomic (group, (uint64_t) clear_tid, sizeof *clear_tid);
 
-  int32_t old_val = 0;
-  uint8_t fault = 0;
-  asm ("clear_tid_clear_user:\n"
-       "  xchgl\t%0, %1\n"
-       "  jmp\t1f\n"
-       "clear_tid_clear_user_fault:\n"
-       "  movb\t$1, %b2\n"
-       "1:" : "+r" (old_val), "=m" (*clear_tid), "+r" (fault));
-  if (! fault)
+  int32_t old_val;
+  if (eri_clear_user_tid (clear_tid, &old_val))
     {
       struct atomic_pair ver = unlock_atomic (group, &idx, !! old_val);
       eri_live_thread_recorder__rec_atomic (th->rec, !! old_val,
@@ -842,7 +825,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
     {
       struct clear_tid_args args = { th, ERI_INIT_LOCK (1) };
       eri_helper__invoke (helper, clear_tid, &args,
-			  clear_tid_sig_handler);
+			  clear_user_tid_sig_handler);
       eri_assert_lock (&args.lock);
     }
 

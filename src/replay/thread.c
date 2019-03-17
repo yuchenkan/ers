@@ -53,6 +53,9 @@ struct thread_group
 
   struct atomic_table_slot *atomic_table;
   uint64_t atomic_table_size;
+
+  struct eri_lock exit_lock;
+  uint64_t thread_count;
 };
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
@@ -69,6 +72,8 @@ struct thread
   int32_t tid;
   int32_t alive;
 
+  int32_t *clear_tid;
+
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
 
@@ -78,12 +83,123 @@ struct thread
 
 ERI_DEFINE_THREAD_UTILS (struct thread)
 
+static struct thread_group *
+create_group (const struct eri_replay_rtld_args *rtld_args)
+{
+  struct eri_mtpool *pool = eri_init_mtpool_from_buf (
+				rtld_args->buf, rtld_args->buf_size, 1);
+  struct thread_group *group
+			= eri_assert_malloc (&pool->pool, sizeof *group);
+  group->pool = pool;
+
+  group->path = eri_assert_malloc (&pool->pool,
+					eri_strlen (rtld_args->path) + 1);
+  eri_strcpy ((void *) group->path, rtld_args->path);
+  group->stack_size = rtld_args->stack_size;
+  group->file_buf_size = rtld_args->file_buf_size;
+
+  group->pid = eri_assert_syscall (getpid);
+  eri_sig_init_acts (group->sig_acts, sig_handler);
+
+  eri_init_lock (&group->ext_lock, 0);
+  group->thread_count = 1;
+  return group;
+}
+
+static void
+destroy_group (struct thread_group *group)
+{
+  struct eri_pool *pool = &group->pool->pool;
+  eri_assert_free (pool, group->path);
+  eri_assert_free (pool, group);
+  eri_assert_fini_pool (pool);
+}
+
+static struct thread *
+create (struct thread_group *group, uint64_t id, int32_t *clear_tid)
+{
+  struct thread *th = eri_assert_mtmalloc (group->pool,
+				sizeof *th + group->stack_size);
+  th->group = group;
+  struct thread_context *th_ctx = eri_assert_mtmalloc (group->pool,
+	sizeof *th->ctx + eri_entry_thread_entry_text_size (thread_context));
+  th->ctx = th_ctx;
+
+  eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
+		  entry, th->stack + group->stack_size);
+
+  th_ctx->access = 0;
+  th_ctx->force_access = 0;
+
+  th_ctx->swallow_single_step = 0;
+
+  th_ctx->sync_async_trace = 0;
+  th_ctx->atomic_access_fault = 0;
+  th_ctx->atomic_ext_return = 0;
+
+  th_ctx->th = th;
+  char name[eri_build_path_len (group->path, "t", id)];
+  eri_build_path (group->path, "t", id, name);
+
+  uint64_t file_buf_size = group->file_buf_size;
+  th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
+  eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
+
+  th->alive = 1;
+  th->clear_tid = clear_tid;
+
+  *(void **) th->sig_stack = th;
+  return th;
+}
+
+static void
+destroy (struct thread *th)
+{
+  eri_assert_fclose (th->file);
+  struct eri_mtpool *pool = th->group->pool;
+  eri_assert_mtfree (pool, th->ctx);
+  eri_assert_mtfree (pool, th);
+}
+
+ERI_DEFINE_CLEAR_USER_TID_SIG_HANDLER ()
+
+static void
+cleanup (struct thread *th)
+{
+  eri_assert_sys_futex_wait (&th->alive, 1, 0);
+  if (th->clear_tid)
+    {
+      int32_t old_val;
+      /* TODO */
+    }
+
+  destroy (th);
+}
+
 static eri_noreturn void exit (struct thread *th);
 
 static eri_noreturn void
 exit (struct thread *th)
 {
-  /* TODO */
+  struct thread_group *group = th->group;
+  eri_assert_lock (&group->exit_lock);
+  if (--group->thread_count)
+    {
+      eri_helper__invoke (group->helper, cleanup, th,
+			  clear_user_tid_sig_handler);
+      eri_assert_unlock (&group->exit_lock);
+      eri_assert_sys_exit (0);
+    }
+
+  eri_assert_unlock (&group->exit_lock);
+
+  eri_helper__exit (group->helper);
+
+  eri_preserve (&group->pool->pool);
+
+  destroy (th);
+  destroy_group (group);
+  eri_assert_sys_exit (0);
 }
 
 static uint8_t
@@ -209,71 +325,11 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   raise (th, info, ctx);
 }
 
-static struct thread_group *
-create_group (const struct eri_replay_rtld_args *rtld_args)
-{
-  struct eri_mtpool *pool = eri_init_mtpool_from_buf (
-				rtld_args->buf, rtld_args->buf_size, 1);
-  struct thread_group *group
-			= eri_assert_malloc (&pool->pool, sizeof *group);
-  group->pool = pool;
-
-  /* TODO: free */
-  group->path = eri_assert_malloc (&pool->pool,
-					eri_strlen (rtld_args->path) + 1);
-  eri_strcpy ((void *) group->path, rtld_args->path);
-  group->stack_size = rtld_args->stack_size;
-  group->file_buf_size = rtld_args->file_buf_size;
-
-  group->helper = eri_helper__start (pool, HELPER_STACK_SIZE,
-				     HELPER_SELECTOR, 0);
-
-  group->pid = eri_assert_syscall (getpid);
-  eri_sig_init_acts (group->sig_acts, sig_handler);
-
-  return group;
-}
-
-static struct thread *
-create (struct thread_group *group, uint64_t id)
-{
-  struct thread *th = eri_assert_mtmalloc (group->pool,
-				sizeof *th + group->stack_size);
-  th->group = group;
-  struct thread_context *th_ctx = eri_assert_mtmalloc (group->pool,
-	sizeof *th->ctx + eri_entry_thread_entry_text_size (thread_context));
-  th->ctx = th_ctx;
-
-  eri_entry_init (&th_ctx->ext, &th_ctx->ctx, thread_context, th_ctx->text,
-		  entry, th->stack + group->stack_size);
-
-  th_ctx->access = 0;
-  th_ctx->force_access = 0;
-
-  th_ctx->swallow_single_step = 0;
-
-  th_ctx->sync_async_trace = 0;
-  th_ctx->atomic_access_fault = 0;
-  th_ctx->atomic_ext_return = 0;
-
-  th_ctx->th = th;
-  char name[eri_build_path_len (group->path, "t", id)];
-  eri_build_path (group->path, "t", id, name);
-
-  uint64_t file_buf_size = group->file_buf_size;
-  th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
-  eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
-
-  th->alive = 1;
-  *(void **) th->sig_stack = th;
-  return th;
-}
-
 eri_noreturn void
 eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {
   struct thread_group *group = create_group (rtld_args);
-  struct thread *th = create (group, 0);
+  struct thread *th = create (group, 0, 0);
   struct thread_context *th_ctx = th->ctx;
 
   th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
@@ -362,7 +418,10 @@ start_main (struct thread *th)
 	eri_assert_syscall (mprotect, init_map.start, size, prot);
     }
 
+  group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE,
+				     HELPER_SELECTOR, 0);
   eri_helper__sig_unmask (group->helper);
+
   start (th, next);
 }
 
@@ -390,6 +449,9 @@ DEFINE_SYSCALL (clone)
   th_ctx->sregs.rax = rec.result;
   if (eri_syscall_is_error (th_ctx->sregs.rax)) return;
 
+  eri_atomic_inc (&th->group->thread_count);
+  eri_barrier ();
+
   int32_t flags = th_ctx->ctx.sregs.rdi;
   int32_t *user_ptid = (void *) th_ctx->ctx.sregs.rdx;
   int32_t *user_ctid = (void *) th_ctx->ctx.sregs.r10;
@@ -398,7 +460,8 @@ DEFINE_SYSCALL (clone)
   if (flags & ERI_CLONE_CHILD_SETTID)
     copy_to_user (th, user_ctid, &th_ctx->sregs.rax, sizeof *user_ctid);
 
-  struct thread *cth = create (th->group, rec.id);
+  int32_t *clear_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
+  struct thread *cth = create (th->group, rec.id, clear_tid);
   struct thread_context *cth_ctx = ctx->ctx;
   cth_ctx->ext.op = th_ctx->ext.op;
   cth_ctx->ext.rbx = th_ctx->ext.rbx;
@@ -434,7 +497,6 @@ DEFINE_SYSCALL (clone)
   eri_assert_sys_sigprocmask (&mask, 0);
 }
 
-/* TODO */
 SYSCALL_TO_IMPL (unshare)
 SYSCALL_TO_IMPL (kcmp)
 SYSCALL_TO_IMPL (fork)
