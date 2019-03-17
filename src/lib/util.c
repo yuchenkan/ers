@@ -159,7 +159,7 @@ eri_assert_atoi (const char *a, uint8_t base)
 	  eri_assert (base == 16);
 	  v = *a - 'a' + 10;
 	}
-      else eri_assert (0);
+      else eri_assert_unreachable ();
       i = i * base + v;
     }
   return i;

@@ -558,7 +558,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	    signal_exit_group (sig_th);
 	  else pending_exit_group = 1;
 	}
-      else eri_assert (0);
+      else eri_assert_unreachable ();
 
       if (type != CLONE_EVENT && type != SIG_RESET_EVENT)
 	release_event (event_type);

@@ -30,7 +30,7 @@
     else if (sizeof *_m == 8)						\
       asm volatile ("lock " ERI_STR (inc) "q\t%q0"			\
 		    : "+m" (*_m) : : "cc");				\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
   } while (0)
 
 #define eri_atomic_inc(m)	_eri_atomic_inc_dec (m, inc)
@@ -53,7 +53,7 @@
     else if (sizeof *_m == 8)						\
       asm volatile ("lock xaddq\t%q0, %1"				\
 		    : "+r" (_r), "+m" (*_m) : : "cc");			\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
     (typeof (*_m)) (_r + _v);						\
   })
 
@@ -81,7 +81,7 @@
     else if (sizeof *_m == 8)						\
       asm volatile ("lock andq\t%q1, %0"				\
 		    : "+m" (*_m) : "r" (_v) : "cc");			\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
   } while (0)
 
 #define eri_atomic_bit_test_set(m, off) \
@@ -98,7 +98,7 @@
     else if (sizeof *_m == 8)						\
       asm volatile ("lock btsq\t%q2, %1"				\
 		    : "=@ccc" (_r), "+m" (*_m) : "ir" (_off));		\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
     _r;									\
   })
 
@@ -114,7 +114,7 @@
       asm volatile ("xchgl\t%0, %1" : "+r" (_r), "+m" (*_m));		\
     else if (sizeof *_m == 8)						\
       asm volatile ("xchgq\t%q0, %1" : "+r" (_r), "+m" (*_m));		\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
     _r;									\
   })
 
@@ -140,7 +140,7 @@
       asm volatile ("lock cmpxchgq\t%q3, %1"				\
 		    : "=@ccz" (_r), "+m" (*_m)				\
 		    : "a" (_e), "r" (_d));				\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
     _r;									\
   })
 

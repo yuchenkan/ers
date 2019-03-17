@@ -1924,7 +1924,7 @@ syscall (struct eri_live_thread *th)
       case SYSCALL_DONE: goto done;					\
       case SYSCALL_SIG_WAIT_RESTART: goto sig_wait_restart;		\
       case SYSCALL_SEG_FAULT: goto seg_fault;				\
-      default: eri_assert (0);						\
+      default: eri_assert_unreachable ();				\
       }									\
   } while (0)
 

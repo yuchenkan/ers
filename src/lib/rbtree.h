@@ -189,7 +189,7 @@ pfx##_rbt_insert_recurse (tree_type *tree, node_type *r, node_type *n)	\
 	  n->pfx##_rbt_parent = r;					\
 	}								\
     }									\
-  else eri_assert (0);							\
+  else eri_assert_unreachable ();					\
 }									\
 									\
 static void								\
@@ -394,7 +394,7 @@ pfx##_rbt_get (tree_type *tree, key_type *key, int32_t flags)		\
 	  if (flags & ERI_RBT_EQ) return r;				\
 	  else if (flags == ERI_RBT_LT) r = r->pfx##_rbt_left;		\
 	  else if (flags == ERI_RBT_GT) r = r->pfx##_rbt_right;		\
-	  else eri_assert (0);						\
+	  else eri_assert_unreachable ();				\
 	}								\
     }									\
   return v;								\

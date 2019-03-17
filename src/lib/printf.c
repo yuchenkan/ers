@@ -388,7 +388,7 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
 	      iov[niov].base = va_arg (arg, char *);
 	      iov[niov].len = eri_strlen (iov[niov].base);
 	    }
-	  else eri_assert (0);
+	  else eri_assert_unreachable ();
 	  ++fmt;
 	}
       else
