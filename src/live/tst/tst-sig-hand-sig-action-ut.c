@@ -153,7 +153,7 @@ tst_main (void)
   sig_th.th = eri_live_thread__create_main (&sig_th, &rtld_args);
   eri_live_thread__clone_main (sig_th.th);
   eri_live_thread__join (sig_th.th);
-  eri_live_thread__destroy (sig_th.th, 0);
+  eri_live_thread__destroy (sig_th.th);
 
   eri_assert_fini_mtpool (&sig_th.pool);
   eri_assert_sys_exit (0);

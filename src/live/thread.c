@@ -1,7 +1,6 @@
 #include <stdarg.h>
 
 #include <common.h>
-#include <helper.h>
 
 #include <lib/util.h>
 #include <lib/cpu.h>
@@ -50,7 +49,7 @@ struct eri_live_thread
   uint64_t id;
   int32_t alive;
   struct eri_lock start_lock;
-  int32_t *clear_tid;
+  int32_t *clear_user_tid;
 
   struct eri_live_thread_recorder *rec;
 
@@ -263,7 +262,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
 
 static struct eri_live_thread *
 create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
-	int32_t *clear_tid)
+	int32_t *clear_user_tid)
 {
   eri_atomic_inc (&group->ref_count);
   struct eri_live_thread *th
@@ -274,7 +273,7 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
   th->id = eri_atomic_fetch_inc (&group->th_id);
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
-  th->clear_tid = clear_tid;
+  th->clear_user_tid = clear_user_tid;
   th->rec = eri_live_thread_recorder__create (
 		group->pool, group->path, th->id, group->file_buf_size);
 
@@ -680,8 +679,8 @@ eri_live_thread__create (struct eri_live_signal_thread *sig_th,
 
   int32_t flags = pth_ctx->ctx.sregs.rdi;
   int32_t *ctid = (void *) pth_ctx->ctx.sregs.r10;
-  int32_t *clear_tid = flags & ERI_CLONE_CHILD_CLEARTID ? ctid : 0;
-  struct eri_live_thread *th = create (pth->group, sig_th, clear_tid);
+  int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? ctid : 0;
+  struct eri_live_thread *th = create (pth->group, sig_th, clear_user_tid);
 
   create_args->cth = th;
   struct thread_context *th_ctx = th->ctx;
@@ -728,6 +727,39 @@ eri_live_thread__clone (struct eri_live_thread *th)
   eri_assert_sys_sigprocmask (&mask, 0);
 
   return res;
+}
+
+static void
+destroy_context (struct eri_mtpool *pool, struct thread_context *ctx)
+{
+  eri_assert_mtfree (pool, ctx);
+}
+
+void
+eri_live_thread__destroy (struct eri_live_thread *th)
+{
+  struct thread_group *group = th->group;
+  struct eri_mtpool *pool = group->pool;
+
+  destroy_context (pool, th->ctx);
+  eri_live_thread_recorder__destroy (th->rec);
+  eri_assert_mtfree (pool, th);
+
+  eri_barrier ();
+  if (eri_atomic_dec_fetch (&group->ref_count)) return;
+
+  struct sig_fd *fd, *nfd;
+  ERI_RBT_FOREACH_SAFE (sig_fd, group, fd, nfd)
+    sig_fd_remove_free (group, fd);
+
+  eri_assert_mtfree (pool, group->atomic_table);
+  eri_assert_mtfree (pool, group);
+}
+
+void
+eri_live_thread__join (struct eri_live_thread *th)
+{
+  eri_assert_sys_futex_wait (&th->alive, 1, 0);
 }
 
 static uint64_t
@@ -777,80 +809,6 @@ unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
   do_unlock_atomic (group, idx->first);
   if (cross) do_unlock_atomic (group, idx->second);
   return ver;
-}
-
-ERI_DEFINE_CLEAR_USER_TID_SIG_HANDLER ()
-
-struct clear_tid_args
-{
-  struct eri_live_thread *th;
-  struct eri_lock lock;
-};
-
-static void
-clear_tid (void *args)
-{
-  struct clear_tid_args *a = args;
-  struct eri_live_thread *th = a->th;
-  struct thread_group *group = th->group;
-  int32_t *clear_tid = th->clear_tid;
-
-  struct atomic_pair idx
-	= lock_atomic (group, (uint64_t) clear_tid, sizeof *clear_tid);
-
-  int32_t old_val;
-  if (eri_clear_user_tid (clear_tid, &old_val))
-    {
-      struct atomic_pair ver = unlock_atomic (group, &idx, !! old_val);
-      eri_live_thread_recorder__rec_atomic (th->rec, !! old_val,
-					    &ver.first, 0);
-      eri_syscall (futex, clear_tid, ERI_FUTEX_WAKE, 1);
-    }
-  else unlock_atomic (group, &idx, 0);
-
-  eri_assert_unlock (&a->lock);
-}
-
-static void
-destroy_context (struct eri_mtpool *pool, struct thread_context *ctx)
-{
-  eri_assert_mtfree (pool, ctx);
-}
-
-void
-eri_live_thread__destroy (struct eri_live_thread *th,
-			  struct eri_helper *helper)
-{
-  if (helper && th->clear_tid)
-    {
-      struct clear_tid_args args = { th, ERI_INIT_LOCK (1) };
-      eri_helper__invoke (helper, clear_tid, &args,
-			  clear_user_tid_sig_handler);
-      eri_assert_lock (&args.lock);
-    }
-
-  struct thread_group *group = th->group;
-  struct eri_mtpool *pool = group->pool;
-
-  destroy_context (pool, th->ctx);
-  eri_live_thread_recorder__destroy (th->rec);
-  eri_assert_mtfree (pool, th);
-
-  eri_barrier ();
-  if (eri_atomic_dec_fetch (&group->ref_count)) return;
-
-  struct sig_fd *fd, *nfd;
-  ERI_RBT_FOREACH_SAFE (sig_fd, group, fd, nfd)
-    sig_fd_remove_free (group, fd);
-
-  eri_assert_mtfree (pool, group->atomic_table);
-  eri_assert_mtfree (pool, group);
-}
-
-void
-eri_live_thread__join (struct eri_live_thread *th)
-{
-  eri_assert_sys_futex_wait (&th->alive, 1, 0);
 }
 
 #define SYSCALL_DONE			0
@@ -962,8 +920,30 @@ SYSCALL_TO_IMPL (setns)
 DEFINE_SYSCALL (set_tid_address)
 {
   struct thread_context *th_ctx = th->ctx;
-  th->clear_tid = (void *) th_ctx->ctx.sregs.rdi;
+  th->clear_user_tid = (void *) th_ctx->ctx.sregs.rdi;
   SYSCALL_RETURN_DONE (th_ctx, 0);
+}
+
+static uint8_t
+clear_user_tid (struct thread_context *th_ctx,
+		int32_t *user_tid, int32_t *old_val)
+{
+  uint8_t fault = 0;
+  *old_val = 0;
+
+  extern uint8_t clear_user_tid_clear_user[];
+  extern uint8_t clear_user_tid_clear_user_fault[];
+
+  eri_atomic_store (&th_ctx->access, (uint64_t) clear_user_tid_clear_user);
+  th_ctx->access_fault = (uint64_t) clear_user_tid_clear_user_fault;
+  asm ("clear_user_tid_clear_user:\n"
+       "  xchgl\t%0, %1\n"
+       "  jmp\t1f\n"
+       "clear_user_tid_clear_user_fault:\n"
+       "  movb\t$1, %b2\n"
+       "1:" : "+r" (*old_val), "=m" (*user_tid), "+r" (fault) : : "memory");
+  eri_atomic_store (&th_ctx->access, 0);
+  return ! fault;
 }
 
 static uint32_t
@@ -977,6 +957,26 @@ syscall_do_exit (struct eri_live_thread *th)
 
   if (! eri_live_signal_thread__exit (sig_th, exit_group, status))
     return SYSCALL_SIG_WAIT_RESTART;
+
+  if (th->clear_user_tid)
+    {
+      struct thread_group *group = th->group;
+
+      int32_t *user_tid = th->clear_user_tid;
+      struct atomic_pair idx
+	= lock_atomic (group, (uint64_t) user_tid, sizeof *user_tid);
+
+      int32_t old_val;
+      if (clear_user_tid (th_ctx, user_tid, &old_val))
+	{
+	  uint8_t update = old_val != 0;
+	  struct atomic_pair ver = unlock_atomic (group, &idx, update);
+	  eri_live_thread_recorder__rec_atomic (th->rec, update,
+						&ver.first, 0);
+	  eri_syscall (futex, user_tid, ERI_FUTEX_WAKE, 1);
+	}
+      else unlock_atomic (group, &idx, 0);
+    }
 
   eri_debug ("syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);

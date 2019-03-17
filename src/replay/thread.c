@@ -16,7 +16,6 @@
 #include <replay/thread-local.h>
 
 #define HELPER_STACK_SIZE	(256 * 1024)
-#define HELPER_SELECTOR		1
 
 enum
 {
@@ -72,7 +71,7 @@ struct thread
   int32_t tid;
   int32_t alive;
 
-  int32_t *clear_tid;
+  int32_t *clear_user_tid;
 
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
@@ -116,7 +115,7 @@ destroy_group (struct thread_group *group)
 }
 
 static struct thread *
-create (struct thread_group *group, uint64_t id, int32_t *clear_tid)
+create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 {
   struct thread *th = eri_assert_mtmalloc (group->pool,
 				sizeof *th + group->stack_size);
@@ -146,7 +145,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_tid)
   eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
 
   th->alive = 1;
-  th->clear_tid = clear_tid;
+  th->clear_user_tid = clear_user_tid;
 
   *(void **) th->sig_stack = th;
   return th;
@@ -161,18 +160,10 @@ destroy (struct thread *th)
   eri_assert_mtfree (pool, th);
 }
 
-ERI_DEFINE_CLEAR_USER_TID_SIG_HANDLER ()
-
 static void
 cleanup (struct thread *th)
 {
   eri_assert_sys_futex_wait (&th->alive, 1, 0);
-  if (th->clear_tid)
-    {
-      int32_t old_val;
-      /* TODO */
-    }
-
   destroy (th);
 }
 
@@ -185,8 +176,7 @@ exit (struct thread *th)
   eri_assert_lock (&group->exit_lock);
   if (--group->thread_count)
     {
-      eri_helper__invoke (group->helper, cleanup, th,
-			  clear_user_tid_sig_handler);
+      eri_helper__invoke (group->helper, cleanup, th);
       eri_assert_unlock (&group->exit_lock);
       eri_assert_sys_exit (0);
     }
@@ -258,8 +248,6 @@ set_ctx_from_th_ctx (struct eri_ucontext *ctx,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (eri_helper__select_sig_handler (HELPER_SELECTOR, info, ctx)) return;
-
   struct thread *th = *(void **) ctx->stack.sp;
   struct thread_context *th_ctx = th->ctx;
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
@@ -418,9 +406,7 @@ start_main (struct thread *th)
 	eri_assert_syscall (mprotect, init_map.start, size, prot);
     }
 
-  group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE,
-				     HELPER_SELECTOR, 0);
-  eri_helper__sig_unmask (group->helper);
+  group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE, 0);
 
   start (th, next);
 }
@@ -460,8 +446,8 @@ DEFINE_SYSCALL (clone)
   if (flags & ERI_CLONE_CHILD_SETTID)
     copy_to_user (th, user_ctid, &th_ctx->sregs.rax, sizeof *user_ctid);
 
-  int32_t *clear_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
-  struct thread *cth = create (th->group, rec.id, clear_tid);
+  int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
+  struct thread *cth = create (th->group, rec.id, clear_user_tid);
   struct thread_context *cth_ctx = ctx->ctx;
   cth_ctx->ext.op = th_ctx->ext.op;
   cth_ctx->ext.rbx = th_ctx->ext.rbx;

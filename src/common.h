@@ -123,34 +123,6 @@ sig_access_fault (struct thread_context *th_ctx,			\
 #define ERI_IF_SYSCALL(name, nr, op, ...) \
   if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
 
-#define ERI_DEFINE_CLEAR_USER_TID_SIG_HANDLER() \
-static void								\
-clear_user_tid_sig_handler (int32_t sig, struct eri_siginfo *info,	\
-			    struct eri_ucontext *ctx)			\
-{									\
-  eri_assert (eri_si_access_fault (info));				\
-									\
-  extern uint8_t clear_user_tid_clear_user[];				\
-  extern uint8_t clear_user_tid_clear_user_fault[];			\
-  eri_assert (ctx->mctx.rip == (uint64_t) clear_user_tid_clear_user);	\
-  ctx->mctx.rip = (uint64_t) clear_user_tid_clear_user_fault;		\
-}
-
-#define eri_clear_user_tid(tid, old_val) \
-  ({									\
-    int32_t *_tid = tid;						\
-    int32_t *_old_val = old_val;					\
-    uint8_t _fault = 0;							\
-    *_old_val = 0;							\
-    asm ("clear_user_tid_clear_user:\n"					\
-	 "  xchgl\t%0, %1\n"						\
-	 "  jmp\t1f\n"							\
-	 "clear_user_tid_clear_user_fault:\n"				\
-	 "  movb\t$1, %b2\n"						\
-	 "1:" : "+r" (*_old_val), "=m" (*_tid), "+r" (_fault));		\
-    ! _fault;								\
-  })
-
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
 

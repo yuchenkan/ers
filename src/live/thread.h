@@ -28,8 +28,7 @@ struct eri_live_thread *eri_live_thread__create (
 				struct eri_live_thread__create_args *create_args);
 uint64_t eri_live_thread__clone (struct eri_live_thread *th);
 
-void eri_live_thread__destroy (struct eri_live_thread *th,
-			       struct eri_helper *helper);
+void eri_live_thread__destroy (struct eri_live_thread *th);
 
 void eri_live_thread__join (struct eri_live_thread *th);
 

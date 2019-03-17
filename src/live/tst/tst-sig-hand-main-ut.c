@@ -116,7 +116,7 @@ tst_main (void)
       tst_enable_trace ();
       eri_live_thread__clone_main (sig_th.th);
       eri_live_thread__join (sig_th.th);
-      eri_live_thread__destroy (sig_th.th, 0);
+      eri_live_thread__destroy (sig_th.th);
 
       eri_assert (handled);
     }

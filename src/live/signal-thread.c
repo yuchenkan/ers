@@ -13,8 +13,6 @@
 #include <live/signal-thread-local.h>
 
 #define HELPER_STACK_SIZE	(256 * 1024)
-#define HELPER_SELECTOR		1
-
 #define WATCH_STACK_SIZE	8192
 
 struct watch
@@ -102,8 +100,6 @@ sig_get_act (struct signal_thread_group *group, int32_t sig,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (eri_helper__select_sig_handler (HELPER_SELECTOR, info, ctx)) return;
-
   struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
   struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
   if (sig_th->sig_stack != (void *) ctx->stack.sp)
@@ -288,8 +284,8 @@ start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
   eri_debug ("\n");
 
   struct signal_thread_group *group = sig_th->group;
-  group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE,
-				     HELPER_SELECTOR, group->pid);
+  group->helper = eri_helper__start (group->pool,
+				     HELPER_STACK_SIZE, group->pid);
   int32_t pgid = eri_helper__get_pid (group->helper);
   eri_assert_syscall (setpgid, pgid, 0);
 
@@ -339,7 +335,6 @@ start_group (struct eri_live_signal_thread *sig_th)
 
   init_sig_stack (sig_th);
 
-  eri_helper__sig_unmask (sig_th->group->helper);
   restore_sig_mask (sig_th);
 
   event_loop (sig_th);
@@ -655,7 +650,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     {
       eri_atomic_dec (&group->thread_count);
 
-      eri_live_thread__destroy (sig_cth->th, 0);
+      eri_live_thread__destroy (sig_cth->th);
 
       fini_event (sig_cth);
       eri_assert_mtfree (group->pool, sig_cth);
@@ -759,11 +754,11 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       release_event (event);
       eri_live_thread__join (th);
 
-      eri_live_thread__destroy (th, group->helper);
+      eri_live_thread__destroy (th);
       remove_from_group (sig_th);
 
       fini_event (sig_th);
-      eri_helper__invoke (group->helper, cleanup, sig_th, 0);
+      eri_helper__invoke (group->helper, cleanup, sig_th);
 
       unhold_exit_group (&group->exit_group_lock);
 
@@ -783,7 +778,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 	if (it != sig_th)
 	  {
 	    join (it);
-	    eri_live_thread__destroy (it->th, 0);
+	    eri_live_thread__destroy (it->th);
 	    thread_lst_remove (group, it);
 	    eri_assert_mtfree (group->pool, it);
 	  }
@@ -795,7 +790,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   release_event (event);
   eri_live_thread__join (th);
 
-  eri_live_thread__destroy (th, 0);
+  eri_live_thread__destroy (th);
 
   eri_debug ("exit helper\n");
   eri_helper__exit (group->helper);

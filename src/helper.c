@@ -15,7 +15,6 @@ struct eri_helper
   int32_t alive;
 
   int32_t event_pipe[2];
-  eri_sig_handler_t hand;
 
   eri_aligned16 uint8_t stack[0];
 };
@@ -24,7 +23,6 @@ struct event
 {
   void (*fn) (void *);
   void *args;
-  eri_sig_handler_t hand;
 };
 
 static eri_noreturn void
@@ -37,9 +35,6 @@ start (struct eri_helper *helper, uint64_t stack_size, int32_t ppid)
       eri_assert (eri_assert_syscall (getppid) == ppid);
     }
 
-  struct eri_stack stack = { (uint64_t) helper->stack, 0, stack_size };
-  eri_assert_syscall (sigaltstack, &stack, 0);
-
   while (1)
     {
       struct event *event;
@@ -50,12 +45,9 @@ start (struct eri_helper *helper, uint64_t stack_size, int32_t ppid)
 
       void (*fn) (void *) = event->fn;
       void *args = event->args;
-      eri_sig_handler_t hand = event->hand;
       eri_assert_mtfree (helper->pool, event);
 
-      helper->hand = hand;
       fn (args);
-      helper->hand = 0;
     }
   eri_debug ("exit\n");
   eri_assert_syscall (exit, 0);
@@ -64,7 +56,7 @@ start (struct eri_helper *helper, uint64_t stack_size, int32_t ppid)
 
 struct eri_helper *
 eri_helper__start (struct eri_mtpool *pool,
-		   uint64_t stack_size, uint8_t selector, int32_t pid)
+		   uint64_t stack_size, int32_t pid)
 {
   eri_debug ("\n");
   struct eri_helper *helper
@@ -73,9 +65,6 @@ eri_helper__start (struct eri_mtpool *pool,
   helper->alive = 1;
 
   eri_assert_syscall (pipe2, helper->event_pipe, ERI_O_DIRECT);
-  helper->hand = 0;
-
-  *(uint64_t *) helper->stack = (uint64_t) helper | selector;
 
   struct eri_sys_clone_args args = {
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
@@ -102,41 +91,13 @@ eri_helper__exit (struct eri_helper *helper)
 }
 
 void
-eri_helper__invoke (struct eri_helper *helper, void (*fn) (void *),
-		    void *args, eri_sig_handler_t hand)
+eri_helper__invoke (struct eri_helper *helper,
+		    void (*fn) (void *), void *args)
 {
   struct event *event = eri_assert_mtmalloc (helper->pool, sizeof *event);
   event->fn = fn;
   event->args = args;
-  event->hand = hand;
   eri_assert_syscall (write, helper->event_pipe[1], &event, sizeof event);
-}
-
-static void
-sig_unmask (void *args)
-{
-  struct eri_sigset mask;
-  eri_sig_empty_set (&mask);
-  eri_assert_sys_sigprocmask (&mask, 0);
-}
-
-void
-eri_helper__sig_unmask (struct eri_helper *helper)
-{
-  eri_helper__invoke (helper, sig_unmask, 0, 0);
-}
-
-uint8_t
-eri_helper__select_sig_handler (uint8_t selector,
-		struct eri_siginfo *info, struct eri_ucontext *ctx)
-{
-  uint64_t s = *(uint64_t *) ctx->stack.sp;
-  if (! (s & selector)) return 0;
-  struct eri_helper *helper = (void *) (s & ~selector);
-
-  if (! helper->hand) eri_assert (! eri_si_sync (info));
-  else helper->hand (info->sig, info, ctx);
-  return 1;
 }
 
 int32_t
