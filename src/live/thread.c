@@ -931,17 +931,18 @@ clear_user_tid (struct thread_context *th_ctx,
   uint8_t fault = 0;
   *old_val = 0;
 
-  extern uint8_t clear_user_tid_clear_user[];
-  extern uint8_t clear_user_tid_clear_user_fault[];
+  extern uint8_t clear_user_tid_access[];
+  extern uint8_t clear_user_tid_access_fault[];
+  eri_atomic_store (&th_ctx->access, (uint64_t) clear_user_tid_access);
+  th_ctx->access_fault = (uint64_t) clear_user_tid_access_fault;
 
-  eri_atomic_store (&th_ctx->access, (uint64_t) clear_user_tid_clear_user);
-  th_ctx->access_fault = (uint64_t) clear_user_tid_clear_user_fault;
-  asm ("clear_user_tid_clear_user:\n"
+  asm ("clear_user_tid_access:\n"
        "  xchgl\t%0, %1\n"
        "  jmp\t1f\n"
-       "clear_user_tid_clear_user_fault:\n"
+       "clear_user_tid_access_fault:\n"
        "  movb\t$1, %b2\n"
        "1:" : "+r" (*old_val), "=m" (*user_tid), "+r" (fault) : : "memory");
+
   eri_atomic_store (&th_ctx->access, 0);
   return ! fault;
 }
@@ -958,7 +959,7 @@ syscall_do_exit (struct eri_live_thread *th)
   if (! eri_live_signal_thread__exit (sig_th, exit_group, status))
     return SYSCALL_SIG_WAIT_RESTART;
 
-  if (th->clear_user_tid)
+  if (th->clear_user_tid) /* XXX: die? replay as well */
     {
       struct thread_group *group = th->group;
 

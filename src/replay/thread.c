@@ -491,8 +491,60 @@ SYSCALL_TO_IMPL (setns)
 
 SYSCALL_TO_IMPL (set_tid_address)
 
-DEFINE_SYSCALL (exit) { exit (th); }
-DEFINE_SYSCALL (exit_group) { exit (th); }
+static uint8_t
+read_write_user_tid (struct thread_context *th_ctx, int32_t *user_tid)
+{
+  uint8_t fault = 0;
+
+  extern uint8_t clear_user_tid_access[];
+  extern uint8_t clear_user_tid_access_fault[];
+  eri_atomic_store (&th_ctx->access, (uint64_t) clear_user_tid_access);
+  th_ctx->access_fault = (uint64_t) clear_user_tid_access_fault;
+
+  asm ("clear_user_tid_access:\n"
+       "  orl\t$0, %0\n"
+       "  jmp\t1f\n"
+       "clear_user_tid_access_fault:\n"
+       "  movb\t$1, %b1\n"
+       "1:" : "+m" (*user_tid), "+r" (fault) : : "memory");
+
+  eri_atomic_store (&th_ctx->access, 0);
+  return ! fault;
+}
+
+static void
+read_atomic_record (struct thread *th, struct eri_atomic_record *rec)
+{
+  eri_assert_fread (th->file, rec, sizeof rec, 0);
+  eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
+}
+
+static void
+syscall_do_exit (struct thread *th)
+{
+  int32_t *user_tid = th->clear_user_tid;
+  if (user_tid && read_write_user_tid (th->ctx, user_tid))
+    {
+      uint64_t mem = (uint64_t) user_tid;
+      uint8_t size = _ERS_ATOMIC_SIZE_l;
+
+      struct eri_atomic_record rec;
+      read_atomic_record (th, &rec);
+
+      uint64_t ver[2] = { rec.ver[0], rec.ver[1] };
+      atomic_wait (th->group, mem, size, rec.updated, ver);
+
+      if (rec.updated)
+	{
+	  atomic_store (size, mem, 0);
+	  atomic_update (th->group, mem, size);
+	}
+    }
+  exit (th);
+}
+
+DEFINE_SYSCALL (exit) { syscall_do_exit (th); }
+DEFINE_SYSCALL (exit_group) { syscall_do_exit (th); }
 
 SYSCALL_TO_IMPL (wait4)
 SYSCALL_TO_IMPL (waitid)
@@ -1001,8 +1053,7 @@ atomic (struct thread *th)
       atomic_read_write_user (th, mem, size, code == _ERS_OP_ATOMIC_LOAD);
 
       struct eri_atomic_record rec;
-      eri_assert_fread (th->file, &rec, sizeof rec, 0);
-      eri_assert (rec.magic == ERI_ATOMIC_MAGIC);
+      read_atomic_record (th, &rec);
 
       uint8_t updated = rec.updated;
       uint64_t ver[2] = { rec.ver[0], rec.ver[1] };
