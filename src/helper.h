@@ -20,8 +20,8 @@ void eri_helper__invoke (struct eri_helper *helper, void (*fn) (void *),
 
 void eri_helper__sig_unmask (struct eri_helper *helper);
 /* Call with all signal masked.  */
-void eri_helper__sig_handler (
-		struct eri_helper *helper,
+uint8_t eri_helper__select_sig_handler (
+		uint8_t selector,
 		struct eri_siginfo *info, struct eri_ucontext *ctx);
 
 int32_t eri_helper__get_pid (const struct eri_helper *helper);

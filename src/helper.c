@@ -28,7 +28,7 @@ struct event
 };
 
 static eri_noreturn void
-start (struct eri_helper *helper, int32_t ppid)
+start (struct eri_helper *helper, uint64_t stack_size, int32_t ppid)
 {
   eri_debug ("pid = %u, ppid = %u\n", helper->pid, ppid);
   if (ppid)
@@ -36,6 +36,9 @@ start (struct eri_helper *helper, int32_t ppid)
       eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
       eri_assert (eri_assert_syscall (getppid) == ppid);
     }
+
+  struct eri_stack stack = { (uint64_t) helper->stack, 0, stack_size };
+  eri_assert_syscall (sigaltstack, &stack, 0);
 
   while (1)
     {
@@ -72,11 +75,6 @@ eri_helper__start (struct eri_mtpool *pool,
   eri_assert_syscall (pipe2, helper->event_pipe, ERI_O_DIRECT);
   helper->hand = 0;
 
-  struct eri_stack stack = { (uint64_t) helper->stack, 0, stack_size };
-  struct eri_stack old_stack;
-  /* To avoid EPERM.  */
-  eri_assert_syscall (sigaltstack, &stack, &old_stack);
-
   *(uint64_t *) helper->stack = (uint64_t) helper | selector;
 
   struct eri_sys_clone_args args = {
@@ -84,10 +82,10 @@ eri_helper__start (struct eri_mtpool *pool,
     | ERI_CLONE_SIGHAND | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID
     | (!! pid ? ERI_SIGCHLD : ERI_CLONE_THREAD),
     helper->stack + stack_size - 8,
-    &helper->pid, &helper->alive, 0, start, helper, (void *) (uint64_t) pid
+    &helper->pid, &helper->alive, 0, start, helper,
+    (void *) stack_size, (void *) (uint64_t) pid
   };
   eri_assert_sys_clone (&args);
-  eri_assert_syscall (sigaltstack, &old_stack, 0);
   return helper;
 }
 
@@ -128,12 +126,17 @@ eri_helper__sig_unmask (struct eri_helper *helper)
   eri_helper__invoke (helper, sig_unmask, 0, 0);
 }
 
-void
-eri_helper__sig_handler (struct eri_helper *helper,
-			 struct eri_siginfo *info, struct eri_ucontext *ctx)
+uint8_t
+eri_helper__select_sig_handler (uint8_t selector,
+		struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
+  uint64_t s = *(uint64_t *) ctx->stack.sp;
+  if (! (s & selector)) return 0;
+  struct eri_helper *helper = (void *) (s & ~selector);
+
   if (! helper->hand) eri_assert (! eri_si_sync (info));
   else helper->hand (info->sig, info, ctx);
+  return 1;
 }
 
 int32_t

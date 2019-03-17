@@ -2,6 +2,7 @@
 #include <common.h>
 
 #include <tst/tst-syscall.h>
+#include <live/tst/tst-util.h>
 
 #include <live/signal-thread.h>
 #include <live/tst/tst-syscall.h>
@@ -37,8 +38,12 @@ tst_live_start (void)
   tst_assert_sys_clone (&args);
   eri_assert_sys_futex_wait (&set_ctid, 1, 0);
   eri_assert (ctid == 1);
-  //args.ctid = 0; TODO: clear tid seg fault
-  //tst_assert_sys_clone (&args);
-  //eri_assert_sys_futex_wait (&ctid, 1, 0);
+/* TODO: clear tid seg fault */
+#if 0
+  args.a0 = (void *) 1;
+  tst_assert_sys_clone (&args);
+  tst_yield (64);
+  eri_assert_sys_futex_wait (&ctid, 1, 0);
+#endif
   tst_assert_sys_exit (0);
 }

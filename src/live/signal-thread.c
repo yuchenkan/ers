@@ -102,14 +102,9 @@ sig_get_act (struct signal_thread_group *group, int32_t sig,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  uint64_t sel = *(uint64_t *) ctx->stack.sp;
-  if (sel & HELPER_SELECTOR)
-    {
-       eri_helper__sig_handler ((void *) (sel & ~HELPER_SELECTOR), info, ctx);
-       return;
-    }
+  if (eri_helper__select_sig_handler (HELPER_SELECTOR, info, ctx)) return;
 
-  struct eri_live_signal_thread *sig_th = (void *) sel;
+  struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
   struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
   if (sig_th->sig_stack != (void *) ctx->stack.sp)
     {

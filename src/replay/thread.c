@@ -142,6 +142,8 @@ set_ctx_from_th_ctx (struct eri_ucontext *ctx,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
+  if (eri_helper__select_sig_handler (HELPER_SELECTOR, info, ctx)) return;
+
   struct thread *th = *(void **) ctx->stack.sp;
   struct thread_context *th_ctx = th->ctx;
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
