@@ -2,6 +2,7 @@
 #include <common.h>
 
 #include <entry.h>
+#include <helper.h>
 
 #include <lib/util.h>
 #include <lib/atomic.h>
@@ -40,6 +41,8 @@ struct thread_group
   const char *path;
   uint64_t stack_size;
   uint64_t file_buf_size;
+
+  struct eri_helper *helper;
 
   int32_t pid;
 
@@ -96,8 +99,17 @@ raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (info->sig == 0) exit (th);
 
-  /* TODO */
-  if (eri_si_sync (info))
+  struct eri_sigaction act;
+  eri_sig_get_act (th->group->sig_acts, info->sig, &act);
+  eri_sig_digest_act (info, &th->sig_mask, &act);
+
+  eri_assert (act.act && act.act != ERI_SIG_ACT_STOP);
+
+  if (! eri_sig_act_internal_act (act.act))
+    {
+      /* TODO: next_record (th) */
+    }
+  else exit (th);
 }
 
 static eri_noreturn void raise_async (struct thread *th,

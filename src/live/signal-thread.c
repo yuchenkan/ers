@@ -97,9 +97,11 @@ sig_get_act (struct signal_thread_group *group, int32_t sig,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
-
   struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
+  struct eri_helper *helper = sig_th->group->helper;
+  if (eri_helper__sig_handler (helper, info, ctx)) return;
+
+  struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
   if (sig_th->sig_stack != (void *) ctx->stack.sp)
     {
       thread_sig_handler (sig_th, frame);
@@ -115,7 +117,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info)
       && (info->chld.pid == th_pid
-	  || info->chld.pid == eri_helper__get_pid (sig_th->group->helper)))
+	  || info->chld.pid == eri_helper__get_pid (helper)))
     return;
 
   /* From sig_route_xcpu.  */
@@ -331,6 +333,10 @@ start_group (struct eri_live_signal_thread *sig_th)
   watch (sig_th);
 
   init_sig_stack (sig_th);
+
+  struct eri_sigset mask;
+  eri_sig_empty_set (&mask);
+  eri_helper__sig_mask (sig_th->group->helper, &mask);
 
   restore_sig_mask (sig_th);
 

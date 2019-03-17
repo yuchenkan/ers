@@ -464,7 +464,9 @@ sig_action (struct eri_live_thread *th)
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 
-  if (! ERI_SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
+  eri_assert (th_ctx->sig_act.act);
+
+  if (! eri_sig_act_internal_act (th_ctx->sig_act.act))
     {
       /* XXX: swallow? */
       th_ctx->swallow_single_step = 0;
@@ -778,9 +780,11 @@ unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
 }
 
 static void
-clear_tid_sigsegv_handler (struct eri_siginfo *info,
-			   struct eri_ucontext *ctx)
+clear_tid_sig_handler (int32_t sig, struct eri_siginfo *info,
+		       struct eri_ucontext *ctx)
 {
+  eri_assert (eri_si_access_fault (info));
+
   extern uint8_t clear_tid_clear_user[];
   extern uint8_t clear_tid_clear_user_fault[];
   eri_assert (ctx->mctx.rip == (uint64_t) clear_tid_clear_user);
@@ -838,7 +842,7 @@ eri_live_thread__destroy (struct eri_live_thread *th,
     {
       struct clear_tid_args args = { th, ERI_INIT_LOCK (1) };
       eri_helper__invoke (helper, clear_tid, &args,
-			  clear_tid_sigsegv_handler);
+			  clear_tid_sig_handler);
       eri_assert_lock (&args.lock);
     }
 

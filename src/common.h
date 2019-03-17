@@ -50,7 +50,7 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
 #define ERI_SIG_ACT_CORE	((void *) 2)
 #define ERI_SIG_ACT_STOP	((void *) 3)
 
-#define ERI_SIG_ACT_INTERNAL_ACT(act) \
+#define eri_sig_act_internal_act(act) \
   ({ void *_act = act;							\
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
      || _act == ERI_SIG_ACT_STOP; })
