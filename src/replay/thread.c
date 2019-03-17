@@ -72,14 +72,12 @@ struct thread
 
 ERI_DEFINE_THREAD_UTILS (struct thread)
 
-static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
-				struct eri_ucontext *ctx, uint8_t next_async);
+static eri_noreturn void exit (struct thread *th);
 
 static eri_noreturn void
-raise (struct thread *th, struct eri_siginfo *info,
-       struct eri_ucontext *ctx, uint8_t next_async)
+exit (struct thread *th)
 {
-  /* TODO: 1. info->sig == 0 */
+  /* TODO */
 }
 
 static uint8_t
@@ -90,6 +88,18 @@ next_record (struct thread *th)
   return next;
 }
 
+static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
+				struct eri_ucontext *ctx);
+
+static eri_noreturn void
+raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  if (info->sig == 0) exit (th);
+
+  /* TODO */
+  if (eri_si_sync (info))
+}
+
 static eri_noreturn void raise_async (struct thread *th,
 				      struct eri_ucontext *ctx);
 
@@ -98,7 +108,20 @@ raise_async (struct thread *th, struct eri_ucontext *ctx)
 {
   struct eri_siginfo info;
   eri_assert_fread (th->file, &info, sizeof info, 0);
-  raise (th, &info, ctx, next_record (th) == ERI_ASYNC_RECORD);
+  raise (th, &info, ctx);
+}
+
+static void
+set_ctx_from_th_ctx (struct eri_ucontext *ctx,
+		     const struct thread_context *th_ctx, uint8_t call)
+{
+#define SET_SREG(creg, reg)	ctx->mctx.reg = th_ctx->ctx.sregs.reg;
+  ERI_ENTRY_FOREACH_SREG (SET_SREG)
+#define SET_EREG(creg, reg)	ctx->mctx.reg = th_ctx->eregs.reg;
+  ERI_ENTRY_FOREACH_EREG (SET_EREG)
+  ctx->mctx.rsp = th_ctx->ctx.rsp;
+  ctx->mctx.rbx = th_ctx->ext.rbx;
+  ctx->mctx.rip = call ? th_ctx->ext.call : th_ctx->ext.ret;
 }
 
 static void
@@ -108,14 +131,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   struct thread_context *th_ctx = th->ctx;
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     {
-#define SET_SREG(creg, reg)	ctx->mctx.reg = th_ctx->ctx.sregs.reg;
-      ERI_ENTRY_FOREACH_SREG (SET_SREG)
-#define SET_EREG(creg, reg)	ctx->mctx.reg = th_ctx->eregs.reg;
-      ERI_ENTRY_FOREACH_EREG (SET_EREG)
-
-      ctx->mctx.rsp = th_ctx->ctx.rsp;
-      ctx->mctx.rbx = th_ctx->ext.rbx;
-      ctx->mctx.rip = th_ctx->ext.ret;
+      set_ctx_from_th_ctx (ctx, th_ctx, 0);
       raise_async (th, ctx);
     }
 
@@ -158,6 +174,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	}
     }
 
+  if (sig_access_fault (th_ctx, info, ctx, 0)) return;
   /* TODO: syscall internal */
 
   if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
@@ -167,17 +184,12 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       && ctx->mctx.rip == th_ctx->atomic_access_fault)
     {
       th_ctx->atomic_access_fault = 0;
-
-      ERI_ENTRY_FOREACH_SREG (SET_SREG)
-      ERI_ENTRY_FOREACH_EREG (SET_EREG)
-      ctx->mctx.rsp = th_ctx->ctx.rsp;
-      ctx->mctx.rbx = th_ctx->ext.rbx;
-      ctx->mctx.rip = th_ctx->ext.call;
+      set_ctx_from_th_ctx (ctx, th_ctx, 1);
     }
 
   eri_assert (! internal (th->group, ctx->mctx.rip));
 
-  raise (th, info, ctx, 0);
+  raise (th, info, ctx);
 }
 
 static struct thread_group *
@@ -410,8 +422,8 @@ SYSCALL_TO_IMPL (setns)
 
 SYSCALL_TO_IMPL (set_tid_address)
 
-SYSCALL_TO_IMPL (exit)
-SYSCALL_TO_IMPL (exit_group)
+DEFINE_SYSCALL (exit) { exit (th); }
+DEFINE_SYSCALL (exit_group) { exit (th); }
 
 SYSCALL_TO_IMPL (wait4)
 SYSCALL_TO_IMPL (waitid)

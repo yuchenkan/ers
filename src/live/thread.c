@@ -361,57 +361,22 @@ eri_live_thread__clone_main (struct eri_live_thread *th)
   eri_assert_unlock (&th->start_lock);
 }
 
-#define SIG_ACT_TERM	((void *) 1)
-#define SIG_ACT_CORE	((void *) 2)
-#define SIG_ACT_STOP	((void *) 3)
-
-#define SIG_ACT_INTERNAL_ACT(act) \
-  ((act) == SIG_ACT_TERM || (act) == SIG_ACT_CORE || (act) == SIG_ACT_STOP)
-
 uint8_t
 eri_live_thread__sig_digest_act (
 		struct eri_live_thread *th, const struct eri_siginfo *info,
 		struct eri_sigaction *act)
 {
-  struct eri_live_signal_thread *sig_th = th->sig_th;
-  int32_t sig = info->sig;
+  /*
+   * Though this function can be called in different async contexts,
+   * This can only happen synchronizly regards to the sig_mask.
+   */
+  const struct eri_sigset *mask
+		= eri_live_signal_thread__get_sig_mask (th->sig_th);
 
-  if (eri_si_sync (info)
-      /*
-       * Though this function can be called in different async contexts,
-       * This can only happen synchronizly regards to the sig_mask.
-       */
-      && (eri_sig_set_set (eri_live_signal_thread__get_sig_mask (sig_th), sig)
-	  || act->act == ERI_SIG_IGN))
-    act->act = ERI_SIG_DFL;
-
-  if (act->act == ERI_SIG_IGN)
-    act->act = 0;
-  else if (act->act == ERI_SIG_DFL)
-    {
-      if (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
-	  || sig == ERI_SIGURG || sig == ERI_SIGWINCH)
-	act->act = 0;
-      else if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
-	       || sig == ERI_SIGPIPE || sig == ERI_SIGALRM
-	       || sig == ERI_SIGTERM || sig == ERI_SIGUSR1
-	       || sig == ERI_SIGUSR2 || sig == ERI_SIGIO
-	       || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
-	       || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
-	       || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
-	act->act = SIG_ACT_TERM;
-      else if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
-	       || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
-	       || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
-	       || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
-	act->act = SIG_ACT_CORE;
-      else if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
-	act->act = SIG_ACT_STOP;
-      else eri_assert (0);
-    }
+  eri_sig_digest_act (info, mask, act);
 
   struct eri_sigset *force = th->ctx->sig_force_deliver;
-  return act->act || (force && eri_sig_set_set (force, sig));
+  return act->act || (force && eri_sig_set_set (force, info->sig));
 }
 
 static void
@@ -499,7 +464,7 @@ sig_action (struct eri_live_thread *th)
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 
-  if (! SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
+  if (! ERI_SIG_ACT_INTERNAL_ACT (th_ctx->sig_act.act))
     {
       /* XXX: swallow? */
       th_ctx->swallow_single_step = 0;
@@ -518,7 +483,7 @@ sig_action (struct eri_live_thread *th)
       sig_act (th_ctx);
     }
 
-  if (th_ctx->sig_act.act == SIG_ACT_STOP)
+  if (th_ctx->sig_act.act == ERI_SIG_ACT_STOP)
     {
       /* TODO: stop */
 
@@ -530,7 +495,7 @@ sig_action (struct eri_live_thread *th)
       sig_return (frame);
     }
 
-  if (th_ctx->sig_act.act == SIG_ACT_TERM) core_status = 130;
+  if (th_ctx->sig_act.act == ERI_SIG_ACT_TERM) core_status = 130;
 
   struct eri_sigset mask;
 core:
@@ -628,7 +593,7 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
       if (eri_si_single_step (info)) return;
       eri_assert (! eri_si_sync (info));
 
-      if (th_ctx->sig_act.act == SIG_ACT_STOP)
+      if (th_ctx->sig_act.act == ERI_SIG_ACT_STOP)
 	ctx->mctx = th_ctx->sig_act_frame->ctx.mctx;
       else
 	{
@@ -2015,7 +1980,7 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
     {
       /* XXX: sig masked all */
       eri_assert (eri_live_thread__sig_digest_act (th, info, act));
-      eri_assert (act->act == SIG_ACT_CORE);
+      eri_assert (act->act == ERI_SIG_ACT_CORE);
       sig_set (th_ctx, frame, act, SIG_HAND_NONE);
       return;
     }

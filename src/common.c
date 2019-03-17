@@ -83,3 +83,38 @@ eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
 
   eri_assert_unlock (&sig_act->lock);
 }
+
+void
+eri_sig_digest_act (const struct eri_siginfo *info,
+		    const struct eri_sigset *mask, struct eri_sigaction *act)
+{
+  int32_t sig = info->sig;
+  if (eri_si_sync (info)
+      && (eri_sig_set_set (mask, sig) || act->act == ERI_SIG_DFL))
+    act->act = ERI_SIG_DFL;
+
+  if (act->act == ERI_SIG_IGN)
+    act->act = 0;
+  else if (act->act == ERI_SIG_DFL)
+    {
+      if (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
+	  || sig == ERI_SIGURG || sig == ERI_SIGWINCH)
+	act->act = 0;
+      else if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
+	       || sig == ERI_SIGPIPE || sig == ERI_SIGALRM
+	       || sig == ERI_SIGTERM || sig == ERI_SIGUSR1
+	       || sig == ERI_SIGUSR2 || sig == ERI_SIGIO
+	       || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
+	       || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
+	       || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
+	act->act = ERI_SIG_ACT_TERM;
+      else if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
+	       || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
+	       || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
+	       || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
+	act->act = ERI_SIG_ACT_CORE;
+      else if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
+	act->act = ERI_SIG_ACT_STOP;
+      else eri_assert_unreachable ();
+    }
+}

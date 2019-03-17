@@ -46,14 +46,17 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
 		      const struct eri_sigaction *act,
 		      struct eri_sigaction *old_act);
 
-#define eri_atomic_slot(mem)		((mem) & ~0xf)
-#define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
+#define ERI_SIG_ACT_TERM	((void *) 1)
+#define ERI_SIG_ACT_CORE	((void *) 2)
+#define ERI_SIG_ACT_STOP	((void *) 3)
 
-#define eri_atomic_cross_slot(mem, size) \
-  ({ uint64_t _mem = mem;						\
-     eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
+#define ERI_SIG_ACT_INTERNAL_ACT(act) \
+  ({ void *_act = act;							\
+     _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
+     || _act == ERI_SIG_ACT_STOP; })
 
-#define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
+void eri_sig_digest_act (const struct eri_siginfo *info,
+		const struct eri_sigset *mask, struct eri_sigaction *act);
 
 #define ERI_IF_SYSCALL(name, nr, op, ...) \
   if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
@@ -119,6 +122,15 @@ sig_access_fault (struct thread_context *th_ctx,			\
   ctx->mctx.rip = th_ctx->access_fault;					\
   return 1;								\
 }
+
+#define eri_atomic_slot(mem)		((mem) & ~0xf)
+#define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
+
+#define eri_atomic_cross_slot(mem, size) \
+  ({ uint64_t _mem = mem;						\
+     eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
+
+#define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
 
 #include <compiler.h>
 #include <lib/printf.h>
