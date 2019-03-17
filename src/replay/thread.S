@@ -30,7 +30,7 @@ ERI_FUNCTION (main)
   /* XXX: ensure eregs all zero */
   ERI_ENTRY_THREAD_CONTEXT_RESTORE (TC (CTX))
   jmp	*TCC (RET)(%rbx)
-  ERI_END_FUNCTION (start_main)
+  ERI_END_FUNCTION (main)
 
 ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 

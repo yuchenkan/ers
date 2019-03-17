@@ -61,7 +61,7 @@ start (struct eri_helper *helper, int32_t ppid)
 
 struct eri_helper *
 eri_helper__start (struct eri_mtpool *pool,
-		   uint64_t stack_size, int32_t pid)
+		   uint64_t stack_size, uint8_t selector, int32_t pid)
 {
   eri_debug ("\n");
   struct eri_helper *helper
@@ -77,7 +77,7 @@ eri_helper__start (struct eri_mtpool *pool,
   /* To avoid EPERM.  */
   eri_assert_syscall (sigaltstack, &stack, &old_stack);
 
-  *(void **) helper->stack = helper;
+  *(uint64_t *) helper->stack = (uint64_t) helper | selector;
 
   struct eri_sys_clone_args args = {
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
@@ -114,39 +114,26 @@ eri_helper__invoke (struct eri_helper *helper, void (*fn) (void *),
   eri_assert_syscall (write, helper->event_pipe[1], &event, sizeof event);
 }
 
-struct sig_mask_args
-{
-  struct eri_mtpool *pool;
-  struct eri_sigset mask;
-};
-
 static void
-sig_mask (void *args)
+sig_unmask (void *args)
 {
-  struct sig_mask_args *a = args;
-  eri_assert_sys_sigprocmask (&a->mask, 0);
-  eri_assert_mtfree (a->pool, a);
+  struct eri_sigset mask;
+  eri_sig_empty_set (&mask);
+  eri_assert_sys_sigprocmask (&mask, 0);
 }
 
 void
-eri_helper__sig_mask (struct eri_helper *helper, struct eri_sigset *mask)
+eri_helper__sig_unmask (struct eri_helper *helper)
 {
-  struct sig_mask_args *a = eri_assert_mtmalloc (helper->pool, sizeof *a);
-  a->pool = helper->pool;
-  a->mask = *mask;
-  eri_helper__invoke (helper, sig_mask, a, 0);
+  eri_helper__invoke (helper, sig_unmask, 0, 0);
 }
 
-uint8_t
+void
 eri_helper__sig_handler (struct eri_helper *helper,
 			 struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (! ctx->stack.sp || *(void **) ctx->stack.sp != helper) return 0;
-
   if (! helper->hand) eri_assert (! eri_si_sync (info));
   else helper->hand (info->sig, info, ctx);
-
-  return 1;
 }
 
 int32_t

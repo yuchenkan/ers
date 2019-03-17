@@ -12,10 +12,15 @@
 #include <live/signal-thread.h>
 #include <live/signal-thread-local.h>
 
+#define HELPER_STACK_SIZE	(256 * 1024)
+#define HELPER_SELECTOR		1
+
+#define WATCH_STACK_SIZE	8192
+
 struct watch
 {
   int32_t alive;
-  uint8_t stack[4096];
+  uint8_t stack[WATCH_STACK_SIZE];
 };
 
 struct signal_thread_group
@@ -97,10 +102,14 @@ sig_get_act (struct signal_thread_group *group, int32_t sig,
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  struct eri_live_signal_thread *sig_th = *(void **) ctx->stack.sp;
-  struct eri_helper *helper = sig_th->group->helper;
-  if (eri_helper__sig_handler (helper, info, ctx)) return;
+  uint64_t sel = *(uint64_t *) ctx->stack.sp;
+  if (sel & HELPER_SELECTOR)
+    {
+       eri_helper__sig_handler ((void *) (sel & ~HELPER_SELECTOR), info, ctx);
+       return;
+    }
 
+  struct eri_live_signal_thread *sig_th = (void *) sel;
   struct eri_sigframe *frame = eri_struct_of (info, typeof (*frame), info);
   if (sig_th->sig_stack != (void *) ctx->stack.sp)
     {
@@ -117,7 +126,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info)
       && (info->chld.pid == th_pid
-	  || info->chld.pid == eri_helper__get_pid (helper)))
+	  || info->chld.pid == eri_helper__get_pid (sig_th->group->helper)))
     return;
 
   /* From sig_route_xcpu.  */
@@ -284,7 +293,8 @@ start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
   eri_debug ("\n");
 
   struct signal_thread_group *group = sig_th->group;
-  group->helper = eri_helper__start (group->pool, 256 * 1024, group->pid);
+  group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE,
+				     HELPER_SELECTOR, group->pid);
   int32_t pgid = eri_helper__get_pid (group->helper);
   eri_assert_syscall (setpgid, pgid, 0);
 
@@ -334,10 +344,7 @@ start_group (struct eri_live_signal_thread *sig_th)
 
   init_sig_stack (sig_th);
 
-  struct eri_sigset mask;
-  eri_sig_empty_set (&mask);
-  eri_helper__sig_mask (sig_th->group->helper, &mask);
-
+  eri_helper__sig_unmask (sig_th->group->helper);
   restore_sig_mask (sig_th);
 
   event_loop (sig_th);

@@ -10,17 +10,17 @@ struct eri_ucontext;
 struct eri_helper;
 
 /* Call with all signal masked.  */
-struct eri_helper *eri_helper__start (struct eri_mtpool *pool,
-				      uint64_t stack_size, int32_t pid);
+struct eri_helper *eri_helper__start (
+			struct eri_mtpool *pool, uint64_t stack_size,
+			uint8_t selector, int32_t pid);
 void eri_helper__exit (struct eri_helper *helper);
 
 void eri_helper__invoke (struct eri_helper *helper, void (*fn) (void *),
 			 void *args, eri_sig_handler_t hand);
 
-void eri_helper__sig_mask (struct eri_helper *helper,
-			   struct eri_sigset *mask);
+void eri_helper__sig_unmask (struct eri_helper *helper);
 /* Call with all signal masked.  */
-uint8_t eri_helper__sig_handler (
+void eri_helper__sig_handler (
 		struct eri_helper *helper,
 		struct eri_siginfo *info, struct eri_ucontext *ctx);
 

@@ -18,8 +18,7 @@ start (int32_t *set)
 {
   if (set) tst_assert_syscall (set_tid_address, set);
 
-  tst_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
+  tst_assert_sys_exit (0);
 }
 
 eri_noreturn void tst_live_start (void);
@@ -38,6 +37,8 @@ tst_live_start (void)
   tst_assert_sys_clone (&args);
   eri_assert_sys_futex_wait (&set_ctid, 1, 0);
   eri_assert (ctid == 1);
-  tst_assert_syscall (exit, 0);
-  eri_assert_unreachable ();
+  //args.ctid = 0; TODO: clear tid seg fault
+  //tst_assert_sys_clone (&args);
+  //eri_assert_sys_futex_wait (&ctid, 1, 0);
+  tst_assert_sys_exit (0);
 }

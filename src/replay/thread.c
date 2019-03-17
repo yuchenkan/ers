@@ -15,6 +15,9 @@
 #include <replay/thread.h>
 #include <replay/thread-local.h>
 
+#define HELPER_STACK_SIZE	(256 * 1024)
+#define HELPER_SELECTOR		1
+
 enum
 {
 #define SIG_HAND_ENUM(chand, hand)	chand,
@@ -220,6 +223,9 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->stack_size = rtld_args->stack_size;
   group->file_buf_size = rtld_args->file_buf_size;
 
+  group->helper = eri_helper__start (pool, HELPER_STACK_SIZE,
+				     HELPER_SELECTOR, 0);
+
   group->pid = eri_assert_syscall (getpid);
   eri_sig_init_acts (group->sig_acts, sig_handler);
 
@@ -354,6 +360,7 @@ start_main (struct thread *th)
 	eri_assert_syscall (mprotect, init_map.start, size, prot);
     }
 
+  eri_helper__sig_unmask (group->helper);
   start (th, next);
 }
 
