@@ -14,7 +14,9 @@ eri_live_signal_thread__init_thread_sig_stack (
 		struct eri_live_signal_thread *sig_th,
 		uint8_t *stack, uint64_t stack_size)
 {
-  struct eri_stack st = { (uint64_t) stack, 0, stack_size };
+  struct eri_stack st = {
+    (uint64_t) stack, ERI_SS_AUTODISARM, stack_size
+  };
   eri_assert_syscall (sigaltstack, &st, 0);
   *(struct eri_live_signal_thread **) stack = sig_th;
   eri_atomic_store (&sig_th->sig_alt_stack_installed, 1);

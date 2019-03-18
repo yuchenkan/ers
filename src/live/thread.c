@@ -477,7 +477,7 @@ sig_action (struct eri_live_thread *th)
 	eri_live_thread_recorder__rec_signal (th->rec, info);
 
       struct eri_stack st = {
-	(uint64_t) th->sig_stack, 0, 2 * THREAD_SIG_STACK_SIZE
+	(uint64_t) th->sig_stack, ERI_SS_AUTODISARM, 2 * THREAD_SIG_STACK_SIZE
       };
       eri_assert_syscall (sigaltstack, &st, 0);
 
@@ -524,6 +524,7 @@ sig_set (struct thread_context *th_ctx, struct eri_sigframe *frame,
   th_ctx->sig_act = *act;
 
   th_ctx->ext.op.sig_hand = sig_hand;
+  eri_assert (frame->ctx.stack.flags == ERI_SS_AUTODISARM);
   frame->ctx.stack.size -= THREAD_SIG_STACK_SIZE;
 }
 
@@ -1288,7 +1289,7 @@ DEFINE_SYSCALL (rt_sigreturn)
 
   syscall_set_sig_alt_stack (th, &ctx->stack);
   ctx->stack.sp = (uint64_t) th->sig_stack;
-  ctx->stack.flags = 0;
+  ctx->stack.flags = ERI_SS_AUTODISARM;
   ctx->stack.size = 2 * THREAD_SIG_STACK_SIZE;
 
   th_ctx->ext.rbx = ctx->mctx.rbx;
@@ -2173,8 +2174,9 @@ eri_live_thread__sig_handler (
 		struct eri_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
-  eri_debug ("sig_hand = %u, sig = %u, rip = %lx\n",
-	     th->ctx->ext.op.sig_hand, info->sig, frame->ctx.mctx.rip);
+  eri_debug ("sig_hand = %u, sig = %u, frame = %lx, rip = %lx\n",
+	     th->ctx->ext.op.sig_hand, info->sig,
+	     frame, frame->ctx.mctx.rip);
 
   const void (*hands[]) (
 	    struct eri_live_thread *, struct eri_sigframe *,
