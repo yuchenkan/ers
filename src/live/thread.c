@@ -1131,16 +1131,17 @@ DEFINE_SYSCALL (rt_sigprocmask)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
+  struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
 
   struct eri_sigset old_mask;
   old_mask = *eri_live_signal_thread__get_sig_mask (sig_th);
 
   struct eri_sigset mask;
-  uint8_t res = eri_syscall_rt_sigprocmask_get_user_mask (
-		&th_ctx->ctx.sregs, &old_mask, &mask, copy_from_user, th);
-  if (res == ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR)
+  if (! eri_common_syscall_rt_sigprocmask_get (
+			sregs, &old_mask, &mask, copy_from_user, th))
     return SYSCALL_DONE;
-  else if (res == ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_DONE)
+
+  if (sregs->rsi)
     {
       if (! eri_live_signal_thread__sig_mask_async (sig_th, &mask))
 	return SYSCALL_SIG_WAIT_RESTART;
@@ -1148,8 +1149,9 @@ DEFINE_SYSCALL (rt_sigprocmask)
       if (eri_live_signal_thread__signaled (sig_th))
 	syscall_sig_wait (th_ctx, 0);
     }
-  eri_syscall_rt_sigprocmask_set_user_mask (
-		&th_ctx->ctx.sregs, &old_mask, copy_to_user, th);
+
+  eri_common_syscall_rt_sigprocmask_set (
+			sregs, &old_mask, copy_to_user, th);
   return SYSCALL_DONE;
 }
 
@@ -1157,34 +1159,26 @@ DEFINE_SYSCALL (rt_sigaction)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
-
-  int32_t sig = th_ctx->ctx.sregs.rdi;
-  const struct eri_sigaction *user_act = (void *) th_ctx->ctx.sregs.rsi;
-  struct eri_sigaction *user_old_act = (void *) th_ctx->ctx.sregs.rdx;
-  if (sig == 0 || sig >= ERI_NSIG
-      || sig == ERI_SIGKILL || sig == ERI_SIGSTOP)
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EINVAL);
-
-  if (! user_act && ! user_old_act)
-    SYSCALL_RETURN_DONE (th_ctx, 0);
+  struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
 
   struct eri_sigaction act;
+  if (! eri_common_syscall_rt_sigaction_get (
+			sregs, &act, copy_from_user, th))
+    return SYSCALL_DONE;
+
+  uint8_t user_act = !! sregs->rsi;
+  uint8_t user_old_act = !! sregs->rdx;
+  if (! user_act && ! user_old_act) SYSCALL_RETURN_DONE (th_ctx, 0);
+
+  int32_t sig = sregs->rdi;
   struct eri_sigaction old_act;
-
-  if (user_act
-      && ! copy_from_user (th, &act, user_act, sizeof act))
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
-
   if (! eri_live_signal_thread__sig_action (
 	sig_th, sig, user_act ? &act : 0, user_old_act ? &old_act : 0))
     return SYSCALL_SIG_WAIT_RESTART;
 
-  if (user_old_act
-      && ! copy_to_user (th, user_old_act, &old_act,
-			 sizeof *user_old_act))
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
-
-  SYSCALL_RETURN_DONE (th_ctx, 0);
+  eri_common_syscall_rt_sigaction_set (
+			sregs, &old_act, copy_to_user, th);
+  return SYSCALL_DONE;
 }
 
 DEFINE_SYSCALL (sigaltstack)

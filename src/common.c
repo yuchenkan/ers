@@ -120,9 +120,20 @@ eri_sig_digest_act (const struct eri_siginfo *info,
 }
 
 typedef uint8_t (*copy_user_t) (void *, void *, const void *, uint64_t);
+#define copy_user(copy, args, dst, src) \
+  ((copy_user_t) (copy)) (args, dst, src, sizeof *(dst))
+#define copy_user_error(copy, args, dst, src) \
+  (copy_user (copy, args, dst, src) ? 0 : ERI_EFAULT)
+
+#define COMMON_SYSCALL_RETURN(sregs, res) \
+  do {									\
+    uint64_t _res = res;						\
+    (sregs)->rax = _res;						\
+    return ! eri_syscall_is_error (_res);				\
+  } while (0)
 
 uint8_t
-eri_syscall_rt_sigprocmask_get_user_mask (
+eri_common_syscall_rt_sigprocmask_get (
 		struct eri_entry_scratch_registers *sregs,
 		const struct eri_sigset *old_mask, struct eri_sigset *mask,
 		void *copy, void *args)
@@ -134,19 +145,12 @@ eri_syscall_rt_sigprocmask_get_user_mask (
   if ((how != ERI_SIG_BLOCK && how != ERI_SIG_UNBLOCK
        && how != ERI_SIG_SETMASK)
       || sig_set_size != ERI_SIG_SETSIZE)
-    {
-      sregs->rax = ERI_EINVAL;
-      return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR;
-    }
+    COMMON_SYSCALL_RETURN (sregs, ERI_EINVAL);
 
-  if (! user_mask)
-    return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_NONE;
+  if (! user_mask) return 1;
 
-  if (! ((copy_user_t) copy) (args, mask, user_mask, sizeof *mask))
-    {
-      sregs->rax = ERI_EFAULT;
-      return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR;
-    }
+  if (! copy_user (copy, args, mask, user_mask))
+    COMMON_SYSCALL_RETURN (sregs, ERI_EFAULT);
 
   if (how == ERI_SIG_BLOCK)
     eri_sig_union_set (mask, old_mask);
@@ -157,18 +161,46 @@ eri_syscall_rt_sigprocmask_get_user_mask (
       *mask = old;
     }
 
-  return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_DONE;
+  return 1;
 }
 
 void
-eri_syscall_rt_sigprocmask_set_user_mask (
+eri_common_syscall_rt_sigprocmask_set (
 		struct eri_entry_scratch_registers *sregs,
 		const struct eri_sigset *old_mask, void *copy, void *args)
 {
   struct eri_sigset *user_old_mask = (void *) sregs->rdx;
   if (! user_old_mask) return;
 
-  sregs->rax = ! ((copy_user_t) copy) (args, user_old_mask, old_mask,
-				       sizeof *user_old_mask)
-			? ERI_EFAULT : 0;
+  sregs->rax = copy_user_error (copy, args, user_old_mask, old_mask);
+}
+
+uint8_t
+eri_common_syscall_rt_sigaction_get (
+		struct eri_entry_scratch_registers *sregs,
+		struct eri_sigaction *act, void *copy, void *args)
+{
+  int32_t sig = sregs->rdi;
+  const struct eri_sigaction *user_act = (void *) sregs->rsi;
+  if (sig == 0 || sig >= ERI_NSIG
+      || sig == ERI_SIGKILL || sig == ERI_SIGSTOP)
+    COMMON_SYSCALL_RETURN (sregs, ERI_EINVAL);
+
+  if (! user_act) return 1;
+
+  if (user_act && ! copy_user (copy, args, act, user_act))
+    COMMON_SYSCALL_RETURN (sregs, ERI_EFAULT);
+
+  return 1;
+}
+
+void
+eri_common_syscall_rt_sigaction_set (
+		struct eri_entry_scratch_registers *sregs,
+		const struct eri_sigaction *old_act, void *copy, void *args)
+{
+  struct eri_sigaction *user_old_act = (void *) sregs->rdx;
+  if (! user_old_act) return;
+
+  sregs->rax = copy_user_error (copy, args, user_old_act, old_act);
 }

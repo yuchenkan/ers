@@ -716,16 +716,40 @@ DEFINE_SYSCALL (rt_sigprocmask)
 {
   struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
   struct eri_sigset old_mask = th->sig_mask;
-  if (eri_syscall_rt_sigprocmask_get_user_mask (
-		sregs, &old_mask, &th->sig_mask, copy_from_user, th)
-	== ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR)
+  if (! eri_common_syscall_rt_sigprocmask_get (
+		sregs, &old_mask, &th->sig_mask, copy_from_user, th))
     return;
 
-  eri_syscall_rt_sigprocmask_set_user_mask (sregs, &old_mask,
-					    copy_to_user, th);
+  eri_common_syscall_rt_sigprocmask_set (
+			sregs, &old_mask, copy_to_user, th);
 }
 
-SYSCALL_TO_IMPL (rt_sigaction)
+DEFINE_SYSCALL (rt_sigaction)
+{
+  struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
+  struct eri_sigaction act;
+  if (! eri_common_syscall_rt_sigaction_get (
+				sregs, &act, copy_from_user, th))
+    return;
+
+  uint8_t user_act = !! sregs->rsi;
+  uint8_t user_old_act = !! sregs->rdx;
+  if (! user_act && ! user_old_act)
+    {
+      sregs->rax = 0;
+      return;
+    }
+
+  int32_t sig = sregs->rdi;
+  struct eri_sig_act *sig_acts = th->group->sig_acts;
+  struct eri_sigaction old_act;
+  if (user_act)
+    eri_sig_set_act (sig_acts, sig, &act, user_old_act ? &old_act : 0);
+  else eri_sig_get_act (sig_acts, sig, &old_act);
+
+  eri_common_syscall_rt_sigaction_set (sregs, &old_act, copy_to_user, th);
+}
+
 SYSCALL_TO_IMPL (sigaltstack)
 SYSCALL_TO_IMPL (rt_sigreturn)
 SYSCALL_TO_IMPL (rt_sigpending)
