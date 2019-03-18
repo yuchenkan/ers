@@ -207,6 +207,13 @@ next_record (struct thread *th)
   return next;
 }
 
+static eri_noreturn void
+async_signal (struct thread *th)
+{
+  eri_assert_syscall (tgkill, th->group->pid, th->tid, ERI_SIGRTMIN);
+  eri_assert_unreachable ();
+}
+
 static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
 				struct eri_ucontext *ctx);
 
@@ -231,7 +238,14 @@ raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (next_record (th) == ERI_ASYNC_RECORD)
     {
-      /* TODO: next_record (th) */
+      struct thread_context *th_ctx = th->ctx;
+      th_ctx->ext.ret = (uint64_t) act.act;
+      th_ctx->ctx.rsp = (uint64_t) user_frame;
+      th_ctx->ctx.sregs.rax = 0;
+      th_ctx->ctx.sregs.rdi = user_frame->info.sig;
+      th_ctx->ctx.sregs.rsi = (uint64_t) &user_frame->info;
+      th_ctx->ctx.sregs.rdx = (uint64_t) &user_frame->ctx;
+      async_signal (th);
     }
 
   eri_sig_act (user_frame, act.act);
@@ -349,13 +363,6 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 }
 
 static eri_noreturn void async_signal (struct thread *th);
-
-static eri_noreturn void
-async_signal (struct thread *th)
-{
-  eri_assert_syscall (tgkill, th->group->pid, th->tid, ERI_SIGRTMIN);
-  eri_assert_unreachable ();
-}
 
 static struct thread_context *
 start (struct thread *th, uint8_t next)
