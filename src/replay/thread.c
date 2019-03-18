@@ -712,7 +712,19 @@ SYSCALL_TO_IMPL (sched_getattr)
 SYSCALL_TO_IMPL (ioprio_set)
 SYSCALL_TO_IMPL (ioprio_get)
 
-SYSCALL_TO_IMPL (rt_sigprocmask)
+DEFINE_SYSCALL (rt_sigprocmask)
+{
+  struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
+  struct eri_sigset old_mask = th->sig_mask;
+  if (eri_syscall_rt_sigprocmask_get_user_mask (
+		sregs, &old_mask, &th->sig_mask, copy_from_user, th)
+	== ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR)
+    return;
+
+  eri_syscall_rt_sigprocmask_set_user_mask (sregs, &old_mask,
+					    copy_to_user, th);
+}
+
 SYSCALL_TO_IMPL (rt_sigaction)
 SYSCALL_TO_IMPL (sigaltstack)
 SYSCALL_TO_IMPL (rt_sigreturn)

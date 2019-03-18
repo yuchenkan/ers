@@ -1132,47 +1132,25 @@ DEFINE_SYSCALL (rt_sigprocmask)
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
 
-  int32_t how = th_ctx->ctx.sregs.rdi;
-  const struct eri_sigset *user_mask = (void *) th_ctx->ctx.sregs.rsi;
-  struct eri_sigset *user_old_mask = (void *) th_ctx->ctx.sregs.rdx;
-  uint64_t sig_set_size = th_ctx->ctx.sregs.r10;
-
-  if ((how != ERI_SIG_BLOCK && how != ERI_SIG_UNBLOCK
-       && how != ERI_SIG_SETMASK)
-      || sig_set_size != ERI_SIG_SETSIZE)
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EINVAL);
-
   struct eri_sigset old_mask;
-  if ((how == ERI_SIG_BLOCK || how == ERI_SIG_UNBLOCK) || user_old_mask)
-    old_mask = *eri_live_signal_thread__get_sig_mask (sig_th);
+  old_mask = *eri_live_signal_thread__get_sig_mask (sig_th);
 
-  if (user_mask)
+  struct eri_sigset mask;
+  uint8_t res = eri_syscall_rt_sigprocmask_get_user_mask (
+		&th_ctx->ctx.sregs, &old_mask, &mask, copy_from_user, th);
+  if (res == ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR)
+    return SYSCALL_DONE;
+  else if (res == ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_DONE)
     {
-      struct eri_sigset mask;
-      if (! copy_from_user (th, &mask, user_mask, sizeof mask))
-	SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
-
-      if (how == ERI_SIG_BLOCK)
-	eri_sig_union_set (&mask, &old_mask);
-      else if (how == ERI_SIG_UNBLOCK)
-	{
-	  eri_sig_diff_set (&old_mask, &mask);
-	  mask = old_mask;
-	}
-
       if (! eri_live_signal_thread__sig_mask_async (sig_th, &mask))
 	return SYSCALL_SIG_WAIT_RESTART;
 
       if (eri_live_signal_thread__signaled (sig_th))
 	syscall_sig_wait (th_ctx, 0);
     }
-
-  if (user_old_mask
-      && ! copy_to_user (th, user_old_mask, &old_mask,
-			 sizeof *user_old_mask))
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
-
-  SYSCALL_RETURN_DONE (th_ctx, 0);
+  eri_syscall_rt_sigprocmask_set_user_mask (
+		&th_ctx->ctx.sregs, &old_mask, copy_to_user, th);
+  return SYSCALL_DONE;
 }
 
 DEFINE_SYSCALL (rt_sigaction)

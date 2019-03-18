@@ -118,3 +118,57 @@ eri_sig_digest_act (const struct eri_siginfo *info,
       else eri_assert_unreachable ();
     }
 }
+
+typedef uint8_t (*copy_user_t) (void *, void *, const void *, uint64_t);
+
+uint8_t
+eri_syscall_rt_sigprocmask_get_user_mask (
+		struct eri_entry_scratch_registers *sregs,
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
+		void *copy, void *args)
+{
+  int32_t how = sregs->rdi;
+  const struct eri_sigset *user_mask = (void *) sregs->rsi;
+  uint64_t sig_set_size = sregs->r10;
+
+  if ((how != ERI_SIG_BLOCK && how != ERI_SIG_UNBLOCK
+       && how != ERI_SIG_SETMASK)
+      || sig_set_size != ERI_SIG_SETSIZE)
+    {
+      sregs->rax = ERI_EINVAL;
+      return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR;
+    }
+
+  if (! user_mask)
+    return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_NONE;
+
+  if (! ((copy_user_t) copy) (args, mask, user_mask, sizeof *mask))
+    {
+      sregs->rax = ERI_EFAULT;
+      return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR;
+    }
+
+  if (how == ERI_SIG_BLOCK)
+    eri_sig_union_set (mask, old_mask);
+  else if (how == ERI_SIG_UNBLOCK)
+    {
+      struct eri_sigset old = *old_mask;
+      eri_sig_diff_set (&old, mask);
+      *mask = old;
+    }
+
+  return ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_DONE;
+}
+
+void
+eri_syscall_rt_sigprocmask_set_user_mask (
+		struct eri_entry_scratch_registers *sregs,
+		const struct eri_sigset *old_mask, void *copy, void *args)
+{
+  struct eri_sigset *user_old_mask = (void *) sregs->rdx;
+  if (! user_old_mask) return;
+
+  sregs->rax = ! ((copy_user_t) copy) (args, user_old_mask, old_mask,
+				       sizeof *user_old_mask)
+			? ERI_EFAULT : 0;
+}

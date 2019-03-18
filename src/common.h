@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include <compiler.h>
+#include <entry.h>
+
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
@@ -122,6 +124,21 @@ sig_access_fault (struct thread_context *th_ctx,			\
 
 #define ERI_IF_SYSCALL(name, nr, op, ...) \
   if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
+
+enum
+{
+  ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_ERROR,
+  ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_NONE,
+  ERI_SYSCALL_RT_SIGPROCMASK_GET_USER_MASK_DONE
+};
+
+uint8_t eri_syscall_rt_sigprocmask_get_user_mask (
+		struct eri_entry_scratch_registers *sregs,
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
+		void *copy, void *args);
+void eri_syscall_rt_sigprocmask_set_user_mask (
+		struct eri_entry_scratch_registers *sregs,
+		const struct eri_sigset *old_mask, void *copy, void *args);
 
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)

@@ -891,7 +891,7 @@ typedef void (*eri_sig_handler_t) (int32_t, struct eri_siginfo *,
       _m &= ~_eri_sigmask (ERI_SIGKILL);				\
     if (_eri_sigword (ERI_SIGSTOP) == (word))				\
       _m &= ~_eri_sigmask (ERI_SIGSTOP);				\
-    ((set)->val[word] & _m) == (to (word, ##__VA_ARGS__) & _m);	\
+    ((set)->val[word] & _m) == (to (word, ##__VA_ARGS__) & _m);		\
   })
 
 #define _eri_sigset_cmp(set, to, ...) \
