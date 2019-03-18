@@ -60,6 +60,12 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
 void eri_sig_digest_act (const struct eri_siginfo *info,
 		const struct eri_sigset *mask, struct eri_sigaction *act);
 
+struct eri_sigframe *eri_sig_setup_user_frame (struct eri_sigframe *frame,
+		const struct eri_sigaction *act, struct eri_stack *stack,
+		const struct eri_sigset *mask, void *copy, void *args);
+
+eri_noreturn void eri_sig_act (struct eri_sigframe *frame, void *act);
+
 #define ERI_DEFINE_THREAD_UTILS(thread_type) \
 static eri_unused uint8_t						\
 internal (struct thread_group *group, uint64_t addr)			\
@@ -93,29 +99,10 @@ copy_to_user (thread_type *th,						\
 }									\
 									\
 static eri_unused uint8_t						\
-force_copy_from_user (thread_type *th,					\
-		      void *dst, const void *src, uint64_t size)	\
-{									\
-  if (internal_range (th->group, (uint64_t) src, size)) src = 0;	\
-  return do_force_copy_from_user (th->ctx, dst, src, size);		\
-}									\
-									\
-static eri_unused uint8_t						\
-force_copy_to_user (thread_type *th,					\
-		    void *dst, const void *src, uint64_t size)		\
-{									\
-  if (internal_range (th->group, (uint64_t) dst, size)) dst = 0;	\
-  return do_force_copy_to_user (th->ctx, dst, src, size);		\
-}									\
-									\
-static eri_unused uint8_t						\
 sig_access_fault (struct thread_context *th_ctx,			\
-		  struct eri_siginfo *info, struct eri_ucontext *ctx,	\
-		  uint8_t force)					\
+		  struct eri_siginfo *info, struct eri_ucontext *ctx)	\
 {									\
-  if (! eri_si_access_fault (info)					\
-      || ctx->mctx.rip != (force					\
-			? th_ctx->force_access : th_ctx->access))	\
+  if (! eri_si_access_fault (info) || ctx->mctx.rip != th_ctx->access)	\
     return 0;								\
 									\
   ctx->mctx.rip = th_ctx->access_fault;					\
@@ -139,6 +126,29 @@ uint8_t eri_common_syscall_rt_sigaction_get (
 void eri_common_syscall_rt_sigaction_set (
 		struct eri_entry_scratch_registers *sregs,
 		const struct eri_sigaction *old_act, void *copy, void *args);
+
+void eri_common_syscall_sigaltstack (
+		struct eri_entry_scratch_registers *sregs, uint64_t rsp,
+		struct eri_stack *stack,
+		void *copy_from, void *copy_to, void *args);
+
+struct eri_common_syscall_rt_sigreturn_args
+{
+  struct eri_entry_thread_entry *entry;
+  struct eri_entry_thread_context *th_ctx;
+  struct eri_entry_extra_registers *eregs;
+
+  const struct eri_stack *stack;
+
+  struct eri_sigset *mask;
+  struct eri_stack *sig_alt_stack;
+
+  void *copy;
+  void *args;
+};
+
+uint8_t eri_common_syscall_rt_sigreturn (
+		struct eri_common_syscall_rt_sigreturn_args *args);
 
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)

@@ -5,6 +5,7 @@
 
 #include <compiler.h>
 
+/* XXX: not packed */
 #include <lib/syscall-common.h>
 
 struct eri_packed eri_init_record
@@ -16,13 +17,13 @@ struct eri_packed eri_init_record
   uint64_t rip;
 
   struct eri_sigset sig_mask;
+  struct eri_stack sig_alt_stack;
+  int32_t user_pid;
 
   uint64_t start;
   uint64_t end;
 
   uint64_t atomic_table_size;
-
-  int32_t user_pid;
 };
 
 struct eri_packed eri_init_map_data_record

@@ -58,7 +58,6 @@ void entry (void);
 ERI_ENTRY_DECLARE_DO_COPY_USERS ()
 
 eri_noreturn void sig_to (void);
-eri_noreturn void sig_act (struct thread_context *th_ctx);
 eri_noreturn void sig_return (struct eri_sigframe *frame);
 void sig_return_back (struct eri_sigframe *frame);
 

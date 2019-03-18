@@ -26,9 +26,12 @@ main (int32_t argc, const char **argv)
 	printf ("  rdx: 0x%lx, rsp: 0x%lx, rip: 0x%lx\n",
 		init.rdx, init.rsp, init.rip);
 	printf ("  sig_mask: 0x%lx\n", init.sig_mask.val[0]);
+	printf ("  sig_alt_stack.sp: 0x%lx, .flags: 0x%x, .size: %lu\n",
+		init.sig_alt_stack.sp, init.sig_alt_stack.flags,
+		init.sig_alt_stack.size);
+	printf ("  user_pid: %u\n", init.user_pid);
 	printf ("  start: 0x%lx, end: 0x%lx\n", init.start, init.end);
 	printf ("  atomic_table_size: %lu\n", init.atomic_table_size);
-	printf ("  user_pid: %u\n", init.user_pid);
       }
     else if (mark == ERI_INIT_MAP_RECORD)
       {
@@ -43,7 +46,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_init_map_data_record data;
 	    assert (fread (&data, sizeof data, 1, f) == 1);
-	    printf ("    data.start: 0x%lx, data.end: 0x%lx\n",
+	    printf ("    data.start: 0x%lx, .end: 0x%lx\n",
 		     data.start, data.end);
 	    assert (fseek (f, data.end - data.start, SEEK_CUR) == 0);
 	  }
@@ -64,7 +67,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_clone_record sys;
 	    read_without_magic (&sys, f);
-	    printf ("  syscall.clone.result: %lu, syscall.clone.id: %lu\n",
+	    printf ("  syscall.clone.result: %lu, ..id: %lu\n",
 		    sys.result, sys.id);
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
@@ -77,9 +80,8 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_atomic_record at;
 	    read_without_magic (&at, f);
-	    printf ("  atomic.updated: %u\n", at.updated);
-	    printf ("  atomic.ver: %lu %lu\n", at.ver[0], at.ver[1]);
-	    printf ("  atomic.val: 0x%lx\n", at.val);
+	    printf ("  atomic.updated: %u, .ver: %lu %lu, .val: 0x%lx\n",
+		    at.updated, at.ver[0], at.ver[1], at.val);
 	  }
 	else assert (0);
       }

@@ -1,6 +1,6 @@
 #include <compiler.h>
-#include <common.h>
 
+#include <common.h>
 #include <entry.h>
 #include <helper.h>
 #include <record.h>
@@ -136,8 +136,6 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 		  entry, th->stack + group->stack_size);
 
   th_ctx->access = 0;
-  th_ctx->force_access = 0;
-
   th_ctx->swallow_single_step = 0;
 
   th_ctx->sync_async_trace = 0;
@@ -223,12 +221,20 @@ raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   eri_assert (act.act && act.act != ERI_SIG_ACT_STOP);
 
-  if (! eri_sig_act_internal_act (act.act))
+  if (eri_sig_act_internal_act (act.act)) exit (th);
+
+  struct eri_sigframe *user_frame = eri_sig_setup_user_frame (
+		eri_struct_of (ctx, struct eri_sigframe, ctx), &act,
+		&th->sig_alt_stack, &th->sig_mask, copy_to_user, th);
+
+  if (! user_frame) exit (0);
+
+  if (next_record (th) == ERI_ASYNC_RECORD)
     {
       /* TODO: next_record (th) */
-      eri_assert_unreachable ();
     }
-  else exit (th);
+
+  eri_sig_act (user_frame, act.act);
 }
 
 static eri_noreturn void raise_async (struct thread *th,
@@ -305,8 +311,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	}
     }
 
-  if (sig_access_fault (th_ctx, info, ctx, 0)) return;
-  /* TODO: syscall internal */
+  if (sig_access_fault (th_ctx, info, ctx)) return;
 
   if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
     ctx->mctx.rip = th_ctx->ext.call;
@@ -356,7 +361,7 @@ static struct thread_context *
 start (struct thread *th, uint8_t next)
 {
   struct eri_stack st = {
-    (uint64_t) th->sig_stack, 0, THREAD_SIG_STACK_SIZE
+    (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
   eri_assert_syscall (sigaltstack, &st, 0);
 
@@ -383,6 +388,7 @@ start_main (struct thread *th)
   th_ctx->ctx.sregs.rdx = init.rec.rdx;
 
   th->sig_mask = init.rec.sig_mask;
+  th->sig_alt_stack = init.rec.sig_alt_stack;
 
   struct thread_group *group = th->group;
   group->map_start = init.rec.start;
@@ -750,8 +756,28 @@ DEFINE_SYSCALL (rt_sigaction)
   eri_common_syscall_rt_sigaction_set (sregs, &old_act, copy_to_user, th);
 }
 
-SYSCALL_TO_IMPL (sigaltstack)
-SYSCALL_TO_IMPL (rt_sigreturn)
+DEFINE_SYSCALL (sigaltstack)
+{
+  struct thread_context *th_ctx = th->ctx;
+  eri_common_syscall_sigaltstack (
+		&th_ctx->ctx.sregs, th_ctx->ctx.rsp, &th->sig_alt_stack,
+		copy_from_user, copy_to_user, th);
+}
+
+DEFINE_SYSCALL (rt_sigreturn)
+{
+  struct thread_context *th_ctx = th->ctx;
+  struct eri_stack st = {
+    (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
+  };
+  struct eri_common_syscall_rt_sigreturn_args args = {
+    &th_ctx->ext, &th_ctx->ctx, &th_ctx->eregs,
+    &st, &th->sig_mask, &th->sig_alt_stack, copy_from_user, th
+  };
+
+  if (! eri_common_syscall_rt_sigreturn (&args)) exit (th);
+}
+
 SYSCALL_TO_IMPL (rt_sigpending)
 
 SYSCALL_TO_IMPL (pause)
@@ -1076,7 +1102,7 @@ sync_async (struct thread *th)
 		= (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
 			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
   th_ctx->sync_async_trace_steps = sync.steps;
-  /* XXX: this is slow with large repeats... */
+  /* XXX: this can be slow with large repeats... */
   th_ctx->ctx.sregs.rflags |= ERI_RFLAGS_TRACE_MASK;
 }
 

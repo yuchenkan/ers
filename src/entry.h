@@ -258,8 +258,7 @@ _ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user_fault):		\
   ERI_END_FUNCTION (ERI_PASTE (pfx, _copy_to_user))
 
 #define ERI_ENTRY_DEFINE_DO_COPY_USERS()				\
-  _ERI_ENTRY_DEFINE_COPY_USER (do, THREAD_CONTEXT_ACCESS);		\
-  _ERI_ENTRY_DEFINE_COPY_USER (do_force, THREAD_CONTEXT_FORCE_ACCESS)
+  _ERI_ENTRY_DEFINE_COPY_USER (do, THREAD_CONTEXT_ACCESS);
 
 #ifndef __ASSEMBLER__
 
@@ -298,11 +297,7 @@ _ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user_fault):		\
 uint8_t do_copy_from_user (struct thread_context *th_ctx,		\
 			   void *dst, const void *src, uint64_t size);	\
 uint8_t do_copy_to_user (struct thread_context *th_ctx,			\
-			 void *dst, const void *src, uint64_t size);	\
-uint8_t do_force_copy_from_user (struct thread_context *th_ctx,		\
-			void *dst, const void *src, uint64_t size);	\
-uint8_t do_force_copy_to_user (struct thread_context *th_ctx,		\
-			void *dst, const void *src, uint64_t size);
+			 void *dst, const void *src, uint64_t size);
 
 #endif
 

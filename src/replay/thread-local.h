@@ -15,7 +15,6 @@ struct thread_context
   struct eri_entry_extra_registers eregs;
 
   uint64_t access;
-  uint64_t force_access;
   uint64_t access_fault;
 
   uint8_t swallow_single_step;

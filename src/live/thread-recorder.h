@@ -23,13 +23,13 @@ struct eri_live_thread_recorder__rec_init_args
   uint64_t rip;
 
   struct eri_sigset sig_mask;
+  struct eri_stack sig_alt_stack;
+  int32_t user_pid;
 
   uint64_t start;
   uint64_t end;
 
   uint64_t atomic_table_size;
-
-  int32_t user_pid;
 };
 
 void eri_live_thread_recorder__rec_init (

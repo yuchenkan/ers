@@ -175,8 +175,8 @@ eri_live_thread_recorder__rec_init (
   struct eri_marked_init_record init = {
     ERI_INIT_RECORD,
     { 0, args->rdx, args->rsp, args->rip,
-      args->sig_mask, args->start, args->end, args->atomic_table_size,
-      args->user_pid }
+      args->sig_mask, args->sig_alt_stack, args->user_pid,
+      args->start, args->end, args->atomic_table_size }
   };
   eri_assert_fwrite (rec->file, &init, sizeof init, 0);
 
