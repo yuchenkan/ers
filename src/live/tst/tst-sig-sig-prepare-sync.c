@@ -24,4 +24,4 @@ TST_LIVE_SIG_RACE_DEFINE_TST (ERI_EVAL (do {
 } while (0)), ERI_EVAL (do {
   asm ("movq	$0, %rax; movq	$0, (%rax); skip:");
   eri_assert (handled);
-} while (0)), 0);
+} while (0)), 0, 0);

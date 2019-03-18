@@ -47,9 +47,13 @@ static uint32_t step_count;
 static uint32_t raise_at;
 static uint8_t reach_done;
 
+static struct eri_ucontext *step_ctx;
+
 static void
 step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
+  step_ctx = ctx;
+
   ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
 
   if (! sig_th.sig_alt_stack_installed) return;

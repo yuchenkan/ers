@@ -43,7 +43,7 @@ tst_live_start (void)
   eri_assert (tst_assert_syscall (gettid) == pid);
 
   struct tst_rand rand;
-  tst_rand_init (&rand);
+  tst_rand_init (&rand, 0);
 
   a[0] = tst_rand (&rand, 0, 64);
   a[1] = tst_rand (&rand, 0, 64);

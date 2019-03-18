@@ -15,7 +15,7 @@ eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_init (&rand);
+  tst_rand_init (&rand, 0);
 
   uint32_t delay = tst_rand (&rand, 0, 64);
   tst_sys_clone_raise_init_args (&raise_args, ERI_SIGINT, stack,

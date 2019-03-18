@@ -308,15 +308,16 @@ start (struct eri_live_thread *th)
 
   eri_live_signal_thread__init_thread_sig_stack (
 	th->sig_th, th->sig_stack, 2 * THREAD_SIG_STACK_SIZE);
-  struct eri_sigset mask;
-  eri_sig_empty_set (&mask);
-  eri_assert_sys_sigprocmask (&mask, 0);
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->ctx);
 
   eri_assert_lock (&th->start_lock);
   eri_debug ("leave %lx %lx\n",
 	     __builtin_return_address (0), th->ctx->sig_frame);
+
+  struct eri_sigset mask;
+  eri_sig_empty_set (&mask);
+  eri_assert_sys_sigprocmask (&mask, 0);
   return th->ctx;
 }
 

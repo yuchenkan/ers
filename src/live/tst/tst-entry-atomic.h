@@ -77,7 +77,7 @@ void tst_live_entry_atomic_common_info (
 			struct tst_live_entry_atomic_case *caze);
 
 
-#define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, debug) \
+#define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, seed, debug) \
 static struct tst_live_entry_atomic_anchor anchor;			\
 									\
 eri_noreturn void tst_live_start (void);				\
@@ -85,7 +85,7 @@ eri_noreturn void							\
 tst_live_start (void)							\
 {									\
   struct tst_rand rand;							\
-  tst_rand_init (&rand);						\
+  tst_rand_init (&rand, seed);						\
 									\
   eri_global_enable_debug = debug;					\
   tst_live_entry_atomic_cases (&rand, cases, &anchor);			\

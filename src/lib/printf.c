@@ -497,23 +497,6 @@ eri_lprintf (struct eri_lock *lock, const char *fmt, ...)
 }
 
 int32_t
-eri_gvprintf (const char *fmt, va_list arg)
-{
-  static struct eri_lock gprintf_lock;
-  return eri_lvfprintf (&gprintf_lock, ERI_STDOUT, fmt, arg);
-}
-
-int32_t
-eri_gprintf (const char *fmt, ...)
-{
-  va_list arg;
-  va_start (arg, fmt);
-  int32_t res = eri_gvprintf (fmt, arg);
-  va_end (arg);
-  return res;
-}
-
-int32_t
 eri_file_foreach_line (const char *path, struct eri_buf *buf,
 		       void (*proc) (const char *, uint64_t, void *),
 		       void *data)

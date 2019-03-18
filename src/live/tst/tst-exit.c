@@ -45,7 +45,7 @@ tst_live_start (void)
   if (*(uint64_t *) args == 2) group = ((const char **) (args + 1)) [1][0] - '0';
   eri_info ("group = %u\n", group);
 
-  tst_rand_init (&rand);
+  tst_rand_init (&rand, 0);
 
   start (tst_rand (&rand, 0, 32), sizeof stack / sizeof stack[0],
 	 tst_rand (&rand, 0, 5) < group);

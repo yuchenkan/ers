@@ -20,10 +20,11 @@ uint64_t tst_rand_next (struct tst_rand *rand);
     _min + tst_rand_next (rand) % ((max) - _min);			\
   })
 
-#define tst_rand_init(rand) \
+#define tst_rand_init(rand, seed) \
   do {									\
-    uint64_t _seed = eri_assert_syscall (gettid);			\
-    eri_assert_gprintf ("seed = %lu\n", _seed);				\
+    uint64_t _seed = seed;						\
+    _seed = _seed ? : eri_assert_syscall (gettid);			\
+    eri_fprintf (ERI_STDERR, "seed = %lu\n", _seed);			\
     tst_rand_seed (rand, _seed);					\
   } while (0)
 

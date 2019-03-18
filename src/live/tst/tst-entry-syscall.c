@@ -41,7 +41,7 @@ eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_init (&rand);
+  tst_rand_init (&rand, 0);
 
   eri_debug ("\n");
   struct tst_live_entry_mcontext tctx;

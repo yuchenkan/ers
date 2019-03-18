@@ -10,7 +10,7 @@ eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_init (&rand);
+  tst_rand_init (&rand, 0);
 
   uint64_t mask = tst_rand_next (&rand) & TST_SIGSET_MASK;
   struct eri_sigset set;

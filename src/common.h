@@ -164,9 +164,9 @@ uint8_t eri_common_syscall_rt_sigreturn (
 #include <lib/syscall.h>
 
 #define _eri_log(level, fmt, ...) \
-  eri_assert_printf ("[" ERI_STR (level) " %s:%u(%s)%lu]\t" fmt,	\
-		     __FILE__, __LINE__, __FUNCTION__,			\
-		     eri_assert_syscall (gettid), ##__VA_ARGS__)
+  eri_printf ("[" ERI_STR (level) " %s:%u(%s)%lu]\t" fmt,		\
+	      __FILE__, __LINE__, __FUNCTION__,				\
+	      eri_assert_syscall (gettid), ##__VA_ARGS__)
 
 static eri_unused uint8_t eri_enable_debug = 0;
 extern uint8_t eri_global_enable_debug;

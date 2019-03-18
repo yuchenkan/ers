@@ -6,7 +6,7 @@
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
-#define TST_LIVE_SIG_RACE_DEFINE_TST(init, what, debug) \
+#define TST_LIVE_SIG_RACE_DEFINE_TST(init, what, seed, debug) \
 static eri_aligned16 uint8_t _stack[1024 * 1024];			\
 static struct tst_sys_clone_raise_args _raise_args;			\
 									\
@@ -21,7 +21,7 @@ tst_live_start (void)							\
   eri_global_enable_debug = debug;					\
 									\
   struct tst_rand _rand;						\
-  tst_rand_init (&_rand);						\
+  tst_rand_init (&_rand, seed);						\
 									\
   struct eri_sigaction _act = { 					\
     _sig_handler, ERI_SA_RESTORER, tst_assert_sys_sigreturn		\

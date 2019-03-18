@@ -56,4 +56,4 @@ static struct tst_live_entry_atomic_case cases[] = {
   TST_FOREACH_GENERAL_REG (CASE_IMM)
 };
 
-TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)
+TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0, 0)

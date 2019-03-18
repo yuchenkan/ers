@@ -94,4 +94,4 @@ static struct caze cases[] = {
   TST_FOREACH_GENERAL_REG2 (CASE)
 };
 
-TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0)
+TST_LIVE_ENTRY_ATOMIC_DEFINE_START (cases, 0, 0)

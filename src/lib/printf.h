@@ -80,14 +80,6 @@ int32_t eri_lprintf (struct eri_lock *lock, const char *fmt, ...);
 #define eri_assert_lprintf(l, fmt, ...) \
   eri_assert (eri_lprintf (l, fmt, ##__VA_ARGS__) == 0)
 
-int32_t eri_gvprintf (const char *fmt, va_list arg);
-int32_t eri_gprintf (const char *fmt, ...);
-
-#define eri_assert_gvprintf(fmt, arg) \
-  eri_assert (eri_gvprintf (fmt, arg) == 0)
-#define eri_assert_gprintf(fmt, ...) \
-  eri_assert (eri_gprintf (fmt, ##__VA_ARGS__) == 0)
-
 int32_t eri_file_foreach_line (const char *path, struct eri_buf *buf,
 			       void (*proc) (const char *, uint64_t, void *),
 			       void *data);
