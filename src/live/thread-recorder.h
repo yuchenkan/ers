@@ -9,16 +9,10 @@ struct eri_mtpool;
 struct eri_siginfo;
 
 struct eri_live_thread_recorder;
-struct eri_live_thread_recorder_group;
-
-struct eri_live_thread_recorder_group *
-	eri_live_thread_recorder__create_group (struct eri_mtpool *pool);
-void eri_live_thread_recorder__destroy_group (
-			struct eri_live_thread_recorder_group *group);
 
 struct eri_live_thread_recorder *eri_live_thread_recorder__create (
-		struct eri_live_thread_recorder_group *group,
-		const char *path, uint64_t id, uint64_t buf_size);
+		struct eri_mtpool *pool, const char *path, uint64_t id,
+		uint64_t buf_size);
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *rec);
 
