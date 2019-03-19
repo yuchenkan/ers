@@ -85,7 +85,7 @@ struct thread
   eri_aligned16 uint8_t stack[0];
 };
 
-ERI_DEFINE_THREAD_UTILS (struct thread)
+ERI_DEFINE_THREAD_UTILS (struct thread, struct thread_group)
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);

@@ -40,6 +40,8 @@ struct signal_thread_group
 
   struct watch watch;
   struct eri_helper *helper;
+
+  struct eri_live_thread_group *thread_group;
 };
 
 ERI_DEFINE_LIST (static, thread, struct signal_thread_group,
@@ -149,13 +151,14 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 }
 
 static struct signal_thread_group *
-init_group_memory (struct eri_live_rtld_args *rtld_args)
+create_group (struct eri_live_rtld_args *rtld_args)
 {
   struct eri_mtpool *pool = eri_init_mtpool_from_buf (
 				rtld_args->buf, rtld_args->buf_size, 1);
   struct signal_thread_group *group
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
+  group->thread_group = eri_live_thread__create_group (pool, rtld_args);
   return group;
 }
 
@@ -213,7 +216,8 @@ init_main (struct signal_thread_group *group,
 
   init_event (sig_th, &rtld_args->sig_mask);
 
-  sig_th->th = eri_live_thread__create_main (sig_th, rtld_args);
+  sig_th->th = eri_live_thread__create_main (group->thread_group,
+					     sig_th, rtld_args);
 
   eri_debug ("sig_th %lx\n", sig_th);
   eri_assert_syscall (set_tid_address, &sig_th->alive);
@@ -233,7 +237,7 @@ init_group (struct eri_live_rtld_args *rtld_args)
 	eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10);
     }
 
-  struct signal_thread_group *group = init_group_memory (rtld_args);
+  struct signal_thread_group *group = create_group (rtld_args);
 
   group->pid = eri_assert_syscall (getpid);
 
@@ -793,6 +797,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   eri_live_thread__join (th);
 
   eri_live_thread__destroy (th);
+  eri_live_thread__destroy_group (group->thread_group);
 
   eri_debug ("exit helper\n");
   eri_helper__exit (group->helper);
@@ -1024,12 +1029,6 @@ eri_live_signal_thread__signaled (
 			struct eri_live_signal_thread *sig_th)
 {
   return !! eri_atomic_load (&sig_th->sig_info);
-}
-
-struct eri_mtpool *
-eri_live_signal_thread__get_pool (struct eri_live_signal_thread *sig_th)
-{
-  return sig_th->group->pool;
 }
 
 const struct eri_sigset *

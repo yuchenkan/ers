@@ -40,11 +40,11 @@
     ERI_ENTRY_FOREACH_SREG (SET_TH_CTX_SREG_FROM_CTX, _th_ctx, _ctx)	\
   } while (0)
 
-struct thread_group;
+struct eri_live_thread_group;
 
 struct eri_live_thread
 {
-  struct thread_group *group;
+  struct eri_live_thread_group *group;
   struct eri_live_signal_thread *sig_th;
   uint64_t id;
   int32_t alive;
@@ -80,14 +80,13 @@ struct sig_fd
   ERI_RBT_NODE_FIELDS (sig_fd, struct sig_fd)
 };
 
-struct thread_group
+struct eri_live_thread_group
 {
   struct eri_mtpool *pool;
 
   uint64_t map_start;
   uint64_t map_end;
 
-  uint64_t ref_count;
   int32_t pid;
 
   struct eri_lock sig_fd_lock;
@@ -103,11 +102,11 @@ struct thread_group
   uint64_t file_buf_size;
 };
 
-ERI_DEFINE_RBTREE (static, sig_fd, struct thread_group, struct sig_fd,
-		   int32_t, eri_less_than)
+ERI_DEFINE_RBTREE (static, sig_fd, struct eri_live_thread_group,
+		   struct sig_fd, int32_t, eri_less_than)
 
 static struct sig_fd *
-sig_fd_alloc_insert (struct thread_group *group, int32_t fd,
+sig_fd_alloc_insert (struct eri_live_thread_group *group, int32_t fd,
 		     const struct eri_sigset *mask, int32_t flags)
 {
   struct sig_fd *sig_fd = eri_assert_mtmalloc (group->pool, sizeof *sig_fd);
@@ -122,14 +121,14 @@ sig_fd_alloc_insert (struct thread_group *group, int32_t fd,
 }
 
 static struct sig_fd *
-sig_fd_copy_insert (struct thread_group *group, int32_t fd,
+sig_fd_copy_insert (struct eri_live_thread_group *group, int32_t fd,
 		    const struct sig_fd *sig_fd)
 {
   return sig_fd_alloc_insert (group, fd, &sig_fd->mask->mask, sig_fd->flags);
 }
 
 static void
-sig_fd_remove_free (struct thread_group *group, struct sig_fd *fd)
+sig_fd_remove_free (struct eri_live_thread_group *group, struct sig_fd *fd)
 {
   sig_fd_rbt_remove (group, fd);
   if (! eri_atomic_dec_fetch_rel (&fd->mask->ref_count))
@@ -138,7 +137,7 @@ sig_fd_remove_free (struct thread_group *group, struct sig_fd *fd)
 }
 
 static struct sig_fd *
-sig_fd_try_lock (struct thread_group *group, int32_t fd)
+sig_fd_try_lock (struct eri_live_thread_group *group, int32_t fd)
 {
   eri_assert_lock (&group->sig_fd_lock);
   struct sig_fd *sig_fd = sig_fd_rbt_get (group, &fd, ERI_RBT_EQ);
@@ -146,7 +145,7 @@ sig_fd_try_lock (struct thread_group *group, int32_t fd)
   return sig_fd;
 }
 
-ERI_DEFINE_THREAD_UTILS (struct eri_live_thread)
+ERI_DEFINE_THREAD_UTILS (struct eri_live_thread, struct eri_live_thread_group)
 
 static void
 disable_vdso (struct eri_auxv *auxv)
@@ -156,9 +155,9 @@ disable_vdso (struct eri_auxv *auxv)
       auxv->type = ERI_AT_IGNORE;
 }
 
-static struct thread_group *
-create_group (struct eri_live_signal_thread *sig_th,
-	      struct eri_live_rtld_args *rtld_args)
+struct eri_live_thread_group *
+eri_live_thread__create_group (struct eri_mtpool *pool,
+			       struct eri_live_rtld_args *rtld_args)
 {
   uint64_t atomic_table_size =  2 * 1024 * 1024;
 
@@ -177,12 +176,11 @@ create_group (struct eri_live_signal_thread *sig_th,
 	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
     }
 
-  struct eri_mtpool *pool = eri_live_signal_thread__get_pool (sig_th);
-  struct thread_group *group = eri_assert_mtmalloc (pool, sizeof *group);
+  struct eri_live_thread_group *group
+			= eri_assert_mtmalloc (pool, sizeof *group);
   group->pool = pool;
   group->map_start = rtld_args->map_start;
   group->map_end = rtld_args->map_end;
-  group->ref_count = 0;
   group->pid = 0;
 
   eri_init_lock (&group->sig_fd_lock, 0);
@@ -198,6 +196,17 @@ create_group (struct eri_live_signal_thread *sig_th,
   group->file_buf_size = file_buf_size;
 
   return group;
+}
+
+void
+eri_live_thread__destroy_group (struct eri_live_thread_group *group)
+{
+  struct sig_fd *fd, *nfd;
+  ERI_RBT_FOREACH_SAFE (sig_fd, group, fd, nfd)
+    sig_fd_remove_free (group, fd);
+
+  eri_assert_mtfree (group->pool, group->atomic_table);
+  eri_assert_mtfree (group->pool, group);
 }
 
 static void
@@ -252,10 +261,9 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
 }
 
 static struct eri_live_thread *
-create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
-	int32_t *clear_user_tid)
+create (struct eri_live_thread_group *group,
+	struct eri_live_signal_thread *sig_th, int32_t *clear_user_tid)
 {
-  eri_atomic_inc (&group->ref_count);
   struct eri_live_thread *th
 	= eri_assert_mtmalloc (group->pool, sizeof *th + group->stack_size);
   th->group = group;
@@ -273,12 +281,12 @@ create (struct thread_group *group, struct eri_live_signal_thread *sig_th,
 }
 
 struct eri_live_thread *
-eri_live_thread__create_main (struct eri_live_signal_thread *sig_th,
+eri_live_thread__create_main (struct eri_live_thread_group *group,
+			      struct eri_live_signal_thread *sig_th,
 			      struct eri_live_rtld_args *rtld_args)
 {
   if (rtld_args->auxv) disable_vdso (rtld_args->auxv);
 
-  struct thread_group *group = create_group (sig_th, rtld_args);
   struct eri_live_thread *th = create (group, sig_th, 0);
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
@@ -324,7 +332,7 @@ start (struct eri_live_thread *th)
 void
 start_main (struct eri_live_thread *th)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
   struct eri_live_thread_recorder__rec_init_args args = {
     th_ctx->ctx.sregs.rdx, th_ctx->ctx.rsp, th_ctx->ext.ret,
@@ -698,22 +706,12 @@ destroy_context (struct eri_mtpool *pool, struct thread_context *ctx)
 void
 eri_live_thread__destroy (struct eri_live_thread *th)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct eri_mtpool *pool = group->pool;
 
   destroy_context (pool, th->ctx);
   eri_live_thread_recorder__destroy (th->rec);
   eri_assert_mtfree (pool, th);
-
-  eri_barrier ();
-  if (eri_atomic_dec_fetch (&group->ref_count)) return;
-
-  struct sig_fd *fd, *nfd;
-  ERI_RBT_FOREACH_SAFE (sig_fd, group, fd, nfd)
-    sig_fd_remove_free (group, fd);
-
-  eri_assert_mtfree (pool, group->atomic_table);
-  eri_assert_mtfree (pool, group);
 }
 
 void
@@ -723,7 +721,7 @@ eri_live_thread__join (struct eri_live_thread *th)
 }
 
 static uint64_t
-do_lock_atomic (struct thread_group *group, uint64_t slot)
+do_lock_atomic (struct eri_live_thread_group *group, uint64_t slot)
 {
   uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
 
@@ -735,7 +733,7 @@ do_lock_atomic (struct thread_group *group, uint64_t slot)
 }
 
 static struct atomic_pair
-lock_atomic (struct thread_group *group, uint64_t mem, uint8_t size)
+lock_atomic (struct eri_live_thread_group *group, uint64_t mem, uint8_t size)
 {
   struct atomic_pair idx = { do_lock_atomic (group, eri_atomic_slot (mem)) };
   idx.second = eri_atomic_cross_slot (mem, size)
@@ -744,14 +742,14 @@ lock_atomic (struct thread_group *group, uint64_t mem, uint8_t size)
 }
 
 static void
-do_unlock_atomic (struct thread_group *group, uint64_t idx)
+do_unlock_atomic (struct eri_live_thread_group *group, uint64_t idx)
 {
   eri_barrier ();
   eri_atomic_and (group->atomic_table + idx, -2);
 }
 
 static struct atomic_pair
-unlock_atomic (struct thread_group *group, struct atomic_pair *idx,
+unlock_atomic (struct eri_live_thread_group *group, struct atomic_pair *idx,
 	       uint8_t update)
 {
   uint8_t cross = idx->first != idx->second;
@@ -901,7 +899,7 @@ syscall_do_exit (struct eri_live_thread *th)
 
   if (th->clear_user_tid) /* XXX: die? replay as well */
     {
-      struct thread_group *group = th->group;
+      struct eri_live_thread_group *group = th->group;
 
       int32_t *user_tid = th->clear_user_tid;
       struct atomic_pair idx
@@ -1291,7 +1289,7 @@ SYSCALL_TO_IMPL (eventfd2)
 static uint32_t
 syscall_do_signalfd (struct eri_live_thread *th)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
 
   uint8_t signalfd4 = th_ctx->ctx.sregs.rax == __NR_signalfd4;
@@ -1363,7 +1361,7 @@ SYSCALL_TO_IMPL (creat)
 
 DEFINE_SYSCALL (close)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
 
@@ -1382,7 +1380,7 @@ close:
 
 DEFINE_SYSCALL (dup)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
 
@@ -1403,7 +1401,7 @@ dup:
 static uint32_t
 syscall_do_dup2 (struct eri_live_thread *th)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
   uint8_t dup3 = th_ctx->ctx.sregs.rax == __NR_dup3;
   int32_t fd = th_ctx->ctx.sregs.rdi;
@@ -1441,7 +1439,7 @@ SYSCALL_TO_IMPL (open_by_handle_at)
 
 DEFINE_SYSCALL (fcntl)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
   int32_t cmd = th_ctx->ctx.sregs.rsi;
@@ -1495,7 +1493,7 @@ SYSCALL_TO_IMPL (epoll_ctl)
 static uint32_t
 syscall_do_read (struct eri_live_thread *th)
 {
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   int32_t nr = th_ctx->ctx.sregs.rax;
@@ -1888,7 +1886,7 @@ prepare_atomic (struct eri_live_thread *th,
   uint64_t mem = th_ctx->ext.atomic.mem;
   uint8_t size = 1 << th_ctx->ext.op.args;
   eri_assert (size <= 16);
-  struct thread_group *group = th->group;
+  struct eri_live_thread_group *group = th->group;
   /* XXX: always cause sigsegv? */
   if (internal_range (group, mem, size)) mem = 0;
   th_ctx->atomic.idx = lock_atomic (group, mem, size);

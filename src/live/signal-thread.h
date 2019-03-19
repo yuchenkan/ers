@@ -91,9 +91,6 @@ uint64_t eri_live_signal_thread__syscall (
 uint8_t eri_live_signal_thread__signaled (
 		struct eri_live_signal_thread *sig_th);
 
-struct eri_mtpool *eri_live_signal_thread__get_pool (
-		struct eri_live_signal_thread *sig_th);
-
 const struct eri_sigset *eri_live_signal_thread__get_sig_mask (
 		const struct eri_live_signal_thread *sig_th);
 

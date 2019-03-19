@@ -66,15 +66,15 @@ struct eri_sigframe *eri_sig_setup_user_frame (struct eri_sigframe *frame,
 
 eri_noreturn void eri_sig_act (struct eri_sigframe *frame, void *act);
 
-#define ERI_DEFINE_THREAD_UTILS(thread_type) \
+#define ERI_DEFINE_THREAD_UTILS(thread_type, thread_group_type) \
 static eri_unused uint8_t						\
-internal (struct thread_group *group, uint64_t addr)			\
+internal (thread_group_type *group, uint64_t addr)			\
 {									\
   return addr >= group->map_start && addr < group->map_end;		\
 }									\
 									\
 static eri_unused uint8_t						\
-internal_range (struct thread_group *group,				\
+internal_range (thread_group_type *group,				\
 		uint64_t addr, uint64_t size)				\
 {									\
   return addr + size > group->map_start && addr < group->map_end;	\

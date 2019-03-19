@@ -97,6 +97,9 @@ tst_main (void)
     .map_end = (uint64_t) tst_live_map_end
   };
 
+  struct eri_live_thread_group *group
+	= eri_live_thread__create_group (&sig_th.pool, &rtld_args);
+
   struct eri_sigaction act = {
     step, ERI_SA_SIGINFO | ERI_SA_ONSTACK | ERI_SA_RESTORER,
     eri_assert_sys_sigreturn
@@ -115,7 +118,7 @@ tst_main (void)
       sig_th.sig_alt_stack_installed = 0;
       unblocked = 0;
 
-      sig_th.th = eri_live_thread__create_main (&sig_th, &rtld_args);
+      sig_th.th = eri_live_thread__create_main (group, &sig_th, &rtld_args);
 
       tst_enable_trace ();
       eri_live_thread__clone_main (sig_th.th);
@@ -126,6 +129,8 @@ tst_main (void)
     }
 
   eri_info ("final raise_at = %u\n", raise_at);
+
+  eri_live_thread__destroy_group (group);
 
   eri_assert_fini_mtpool (&sig_th.pool);
   eri_assert_sys_exit (0);
