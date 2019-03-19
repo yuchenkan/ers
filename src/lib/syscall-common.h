@@ -126,8 +126,8 @@
   p (rt_sigpending, ##__VA_ARGS__)					\
 									\
   p (pause, ##__VA_ARGS__)						\
-  p (rt_sigtimedwait, ##__VA_ARGS__)					\
   p (rt_sigsuspend, ##__VA_ARGS__)					\
+  p (rt_sigtimedwait, ##__VA_ARGS__)					\
 									\
   p (kill, ##__VA_ARGS__)						\
   p (tkill, ##__VA_ARGS__)						\

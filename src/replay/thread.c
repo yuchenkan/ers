@@ -647,7 +647,11 @@ SYSCALL_TO_IMPL (getegid)
 DEFINE_SYSCALL (gettid) { th->ctx->ctx.sregs.rax = th->user_tid; }
 DEFINE_SYSCALL (getpid) { th->ctx->ctx.sregs.rax = th->group->user_pid; }
 
-SYSCALL_TO_IMPL (getppid)
+DEFINE_SYSCALL (getppid)
+{
+  /* TODO */
+}
+
 SYSCALL_TO_IMPL (setreuid)
 SYSCALL_TO_IMPL (setregid)
 
@@ -702,14 +706,20 @@ SYSCALL_TO_IMPL (capget)
 
 SYSCALL_TO_IMPL (personality)
 SYSCALL_TO_IMPL (prctl)
-SYSCALL_TO_IMPL (arch_prctl)
+
+DEFINE_SYSCALL (arch_prctl)
+{
+  /* TODO */
+}
 
 SYSCALL_TO_IMPL (quotactl)
 SYSCALL_TO_IMPL (acct)
 
 SYSCALL_TO_IMPL (setpriority)
 SYSCALL_TO_IMPL (getpriority)
-SYSCALL_TO_IMPL (sched_yield)
+
+DEFINE_SYSCALL (sched_yield) { th->ctx->ctx.sregs.rax = 0;}
+
 SYSCALL_TO_IMPL (sched_setparam)
 SYSCALL_TO_IMPL (sched_getparam)
 SYSCALL_TO_IMPL (sched_setscheduler)
@@ -785,17 +795,28 @@ DEFINE_SYSCALL (rt_sigreturn)
   if (! eri_common_syscall_rt_sigreturn (&args)) exit (th);
 }
 
-SYSCALL_TO_IMPL (rt_sigpending)
+DEFINE_SYSCALL (rt_sigpending)
+{
+  /* TODO */
+}
 
-SYSCALL_TO_IMPL (pause)
-SYSCALL_TO_IMPL (rt_sigtimedwait)
-SYSCALL_TO_IMPL (rt_sigsuspend)
+DEFINE_SYSCALL (pause) { th->ctx->ctx.sregs.rax = ERI_EINTR; }
 
-SYSCALL_TO_IMPL (kill)
-SYSCALL_TO_IMPL (tkill)
-SYSCALL_TO_IMPL (tgkill)
-SYSCALL_TO_IMPL (rt_sigqueueinfo)
-SYSCALL_TO_IMPL (rt_tgsigqueueinfo)
+DEFINE_SYSCALL (rt_sigsuspend)
+{
+  /* TODO */
+}
+
+DEFINE_SYSCALL (rt_sigtimedwait)
+{
+  /* TODO */
+}
+
+DEFINE_SYSCALL (kill) { /* TODO */ }
+DEFINE_SYSCALL (tkill) { /* TODO */ }
+DEFINE_SYSCALL (tgkill) { /* TODO */ }
+DEFINE_SYSCALL (rt_sigqueueinfo) { /* TODO */ }
+DEFINE_SYSCALL (rt_tgsigqueueinfo) { /* TODO */ }
 
 SYSCALL_TO_IMPL (restart_syscall)
 
@@ -832,8 +853,9 @@ SYSCALL_TO_IMPL (timerfd_gettime)
 SYSCALL_TO_IMPL (eventfd)
 SYSCALL_TO_IMPL (eventfd2)
 
-SYSCALL_TO_IMPL (signalfd)
-SYSCALL_TO_IMPL (signalfd4)
+DEFINE_SYSCALL (signalfd) { /* TODO */ }
+DEFINE_SYSCALL (signalfd4) { /* TODO */ }
+
 SYSCALL_TO_IMPL (pipe)
 SYSCALL_TO_IMPL (pipe2)
 
@@ -851,16 +873,18 @@ SYSCALL_TO_IMPL (perf_event_open)
 SYSCALL_TO_IMPL (open)
 SYSCALL_TO_IMPL (openat)
 SYSCALL_TO_IMPL (creat)
-SYSCALL_TO_IMPL (close)
 
-SYSCALL_TO_IMPL (dup)
-SYSCALL_TO_IMPL (dup2)
-SYSCALL_TO_IMPL (dup3)
+DEFINE_SYSCALL (close) { /* TODO */ }
+
+DEFINE_SYSCALL (dup) { /* TODO */ }
+DEFINE_SYSCALL (dup2) { /* TODO */ }
+DEFINE_SYSCALL (dup3) { /* TODO */ }
 
 SYSCALL_TO_IMPL (name_to_handle_at)
 SYSCALL_TO_IMPL (open_by_handle_at)
 
-SYSCALL_TO_IMPL (fcntl)
+DEFINE_SYSCALL (fcntl) { /* TODO */ }
+
 SYSCALL_TO_IMPL (flock)
 SYSCALL_TO_IMPL (fadvise64)
 
@@ -878,11 +902,12 @@ SYSCALL_TO_IMPL (epoll_wait)
 SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
-SYSCALL_TO_IMPL (read)
-SYSCALL_TO_IMPL (pread64)
-SYSCALL_TO_IMPL (readv)
-SYSCALL_TO_IMPL (preadv)
-SYSCALL_TO_IMPL (preadv2)
+DEFINE_SYSCALL (read) { /* TODO */ }
+DEFINE_SYSCALL (pread64) { /* TODO */ }
+DEFINE_SYSCALL (readv) { /* TODO */ }
+DEFINE_SYSCALL (preadv) { /* TODO */ }
+DEFINE_SYSCALL (preadv2) { /* TODO */ }
+
 SYSCALL_TO_IMPL (write)
 SYSCALL_TO_IMPL (pwrite64)
 SYSCALL_TO_IMPL (writev)
