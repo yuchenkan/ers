@@ -362,8 +362,8 @@ eri_live_thread__sig_digest_act (
    * Though this function can be called in different async contexts,
    * This can only happen synchronizly regards to the sig_mask.
    */
-  const struct eri_sigset *mask
-		= eri_live_signal_thread__get_sig_mask (th->sig_th);
+  const struct eri_sigset *mask = eri_si_sync (info)
+		? eri_live_signal_thread__get_sig_mask (th->sig_th) : 0;
 
   eri_sig_digest_act (info, mask, act);
 
