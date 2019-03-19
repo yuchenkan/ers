@@ -7,9 +7,11 @@
 
 #include <live/thread-recorder.h>
 
+struct eri_live_thread_recorder_group;
+
 struct eri_live_thread_recorder
 {
-  struct eri_mtpool *pool;
+  struct eri_live_thread_recorder_group *group;
 
   uint8_t pending_sync_async;
   uint64_t sync_async_cnt;
@@ -18,14 +20,35 @@ struct eri_live_thread_recorder
   uint8_t buf[0];
 };
 
+struct eri_live_thread_recorder_group
+{
+  struct eri_mtpool *pool;
+};
+
+struct eri_live_thread_recorder_group *
+eri_live_thread_recorder__create_group (struct eri_mtpool *pool)
+{
+  struct eri_live_thread_recorder_group *group
+		= eri_assert_mtmalloc (pool, sizeof *group);
+  group->pool = pool;
+  return group;
+}
+
+void
+eri_live_thread_recorder__destroy_group (
+			struct eri_live_thread_recorder_group *group)
+{
+  eri_assert_mtfree (group->pool, group);
+}
+
 struct eri_live_thread_recorder *
-eri_live_thread_recorder__create (struct eri_mtpool *pool,
-				  const char *path, uint64_t id,
-				  uint64_t buf_size)
+eri_live_thread_recorder__create (
+			struct eri_live_thread_recorder_group *group,
+			const char *path, uint64_t id, uint64_t buf_size)
 {
   struct eri_live_thread_recorder *rec
-			= eri_assert_mtmalloc (pool, sizeof *rec + buf_size);
-  rec->pool = pool;
+		= eri_assert_mtmalloc (group->pool, sizeof *rec + buf_size);
+  rec->group = group;
 
   rec->pending_sync_async = 0;
 
@@ -54,7 +77,7 @@ eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *rec)
 {
   submit_sync_async (rec);
   eri_assert_fclose (rec->file);
-  eri_assert_mtfree (rec->pool, rec);
+  eri_assert_mtfree (rec->group->pool, rec);
 }
 
 static void
@@ -181,11 +204,11 @@ eri_live_thread_recorder__rec_init (
   eri_assert_fwrite (rec->file, &init, sizeof init, 0);
 
   struct eri_buf buf;
-  eri_assert_buf_mtpool_init (&buf, rec->pool, 256);
+  eri_assert_buf_mtpool_init (&buf, rec->group->pool, 256);
 
   struct proc_smaps_line_args line_args
 			= { rec, args->start, args->end, args->rsp };
-  eri_assert_buf_mtpool_init (&line_args.buf, rec->pool, 1024);
+  eri_assert_buf_mtpool_init (&line_args.buf, rec->group->pool, 1024);
   eri_assert_file_foreach_line ("/proc/self/smaps", &buf,
 				proc_smaps_line, &line_args);
   eri_assert_buf_fini (&line_args.buf);

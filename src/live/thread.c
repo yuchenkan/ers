@@ -100,6 +100,8 @@ struct eri_live_thread_group
 
   const char *path;
   uint64_t file_buf_size;
+
+  struct eri_live_thread_recorder_group *recorder_group;
 };
 
 ERI_DEFINE_RBTREE (static, sig_fd, struct eri_live_thread_group,
@@ -195,12 +197,15 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->path = path;
   group->file_buf_size = file_buf_size;
 
+  group->recorder_group = eri_live_thread_recorder__create_group (pool);
   return group;
 }
 
 void
 eri_live_thread__destroy_group (struct eri_live_thread_group *group)
 {
+  eri_live_thread_recorder__destroy_group (group->recorder_group);
+
   struct sig_fd *fd, *nfd;
   ERI_RBT_FOREACH_SAFE (sig_fd, group, fd, nfd)
     sig_fd_remove_free (group, fd);
@@ -273,8 +278,8 @@ create (struct eri_live_thread_group *group,
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
-  th->rec = eri_live_thread_recorder__create (
-		group->pool, group->path, th->id, group->file_buf_size);
+  th->rec = eri_live_thread_recorder__create (group->recorder_group,
+				group->path, th->id, group->file_buf_size);
 
   th->ctx = create_context (group->pool, th);
   return th;
