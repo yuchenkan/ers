@@ -1009,13 +1009,14 @@ eri_live_signal_thread__sig_fd_read (
   return event.done;
 }
 
-void
+uint64_t
 eri_live_signal_thread__syscall (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_sys_syscall_args *args)
 {
   struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
   proc_event (sig_th, &event);
+  return args->result;
 }
 
 uint8_t

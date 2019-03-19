@@ -118,6 +118,19 @@ struct eri_entry_thread_context
   struct eri_entry_scratch_registers sregs;
 };
 
+#define eri_sys_syscall_args_from_sregs(args, sregs) \
+  do {									\
+    struct eri_sys_syscall_args *_args = args;				\
+    const struct eri_entry_scratch_registers *_sregs = sregs;		\
+    _args->nr = _sregs->rax;						\
+    _args->a[0] = _sregs->rdi;						\
+    _args->a[1] = _sregs->rsi;						\
+    _args->a[2] = _sregs->rdx;						\
+    _args->a[3] = _sregs->r10;						\
+    _args->a[4] = _sregs->r8;						\
+    _args->a[5] = _sregs->r9;						\
+  } while (0)
+
 #endif
 
 #ifndef ERI_ENTRY_BUILD_ENTRY_OFFSETS_H

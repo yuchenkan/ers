@@ -790,17 +790,23 @@ ERI_PASTE (syscall_, name) (struct eri_live_thread *th,			\
   DEFINE_SYSCALL (name) { SYSCALL_RETURN_DONE (th->ctx, ERI_ENOSYS); }
 
 static uint32_t
+syscall_syscall (struct eri_live_thread *th)
+{
+  struct thread_context *th_ctx = th->ctx;
+  struct eri_sys_syscall_args args;
+  eri_sys_syscall_args_from_sregs (&args, &th_ctx->ctx.sregs);
+  SYSCALL_RETURN_DONE (th_ctx, eri_sys_syscall (&args));
+};
+
+static uint32_t
 syscall_signal_thread (struct eri_live_thread *th)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
-  struct eri_sys_syscall_args args = {
-    th_ctx->ctx.sregs.rax,
-    { th_ctx->ctx.sregs.rdi, th_ctx->ctx.sregs.rsi, th_ctx->ctx.sregs.rdx,
-      th_ctx->ctx.sregs.r10, th_ctx->ctx.sregs.r8, th_ctx->ctx.sregs.r9 }
-  };
-  eri_live_signal_thread__syscall (sig_th, &args);
-  SYSCALL_RETURN_DONE (th_ctx, args.result);
+  struct eri_sys_syscall_args args;
+  eri_sys_syscall_args_from_sregs (&args, &th_ctx->ctx.sregs);
+  SYSCALL_RETURN_DONE (th_ctx,
+		eri_live_signal_thread__syscall (sig_th, &args));
 }
 
 static uint8_t
@@ -1038,11 +1044,7 @@ SYSCALL_TO_IMPL (acct)
 SYSCALL_TO_IMPL (setpriority)
 SYSCALL_TO_IMPL (getpriority)
 
-DEFINE_SYSCALL (sched_yield)
-{
-  /* TODO: syscall */
-  SYSCALL_RETURN_DONE (th->ctx, 0);
-}
+DEFINE_SYSCALL (sched_yield) { return syscall_syscall (th); }
 
 SYSCALL_TO_IMPL (sched_setparam)
 SYSCALL_TO_IMPL (sched_getparam)
@@ -1443,10 +1445,6 @@ DEFINE_SYSCALL (fcntl)
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
   int32_t cmd = th_ctx->ctx.sregs.rsi;
-  uint64_t a[] = {
-    th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10,
-    th_ctx->ctx.sregs.r8, th_ctx->ctx.sregs.r9
-  };
 
   if (cmd == ERI_F_GETFL || cmd == ERI_F_SETFL)
     {
@@ -1462,7 +1460,7 @@ DEFINE_SYSCALL (fcntl)
 	}
       else
 	{
-	  int32_t flags = a[0];
+	  int32_t flags = th_ctx->ctx.sregs.rdx;
 	  int32_t sig_fd_flags = flags & ERI_O_NONBLOCK;
 	  flags &= ~ERI_O_NONBLOCK;
 	  th_ctx->ctx.sregs.rax = eri_syscall (fcntl, fd, cmd, flags);
@@ -1474,8 +1472,7 @@ DEFINE_SYSCALL (fcntl)
     }
 
 fcntl:
-  SYSCALL_RETURN_DONE (th_ctx, eri_syscall (fcntl, fd, cmd,
-					    a[0], a[1], a[2], a[3]));
+  return syscall_syscall (th);
 }
 
 SYSCALL_TO_IMPL (flock)
@@ -1503,10 +1500,6 @@ syscall_do_read (struct eri_live_thread *th)
   struct thread_context *th_ctx = th->ctx;
   int32_t nr = th_ctx->ctx.sregs.rax;
   int32_t fd = th_ctx->ctx.sregs.rdi;
-  uint64_t a[5] = {
-    th_ctx->ctx.sregs.rsi, th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10,
-    th_ctx->ctx.sregs.r8, th_ctx->ctx.sregs.r9
-  };
 
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
   if (! sig_fd) goto read;
@@ -1517,6 +1510,10 @@ syscall_do_read (struct eri_live_thread *th)
   int32_t flags = sig_fd->flags;
   eri_assert_unlock (&group->sig_fd_lock);
 
+  uint64_t a[5] = {
+    th_ctx->ctx.sregs.rsi, th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10,
+    th_ctx->ctx.sregs.r8, th_ctx->ctx.sregs.r9
+  };
   struct eri_live_signal_thread__sig_fd_read_args args = {
     fd, nr, a, &mask->lock, &mask->mask, flags
   };
@@ -1537,8 +1534,7 @@ syscall_do_read (struct eri_live_thread *th)
   return res;
 
 read:
-  SYSCALL_RETURN_DONE (th_ctx, eri_syscall_nr (nr, fd, a[0], a[1],
-					       a[2], a[3], a[4]));
+  return syscall_syscall (th);
 }
 
 DEFINE_SYSCALL (read) { return syscall_do_read (th); }

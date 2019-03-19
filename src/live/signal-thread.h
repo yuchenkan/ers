@@ -84,7 +84,7 @@ uint8_t eri_live_signal_thread__sig_fd_read (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_live_signal_thread__sig_fd_read_args *args);
 
-void eri_live_signal_thread__syscall (
+uint64_t eri_live_signal_thread__syscall (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_sys_syscall_args *args);
 
