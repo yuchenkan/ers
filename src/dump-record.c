@@ -51,6 +51,13 @@ main (int32_t argc, const char **argv)
 	    assert (fseek (f, data.end - data.start, SEEK_CUR) == 0);
 	  }
       }
+    else if (mark == ERI_ASYNC_RECORD)
+      {
+	printf ("ERI_ASYNC_RECORD\n");
+	struct eri_signal_record sig;
+	assert (fread (&sig, sizeof sig, 1, f) == 1);
+	printf ("  sig: %d, code: %d\n", sig.info.sig, sig.info.code);
+      }
     else if (mark == ERI_SYNC_RECORD)
       {
 	printf ("ERI_SYNC_RECORD\n");
@@ -84,13 +91,6 @@ main (int32_t argc, const char **argv)
 		    at.updated, at.ver[0], at.ver[1], at.val);
 	  }
 	else assert (0);
-      }
-    else if (mark == ERI_ASYNC_RECORD)
-      {
-	printf ("ERI_ASYNC_RECORD\n");
-	struct eri_siginfo info;
-	assert (fread (&info, sizeof info, 1, f) == 1);
-	printf ("  sig: %d, code: %d\n", info.sig, info.code);
       }
     else assert (0);
 

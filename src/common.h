@@ -35,6 +35,12 @@ void eri_build_path (const char *path, const char *name,
 
 void eri_mkdir (const char *path);
 
+#define eri_sig_valid(sig) \
+  ({ int32_t _s1 = sig; _s1 > 0 && _s1 < ERI_NSIG; })
+#define eri_sig_catchable(sig) \
+  ({ int32_t _s2 = sig;							\
+     eri_sig_valid (_s2) && _s2 != ERI_SIGKILL && _s2 != ERI_SIGSTOP; })
+
 struct eri_sig_act
 {
   struct eri_lock lock;

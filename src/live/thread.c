@@ -100,6 +100,8 @@ struct eri_live_thread_group
 
   const char *path;
   uint64_t file_buf_size;
+
+  uint64_t io;
 };
 
 ERI_DEFINE_RBTREE (static, sig_fd, struct eri_live_thread_group,
@@ -155,6 +157,18 @@ disable_vdso (struct eri_auxv *auxv)
       auxv->type = ERI_AT_IGNORE;
 }
 
+static uint64_t
+io_in (struct eri_live_thread *th)
+{
+  return eri_atomic_load (&th->group->io);
+}
+
+static eri_unused uint64_t
+io_out (struct eri_live_thread *th)
+{
+  return eri_atomic_inc_fetch (&th->group->io);
+}
+
 struct eri_live_thread_group *
 eri_live_thread__create_group (struct eri_mtpool *pool,
 			       struct eri_live_rtld_args *rtld_args)
@@ -195,6 +209,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->path = path;
   group->file_buf_size = file_buf_size;
 
+  group->io = 0;
   return group;
 }
 
@@ -405,7 +420,7 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
 static eri_noreturn void
 die (struct eri_live_thread *th)
 {
-  eri_live_thread_recorder__rec_signal (th->rec, 0);
+  eri_live_thread_recorder__rec_signal (th->rec, io_in (th), 0);
   eri_live_signal_thread__die (th->sig_th);
   eri_assert_sys_thread_die (&th->alive);
 }
@@ -440,7 +455,7 @@ sig_action (struct eri_live_thread *th)
       if (! sig_setup_user_frame (th, frame)) goto core;
 
       if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->rec, info);
+	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
 
       struct eri_stack st = {
 	(uint64_t) th->sig_stack, ERI_SS_AUTODISARM, 2 * THREAD_SIG_STACK_SIZE
@@ -474,7 +489,7 @@ core:
   if (eri_live_signal_thread__exit (sig_th, 1, core_status))
     {
       if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->rec, info);
+	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
 
       if (core_status == 130) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
@@ -781,8 +796,7 @@ unlock_atomic (struct eri_live_thread_group *group, struct atomic_pair *idx,
 
 #define DEFINE_SYSCALL(name) \
 static uint32_t								\
-ERI_PASTE (syscall_, name) (struct eri_live_thread *th,			\
-	struct eri_live_thread_recorder__rec_syscall_ex_args *rec_args)
+ERI_PASTE (syscall_, name) (struct eri_live_thread *th)
 
 #define SYSCALL_TO_IMPL(name) \
   DEFINE_SYSCALL (name) { SYSCALL_RETURN_DONE (th->ctx, ERI_ENOSYS); }
@@ -804,7 +818,7 @@ syscall_signal_thread (struct eri_live_thread *th)
   struct eri_sys_syscall_args args;
   eri_sys_syscall_args_from_sregs (&args, &th_ctx->ctx.sregs);
   SYSCALL_RETURN_DONE (th_ctx,
-		eri_live_signal_thread__syscall (sig_th, &args));
+	eri_live_signal_thread__syscall (sig_th, &args));
 }
 
 static uint8_t
@@ -841,7 +855,7 @@ DEFINE_SYSCALL (clone)
 	copy_to_user (th, user_ptid, &args.tid, sizeof *user_ptid);
       if (flags & ERI_CLONE_CHILD_SETTID)
 	copy_to_user (th, user_ctid, &args.tid, sizeof *user_ctid);
-      rec_args->clone_id = create_args.cth->id;
+      // TODO rec_args->clone_id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
 
       SYSCALL_RETURN_DONE (th_ctx, args.tid);
@@ -1238,10 +1252,11 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 static uint32_t
 syscall_do_kill (struct eri_live_thread *th)
 {
+  struct thread_context *th_ctx = th->ctx;
   uint32_t res = syscall_signal_thread (th);
-  if (res == SYSCALL_DONE
+  if (res == SYSCALL_DONE && ! eri_syscall_is_error (th_ctx->ctx.sregs.rax)
       && eri_live_signal_thread__signaled (th->sig_th))
-    syscall_sig_wait (th->ctx, 0);
+    syscall_sig_wait (th_ctx, 0);
   return res;
 }
 
@@ -1532,6 +1547,7 @@ syscall_do_read (struct eri_live_thread *th)
   return res;
 
 read:
+  /* TODO: fix eintr */
   return syscall_syscall (th);
 }
 
@@ -1727,17 +1743,24 @@ SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages)
 
+#if 0
+#define rec_args_io_in(rec_args, th) \
+  do { (rec_args)->io_in = io_in (th); } while (0)
+
+#define rec_args_io_out(rec_args, th) \
+  do { (rec_args)->io_out = io_out (th); } while (0)
+#endif
+
 uint8_t
 syscall (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-
-  int32_t nr = th_ctx->ctx.sregs.rax;
-  struct eri_live_thread_recorder__rec_syscall_ex_args rec_args;
+  struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
+  int32_t nr = sregs->rax;
 
 #define SYSCALL(name) \
   do {									\
-    switch (ERI_PASTE (syscall_, name) (th, &rec_args))			\
+    switch (ERI_PASTE (syscall_, name) (th))				\
       {									\
       case SYSCALL_DONE: goto done;					\
       case SYSCALL_SIG_WAIT_RESTART: goto sig_wait_restart;		\
@@ -1748,23 +1771,15 @@ syscall (struct eri_live_thread *th)
 
   ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
 
-  th_ctx->ctx.sregs.rax = ERI_ENOSYS;
+  sregs->rax = ERI_ENOSYS;
   goto done;
 
 done:
   eri_debug ("%u done\n", nr);
   swallow_single_step (th_ctx);
   if (nr == __NR_rt_sigreturn) return 1;
-  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
-  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
-
-  struct eri_live_thread_recorder__rec_syscall_args args = {
-    nr, th_ctx->ctx.sregs.rax, th_ctx->ctx.sregs.rdi, th_ctx->ctx.sregs.rsi,
-    th_ctx->ctx.sregs.rdx, th_ctx->ctx.sregs.r10, th_ctx->ctx.sregs.r8,
-    th_ctx->ctx.sregs.r9, &rec_args
-  };
-  eri_live_thread_recorder__rec_syscall (th->rec, &args);
-
+  sregs->rcx = th_ctx->ext.ret;
+  sregs->r11 = sregs->rflags;
   return 0;
 
 sig_wait_restart:
@@ -1775,8 +1790,8 @@ sig_wait_restart:
 
 seg_fault:
   eri_debug ("seg_fault\n");
-  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
-  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
+  sregs->rcx = th_ctx->ext.ret;
+  sregs->r11 = sregs->rflags;
   th_ctx->ext.ret = th_ctx->ext.call;
   return 0;
 }

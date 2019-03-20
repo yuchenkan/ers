@@ -50,7 +50,7 @@ eri_sig_init_acts (struct eri_sig_act *sig_acts, eri_sig_handler_t hand)
   int32_t sig;
   for (sig = 1; sig < ERI_NSIG; ++sig)
     {
-      if (sig == ERI_SIGSTOP || sig == ERI_SIGKILL) continue;
+      if (! eri_sig_catchable (sig)) continue;
 
       eri_init_lock (&sig_acts[sig - 1].lock, 0);
       struct eri_sigaction act = {
@@ -233,8 +233,7 @@ eri_common_syscall_rt_sigaction_get (
 {
   int32_t sig = sregs->rdi;
   const struct eri_sigaction *user_act = (void *) sregs->rsi;
-  if (sig == 0 || sig >= ERI_NSIG
-      || sig == ERI_SIGKILL || sig == ERI_SIGSTOP)
+  if (! eri_sig_catchable (sig))
     COMMON_SYSCALL_RETURN_ERROR (sregs, ERI_EINVAL);
 
   if (! user_act) return 1;

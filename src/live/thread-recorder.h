@@ -38,10 +38,13 @@ void eri_live_thread_recorder__rec_init (
 
 void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *rec,
-		struct eri_siginfo *info);
+		uint64_t io, struct eri_siginfo *info);
 
 struct eri_live_thread_recorder__rec_syscall_ex_args
 {
+  uint64_t io_in;
+  uint64_t io_out;
+
   union
     {
       uint64_t clone_id;
