@@ -9,6 +9,7 @@
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
+#include <lib/printf.h>
 
 #define eri_init_mtpool_from_buf(buf, size, exec) \
   ({									\
@@ -165,6 +166,130 @@ uint8_t eri_common_syscall_rt_sigreturn (
 
 #define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
 
+void eri_serialize_uint8 (eri_file_t file, uint8_t v);
+uint8_t eri_unserialize_uint8 (eri_file_t file);
+uint8_t eri_unserialize_uint8_or_eof (eri_file_t file, uint8_t *v);
+
+void eri_serialize_uint16 (eri_file_t file, uint16_t v);
+uint16_t eri_unserialize_uint16 (eri_file_t file);
+void eri_serialize_int32 (eri_file_t file, int32_t v);
+int32_t eri_unserialize_int32 (eri_file_t file);
+void eri_serialize_uint64 (eri_file_t file, uint64_t v);
+uint64_t eri_unserialize_uint64 (eri_file_t file);
+
+void eri_serialize_uint8_array (eri_file_t file,
+				const uint8_t *arr, uint64_t size);
+void eri_unserialize_uint8_array (eri_file_t file,
+				  uint8_t *arr, uint64_t size);
+void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size);
+
+void eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set);
+void eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
+
+void eri_serialize_stack (eri_file_t file, const struct eri_stack *set);
+void eri_unserialize_stack (eri_file_t file, struct eri_stack *set);
+
+void eri_serialize_siginfo (eri_file_t file, const struct eri_siginfo *info);
+void eri_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info);
+
+enum
+{
+  ERI_INIT_RECORD,
+  ERI_INIT_MAP_RECORD,
+  ERI_ASYNC_RECORD,
+  ERI_SYNC_RECORD
+};
+
+#define eri_serialize_mark(file, mark) \
+  eri_serialize_uint8 (file, mark)
+#define eri_unserialize_mark(file) \
+  eri_unserialize_uint8 (file)
+
+struct eri_init_record
+{
+  uint64_t ver;
+
+  uint64_t rdx;
+  uint64_t rsp;
+  uint64_t rip;
+
+  struct eri_sigset sig_mask;
+  struct eri_stack sig_alt_stack;
+  int32_t user_pid;
+
+  uint64_t start;
+  uint64_t end;
+
+  uint64_t atomic_table_size;
+};
+
+void eri_serialize_init_record (eri_file_t file,
+				const struct eri_init_record *rec);
+void eri_unserialize_init_record (eri_file_t file,
+				  struct eri_init_record *rec);
+
+struct eri_init_map_record
+{
+  uint64_t start, end;
+  uint8_t prot;
+  uint8_t grows_down;
+
+  uint8_t data_count;
+};
+
+void eri_serialize_init_map_record (eri_file_t file,
+				    const struct eri_init_map_record *rec);
+void eri_unserialize_init_map_record (eri_file_t file,
+				      struct eri_init_map_record *rec);
+
+enum
+{
+  ERI_SYSCALL_CLONE_MAGIC,
+  ERI_SYSCALL_IN_MAGIC,
+  ERI_SYSCALL_OUT_MAGIC,
+  ERI_SYNC_ASYNC_MAGIC,
+  ERI_ATOMIC_MAGIC
+};
+
+#define eri_serialize_magic(file, magic) \
+  eri_serialize_uint16 (file, magic)
+#define eri_unserialize_magic(file) \
+  eri_unserialize_uint16 (file)
+
+struct eri_signal_record
+{
+  uint64_t in;
+  struct eri_siginfo info;
+};
+
+void eri_serialize_signal_record (eri_file_t file,
+				  const struct eri_signal_record *rec);
+void eri_unserialize_signal_record (eri_file_t file,
+				    struct eri_signal_record *rec);
+
+struct eri_syscall_clone_record
+{
+  uint64_t out;
+  uint64_t result;
+  uint64_t id;
+};
+void eri_serialize_syscall_clone_record (eri_file_t file,
+			const struct eri_syscall_clone_record *rec);
+void eri_unserialize_syscall_clone_record (eri_file_t file,
+			struct eri_syscall_clone_record *rec);
+
+struct eri_atomic_record
+{
+  uint8_t updated;
+  uint64_t ver[2];
+  uint64_t val;
+};
+
+void eri_serialize_atomic_record (eri_file_t file,
+				  const struct eri_atomic_record *rec);
+void eri_unserialize_atomic_record (eri_file_t file,
+				    struct eri_atomic_record *rec);
+
 #include <compiler.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>
@@ -189,9 +314,8 @@ extern uint8_t eri_global_enable_debug;
 
 #define eri_dump_maps() \
   do {									\
-    eri_file_t _file;							\
     uint8_t _buf[1024];							\
-    eri_assert_fopen ("/proc/self/maps", 1, &_file, 0, 0);		\
+    eri_file_t _file = eri_assert_fopen ("/proc/self/maps", 1, 0, 0);	\
     uint64_t _len;							\
     do									\
       {									\

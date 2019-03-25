@@ -1,56 +1,57 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include <record.h>
+#include <common.h>
+#include <lib/printf.h>
 
 int32_t
 main (int32_t argc, const char **argv)
 {
   assert (argc <= 2);
   const char *name = argc == 2 ? argv[1] : "ers-data/t000";
-  FILE *f = fopen (name, "rb");
-  if (! f)
+  uint8_t buf[16 * 1024];
+  eri_file_t file;
+  if (eri_fopen (name, 1, &file, buf, sizeof buf))
     {
-      printf ("failed to open %s\n", name);
+      fprintf (stderr, "failed to open %s\n", name);
       return 1;
     }
 
   uint8_t mark;
-  while (fread (&mark, sizeof mark, 1, f))
+  while (eri_unserialize_uint8_or_eof (file, &mark))
     if (mark == ERI_INIT_RECORD)
       {
 	printf ("ERI_INIT_RECORD\n");
-	struct eri_init_record init;
-	assert (fread (&init, sizeof init, 1, f) == 1);
-	printf ("  ver: %lu", init.ver);
+	struct eri_init_record rec;
+	eri_unserialize_init_record (file, &rec);
+	printf ("  ver: %lu", rec.ver);
 	printf ("  rdx: 0x%lx, rsp: 0x%lx, rip: 0x%lx\n",
-		init.rdx, init.rsp, init.rip);
-	printf ("  sig_mask: 0x%lx\n", init.sig_mask.val[0]);
+		rec.rdx, rec.rsp, rec.rip);
+	printf ("  sig_mask: 0x%lx\n", rec.sig_mask.val[0]);
 	printf ("  sig_alt_stack.sp: 0x%lx, .flags: 0x%x, .size: %lu\n",
-		init.sig_alt_stack.sp, init.sig_alt_stack.flags,
-		init.sig_alt_stack.size);
-	printf ("  user_pid: %u\n", init.user_pid);
-	printf ("  start: 0x%lx, end: 0x%lx\n", init.start, init.end);
-	printf ("  atomic_table_size: %lu\n", init.atomic_table_size);
+		rec.sig_alt_stack.sp, rec.sig_alt_stack.flags,
+		rec.sig_alt_stack.size);
+	printf ("  user_pid: %u\n", rec.user_pid);
+	printf ("  start: 0x%lx, end: 0x%lx\n", rec.start, rec.end);
+	printf ("  atomic_table_size: %lu\n", rec.atomic_table_size);
       }
     else if (mark == ERI_INIT_MAP_RECORD)
       {
 	printf ("ERI_INIT_MAP_RECORD\n");
-	struct eri_init_map_record init_map;
-	assert (fread (&init_map, sizeof init_map, 1, f) == 1);
+	struct eri_init_map_record rec;
+	eri_unserialize_init_map_record (file, &rec);
 	printf ("  start: 0x%lx, end: 0x%lx, prot: %u, grows_down %u\n",
-		init_map.start, init_map.end,
-		init_map.prot, init_map.grows_down);
+		rec.start, rec.end, rec.prot, rec.grows_down);
 	uint8_t i;
-	for (i = 0; i < init_map.data_count; ++i)
+	for (i = 0; i < rec.data_count; ++i)
 	  {
-	    struct eri_init_map_data_record data;
-	    assert (fread (&data, sizeof data, 1, f) == 1);
-	    printf ("    data.start: 0x%lx, .end: 0x%lx\n",
-		     data.start, data.end);
-	    assert (fseek (f, data.end - data.start, SEEK_CUR) == 0);
+	    uint64_t start = eri_unserialize_uint64 (file);
+	    uint64_t end = eri_unserialize_uint64 (file);
+	    printf ("    data.start: 0x%lx, .end: 0x%lx\n", start, end);
+	    eri_unserialize_skip_uint8_array (file, end - start);
 	  }
       }
+#if 0
     else if (mark == ERI_ASYNC_RECORD)
       {
 	printf ("ERI_ASYNC_RECORD\n");
@@ -93,7 +94,8 @@ main (int32_t argc, const char **argv)
 	else assert (0);
       }
     else assert (0);
+#endif
 
-  fclose (f);
+  eri_assert_fclose (file);
   return 0;
 }

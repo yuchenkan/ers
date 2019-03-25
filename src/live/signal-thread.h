@@ -27,7 +27,7 @@ eri_noreturn void eri_live_signal_thread__init_main (
 struct eri_live_signal_thread__clone_args
 {
   void *args;
-  int32_t tid;
+  uint64_t out;
   uint64_t result;
 };
 

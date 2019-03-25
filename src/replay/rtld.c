@@ -1,6 +1,5 @@
 #include <compiler.h>
 #include <common.h>
-#include <record.h>
 
 #include <rtld.h>
 
@@ -162,16 +161,15 @@ rtld (void **args)
       eri_assert_syscall (exit, 1);
     }
 
-  struct eri_marked_init_record init;
-  eri_assert_fread (file, &init, sizeof init, 0);
-  eri_assert_fclose (file);
-  eri_assert (init.mark == ERI_INIT_RECORD);
+  eri_assert (eri_unserialize_mark (file) == ERI_INIT_RECORD);
+  struct eri_init_record rec;
+  eri_unserialize_init_record (file, &rec);
 
   struct init_map_args init_args = {
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size, .sig_mask = sig_mask,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
-    .map_start = init.rec.start, .map_end = init.rec.end,
+    .map_start = rec.start, .map_end = rec.end,
     .map_entry_offset
 	= (uint64_t) eri_replay_start - (uint64_t) eri_start,
     .nsegs = nsegs

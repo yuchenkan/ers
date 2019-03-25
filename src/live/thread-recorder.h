@@ -7,6 +7,8 @@
 
 struct eri_mtpool;
 struct eri_siginfo;
+struct eri_init_record;
+struct eri_syscall_record;
 
 struct eri_live_thread_recorder;
 
@@ -14,70 +16,27 @@ struct eri_live_thread_recorder *eri_live_thread_recorder__create (
 		struct eri_mtpool *pool, const char *path, uint64_t id,
 		uint64_t buf_size);
 void eri_live_thread_recorder__destroy (
-		struct eri_live_thread_recorder *rec);
-
-struct eri_live_thread_recorder__rec_init_args
-{
-  uint64_t rdx;
-  uint64_t rsp;
-  uint64_t rip;
-
-  struct eri_sigset sig_mask;
-  struct eri_stack sig_alt_stack;
-  int32_t user_pid;
-
-  uint64_t start;
-  uint64_t end;
-
-  uint64_t atomic_table_size;
-};
+		struct eri_live_thread_recorder *th_rec);
 
 void eri_live_thread_recorder__rec_init (
-		struct eri_live_thread_recorder *rec,
-		struct eri_live_thread_recorder__rec_init_args *args);
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_init_record *rec);
 
 void eri_live_thread_recorder__rec_signal (
-		struct eri_live_thread_recorder *rec,
-		uint64_t io, struct eri_siginfo *info);
-
-struct eri_live_thread_recorder__rec_syscall_ex_args
-{
-  uint64_t io_in;
-  uint64_t io_out;
-
-  union
-    {
-      uint64_t clone_id;
-    };
-};
-
-struct eri_live_thread_recorder__rec_syscall_args
-{
-  int32_t nr;
-
-  uint64_t rax;
-
-  uint64_t rdi;
-  uint64_t rsi;
-  uint64_t rdx;
-  uint64_t r10;
-  uint64_t r8;
-  uint64_t r9;
-
-  struct eri_live_thread_recorder__rec_syscall_ex_args *ex;
-};
+		struct eri_live_thread_recorder *th_rec,
+		uint64_t in, struct eri_siginfo *info);
 
 void eri_live_thread_recorder__rec_syscall (
-		struct eri_live_thread_recorder *rec,
-		struct eri_live_thread_recorder__rec_syscall_args *args);
+		struct eri_live_thread_recorder *th_rec,
+		uint16_t magic, void *rec);
 
 void eri_live_thread_recorder__rec_sync_async (
-		struct eri_live_thread_recorder *rec, uint64_t cnt);
+		struct eri_live_thread_recorder *th_rec, uint64_t cnt);
 void eri_live_thread_recorder__rec_restart_sync_async (
-		struct eri_live_thread_recorder *rec, uint64_t cnt);
+		struct eri_live_thread_recorder *th_rec, uint64_t cnt);
 
 void eri_live_thread_recorder__rec_atomic (
-		struct eri_live_thread_recorder *rec,
+		struct eri_live_thread_recorder *th_rec,
 		uint8_t updated, const uint64_t *ver, uint64_t val);
 
 #endif

@@ -3,7 +3,6 @@
 #include <common.h>
 #include <entry.h>
 #include <helper.h>
-#include <record.h>
 
 #include <lib/util.h>
 #include <lib/cpu.h>
@@ -148,7 +147,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 
   uint64_t file_buf_size = group->file_buf_size;
   th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
-  eri_assert_fopen (name, 1, &th->file, th->file_buf, file_buf_size);
+  th->file = eri_assert_fopen (name, 1, th->file_buf, file_buf_size);
 
   th->alive = 1;
   th->clear_user_tid = clear_user_tid;
@@ -202,9 +201,7 @@ exit (struct thread *th)
 static uint8_t
 next_record (struct thread *th)
 {
-  uint8_t next;
-  eri_assert_fread (th->file, &next, sizeof next, 0);
-  return next;
+  return eri_unserialize_mark (th->file);
 }
 
 static eri_noreturn void
@@ -257,9 +254,10 @@ static eri_noreturn void raise_async (struct thread *th,
 static eri_noreturn void
 raise_async (struct thread *th, struct eri_ucontext *ctx)
 {
-  struct eri_siginfo info;
-  eri_assert_fread (th->file, &info, sizeof info, 0);
-  raise (th, &info, ctx);
+  struct eri_signal_record rec;
+  eri_unserialize_signal_record (th->file, &rec);
+  /* TODO: rec.io */
+  raise (th, &rec.info, ctx);
 }
 
 static void
@@ -386,51 +384,50 @@ void
 start_main (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  struct eri_marked_init_record init;
-  eri_assert_fread (th->file, &init, sizeof init, 0);
-  eri_assert (init.mark == ERI_INIT_RECORD);
+  eri_assert (next_record (th) == ERI_INIT_RECORD);
+  struct eri_init_record rec;
+  eri_unserialize_init_record (th->file, &rec);
+  eri_assert (rec.ver == 0);
 
-  th_ctx->ext.ret = init.rec.rip;
-  th_ctx->ctx.rsp = init.rec.rsp;
-  th_ctx->ctx.sregs.rdx = init.rec.rdx;
+  th_ctx->ext.ret = rec.rip;
+  th_ctx->ctx.rsp = rec.rsp;
+  th_ctx->ctx.sregs.rdx = rec.rdx;
 
-  th->sig_mask = init.rec.sig_mask;
-  th->sig_alt_stack = init.rec.sig_alt_stack;
+  th->sig_mask = rec.sig_mask;
+  th->sig_alt_stack = rec.sig_alt_stack;
 
   struct thread_group *group = th->group;
-  group->map_start = init.rec.start;
-  group->map_end = init.rec.end;
+  group->map_start = rec.start;
+  group->map_end = rec.end;
 
-  uint64_t atomic_table_size = init.rec.atomic_table_size;
+  uint64_t atomic_table_size = rec.atomic_table_size;
   group->atomic_table = eri_assert_calloc (&group->pool->pool,
 			sizeof *group->atomic_table * atomic_table_size);
   group->atomic_table_size = atomic_table_size;
 
-  th->user_tid = init.rec.user_pid;
-  group->user_pid = init.rec.user_pid;
+  th->user_tid = rec.user_pid;
+  group->user_pid = rec.user_pid;
 
   uint8_t next;
   while ((next = next_record (th)) == ERI_INIT_MAP_RECORD)
     {
-      struct eri_init_map_record init_map;
-      eri_assert_fread (th->file, &init_map, sizeof init_map, 0);
-      uint64_t size = init_map.end - init_map.start;
-      uint8_t prot = init_map.prot;
-      uint8_t init_prot
-		= prot | (init_map.data_count ? ERI_PROT_WRITE : 0);
+      struct eri_init_map_record rec;
+      eri_unserialize_init_map_record (th->file, &rec);
+      uint64_t size = rec.end - rec.start;
+      uint8_t prot = rec.prot;
+      uint8_t init_prot = prot | (rec.data_count ? ERI_PROT_WRITE : 0);
       /* XXX: grows_down */
-      eri_assert_syscall (mmap, init_map.start, size, init_prot,
+      eri_assert_syscall (mmap, rec.start, size, init_prot,
 		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
       uint8_t i;
-      for (i = 0; i < init_map.data_count; ++i)
+      for (i = 0; i < rec.data_count; ++i)
 	{
-	  struct eri_init_map_data_record data;
-	  eri_assert_fread (th->file, &data, sizeof data, 0);
-	  eri_assert_fread (th->file, (void *) data.start,
-			    data.end - data.start, 0);
+	  uint64_t start = eri_unserialize_uint64 (th->file);
+	  uint64_t end = eri_unserialize_uint64 (th->file);
+	  eri_unserialize_uint8_array (th->file, (void *) start, end - start);
 	}
       if (init_prot != prot)
-	eri_assert_syscall (mprotect, init_map.start, size, prot);
+	eri_assert_syscall (mprotect, rec.start, size, prot);
     }
 
   group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE, 0);
@@ -498,9 +495,9 @@ ERI_PASTE (syscall_, name) (struct thread *th)
 
 DEFINE_SYSCALL (clone)
 {
+  eri_assert (eri_unserialize_magic (th->file) == ERI_SYSCALL_CLONE_MAGIC);
   struct eri_syscall_clone_record rec;
-  eri_assert_fread (th->file, &rec, sizeof rec, 0);
-  eri_assert (rec.magic == ERI_SYSCALL_CLONE_MAGIC);
+  eri_unserialize_syscall_clone_record (th->file, &rec);
 
   struct thread_context *th_ctx = th->ctx;
 
@@ -592,8 +589,8 @@ read_write_user_tid (struct thread_context *th_ctx, int32_t *user_tid)
 static void
 read_atomic_record (struct thread *th, struct eri_atomic_record *rec)
 {
-  eri_assert_fread (th->file, rec, sizeof *rec, 0);
-  eri_assert (rec->magic == ERI_ATOMIC_MAGIC);
+  eri_assert (eri_unserialize_magic (th->file)== ERI_ATOMIC_MAGIC);
+  eri_unserialize_atomic_record (th->file, rec);
 }
 
 static void
@@ -617,6 +614,9 @@ syscall_do_exit (struct thread *th)
 	  atomic_update (th->group, mem, size);
 	}
     }
+  eri_assert (eri_unserialize_magic (th->file) == ERI_SYSCALL_OUT_MAGIC);
+  uint64_t out = eri_unserialize_uint64 (th->file);
+  (void) out; // TODO
   exit (th);
 }
 
@@ -649,7 +649,7 @@ DEFINE_SYSCALL (getpid) { th->ctx->ctx.sregs.rax = th->group->user_pid; }
 
 DEFINE_SYSCALL (getppid)
 {
-  /* TODO */
+  /* TODO io_in */
 }
 
 SYSCALL_TO_IMPL (setreuid)
@@ -1119,9 +1119,8 @@ syscall (struct thread *th)
 static void
 sync_async (struct thread *th)
 {
-  struct eri_sync_async_record sync;
-  eri_assert_fread (th->file, &sync, sizeof sync, 0);
-  eri_assert (sync.magic == ERI_SYNC_ASYNC_MAGIC);
+  eri_assert (eri_unserialize_magic (th->file) == ERI_SYNC_ASYNC_MAGIC);
+  uint64_t steps = eri_unserialize_uint64 (th->file);
 
   struct thread_context *th_ctx = th->ctx;
   th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
@@ -1133,7 +1132,7 @@ sync_async (struct thread *th)
   th_ctx->sync_async_trace
 		= (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
 			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
-  th_ctx->sync_async_trace_steps = sync.steps;
+  th_ctx->sync_async_trace_steps = steps;
   /* XXX: this can be slow with large repeats... */
   th_ctx->ctx.sregs.rflags |= ERI_RFLAGS_TRACE_MASK;
 }

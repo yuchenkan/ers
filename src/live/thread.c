@@ -51,7 +51,7 @@ struct eri_live_thread
   struct eri_lock start_lock;
   int32_t *clear_user_tid;
 
-  struct eri_live_thread_recorder *th_rec;
+  struct eri_live_thread_recorder *rec;
 
   struct thread_context *ctx;
 
@@ -163,10 +163,24 @@ io_in (struct eri_live_thread *th)
   return eri_atomic_load (&th->group->io);
 }
 
-static eri_unused uint64_t
+static uint64_t
 io_out (struct eri_live_thread *th)
 {
   return eri_atomic_inc_fetch (&th->group->io);
+}
+
+static void
+record_io_in (struct eri_live_thread *th)
+{
+  eri_live_thread_recorder__rec_syscall (th->rec,
+				ERI_SYSCALL_IN_MAGIC, (void *) io_in (th));
+}
+
+static void
+record_io_out (struct eri_live_thread *th)
+{
+  eri_live_thread_recorder__rec_syscall (th->rec,
+				ERI_SYSCALL_OUT_MAGIC, (void *) io_out (th));
 }
 
 struct eri_live_thread_group *
@@ -288,7 +302,7 @@ create (struct eri_live_thread_group *group,
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
-  th->th_rec = eri_live_thread_recorder__create (
+  th->rec = eri_live_thread_recorder__create (
 		group->pool, group->path, th->id, group->file_buf_size);
 
   th->ctx = create_context (group->pool, th);
@@ -349,13 +363,13 @@ start_main (struct eri_live_thread *th)
 {
   struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
-  struct eri_live_thread_recorder__rec_init_args args = {
-    th_ctx->ctx.sregs.rdx, th_ctx->ctx.rsp, th_ctx->ext.ret,
+  struct eri_init_record rec = {
+    0, th_ctx->ctx.sregs.rdx, th_ctx->ctx.rsp, th_ctx->ext.ret,
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
     eri_live_signal_thread__get_pid (th->sig_th),
     group->map_start, group->map_end, group->atomic_table_size
   };
-  eri_live_thread_recorder__rec_init (th->th_rec, &args);
+  eri_live_thread_recorder__rec_init (th->rec, &rec);
   start (th);
 }
 
@@ -420,7 +434,7 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
 static eri_noreturn void
 die (struct eri_live_thread *th)
 {
-  eri_live_thread_recorder__rec_signal (th->th_rec, io_in (th), 0);
+  eri_live_thread_recorder__rec_signal (th->rec, io_in (th), 0);
   eri_live_signal_thread__die (th->sig_th);
   eri_assert_sys_thread_die (&th->alive);
 }
@@ -455,7 +469,7 @@ sig_action (struct eri_live_thread *th)
       if (! sig_setup_user_frame (th, frame)) goto core;
 
       if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->th_rec, io_in (th), info);
+	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
 
       struct eri_stack st = {
 	(uint64_t) th->sig_stack, ERI_SS_AUTODISARM, 2 * THREAD_SIG_STACK_SIZE
@@ -489,7 +503,7 @@ core:
   if (eri_live_signal_thread__exit (sig_th, 1, core_status))
     {
       if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->th_rec, io_in (th), info);
+	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
 
       if (core_status == 130) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
@@ -725,7 +739,7 @@ eri_live_thread__destroy (struct eri_live_thread *th)
   struct eri_mtpool *pool = group->pool;
 
   destroy_context (pool, th->ctx);
-  eri_live_thread_recorder__destroy (th->th_rec);
+  eri_live_thread_recorder__destroy (th->rec);
   eri_assert_mtfree (pool, th);
 }
 
@@ -821,6 +835,14 @@ syscall_signal_thread (struct eri_live_thread *th)
 	eri_live_signal_thread__syscall (sig_th, &args));
 }
 
+static uint32_t
+syscall_signal_thread_in (struct eri_live_thread *th)
+{
+  uint32_t res = syscall_signal_thread (th);
+  record_io_in (th);
+  return res;
+}
+
 static uint8_t
 syscall_sig_wait (struct thread_context *th_ctx,
 		  const struct eri_timespec *timeout)
@@ -849,18 +871,23 @@ DEFINE_SYSCALL (clone)
   if (! eri_live_signal_thread__clone (sig_th, &args))
     return SYSCALL_SIG_WAIT_RESTART;
 
+  struct eri_syscall_clone_record rec = {
+    args.out, args.result, create_args.cth->id
+  };
+
   if (! eri_syscall_is_error (args.result))
     {
       if (flags & ERI_CLONE_PARENT_SETTID)
-	copy_to_user (th, user_ptid, &args.tid, sizeof *user_ptid);
+	copy_to_user (th, user_ptid, &args.result, sizeof *user_ptid);
       if (flags & ERI_CLONE_CHILD_SETTID)
-	copy_to_user (th, user_ctid, &args.tid, sizeof *user_ctid);
-      // TODO rec_args->clone_id = create_args.cth->id;
+	copy_to_user (th, user_ctid, &args.result, sizeof *user_ctid);
+      rec.id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
-
-      SYSCALL_RETURN_DONE (th_ctx, args.tid);
     }
-  else SYSCALL_RETURN_DONE (th_ctx, args.result);
+  eri_live_thread_recorder__rec_syscall (th->rec,
+				ERI_SYSCALL_CLONE_MAGIC, &rec);
+
+  SYSCALL_RETURN_DONE (th_ctx, args.result);
 }
 
 SYSCALL_TO_IMPL (unshare)
@@ -924,12 +951,14 @@ syscall_do_exit (struct eri_live_thread *th)
 	{
 	  uint8_t update = old_val != 0;
 	  struct atomic_pair ver = unlock_atomic (group, &idx, update);
-	  eri_live_thread_recorder__rec_atomic (th->th_rec, update,
+	  eri_live_thread_recorder__rec_atomic (th->rec, update,
 						&ver.first, 0);
 	  eri_syscall (futex, user_tid, ERI_FUTEX_WAKE, 1);
 	}
       else unlock_atomic (group, &idx, 0);
     }
+
+  record_io_out (th);
 
   eri_debug ("syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);
@@ -969,7 +998,7 @@ DEFINE_SYSCALL (getpid)
   SYSCALL_RETURN_DONE (th->ctx, eri_live_signal_thread__get_pid (th->sig_th));
 }
 
-DEFINE_SYSCALL (getppid) { return syscall_signal_thread (th); }
+DEFINE_SYSCALL (getppid) { return syscall_signal_thread_in (th) };
 
 SYSCALL_TO_IMPL (setreuid)
 SYSCALL_TO_IMPL (setregid)
@@ -1103,6 +1132,7 @@ DEFINE_SYSCALL (rt_sigprocmask)
 
 DEFINE_SYSCALL (rt_sigaction)
 {
+  /* TODO */
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
@@ -1159,13 +1189,19 @@ DEFINE_SYSCALL (rt_sigreturn)
   return SYSCALL_DONE;
 }
 
-DEFINE_SYSCALL (rt_sigpending) { return syscall_signal_thread (th); }
+DEFINE_SYSCALL (rt_sigpending)
+{
+  uint32_t res = syscall_signal_thread (th);
+  // TODO
+  return res;
+}
 
 static uint32_t
 syscall_do_pause (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
   syscall_sig_wait (th_ctx, 0);
+  record_io_in (th);
   SYSCALL_RETURN_DONE (th_ctx, ERI_EINTR);
 }
 
@@ -1830,14 +1866,14 @@ void
 sync_async (struct eri_live_thread *th, uint64_t cnt)
 {
   swallow_single_step (th->ctx);
-  eri_live_thread_recorder__rec_sync_async (th->th_rec, cnt);
+  eri_live_thread_recorder__rec_sync_async (th->rec, cnt);
 }
 
 eri_noreturn void
 sig_restart_sync_async (struct eri_live_thread *th)
 {
   uint64_t cnt = sig_get_frame (th->ctx)->ctx.mctx.rcx;
-  eri_live_thread_recorder__rec_restart_sync_async (th->th_rec, cnt);
+  eri_live_thread_recorder__rec_restart_sync_async (th->rec, cnt);
 
   sig_action (th);
 }
@@ -1948,7 +1984,7 @@ complete_atomic (struct eri_live_thread *th, uint64_t old_val)
   if (code == _ERS_OP_ATOMIC_LOAD || code == _ERS_OP_ATOMIC_XCHG)
     th_ctx->ext.atomic.val = old_val;
 
-  struct eri_live_thread_recorder *th_rec = th->th_rec;
+  struct eri_live_thread_recorder *th_rec = th->rec;
   if (code == _ERS_OP_ATOMIC_STORE
       || code == _ERS_OP_ATOMIC_INC || code == _ERS_OP_ATOMIC_DEC)
     old_val = 0;
@@ -2031,6 +2067,12 @@ eri_live_thread__sig_handler (
   struct eri_sigaction sync_act;
   if (eri_si_sync (info)) act = &sync_act;
   hands[th->ctx->ext.op.sig_hand] (th, frame, act);
+}
+
+uint64_t
+eri_live_thread__io_out (struct eri_live_thread *th)
+{
+  return io_out (th);
 }
 
 int32_t

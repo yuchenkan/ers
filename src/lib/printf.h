@@ -25,8 +25,9 @@ int32_t eri_fopen (const char *path, uint8_t r, eri_file_t *file,
 		   void *buf, uint64_t buf_size);
 int32_t eri_fclose (eri_file_t file);
 
-#define eri_assert_fopen(path, r, file, buf, buf_size) \
-  eri_assert (eri_fopen (path, r, file, buf, buf_size) == 0)
+#define eri_assert_fopen(path, r, buf, buf_size) \
+  ({ eri_file_t _file;							\
+     eri_assert (eri_fopen (path, r, &_file, buf, buf_size) == 0); _file; })
 #define eri_assert_fclose(file)		 eri_assert (eri_fclose (file) == 0)
 
 #if 0
@@ -37,6 +38,9 @@ int32_t eri_frelease (eri_file_t file, int32_t *fd);
 
 int32_t eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
 		   uint64_t *res_offset);
+
+#define eri_assert_fseek(f, o, w) \
+  ({ uint64_t _res; eri_assert (eri_fseek (f, o, w, &_res) == 0); _res; })
 
 int32_t eri_fwrite (eri_file_t file,
 		    const void *buf, uint64_t size, uint64_t *len);

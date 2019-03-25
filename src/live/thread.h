@@ -43,6 +43,8 @@ void eri_live_thread__join (struct eri_live_thread *th);
 void eri_live_thread__sig_handler (struct eri_live_thread *th,
 		struct eri_sigframe *frame, struct eri_sigaction *act);
 
+uint64_t eri_live_thread__io_out (struct eri_live_thread *th);
+
 int32_t eri_live_thread__get_pid (const struct eri_live_thread *th);
 int32_t eri_live_thread__get_tid (const struct eri_live_thread *th);
 

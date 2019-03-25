@@ -37,19 +37,19 @@ main (void)
 		     (unsigned long) 1, "test", "", 12345);
 
   eri_file_t file;
-  eri_assert_fopen ("tst-printf.txt", 0, &file, 0, 0);
+  file = eri_assert_fopen ("tst-printf.txt", 0, 0, 0);
   eri_assert_fprintf (file, "test\n");
   eri_assert_fprintf (file, "test%lx\n", 12345);
   eri_assert_fwrite (file, "12345\n", 6, 0);
   eri_assert_fclose (file) ;
 
-  eri_assert_fopen ("tst-printf.txt", 0, &file, 0, 0);
+  file = eri_assert_fopen ("tst-printf.txt", 0, 0, 0);
   eri_assert_fwrite (file, "12345\n", 6, 0);
   eri_assert_fclose (file);
 
   char buf[4];
   uint64_t l;
-  eri_assert_fopen ("tst-printf.txt", 1, &file, 0, 0);
+  file = eri_assert_fopen ("tst-printf.txt", 1, 0, 0);
   eri_assert_fread (file, buf, 4, &l);
   eri_assert (l == 4 && buf[0] == '1'
 	      && buf[1] == '2' && buf[2] == '3' && buf[3] == '4');

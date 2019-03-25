@@ -623,6 +623,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   struct eri_live_signal_thread__clone_args *args = event->args;
 
+  args->out = eri_live_thread__io_out (sig_th->th);
   struct eri_live_signal_thread *sig_cth = event->sig_cth = create (group);
 
   init_event (sig_cth, &sig_th->sig_mask);
@@ -687,8 +688,8 @@ eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
 
   if (! eri_syscall_is_error (args->result))
     {
-      args->tid = args->result;
-      args->result = eri_live_thread__clone (event.sig_cth->th);
+      uint64_t res = eri_live_thread__clone (event.sig_cth->th);
+      if (eri_syscall_is_error (res)) args->result = res;
     }
 
   eri_assert_unlock (&event.clone_thread_return);

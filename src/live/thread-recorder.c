@@ -1,5 +1,4 @@
 #include <common.h>
-#include <record.h>
 
 #include <lib/malloc.h>
 #include <lib/buf.h>
@@ -32,9 +31,17 @@ eri_live_thread_recorder__create (struct eri_mtpool *pool,
   eri_mkdir (path);
   char name[eri_build_path_len (path, "t", id)];
   eri_build_path (path, "t", id, name);
-  eri_assert_fopen (name, 0, &th_rec->file, th_rec->buf, buf_size);
+  th_rec->file = eri_assert_fopen (name, 0, th_rec->buf, buf_size);
 
   return th_rec;
+}
+
+static void
+write_sync_async (struct eri_live_thread_recorder *th_rec, uint64_t step)
+{
+  eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
+  eri_serialize_magic (th_rec->file, ERI_SYNC_ASYNC_MAGIC);
+  eri_serialize_uint64 (th_rec->file, 0);
 }
 
 static void
@@ -42,10 +49,7 @@ submit_sync_async (struct eri_live_thread_recorder *th_rec)
 {
   if (! th_rec->pending_sync_async) return;
 
-  struct eri_marked_sync_async_record sync = {
-    ERI_SYNC_RECORD, { ERI_SYNC_ASYNC_MAGIC, 0 }
-  };
-  eri_assert_fwrite (th_rec->file, &sync, sizeof sync, 0);
+  write_sync_async (th_rec, 0);
   th_rec->pending_sync_async = 0;
 }
 
@@ -122,17 +126,19 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
   uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
   eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
 
-  struct eri_marked_init_map_record init_map = {
-    ERI_INIT_MAP_RECORD, { start, end, prot, grows_done, !! path }
+  eri_file_t file = th_rec->file;
+  struct eri_init_map_record rec = {
+    start, end, prot, grows_done, !! path
   };
-  eri_assert_fwrite (th_rec->file, &init_map, sizeof init_map, 0);
+  eri_serialize_mark (file, ERI_INIT_MAP_RECORD);
+  eri_serialize_init_map_record (file, &rec);
 
   if (path)
     {
       uint64_t data_start = stack ? rsp : start;
-      struct eri_init_map_data_record data = { data_start, end };
-      eri_assert_fwrite (th_rec->file, &data, sizeof data, 0);
-      eri_assert_fwrite (th_rec->file, (void *) data_start, end - data_start, 0);
+      eri_serialize_uint64 (file, data_start);
+      eri_serialize_uint64 (file, end);
+      eri_serialize_uint8_array (file, (void *) data_start, end - data_start);
     }
   eri_debug ("leave\n");
 }
@@ -168,23 +174,18 @@ proc_smaps_line (const char *line, uint64_t len, void *args)
 void
 eri_live_thread_recorder__rec_init (
 			struct eri_live_thread_recorder *th_rec,
-			struct eri_live_thread_recorder__rec_init_args *args)
+			struct eri_init_record *rec)
 {
   if (eri_global_enable_debug) eri_dump_maps ();
 
-  struct eri_marked_init_record init = {
-    ERI_INIT_RECORD,
-    { 0, args->rdx, args->rsp, args->rip,
-      args->sig_mask, args->sig_alt_stack, args->user_pid,
-      args->start, args->end, args->atomic_table_size }
-  };
-  eri_assert_fwrite (th_rec->file, &init, sizeof init, 0);
+  eri_serialize_mark (th_rec->file, ERI_INIT_RECORD);
+  eri_serialize_init_record (th_rec->file, rec);
 
   struct eri_buf buf;
   eri_assert_buf_mtpool_init (&buf, th_rec->pool, 256);
 
   struct proc_smaps_line_args line_args
-			= { th_rec, args->start, args->end, args->rsp };
+			= { th_rec, rec->start, rec->end, rec->rsp };
   eri_assert_buf_mtpool_init (&line_args.buf, th_rec->pool, 1024);
   eri_assert_file_foreach_line ("/proc/self/smaps", &buf,
 				proc_smaps_line, &line_args);
@@ -196,34 +197,30 @@ eri_live_thread_recorder__rec_init (
 void
 eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *th_rec,
-			uint64_t io, struct eri_siginfo *info)
+			uint64_t in, struct eri_siginfo *info)
 {
   submit_sync_async (th_rec);
 
-  struct eri_marked_signal_record sig = { ERI_ASYNC_RECORD, { io } };
-  if (info) sig.rec.info = *info;
+  eri_serialize_mark (th_rec->file, ERI_ASYNC_RECORD);
+  struct eri_signal_record rec = { in };
+  if (info) rec.info = *info;
 
-  eri_assert_fwrite (th_rec->file, &sig, sizeof sig, 0);
+  eri_serialize_signal_record (th_rec->file, &rec);
 }
 
 void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
-		struct eri_live_thread_recorder__rec_syscall_args *args)
+		uint16_t magic, void *rec)
 {
   submit_sync_async (th_rec);
 
-  int32_t nr = args->nr;
-  if (nr == __NR_clone)
-    {
-      struct eri_marked_syscall_clone_record sys = {
-	ERI_SYNC_RECORD,
-	{ ERI_SYSCALL_CLONE_MAGIC, args->rax, args->ex->clone_id }
-      };
-      eri_assert_fwrite (th_rec->file, &sys, sizeof sys, 0);
-    }
-
-  /* TODO */
+  eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
+  eri_serialize_magic (th_rec->file, magic);
+  if (magic == ERI_SYSCALL_CLONE_MAGIC)
+    eri_serialize_syscall_clone_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_IN_MAGIC || magic == ERI_SYSCALL_OUT_MAGIC)
+    eri_serialize_uint64 (th_rec->file, (uint64_t) rec);
 }
 
 void
@@ -243,12 +240,8 @@ eri_live_thread_recorder__rec_restart_sync_async (
   eri_assert (th_rec->pending_sync_async);
 
   if (th_rec->sync_async_cnt != cnt)
-    {
-      struct eri_marked_sync_async_record sync = {
-	ERI_SYNC_RECORD, { ERI_SYNC_ASYNC_MAGIC, th_rec->sync_async_cnt - cnt }
-      };
-      eri_assert_fwrite (th_rec->file, &sync, sizeof sync, 0);
-    }
+    write_sync_async (th_rec, th_rec->sync_async_cnt - cnt);
+
   th_rec->pending_sync_async = 0;
 }
 
@@ -259,8 +252,8 @@ eri_live_thread_recorder__rec_atomic (
 {
   submit_sync_async (th_rec);
 
-  struct eri_marked_atomic_record at = {
-    ERI_SYNC_RECORD, { ERI_ATOMIC_MAGIC, updated, { ver[0], ver[1] }, val }
-  };
-  eri_assert_fwrite (th_rec->file, &at, sizeof at, 0);
+  eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
+  eri_serialize_magic (th_rec->file, ERI_ATOMIC_MAGIC);
+  struct eri_atomic_record rec = { updated, { ver[0], ver[1] }, val };
+  eri_serialize_atomic_record (th_rec->file, &rec);
 }
