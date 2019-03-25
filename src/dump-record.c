@@ -51,50 +51,61 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_skip_uint8_array (file, end - start);
 	  }
       }
-#if 0
     else if (mark == ERI_ASYNC_RECORD)
       {
 	printf ("ERI_ASYNC_RECORD\n");
-	struct eri_signal_record sig;
-	assert (fread (&sig, sizeof sig, 1, f) == 1);
-	printf ("  sig: %d, code: %d\n", sig.info.sig, sig.info.code);
+	struct eri_signal_record rec;
+	eri_unserialize_signal_record (file, &rec);
+	printf ("  in: %lu, info.sig: %d, info.code: %d\n",
+		rec.in, rec.info.sig, rec.info.code);
       }
     else if (mark == ERI_SYNC_RECORD)
       {
 	printf ("ERI_SYNC_RECORD\n");
-	uint8_t magic;
-	assert (fread (&magic, sizeof magic, 1, f) == 1);
-#define read_without_magic(t, f) \
-  do { typeof (t) _t = t;						\
-       assert (fread ((uint8_t *) _t + sizeof (uint8_t),		\
-		      sizeof *_t - sizeof (uint8_t), 1, f) == 1);	\
-  } while (0)
-
-	/* TODO */
-	if (magic == ERI_SYSCALL_CLONE_MAGIC)
+	uint16_t magic = eri_unserialize_magic (file);
+	if (magic == ERI_SYSCALL_RESULT_MAGIC)
+	  printf ("  syscall.result: %ld\n", eri_unserialize_uint64 (file));
+	else if (magic == ERI_SYSCALL_IN_MAGIC)
+	  printf ("  syscall.in: 0x%lx\n", eri_unserialize_uint64 (file));
+	else if (magic == ERI_SYSCALL_OUT_MAGIC)
+	  printf ("  syscall.out: 0x%lx\n", eri_unserialize_uint64 (file));
+	else if (magic == ERI_SYSCALL_CLONE_MAGIC)
 	  {
-	    struct eri_syscall_clone_record sys;
-	    read_without_magic (&sys, f);
-	    printf ("  syscall.clone.result: %lu, ..id: %lu\n",
-		    sys.result, sys.id);
+	    struct eri_syscall_clone_record rec;
+	    eri_unserialize_syscall_clone_record (file, &rec);
+	    printf ("  syscall.clone.out: %lu, ..result: %ld",
+		    rec.out, rec.result);
+	    if (! eri_syscall_is_error (rec.result))
+	      printf (", ..id: 0x%lx\n", rec.id);
+	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
+	  {
+	    struct eri_syscall_rt_sigpending_record rec;
+	    eri_unserialize_syscall_rt_sigpending_record (file, &rec);
+	    printf ("  syscall.rt_sigpending.result: %ld", rec.result);
+	    if (! eri_syscall_is_error (rec.result))
+	      printf (", ..in: %lu, ..set: 0x%lx\n", rec.in, rec.set.val[0]);
+	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_KILL_MAGIC)
+	  {
+	    struct eri_syscall_kill_record rec;
+	    eri_unserialize_syscall_kill_record (file, &rec);
+	    printf ("  syscall.kill.out: %lu, ..result: %ld, ..in: %lu\n",
+		    rec.out, rec.result, rec.in);
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
-	  {
-	    struct eri_sync_async_record sync;
-	    read_without_magic (&sync, f);
-	    printf ("  sync_async.steps: %lu\n", sync.steps);
-	  }
+	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_ATOMIC_MAGIC)
 	  {
-	    struct eri_atomic_record at;
-	    read_without_magic (&at, f);
+	    struct eri_atomic_record rec;
+	    eri_unserialize_atomic_record (file, &rec);
 	    printf ("  atomic.updated: %u, .ver: %lu %lu, .val: 0x%lx\n",
-		    at.updated, at.ver[0], at.ver[1], at.val);
+		    rec.updated, rec.ver[0], rec.ver[1], rec.val);
 	  }
-	else assert (0);
       }
-    else assert (0);
-#endif
+    else eri_assert_unreachable ();
 
   eri_assert_fclose (file);
   return 0;

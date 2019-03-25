@@ -157,6 +157,9 @@ struct eri_common_syscall_rt_sigreturn_args
 uint8_t eri_common_syscall_rt_sigreturn (
 		struct eri_common_syscall_rt_sigreturn_args *args);
 
+#define eri_common_rt_sigpending_valid_sig_set_size(size) \
+  ((size) <= ERI_SIG_SETSIZE) /* XXX: from kernel source */
+
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
 
@@ -244,9 +247,12 @@ void eri_unserialize_init_map_record (eri_file_t file,
 
 enum
 {
-  ERI_SYSCALL_CLONE_MAGIC,
+  ERI_SYSCALL_RESULT_MAGIC,
   ERI_SYSCALL_IN_MAGIC,
   ERI_SYSCALL_OUT_MAGIC,
+  ERI_SYSCALL_CLONE_MAGIC,
+  ERI_SYSCALL_RT_SIGPENDING_MAGIC,
+  ERI_SYSCALL_KILL_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
   ERI_ATOMIC_MAGIC
 };
@@ -273,10 +279,35 @@ struct eri_syscall_clone_record
   uint64_t result;
   uint64_t id;
 };
+
 void eri_serialize_syscall_clone_record (eri_file_t file,
 			const struct eri_syscall_clone_record *rec);
 void eri_unserialize_syscall_clone_record (eri_file_t file,
 			struct eri_syscall_clone_record *rec);
+
+struct eri_syscall_rt_sigpending_record
+{
+  uint64_t result;
+  uint64_t in;
+  struct eri_sigset set;
+};
+
+void eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
+			const struct eri_syscall_rt_sigpending_record *rec);
+void eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
+			struct eri_syscall_rt_sigpending_record *rec);
+
+struct eri_syscall_kill_record
+{
+  uint64_t out;
+  uint64_t result;
+  uint64_t in;
+};
+
+void eri_serialize_syscall_kill_record (eri_file_t file,
+			const struct eri_syscall_kill_record *rec);
+void eri_unserialize_syscall_kill_record (eri_file_t file,
+			struct eri_syscall_kill_record *rec);
 
 struct eri_atomic_record
 {

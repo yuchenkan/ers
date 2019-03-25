@@ -824,23 +824,21 @@ syscall_syscall (struct eri_live_thread *th)
   SYSCALL_RETURN_DONE (th_ctx, eri_sys_syscall (&args));
 };
 
-static uint32_t
+static void
 syscall_signal_thread (struct eri_live_thread *th)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   struct eri_sys_syscall_args args;
   eri_sys_syscall_args_from_sregs (&args, &th_ctx->ctx.sregs);
-  SYSCALL_RETURN_DONE (th_ctx,
-	eri_live_signal_thread__syscall (sig_th, &args));
+  th_ctx->ctx.sregs.rax = eri_live_signal_thread__syscall (sig_th, &args);
 }
 
-static uint32_t
+static void
 syscall_signal_thread_in (struct eri_live_thread *th)
 {
-  uint32_t res = syscall_signal_thread (th);
+  syscall_signal_thread (th);
   record_io_in (th);
-  return res;
 }
 
 static uint8_t
@@ -998,7 +996,11 @@ DEFINE_SYSCALL (getpid)
   SYSCALL_RETURN_DONE (th->ctx, eri_live_signal_thread__get_pid (th->sig_th));
 }
 
-DEFINE_SYSCALL (getppid) { return syscall_signal_thread_in (th) };
+DEFINE_SYSCALL (getppid)
+{
+  syscall_signal_thread_in (th);
+  return SYSCALL_DONE;
+}
 
 SYSCALL_TO_IMPL (setreuid)
 SYSCALL_TO_IMPL (setregid)
@@ -1191,9 +1193,28 @@ DEFINE_SYSCALL (rt_sigreturn)
 
 DEFINE_SYSCALL (rt_sigpending)
 {
-  uint32_t res = syscall_signal_thread (th);
-  // TODO
-  return res;
+  struct thread_context *th_ctx = th->ctx;
+  struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
+  struct eri_sigset *user_set = (void *) sregs->rdi;
+  uint64_t size = sregs->rsi;
+  if (! eri_common_rt_sigpending_valid_sig_set_size (size))
+    SYSCALL_RETURN_DONE (th_ctx, ERI_EINVAL);
+  if (internal_range (th->group, (uint64_t) user_set, ERI_SIG_SETSIZE))
+    SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
+
+  syscall_signal_thread (th);
+
+  struct eri_syscall_rt_sigpending_record rec = { sregs->rax };
+  if (! eri_syscall_is_error (rec.result))
+    {
+      rec.in = io_in (th);
+      /* XXX: detect memory corruption in analysis */
+      do_copy_from_user (th_ctx, &rec.set, user_set, ERI_SIG_SETSIZE);
+    }
+  eri_live_thread_recorder__rec_syscall (th->rec,
+			ERI_SYSCALL_RT_SIGPENDING_MAGIC, &rec);
+
+  return SYSCALL_DONE;
 }
 
 static uint32_t
@@ -1229,6 +1250,7 @@ DEFINE_SYSCALL (rt_sigsuspend)
 
 DEFINE_SYSCALL (rt_sigtimedwait)
 {
+  /* TODO */
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   const struct eri_sigset *user_set = (void *) th_ctx->ctx.sregs.rdi;
@@ -1285,22 +1307,40 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   SYSCALL_RETURN_DONE (th_ctx, info.sig);
 }
 
-static uint32_t
+static void
 syscall_do_kill (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
-  uint32_t res = syscall_signal_thread (th);
-  if (res == SYSCALL_DONE && ! eri_syscall_is_error (th_ctx->ctx.sregs.rax)
+  struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
+
+  /* XXX: remove unnecessary record (error, sig == 0 etc) */
+  struct eri_syscall_kill_record rec = { io_out (th) };
+  syscall_signal_thread (th);
+  rec.result = sregs->rax;
+  rec.in = io_in (th);
+  eri_live_thread_recorder__rec_syscall (th->rec,
+					 ERI_SYSCALL_KILL_MAGIC, &rec);
+
+  if (! eri_syscall_is_error (sregs->rax)
       && eri_live_signal_thread__signaled (th->sig_th))
     syscall_sig_wait (th_ctx, 0);
-  return res;
 }
 
-DEFINE_SYSCALL (kill) { return syscall_do_kill (th); }
-DEFINE_SYSCALL (tkill) { return syscall_do_kill (th); }
-DEFINE_SYSCALL (tgkill) { return syscall_do_kill (th); }
-DEFINE_SYSCALL (rt_sigqueueinfo) { return syscall_do_kill (th); }
-DEFINE_SYSCALL (rt_tgsigqueueinfo) { return syscall_do_kill (th); }
+DEFINE_SYSCALL (kill) { syscall_do_kill (th); return SYSCALL_DONE; }
+DEFINE_SYSCALL (tkill) { syscall_do_kill (th); return SYSCALL_DONE; }
+DEFINE_SYSCALL (tgkill) { syscall_do_kill (th); return SYSCALL_DONE; }
+
+DEFINE_SYSCALL (rt_sigqueueinfo)
+{
+  syscall_do_kill (th);
+  return SYSCALL_DONE;
+}
+
+DEFINE_SYSCALL (rt_tgsigqueueinfo)
+{
+  syscall_do_kill (th);
+  return SYSCALL_DONE;
+}
 
 SYSCALL_TO_IMPL (restart_syscall)
 
@@ -1778,14 +1818,6 @@ SYSCALL_TO_IMPL (process_vm_readv)
 SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages)
-
-#if 0
-#define rec_args_io_in(rec_args, th) \
-  do { (rec_args)->io_in = io_in (th); } while (0)
-
-#define rec_args_io_out(rec_args, th) \
-  do { (rec_args)->io_out = io_out (th); } while (0)
-#endif
 
 uint8_t
 syscall (struct eri_live_thread *th)

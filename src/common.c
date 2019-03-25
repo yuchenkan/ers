@@ -615,6 +615,43 @@ eri_unserialize_syscall_clone_record (eri_file_t file,
   rec->id = eri_unserialize_uint64 (file);
 }
 
+void
+eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
+			const struct eri_syscall_rt_sigpending_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  if (eri_syscall_is_error (rec->result)) return;
+  eri_serialize_uint64 (file, rec->in);
+  eri_serialize_sigset (file, &rec->set);
+}
+
+void
+eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
+			struct eri_syscall_rt_sigpending_record *rec)
+{
+  rec->result = eri_unserialize_uint64 (file);
+  if (eri_syscall_is_error (rec->result)) return;
+  rec->in = eri_unserialize_uint64 (file);
+  eri_unserialize_sigset (file, &rec->set);
+}
+
+void
+eri_serialize_syscall_kill_record (eri_file_t file,
+			const struct eri_syscall_kill_record *rec)
+{
+  eri_serialize_uint64 (file, rec->out);
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+}
+
+void eri_unserialize_syscall_kill_record (eri_file_t file,
+			struct eri_syscall_kill_record *rec)
+{
+  rec->out = eri_unserialize_uint64 (file);
+  rec->result = eri_unserialize_uint64 (file);
+  rec->in = eri_unserialize_uint64 (file);
+}
+
 #define ATOMIC_RECORD_UPDATED	1
 #define ATOMIC_RECORD_SAME_VER	2
 #define ATOMIC_RECORD_ZERO_VAL	4

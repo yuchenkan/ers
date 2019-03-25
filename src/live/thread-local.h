@@ -28,7 +28,6 @@ struct thread_context
   struct eri_sigframe *sig_act_frame;
 
   uint64_t access; /* Always zero in user code. */
-  uint64_t force_access; /* Always zero in user code. */
   uint64_t access_fault;
 
   uint8_t swallow_single_step;
@@ -59,7 +58,6 @@ ERI_ENTRY_DECLARE_DO_COPY_USERS ()
 
 eri_noreturn void sig_to (void);
 eri_noreturn void sig_return (struct eri_sigframe *frame);
-void sig_return_back (struct eri_sigframe *frame);
 
 #define SIG_HANDS(p) \
   ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (p)					\
