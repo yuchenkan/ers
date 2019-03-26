@@ -1148,7 +1148,6 @@ DEFINE_SYSCALL (rt_sigprocmask)
 
 DEFINE_SYSCALL (rt_sigaction)
 {
-  /* TODO */
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
@@ -1173,6 +1172,9 @@ DEFINE_SYSCALL (rt_sigaction)
 
   eri_common_syscall_rt_sigaction_set (
 			sregs, &old_act, copy_to_user, th);
+  if (! eri_syscall_is_error (sregs->rax))
+    eri_live_thread_recorder__rec_syscall (th->rec,
+		ERI_SYSCALL_RT_SIGACTION_MAGIC, (void *) args.ver);
   return SYSCALL_DONE;
 }
 

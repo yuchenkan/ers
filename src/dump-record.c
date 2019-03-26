@@ -79,6 +79,9 @@ main (int32_t argc, const char **argv)
 	      printf (", ..id: 0x%lx\n", rec.id);
 	    else printf ("\n");
 	  }
+	else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
+	  printf ("  syscall.rt_sigaction: %lu\n",
+		  eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
 	  {
 	    struct eri_syscall_rt_sigpending_record rec;
