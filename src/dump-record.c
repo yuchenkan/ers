@@ -56,8 +56,8 @@ main (int32_t argc, const char **argv)
 	printf ("ERI_ASYNC_RECORD\n");
 	struct eri_signal_record rec;
 	eri_unserialize_signal_record (file, &rec);
-	printf ("  in: %lu, info.sig: %d, info.code: %d\n",
-		rec.in, rec.info.sig, rec.info.code);
+	printf ("  in: %lu, act_ver: %lu, info.sig: %d, info.code: %d\n",
+		rec.in, rec.act_ver, rec.info.sig, rec.info.code);
       }
     else if (mark == ERI_SYNC_RECORD)
       {

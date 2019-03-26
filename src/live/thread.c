@@ -12,6 +12,8 @@
 #include <lib/atomic.h>
 
 #include <public/common.h>
+
+#include <live/common.h>
 #include <live/rtld.h>
 #include <live/signal-thread.h>
 #include <live/thread-recorder.h>
@@ -157,16 +159,19 @@ disable_vdso (struct eri_auxv *auxv)
       auxv->type = ERI_AT_IGNORE;
 }
 
+#define v_in(v)		eri_atomic_load (v)
+#define v_out(v)	eri_atomic_inc_fetch (v)
+
 static uint64_t
 io_in (struct eri_live_thread *th)
 {
-  return eri_atomic_load (&th->group->io);
+  return v_in (&th->group->io);
 }
 
 static uint64_t
 io_out (struct eri_live_thread *th)
 {
-  return eri_atomic_inc_fetch (&th->group->io);
+  return v_out (&th->group->io);
 }
 
 static void
@@ -420,7 +425,7 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
   struct thread_context *th_ctx = th->ctx;
 
   struct eri_sigframe *user_frame = eri_sig_setup_user_frame (
-		frame, &th_ctx->sig_act, &th->sig_alt_stack,
+		frame, &th_ctx->sig_act.act, &th->sig_alt_stack,
 		eri_live_signal_thread__get_sig_mask (th->sig_th),
 		copy_to_user, th);
 
@@ -431,10 +436,19 @@ sig_setup_user_frame (struct eri_live_thread *th, struct eri_sigframe *frame)
   return 1;
 }
 
+static void
+record_signal (struct eri_live_thread *th, uint64_t act_ver,
+	       struct eri_siginfo *info)
+{
+  struct eri_signal_record rec = { io_in (th), act_ver };
+  if (info) rec.info = *info;
+  eri_live_thread_recorder__rec_signal (th->rec, &rec);
+}
+
 static eri_noreturn void
 die (struct eri_live_thread *th)
 {
-  eri_live_thread_recorder__rec_signal (th->rec, io_in (th), 0);
+  record_signal (th, 0, 0);
   eri_live_signal_thread__die (th->sig_th);
   eri_assert_sys_thread_die (&th->alive);
 }
@@ -459,28 +473,29 @@ sig_action (struct eri_live_thread *th)
 
   eri_atomic_store (&th_ctx->ext.op.sig_hand, SIG_HAND_SIG_ACTION);
 
-  eri_assert (th_ctx->sig_act.act);
+  struct eri_sigaction *act = &th_ctx->sig_act.act;
+  uint64_t act_ver = th_ctx->sig_act.ver;
 
-  if (! eri_sig_act_internal_act (th_ctx->sig_act.act))
+  eri_assert (act->act);
+  if (! eri_sig_act_internal_act (act->act))
     {
       /* XXX: swallow? */
       th_ctx->swallow_single_step = 0;
 
       if (! sig_setup_user_frame (th, frame)) goto core;
 
-      if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
+      if (! eri_si_sync (info)) record_signal (th, act_ver, info);
 
       struct eri_stack st = {
 	(uint64_t) th->sig_stack, ERI_SS_AUTODISARM, 2 * THREAD_SIG_STACK_SIZE
       };
       eri_assert_syscall (sigaltstack, &st, 0);
 
-      eri_live_signal_thread__sig_reset (sig_th, &th_ctx->sig_act.mask);
-      eri_sig_act (th_ctx->sig_act_frame, th_ctx->sig_act.act);
+      eri_live_signal_thread__sig_reset (sig_th, &act->mask);
+      eri_sig_act (th_ctx->sig_act_frame, act->act);
     }
 
-  if (th_ctx->sig_act.act == ERI_SIG_ACT_STOP)
+  if (act->act == ERI_SIG_ACT_STOP)
     {
       /* TODO: stop */
 
@@ -492,7 +507,7 @@ sig_action (struct eri_live_thread *th)
       sig_return (frame);
     }
 
-  if (th_ctx->sig_act.act == ERI_SIG_ACT_TERM) core_status = 130;
+  if (act->act == ERI_SIG_ACT_TERM) core_status = 130;
 
   struct eri_sigset mask;
 core:
@@ -502,8 +517,7 @@ core:
   eri_debug ("core\n");
   if (eri_live_signal_thread__exit (sig_th, 1, core_status))
     {
-      if (! eri_si_sync (info))
-	eri_live_thread_recorder__rec_signal (th->rec, io_in (th), info);
+      if (! eri_si_sync (info)) record_signal (th, act_ver, info);
 
       if (core_status == 130) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
@@ -513,7 +527,7 @@ core:
 
 static void
 sig_set (struct thread_context *th_ctx, struct eri_sigframe *frame,
-	 const struct eri_sigaction *act, uint8_t sig_hand)
+	 const struct eri_live_sigaction *act, uint8_t sig_hand)
 {
   sig_set_frame (th_ctx, frame);
   th_ctx->sig_act = *act;
@@ -545,19 +559,19 @@ sig_return_to (struct eri_live_thread *th,
 
 static uint8_t
 sig_prepare_sync (struct eri_live_thread *th, struct eri_siginfo *info,
-		  struct eri_sigaction *act)
+		  struct eri_live_sigaction *act)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
   eri_live_signal_thread__sig_prepare_sync (sig_th, info, act);
 
   if (! eri_si_sync (info)) return 1;
 
-  return eri_live_thread__sig_digest_act (th, info, act);
+  return eri_live_thread__sig_digest_act (th, info, &act->act);
 }
 
 static void
 sig_hand_async (struct eri_live_thread *th, struct eri_sigframe *frame,
-		struct eri_sigaction *act)
+		struct eri_live_sigaction *act)
 {
   eri_debug ("\n");
 
@@ -571,14 +585,14 @@ sig_hand_async (struct eri_live_thread *th, struct eri_sigframe *frame,
 
 static void
 sig_hand_none (struct eri_live_thread *th, struct eri_sigframe *frame,
-	       struct eri_sigaction *act)
+	       struct eri_live_sigaction *act)
 {
   eri_assert (eri_si_single_step (&frame->info));
 }
 
 static void
 sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
-		     struct eri_sigaction *act)
+		     struct eri_live_sigaction *act)
 {
   struct thread_context *th_ctx = th->ctx;
 
@@ -591,11 +605,11 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
       if (eri_si_single_step (info)) return;
       eri_assert (! eri_si_sync (info));
 
-      if (th_ctx->sig_act.act == ERI_SIG_ACT_STOP)
+      if (th_ctx->sig_act.act.act == ERI_SIG_ACT_STOP)
 	ctx->mctx = th_ctx->sig_act_frame->ctx.mctx;
       else
 	{
-	  ctx->mctx.rip = (uint64_t) th_ctx->sig_act.act;
+	  ctx->mctx.rip = (uint64_t) th_ctx->sig_act.act.act;
 	  ctx->mctx.rsp = (uint64_t) th_ctx->sig_act_frame;
 	  ctx->mctx.rax = 0;
 	  ctx->mctx.rdi = th_ctx->sig_act_frame->info.sig;
@@ -615,7 +629,7 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
 static void
 sig_hand_return_to_user (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
-		struct eri_sigaction *act)
+		struct eri_live_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
@@ -1150,8 +1164,11 @@ DEFINE_SYSCALL (rt_sigaction)
 
   int32_t sig = sregs->rdi;
   struct eri_sigaction old_act;
-  if (! eri_live_signal_thread__sig_action (
-	sig_th, sig, user_act ? &act : 0, user_old_act ? &old_act : 0))
+
+  struct eri_live_signal_thread__sig_action_args args = {
+    sig, user_act ? &act : 0, user_old_act ? &old_act : 0
+  };
+  if (! eri_live_signal_thread__sig_action (sig_th, &args))
     return SYSCALL_SIG_WAIT_RESTART;
 
   eri_common_syscall_rt_sigaction_set (
@@ -1866,7 +1883,7 @@ seg_fault:
 
 static void
 sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
-		  struct eri_sigaction *act)
+		  struct eri_live_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
@@ -1880,8 +1897,8 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
       if (th_ctx->ctx.sregs.rax != __NR_rt_sigreturn) return;
 
       /* XXX: sig masked all */
-      eri_assert (eri_live_thread__sig_digest_act (th, info, act));
-      eri_assert (act->act == ERI_SIG_ACT_CORE);
+      eri_assert (eri_live_thread__sig_digest_act (th, info, &act->act));
+      eri_assert (act->act.act == ERI_SIG_ACT_CORE);
       sig_set (th_ctx, frame, act, SIG_HAND_NONE);
       return;
     }
@@ -1913,7 +1930,7 @@ sig_restart_sync_async (struct eri_live_thread *th)
 static void
 sig_hand_sync_async_return_to_user (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
-		struct eri_sigaction *act)
+		struct eri_live_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
@@ -1953,7 +1970,7 @@ sig_hand_sync_async_return_to_user (
 
 static void
 sig_hand_sync_async (struct eri_live_thread *th, struct eri_sigframe *frame,
-		     struct eri_sigaction *act)
+		     struct eri_live_sigaction *act)
 {
   sig_hand_async (th, frame, act);
 }
@@ -2040,7 +2057,7 @@ sig_restart_atomic (struct eri_live_thread *th)
 
 static void
 sig_hand_atomic (struct eri_live_thread *th, struct eri_sigframe *frame,
-		 struct eri_sigaction *act)
+		 struct eri_live_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
@@ -2082,7 +2099,7 @@ sig_hand_atomic (struct eri_live_thread *th, struct eri_sigframe *frame,
 void
 eri_live_thread__sig_handler (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
-		struct eri_sigaction *act)
+		struct eri_live_sigaction *act)
 {
   struct eri_siginfo *info = &frame->info;
   eri_debug ("sig_hand = %u, sig = %u, frame = %lx, rip = %lx\n",
@@ -2091,12 +2108,12 @@ eri_live_thread__sig_handler (
 
   const void (*hands[]) (
 	    struct eri_live_thread *, struct eri_sigframe *,
-	    struct eri_sigaction *) = {
+	    struct eri_live_sigaction *) = {
 #define SIG_HAND_ARRAY_ELT(chand, hand)	hand,
     SIG_HANDS (SIG_HAND_ARRAY_ELT)
   };
 
-  struct eri_sigaction sync_act;
+  struct eri_live_sigaction sync_act;
   if (eri_si_sync (info)) act = &sync_act;
   hands[th->ctx->ext.op.sig_hand] (th, frame, act);
 }

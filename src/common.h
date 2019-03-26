@@ -42,6 +42,7 @@ void eri_mkdir (const char *path);
   ({ int32_t _s2 = sig;							\
      eri_sig_valid (_s2) && _s2 != ERI_SIGKILL && _s2 != ERI_SIGSTOP; })
 
+/* TODO: remove */
 struct eri_sig_act
 {
   struct eri_lock lock;
@@ -265,6 +266,7 @@ enum
 struct eri_signal_record
 {
   uint64_t in;
+  uint64_t act_ver;
   struct eri_siginfo info;
 };
 

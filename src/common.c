@@ -584,6 +584,7 @@ eri_serialize_signal_record (eri_file_t file,
 			     const struct eri_signal_record *rec)
 {
   eri_serialize_uint64 (file, rec->in);
+  eri_serialize_uint64 (file, rec->act_ver);
   eri_serialize_siginfo (file, &rec->info);
 }
 
@@ -592,6 +593,7 @@ eri_unserialize_signal_record (eri_file_t file,
 			       struct eri_signal_record *rec)
 {
   rec->in = eri_unserialize_uint64 (file);
+  rec->act_ver = eri_unserialize_uint64 (file);
   eri_unserialize_siginfo (file, &rec->info);
 }
 

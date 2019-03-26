@@ -7,6 +7,7 @@
 
 #include <entry.h>
 #include <lib/syscall-common.h>
+#include <live/common.h>
 
 struct eri_siginfo;
 
@@ -24,7 +25,7 @@ struct thread_context
 
   struct eri_sigframe *sig_frame; /* Always zero in user code.  */
 
-  struct eri_sigaction sig_act;
+  struct eri_live_sigaction sig_act;
   struct eri_sigframe *sig_act_frame;
 
   uint64_t access; /* Always zero in user code. */

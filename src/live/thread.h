@@ -10,6 +10,8 @@ struct eri_ucontext;
 struct eri_sigframe;
 
 struct eri_live_rtld_args;
+struct eri_live_sigaction;
+
 struct eri_helper;
 struct eri_live_signal_thread;
 
@@ -41,7 +43,7 @@ void eri_live_thread__destroy (struct eri_live_thread *th);
 void eri_live_thread__join (struct eri_live_thread *th);
 
 void eri_live_thread__sig_handler (struct eri_live_thread *th,
-		struct eri_sigframe *frame, struct eri_sigaction *act);
+		struct eri_sigframe *frame, struct eri_live_sigaction *act);
 
 uint64_t eri_live_thread__io_out (struct eri_live_thread *th);
 

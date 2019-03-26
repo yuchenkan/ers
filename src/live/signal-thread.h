@@ -10,6 +10,7 @@ struct eri_mtpool;
 struct eri_lock;
 
 struct eri_live_rtld_args;
+struct eri_live_sigaction;
 
 struct eri_helper;
 struct eri_live_thread;
@@ -42,10 +43,18 @@ uint8_t eri_live_signal_thread__exit (
 void eri_live_signal_thread__die (
 		struct eri_live_signal_thread *sig_th);
 
+struct eri_live_signal_thread__sig_action_args
+{
+  int32_t sig;
+  const struct eri_sigaction *act;
+  struct eri_sigaction *old_act;
+
+  uint64_t ver;
+};
+
 uint8_t eri_live_signal_thread__sig_action (
 		struct eri_live_signal_thread *sig_th,
-		int32_t sig, const struct eri_sigaction *act,
-		struct eri_sigaction *old_act);
+		struct eri_live_signal_thread__sig_action_args *args);
 
 uint8_t eri_live_signal_thread__sig_mask_async (
 		struct eri_live_signal_thread *sig_th,
@@ -65,7 +74,7 @@ void eri_live_signal_thread__sig_reset (
  */
 void eri_live_signal_thread__sig_prepare_sync (
 		struct eri_live_signal_thread *sig_th,
-		struct eri_siginfo *info, struct eri_sigaction *act);
+		struct eri_siginfo *info, struct eri_live_sigaction *act);
 
 struct eri_live_signal_thread__sig_fd_read_args
 {

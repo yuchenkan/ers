@@ -197,15 +197,12 @@ eri_live_thread_recorder__rec_init (
 void
 eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *th_rec,
-			uint64_t in, struct eri_siginfo *info)
+			struct eri_signal_record *rec)
 {
   submit_sync_async (th_rec);
 
   eri_serialize_mark (th_rec->file, ERI_ASYNC_RECORD);
-  struct eri_signal_record rec = { in };
-  if (info) rec.info = *info;
-
-  eri_serialize_signal_record (th_rec->file, &rec);
+  eri_serialize_signal_record (th_rec->file, rec);
 }
 
 void

@@ -7,6 +7,7 @@
 
 struct eri_mtpool;
 struct eri_siginfo;
+struct eri_signal_record;
 struct eri_init_record;
 struct eri_syscall_record;
 
@@ -24,7 +25,7 @@ void eri_live_thread_recorder__rec_init (
 
 void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *th_rec,
-		uint64_t in, struct eri_siginfo *info);
+		struct eri_signal_record *rec);
 
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
