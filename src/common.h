@@ -279,6 +279,10 @@ void eri_unserialize_signal_record (eri_file_t file,
 
 struct eri_syscall_clone_record
 {
+  /*
+   * out is necessary even if failed because the version is
+   * nevertheless increased.
+   */
   uint64_t out;
   uint64_t result;
   uint64_t id;
