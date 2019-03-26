@@ -1269,7 +1269,6 @@ DEFINE_SYSCALL (rt_sigsuspend)
 
 DEFINE_SYSCALL (rt_sigtimedwait)
 {
-  /* TODO */
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
   const struct eri_sigset *user_set = (void *) th_ctx->ctx.sregs.rdi;
@@ -1300,12 +1299,15 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   eri_assert (eri_live_signal_thread__sig_tmp_mask_async (sig_th, &tmp_mask));
 
+  struct eri_syscall_rt_sigtimedwait_record rec;
+
   if (! syscall_sig_wait (th_ctx, user_timeout ? &timeout : 0))
     {
       if (eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask))
 	{
 	  eri_atomic_store (&th_ctx->sig_force_deliver, 0);
-	  SYSCALL_RETURN_DONE (th_ctx, ERI_EAGAIN);
+	  rec.result = ERI_EAGAIN;
+	  goto record;
 	}
       syscall_sig_wait (th_ctx, 0);
     }
@@ -1314,16 +1316,25 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   struct eri_sigframe *frame = sig_get_frame (th_ctx);
   if (frame->info.sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP
       || ! eri_sig_set_set (&set, frame->info.sig))
-    SYSCALL_RETURN_DONE (th_ctx, ERI_EINTR);
+    {
+      rec.result = ERI_EINTR;
+      goto record;
+    }
 
-  struct eri_siginfo info = frame->info;
+  rec.result = frame->info.sig;
+  if (user_info) rec.info = frame->info;
+  else rec.info.sig = 0;
+
   sig_set_frame (th_ctx, 0);
   eri_live_signal_thread__sig_reset (sig_th, 0);
   if (user_info
-      && ! copy_to_user (th, user_info, &info, sizeof *user_info))
+      && ! copy_to_user (th, user_info, &rec.info, sizeof *user_info))
     SYSCALL_RETURN_DONE (th_ctx, ERI_EFAULT);
 
-  SYSCALL_RETURN_DONE (th_ctx, info.sig);
+record:
+  eri_live_thread_recorder__rec_syscall (th->rec,
+			ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC, &rec);
+  SYSCALL_RETURN_DONE (th_ctx, rec.result);
 }
 
 static void
@@ -1335,14 +1346,15 @@ syscall_do_kill (struct eri_live_thread *th)
   /* XXX: remove unnecessary record (error, sig == 0 etc) */
   struct eri_syscall_kill_record rec = { io_out (th) };
   syscall_signal_thread (th);
-  rec.result = sregs->rax;
-  rec.in = io_in (th);
-  eri_live_thread_recorder__rec_syscall (th->rec,
-					 ERI_SYSCALL_KILL_MAGIC, &rec);
 
   if (! eri_syscall_is_error (sregs->rax)
       && eri_live_signal_thread__signaled (th->sig_th))
     syscall_sig_wait (th_ctx, 0);
+
+  rec.result = sregs->rax;
+  rec.in = io_in (th);
+  eri_live_thread_recorder__rec_syscall (th->rec,
+					 ERI_SYSCALL_KILL_MAGIC, &rec);
 }
 
 DEFINE_SYSCALL (kill) { syscall_do_kill (th); return SYSCALL_DONE; }

@@ -254,6 +254,7 @@ enum
   ERI_SYSCALL_CLONE_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_MAGIC,
   ERI_SYSCALL_RT_SIGPENDING_MAGIC,
+  ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC,
   ERI_SYSCALL_KILL_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
   ERI_ATOMIC_MAGIC
@@ -299,6 +300,17 @@ void eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
 			const struct eri_syscall_rt_sigpending_record *rec);
 void eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 			struct eri_syscall_rt_sigpending_record *rec);
+
+struct eri_syscall_rt_sigtimedwait_record
+{
+  uint64_t result;
+  struct eri_siginfo info;
+};
+
+void eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			const struct eri_syscall_rt_sigtimedwait_record *rec);
+void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			struct eri_syscall_rt_sigtimedwait_record *rec);
 
 struct eri_syscall_kill_record
 {

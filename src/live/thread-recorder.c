@@ -222,6 +222,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_clone_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
+    eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_KILL_MAGIC)
     eri_serialize_syscall_kill_record (th_rec->file, rec);
   else eri_assert_unreachable ();

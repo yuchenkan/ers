@@ -91,6 +91,15 @@ main (int32_t argc, const char **argv)
 	      printf (", ..in: %lu, ..set: 0x%lx\n", rec.in, rec.set.val[0]);
 	    else printf ("\n");
 	  }
+	else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
+	  {
+	    struct eri_syscall_rt_sigtimedwait_record rec;
+	    eri_unserialize_syscall_rt_sigtimedwait_record (file, &rec);
+	    printf ("  syscall.rt_sigtimedwait.result: %ld", rec.result);
+	    if (! eri_syscall_is_error (rec.result) && rec.info.sig)
+	      printf (", ..code: %d\n", rec.info.code);
+	    else printf ("\n");
+	  }
 	else if (magic == ERI_SYSCALL_KILL_MAGIC)
 	  {
 	    struct eri_syscall_kill_record rec;

@@ -638,6 +638,22 @@ eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 }
 
 void
+eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			const struct eri_syscall_rt_sigtimedwait_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_siginfo (file, &rec->info);
+}
+
+void
+eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			struct eri_syscall_rt_sigtimedwait_record *rec)
+{
+  rec->result = eri_unserialize_uint64 (file);
+  eri_unserialize_siginfo (file, &rec->info);
+}
+
+void
 eri_serialize_syscall_kill_record (eri_file_t file,
 			const struct eri_syscall_kill_record *rec)
 {
