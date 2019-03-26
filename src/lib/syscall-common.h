@@ -552,8 +552,11 @@
 
 #define ERI_POLLIN		0x0001
 
+#define ERI_F_DUPFD		0
 #define ERI_F_GETFL		3
 #define ERI_F_SETFL		4
+
+#define ERI_F_DUPFD_CLOEXEC	1030
 
 #define ERI_CLONE_VM			0x00000100
 #define ERI_CLONE_FS			0x00000200

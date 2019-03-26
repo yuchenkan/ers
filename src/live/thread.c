@@ -1338,6 +1338,15 @@ record:
 }
 
 static void
+record_kill (struct eri_live_thread *th,
+	     struct eri_syscall_kill_record *rec)
+{
+  rec->in = io_in (th);
+  eri_live_thread_recorder__rec_syscall (th->rec,
+					 ERI_SYSCALL_KILL_MAGIC, rec);
+}
+
+static void
 syscall_do_kill (struct eri_live_thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -1352,9 +1361,7 @@ syscall_do_kill (struct eri_live_thread *th)
     syscall_sig_wait (th_ctx, 0);
 
   rec.result = sregs->rax;
-  rec.in = io_in (th);
-  eri_live_thread_recorder__rec_syscall (th->rec,
-					 ERI_SYSCALL_KILL_MAGIC, &rec);
+  record_kill (th, &rec);
 }
 
 DEFINE_SYSCALL (kill) { syscall_do_kill (th); return SYSCALL_DONE; }
@@ -1429,35 +1436,38 @@ syscall_do_signalfd (struct eri_live_thread *th)
   if (! copy_from_user (th, &mask, user_mask, sizeof mask))
     SYSCALL_RETURN_DONE (th_ctx, ERI_EINVAL);
 
+  struct eri_syscall_kill_record rec = { io_out (th) };
   if (fd == -1)
     {
       int32_t sig_fd_flags = flags & ERI_SFD_NONBLOCK;
-      flags &= ~ERI_SFD_NONBLOCK;
+      flags |= ERI_SFD_NONBLOCK;
 
       eri_assert_lock (&group->sig_fd_lock);
-      fd = eri_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
-      if (! eri_syscall_is_error (fd))
-	sig_fd_alloc_insert (group, fd, &mask, sig_fd_flags);
+      rec.result = eri_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
+      if (! eri_syscall_is_error (rec.result))
+	sig_fd_alloc_insert (group, rec.result, &mask, sig_fd_flags);
       eri_assert_unlock (&group->sig_fd_lock);
-
-      SYSCALL_RETURN_DONE (th_ctx, fd);
+      goto record;
     }
 
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
   if (! sig_fd)
     {
-      uint64_t err = eri_syscall (signalfd4, fd, &mask,
+      rec.result = eri_syscall (signalfd4, fd, &mask,
 				  ERI_SIG_SETSIZE, flags);
-      eri_assert (err == ERI_EBADF || err == ERI_EINVAL);
-      SYSCALL_RETURN_DONE (th_ctx, err);
+      eri_assert (rec.result == ERI_EBADF || rec.result == ERI_EINVAL);
+      goto record;
     }
 
   eri_assert_lock (&sig_fd->mask->lock);
-  eri_assert_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
-  sig_fd->mask->mask = mask;
+  rec.result = eri_syscall (signalfd4, fd, &mask, ERI_SIG_SETSIZE, flags);
+  if (! eri_syscall_is_error (rec.result)) sig_fd->mask->mask = mask;
   eri_assert_unlock (&sig_fd->mask->lock);
   eri_assert_unlock (&group->sig_fd_lock);
-  SYSCALL_RETURN_DONE (th_ctx, fd);
+
+record:
+  record_kill (th, &rec);
+  SYSCALL_RETURN_DONE (th_ctx, rec.result);
 }
 
 DEFINE_SYSCALL (signalfd) { return syscall_do_signalfd (th); }
@@ -1487,17 +1497,19 @@ DEFINE_SYSCALL (close)
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
 
+  struct eri_syscall_kill_record rec = { io_out (th) };
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
-  if (! sig_fd) goto close;
 
-  th_ctx->ctx.sregs.rax = eri_syscall (close, fd);
-  if (! eri_syscall_is_error (th_ctx->ctx.sregs.rax))
+  rec.result = eri_syscall (close, fd);
+  if (! sig_fd) goto record;
+
+  if (! eri_syscall_is_error (rec.result))
     sig_fd_remove_free (group, sig_fd);
   eri_assert_unlock (&group->sig_fd_lock);
-  return SYSCALL_DONE;
 
-close:
-  SYSCALL_RETURN_DONE (th_ctx, eri_syscall (close, fd));
+record:
+  record_kill (th, &rec);
+  SYSCALL_RETURN_DONE (th_ctx, rec.result);
 }
 
 DEFINE_SYSCALL (dup)
@@ -1506,18 +1518,19 @@ DEFINE_SYSCALL (dup)
   struct thread_context *th_ctx = th->ctx;
   int32_t fd = th_ctx->ctx.sregs.rdi;
 
+  struct eri_syscall_kill_record rec = { io_out (th) };
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
-  if (! sig_fd) goto dup;
 
-  int32_t new_fd = eri_syscall (dup, fd);
-  if (! eri_syscall_is_error (new_fd))
-    sig_fd_copy_insert (group, new_fd, sig_fd);
+  rec.result = eri_syscall (dup, fd);
+  if (! sig_fd) goto record;
 
+  if (! eri_syscall_is_error (rec.result))
+    sig_fd_copy_insert (group, rec.result, sig_fd);
   eri_assert_unlock (&group->sig_fd_lock);
-  SYSCALL_RETURN_DONE (th_ctx, new_fd);
 
-dup:
-  SYSCALL_RETURN_DONE (th_ctx, eri_syscall (dup, fd));
+record:
+  record_kill (th, &rec);
+  SYSCALL_RETURN_DONE (th_ctx, rec.result);
 }
 
 static uint32_t
@@ -1533,24 +1546,26 @@ syscall_do_dup2 (struct eri_live_thread *th)
   if (fd == new_fd)
     SYSCALL_RETURN_DONE (th_ctx, dup3 ? ERI_EINVAL : new_fd);
 
+  struct eri_syscall_kill_record rec = { io_out (th) };
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
-  if (! sig_fd) goto dup2;
 
-  new_fd = eri_syscall (dup3, fd, new_fd, flags);
-  if (! eri_syscall_is_error (new_fd))
+  rec.result = eri_syscall (dup3, fd, new_fd, flags);
+  if (! sig_fd) goto record;
+
+  if (! eri_syscall_is_error (rec.result))
     {
+      new_fd = rec.result;
       struct sig_fd *new_sig_fd = sig_fd_rbt_get (group, &new_fd,
 						  ERI_RBT_EQ);
       if (new_sig_fd) sig_fd_remove_free (group, new_sig_fd);
 
       sig_fd_copy_insert (group, new_fd, sig_fd);
     }
-
   eri_assert_unlock (&group->sig_fd_lock);
-  SYSCALL_RETURN_DONE (th_ctx, new_fd);
 
-dup2:
-  SYSCALL_RETURN_DONE (th_ctx, eri_syscall (dup3, fd, new_fd, flags));
+record:
+  record_kill (th, &rec);
+  SYSCALL_RETURN_DONE (th_ctx, rec.result);
 }
 
 DEFINE_SYSCALL (dup2) { return syscall_do_dup2 (th); }
@@ -1563,35 +1578,42 @@ DEFINE_SYSCALL (fcntl)
 {
   struct eri_live_thread_group *group = th->group;
   struct thread_context *th_ctx = th->ctx;
-  int32_t fd = th_ctx->ctx.sregs.rdi;
-  int32_t cmd = th_ctx->ctx.sregs.rsi;
+  struct eri_entry_scratch_registers *sregs = &th_ctx->ctx.sregs;
+  int32_t fd = sregs->rdi;
+  int32_t cmd = sregs->rsi;
 
-  if (cmd == ERI_F_GETFL || cmd == ERI_F_SETFL)
+  if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC
+      || cmd == ERI_F_GETFL || cmd == ERI_F_SETFL)
     {
+      struct eri_syscall_kill_record rec = { io_out (th) };
       struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
-      if (! sig_fd) goto fcntl;
 
-      if (cmd == ERI_F_GETFL)
+      if (! sig_fd)
 	{
-	  int32_t flags = eri_syscall (fcntl, fd, cmd);
-	  if (! eri_syscall_is_error (flags))
-	    flags |= sig_fd->flags;
-	  th_ctx->ctx.sregs.rax = flags;
+	  rec.result = eri_syscall (fcntl, fd, cmd, sregs->rdx);
+	  goto record_kill;
 	}
-      else
+
+      if (cmd == ERI_F_SETFL)
+	rec.result = eri_syscall (fcntl, fd, cmd,
+				  sregs->rdx | ERI_O_NONBLOCK);
+      else rec.result = eri_syscall (fcntl, fd, cmd, sregs->rdx);
+
+      if (! eri_syscall_is_error (rec.result))
 	{
-	  int32_t flags = th_ctx->ctx.sregs.rdx;
-	  int32_t sig_fd_flags = flags & ERI_O_NONBLOCK;
-	  flags &= ~ERI_O_NONBLOCK;
-	  th_ctx->ctx.sregs.rax = eri_syscall (fcntl, fd, cmd, flags);
-	  if (! eri_syscall_is_error (th_ctx->ctx.sregs.rax))
-	    sig_fd->flags = sig_fd_flags;
+	  if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC)
+	    sig_fd_copy_insert (group, rec.result, sig_fd);
+	  else if (cmd == ERI_F_GETFL)
+	    rec.result &= sig_fd->flags | ~ERI_O_NONBLOCK;
+	  else sig_fd->flags = sregs->rdx & ERI_O_NONBLOCK;
 	}
       eri_assert_unlock (&group->sig_fd_lock);
-      return SYSCALL_DONE;
+
+    record_kill:
+      record_kill (th, &rec);
+      SYSCALL_RETURN_DONE (th_ctx, rec.result);
     }
 
-fcntl:
   return syscall_syscall (th);
 }
 
@@ -1615,6 +1637,7 @@ SYSCALL_TO_IMPL (epoll_ctl)
 static uint32_t
 syscall_do_read (struct eri_live_thread *th)
 {
+  /* TODO */
   struct eri_live_thread_group *group = th->group;
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
