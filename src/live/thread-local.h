@@ -32,20 +32,20 @@ struct thread_context
   uint64_t access_fault;
 
   uint8_t swallow_single_step;
-  union
+
+  struct
     {
-      struct
-	{
-	  struct eri_entry_extra_registers eregs;
-	  uint8_t wait_sig; /* Always zero in user code. */
-	} syscall;
-      struct
-	{
-	  uint64_t access_start;
-	  uint64_t access_end; /* Always zero in user code.  */
-	  struct atomic_pair idx;
-	} atomic;
-    };
+      struct eri_entry_extra_registers eregs;
+      uint8_t wait_sig; /* Always zero in user code. */
+      uint64_t sig_intr; /* Always zero in user code. */
+    } syscall;
+
+  struct
+    {
+      uint64_t access_start;
+      uint64_t access_end; /* Always zero in user code.  */
+      struct atomic_pair idx;
+    } atomic;
 
   struct eri_live_thread *th;
 
@@ -59,6 +59,8 @@ ERI_ENTRY_DECLARE_DO_COPY_USERS ()
 
 eri_noreturn void sig_to (void);
 eri_noreturn void sig_return (struct eri_sigframe *frame);
+
+void syscall_intr_syscall (struct thread_context *th_ctx);
 
 #define SIG_HANDS(p) \
   ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (p)					\

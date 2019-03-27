@@ -37,6 +37,7 @@ declare (void)
   THREAD_CONTEXT_OFFSET (ACCESS_FAULT, access_fault);
 
   THREAD_CONTEXT_OFFSET (SYSCALL_EREGS, syscall.eregs);
+  THREAD_CONTEXT_OFFSET (SYSCALL_SIG_INTR, syscall.sig_intr);
 
   THREAD_CONTEXT_OFFSET (TH, th);
 

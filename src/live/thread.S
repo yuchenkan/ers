@@ -36,10 +36,6 @@
 
   .section .rodata
 
-/************************************************/
-/* thread_context_text				*/
-/************************************************/
-
 ERI_ENTRY_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
 
   .text
@@ -49,10 +45,6 @@ ERI_ENTRY_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
 #define TH_CALL(fn) \
   movq	TC (TH)(%rbx), %rdi;						\
   call	fn
-
-/************************************************/
-/* sig_return					*/
-/************************************************/
 
 /* Registers except rcx rbx rip should be restored before SIG_RETURN  */
 #define SIG_RETURN(sig_hand, sig_return) \
@@ -90,10 +82,6 @@ ERI_ENTRY_THREAD_ENTRY_TEXT (thread_context, TC (SIZE), TCC (ENTRY), TC (EXT))
 label:									\
   SIG_RETURN_ACTION (sig_action, 1)
 
-/************************************************/
-/* main						*/
-/************************************************/
-
 ERI_FUNCTION (main)
   movq	%rdi, %rbx
   TH_CALL (start_main)
@@ -104,10 +92,6 @@ ERI_FUNCTION (main)
   SIG_RETURN_TO_USER (.lmain_sig_return)
 
   ERI_END_FUNCTION (main)
-
-/************************************************/
-/* entry					*/
-/************************************************/
 
 #define ERROR_OP_CODE		0
 #define ERROR_ATOMIC_SIZE	1
@@ -142,10 +126,6 @@ ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
   ERROR (OP_CODE)
 
-/************************************************/
-/* entry: syscall				*/
-/************************************************/
-
 .lsyscall:
   ERI_ENTRY_SYSCALL_MAY_SAVE_EREGS (TC (SYSCALL_EREGS), syscall)
   TH_CALL (syscall)
@@ -153,10 +133,6 @@ ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
   ERI_ENTRY_THREAD_CONTEXT_RESTORE_NO_RCX (TC (CTX))
   SIG_RETURN_TO_USER (.lsyscall_sig_return)
-
-/************************************************/
-/* entry: sync_async				*/
-/************************************************/
 
 .lsync_async:
 
@@ -169,10 +145,6 @@ ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 .lsync_async_sig_return:
 
   SIG_RETURN_ACTION (sig_restart_sync_async, 0)
-
-/************************************************/
-/* entry: atomic_common				*/
-/************************************************/
 
 #define ATOMIC_SIZE_LABEL(sz, name)	ATOMIC_LABEL (PASTE (name, sz))
 #define ATOMIC_ACCESS_START_LABEL(sz, name) \
@@ -200,10 +172,6 @@ ATOMIC_SIZE_LABEL (sz, name):						\
   pushfq;								\
   popq	TCC (SREGS_RFLAGS)(%rbx)
 
-/************************************************/
-/* entry: atomic_ext_return			*/
-/************************************************/
-
 .latomic_ext_return:
   movq	%rcx, TCC (SREGS_RCX)(%rbx)
   ERI_MOV_LM (entry, TCC (ENTRY)(%rbx), %rcx)
@@ -218,9 +186,7 @@ ATOMIC_SIZE_LABEL (sz, name):						\
   ERI_ENTRY_THREAD_CONTEXT_RESTORE (TC (CTX));				\
   jmp	*TCC (RET)(%rbx)
 
-/************************************************/
-/* eri_live_entry: atomic_load			*/
-/************************************************/
+/* atomic_load */
 
 #define ATOMIC_LOAD(sz) \
 PREPARE_ATOMIC (sz, load);						\
@@ -231,9 +197,7 @@ ATOMIC_ACCESS_END_LABEL (sz, load):					\
 									\
   EXT_COMPLETE_ATOMIC
 
-/************************************************/
-/* eri_live_entry: atomic_store			*/
-/************************************************/
+/* atomic_store	*/
 
 #define ATOMIC_STORE(sz) \
 PREPARE_ATOMIC (sz, store);						\
@@ -246,9 +210,7 @@ ATOMIC_ACCESS_END_LABEL (sz, store):					\
 									\
   COMPLETE_ATOMIC (sz, store)
 
-/************************************************/
-/* eri_live_entry: atomic_inc / atomic_dec	*/
-/************************************************/
+/* atomic_inc / atomic_dec */
 
 #define ATOMIC_INC_DEC(sz, inc) \
 PREPARE_ATOMIC (sz, inc);						\
@@ -264,9 +226,7 @@ ATOMIC_ACCESS_END_LABEL (sz, inc):					\
 #define ATOMIC_INC(sz)	ATOMIC_INC_DEC (sz, inc)
 #define ATOMIC_DEC(sz)	ATOMIC_INC_DEC (sz, dec)
 
-/************************************************/
-/* eri_live_entry: atomic_xchg			*/
-/************************************************/
+/* eri_live_entry: atomic_xchg */
 
 #define ATOMIC_XCHG(sz) \
 PREPARE_ATOMIC (sz, xchg);						\
@@ -279,9 +239,7 @@ ATOMIC_ACCESS_END_LABEL (sz, xchg):					\
 									\
   EXT_COMPLETE_ATOMIC
 
-/************************************************/
-/* eri_live_entry: atomic_cmpxchg		*/
-/************************************************/
+/* atomic_cmpxchg */
 
 #define ATOMIC_CMPXCHG(sz) \
 PREPARE_ATOMIC (sz, cmpxchg);						\
@@ -299,9 +257,7 @@ ATOMIC_ACCESS_END_LABEL (sz, cmpxchg):					\
   movq	%rax, TCC (SREGS_RAX)(%rbx);					\
   COMPLETE_ATOMIC (sz, cmpxchg)
 
-/************************************************/
-/* entry: atomic				*/
-/************************************************/
+/* atomic */
 
 #define IF_ATOMIC_SIZE(sz, name) \
   cmpb	$_ERS_ATOMIC_SIZE (sz), %r11b;					\
@@ -332,15 +288,7 @@ ATOMIC_LABEL (name):							\
 
   ERI_END_FUNCTION (entry)
 
-/************************************************/
-/* do_copy_user					*/
-/************************************************/
-
 ERI_ENTRY_DEFINE_DO_COPY_USERS ()
-
-/************************************************/
-/* sig_to					*/
-/************************************************/
 
 ERI_FUNCTION (sig_to)
   popq	%rax	/* ctx */
@@ -354,11 +302,37 @@ ERI_FUNCTION (sig_to)
   jmp	*%r11
   ERI_END_FUNCTION (sig_to)
 
-/************************************************/
-/* sig_return					*/
-/************************************************/
-
 ERI_FUNCTION (sig_return)
   movq	%rdi, %rsp
   ret
   ERI_END_FUNCTION (sig_return)
+
+ERI_FUNCTION (syscall_intr_syscall)
+
+  pushq	%rbx
+  movq	%rdi, %rbx
+
+  ERI_MOV_LM (.lsyscall_intr, TC (SYSCALL_SIG_INTR)(%rbx), %rax)
+
+  cmpq	$1, TC (SIG_FRAME)(%rbx)
+  je	.lsyscall_intr_syscall
+  movq	$ERI_EINTR, %rax
+  jmp	.lsyscall_intr
+
+.lsyscall_intr_syscall:
+  movq	TC (CTX_SREGS_RAX)(%rbx), %rax
+
+  movq	TC (CTX_SREGS_RDI)(%rbx), %rdi
+  movq	TC (CTX_SREGS_RSI)(%rbx), %rsi
+  movq	TC (CTX_SREGS_RDX)(%rbx), %rdx
+  movq	TC (CTX_SREGS_R10)(%rbx), %r10
+  movq	TC (CTX_SREGS_R8)(%rbx), %r8
+  movq	TC (CTX_SREGS_R9)(%rbx), %r9
+  syscall
+.lsyscall_intr:
+  movq	$0, TC (SYSCALL_SIG_INTR)(%rbx)
+  movq	%rax, TC (CTX_SREGS_RAX)(%rbx)
+  popq	%rbx
+  ret
+
+  ERI_END_FUNCTION (syscall_intr_syscall)

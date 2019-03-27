@@ -289,6 +289,7 @@ create_context (struct eri_mtpool *pool, struct eri_live_thread *th)
   th_ctx->access = 0;
   th_ctx->swallow_single_step = 0;
   th_ctx->syscall.wait_sig = 0;
+  th_ctx->syscall.sig_intr = 0;
   th_ctx->atomic.access_end = 0;
   th_ctx->th = th;
   return th_ctx;
@@ -830,9 +831,8 @@ ERI_PASTE (syscall_, name) (struct eri_live_thread *th)
   DEFINE_SYSCALL (name) { SYSCALL_RETURN_DONE (th->ctx, ERI_ENOSYS); }
 
 static void
-syscall_syscall (struct eri_live_thread *th)
+syscall_syscall (struct thread_context *th_ctx)
 {
-  struct thread_context *th_ctx = th->ctx;
   struct eri_sys_syscall_args args;
   eri_sys_syscall_args_from_sregs (&args, &th_ctx->ctx.sregs);
   th_ctx->ctx.sregs.rax = eri_sys_syscall (&args);
@@ -1101,7 +1101,11 @@ SYSCALL_TO_IMPL (acct)
 SYSCALL_TO_IMPL (setpriority)
 SYSCALL_TO_IMPL (getpriority)
 
-DEFINE_SYSCALL (sched_yield) { syscall_syscall (th); return SYSCALL_DONE; }
+DEFINE_SYSCALL (sched_yield)
+{
+  syscall_syscall (th->ctx);
+  return SYSCALL_DONE;
+}
 
 SYSCALL_TO_IMPL (sched_setparam)
 SYSCALL_TO_IMPL (sched_getparam)
@@ -1614,7 +1618,8 @@ DEFINE_SYSCALL (fcntl)
       SYSCALL_RETURN_DONE (th_ctx, rec.result);
     }
 
-  syscall_syscall (th);
+  /* TODO: other cmd */
+  syscall_syscall (th->ctx);
   return SYSCALL_DONE;
 }
 
@@ -1638,7 +1643,6 @@ SYSCALL_TO_IMPL (epoll_ctl)
 static uint32_t
 syscall_do_read (struct eri_live_thread *th)
 {
-  /* TODO */
   struct eri_live_thread_group *group = th->group;
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct thread_context *th_ctx = th->ctx;
@@ -1649,8 +1653,7 @@ syscall_do_read (struct eri_live_thread *th)
   struct sig_fd *sig_fd = sig_fd_try_lock (group, fd);
   if (! sig_fd)
     {
-      /* TODO: fix eintr */
-      syscall_syscall (th);
+      syscall_intr_syscall (th->ctx);
       goto record;
     }
 
@@ -1670,6 +1673,8 @@ syscall_do_read (struct eri_live_thread *th)
   uint8_t restart = 1;
   if (eri_live_signal_thread__sig_fd_read (sig_th, &args))
     {
+      if (args.result == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
+
       sregs->rax = args.result;
       restart = 0;
     }
@@ -1680,7 +1685,6 @@ syscall_do_read (struct eri_live_thread *th)
   if (restart) return SYSCALL_SIG_WAIT_RESTART;
 
 record:
-  if (sregs->rax == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
   if (nr == __NR_read || nr == __NR_pread64)
     {
       struct eri_syscall_read_record rec = {
@@ -1962,6 +1966,13 @@ sig_hand_syscall (struct eri_live_thread *th, struct eri_sigframe *frame,
 
   /* XXX: SIGSYS */
   eri_assert (! eri_si_sync (info));
+
+  /* interruptable but not done the syscall */
+  if (th_ctx->syscall.sig_intr && ctx->mctx.rip != th_ctx->syscall.sig_intr)
+    {
+      ctx->mctx.rax = ERI_EINTR;
+      ctx->mctx.rip = th_ctx->syscall.sig_intr;
+    }
 
   sig_set (th_ctx, frame, act, SIG_HAND_NONE);
   if (th_ctx->syscall.wait_sig)
