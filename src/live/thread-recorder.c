@@ -227,6 +227,8 @@ eri_live_thread_recorder__rec_syscall (
       || magic == ERI_SYSCALL_IN_MAGIC || magic == ERI_SYSCALL_OUT_MAGIC
       || magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
     eri_serialize_uint64 (th_rec->file, (uint64_t) rec);
+  else if (magic == ERI_SYSCALL_RESULT_IN_MAGIC)
+    eri_serialize_uint64_array (th_rec->file, rec, 2);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGACTION_GET_MAGIC)

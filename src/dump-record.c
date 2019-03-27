@@ -80,9 +80,15 @@ main (int32_t argc, const char **argv)
 	else if (magic == ERI_SYSCALL_RESULT_MAGIC)
 	  printf ("  syscall.result: %ld\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_IN_MAGIC)
-	  printf ("  syscall.in: 0x%lx\n", eri_unserialize_uint64 (file));
+	  printf ("  syscall.in: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_OUT_MAGIC)
-	  printf ("  syscall.out: 0x%lx\n", eri_unserialize_uint64 (file));
+	  printf ("  syscall.out: %lu\n", eri_unserialize_uint64 (file));
+	else if (magic == ERI_SYSCALL_RESULT_IN_MAGIC)
+	  {
+	    uint64_t rec[2];
+	    eri_unserialize_uint64_array (file, rec, eri_length_of (rec));
+	    printf ("  syscall.result: %ld, .in: %lu\n", rec[0], rec[1]);
+	  }
 	else if (magic == ERI_SYSCALL_CLONE_MAGIC)
 	  {
 	    struct eri_syscall_clone_record rec;
@@ -116,6 +122,8 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_rt_sigtimedwait_record rec;
 	    eri_unserialize_syscall_rt_sigtimedwait_record (file, &rec);
 	    printf ("  syscall.rt_sigtimedwait.result: %ld", rec.result);
+	    if (! eri_syscall_is_error (rec.result)
+		|| rec.result == ERI_EINTR) printf (", ..in: %lu", rec.in);
 	    if (! eri_syscall_is_error (rec.result) && rec.info.sig)
 	      printf (", ..code: %d\n", rec.info.code);
 	    else printf ("\n");

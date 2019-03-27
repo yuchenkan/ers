@@ -98,7 +98,7 @@ eri_sig_setup_user_frame (struct eri_sigframe *frame,
 }
 
 #define COMMON_SYSCALL_RETURN(sregs, res) \
-  do { (sregs)->rax = res; return ; } while (0)
+  do { (sregs)->rax = res; return; } while (0)
 
 #define COMMON_SYSCALL_RETURN_ERROR(sregs, res) \
   do {									\
@@ -204,8 +204,32 @@ eri_common_syscall_sigaltstack (
 
   if (! user_old_stack) COMMON_SYSCALL_RETURN (sregs, 0);
 
-  COMMON_SYSCALL_RETURN (sregs, user_old_stack
-	? do_copy_sys_error (copy_to, args, user_old_stack, &old_stack) : 0);
+  sregs->rax = user_old_stack
+	? do_copy_sys_error (copy_to, args, user_old_stack, &old_stack) : 0;
+}
+
+void
+eri_common_syscall_arch_prctl (struct eri_entry_scratch_registers *sregs,
+			       void *copy, void *args)
+{
+  int32_t code = sregs->rdi;
+  uint64_t *user_addr = (void *) sregs->rsi;
+
+  eri_debug ("user_addr %lx\n", user_addr);
+  /* XXX: warning for set gs */
+  if (code == ERI_ARCH_SET_FS || code == ERI_ARCH_SET_GS)
+    COMMON_SYSCALL_RETURN (sregs,
+			   eri_syscall (arch_prctl, code, user_addr));
+
+  if (code == ERI_ARCH_GET_FS || code == ERI_ARCH_GET_GS)
+    {
+      uint64_t addr;
+      eri_assert_syscall (arch_prctl, code, &addr);
+      COMMON_SYSCALL_RETURN (sregs,
+			do_copy_sys_error (copy, args, user_addr, &addr));
+    }
+
+  sregs->rax = ERI_EINVAL;
 }
 
 uint8_t
@@ -331,21 +355,33 @@ eri_unserialize_uint64 (eri_file_t file)
 }
 
 void
-eri_serialize_uint8_array (eri_file_t file, const uint8_t *arr, uint64_t size)
+eri_serialize_uint8_array (eri_file_t file, const uint8_t *a, uint64_t size)
 {
-  eri_assert_fwrite (file, arr, size, 0);
+  eri_assert_fwrite (file, a, size, 0);
 }
 
 void
-eri_unserialize_uint8_array (eri_file_t file, uint8_t *arr, uint64_t size)
+eri_unserialize_uint8_array (eri_file_t file, uint8_t *a, uint64_t size)
 {
-  eri_assert_fread (file, arr, size, 0);
+  eri_assert_fread (file, a, size, 0);
 }
 
 void
 eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size)
 {
   eri_assert_fseek (file, size, ERI_SEEK_CUR);
+}
+
+void
+eri_serialize_uint64_array (eri_file_t file, const uint64_t *a, uint64_t size)
+{
+  eri_assert_fwrite (file, a, size * sizeof a[0], 0);
+}
+
+void
+eri_unserialize_uint64_array (eri_file_t file, uint64_t *a, uint64_t size)
+{
+  eri_assert_fread (file, a, size * sizeof a[0], 0);
 }
 
 void
@@ -576,7 +612,10 @@ eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec)
 {
   eri_serialize_uint64 (file, rec->result);
-  eri_serialize_siginfo (file, &rec->info);
+  if (! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
+    eri_serialize_uint64 (file, rec->in);
+  if (! eri_syscall_is_error (rec->result))
+    eri_serialize_siginfo (file, &rec->info);
 }
 
 void
@@ -584,7 +623,10 @@ eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec)
 {
   rec->result = eri_unserialize_uint64 (file);
-  eri_unserialize_siginfo (file, &rec->info);
+  if (! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
+    rec->in = eri_unserialize_uint64 (file);
+  if (! eri_syscall_is_error (rec->result))
+    eri_unserialize_siginfo (file, &rec->info);
 }
 
 void

@@ -889,7 +889,7 @@ sig_action (struct eri_live_signal_thread *sig_th,
 
   if (args->old_act) *args->old_act = sig_act->act.act;
   sig_act->act.act = *args->act;
-  args->ver = ++sig_act->act.ver;
+  args->ver = sig_act->act.ver++;
 
   eri_assert_unlock (&sig_act->lock);
 

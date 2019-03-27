@@ -124,6 +124,10 @@ void eri_common_syscall_sigaltstack (
 		struct eri_stack *stack,
 		void *copy_from, void *copy_to, void *args);
 
+void eri_common_syscall_arch_prctl (
+		struct eri_entry_scratch_registers *sregs,
+		void *copy, void *args);
+
 struct eri_common_syscall_rt_sigreturn_args
 {
   struct eri_entry_thread_entry *entry;
@@ -142,8 +146,15 @@ struct eri_common_syscall_rt_sigreturn_args
 uint8_t eri_common_syscall_rt_sigreturn (
 		struct eri_common_syscall_rt_sigreturn_args *args);
 
-#define eri_common_rt_sigpending_valid_sig_set_size(size) \
-  ((size) <= ERI_SIG_SETSIZE) /* XXX: from kernel source */
+#define eri_common_syscall_valid_rt_sigpending(group, sregs) \
+  ({ struct eri_entry_scratch_registers *_sregs = sregs;		\
+     typeof (group) _group = group;					\
+     uint64_t _err = 0;							\
+     if (_sregs->rsi > ERI_SIG_SETSIZE)	_err = ERI_EINVAL;		\
+     else if (internal_range (_group, _sregs->rdi, ERI_SIG_SETSIZE))	\
+       _err = ERI_EFAULT;						\
+     if (_err) _sregs->rax = _err;					\
+     ! _err; })
 
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
@@ -166,10 +177,15 @@ void eri_serialize_uint64 (eri_file_t file, uint64_t v);
 uint64_t eri_unserialize_uint64 (eri_file_t file);
 
 void eri_serialize_uint8_array (eri_file_t file,
-				const uint8_t *arr, uint64_t size);
+				const uint8_t *a, uint64_t size);
 void eri_unserialize_uint8_array (eri_file_t file,
-				  uint8_t *arr, uint64_t size);
+				  uint8_t *a, uint64_t size);
 void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size);
+
+void eri_serialize_uint64_array (eri_file_t file,
+				 const uint64_t *a, uint64_t size);
+void eri_unserialize_uint64_array (eri_file_t file,
+				   uint64_t *a, uint64_t size);
 
 void eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set);
 void eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
@@ -257,6 +273,7 @@ enum
   ERI_SYSCALL_RESULT_MAGIC,
   ERI_SYSCALL_IN_MAGIC,
   ERI_SYSCALL_OUT_MAGIC,
+  ERI_SYSCALL_RESULT_IN_MAGIC,
   ERI_SYSCALL_CLONE_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_GET_MAGIC,
@@ -305,6 +322,7 @@ void eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 struct eri_syscall_rt_sigtimedwait_record
 {
   uint64_t result;
+  uint64_t in;
   struct eri_siginfo info;
 };
 
