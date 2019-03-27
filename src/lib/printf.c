@@ -53,12 +53,6 @@ eri_fopen (const char *path, uint8_t r, eri_file_t *file,
 #define fraw(file) (ftype (file) == _ERI_FILE_RAW)
 #define fraw_fd(file) (file >> 4)
 
-struct iovec
-{
-  void *base;
-  uint64_t len;
-};
-
 static void
 advance (uint8_t vec, uint64_t *buf, uint64_t *size, uint64_t adv)
 {
@@ -69,7 +63,7 @@ advance (uint8_t vec, uint64_t *buf, uint64_t *size, uint64_t adv)
     }
   else
     {
-      struct iovec *iov = (struct iovec *) *buf;
+      struct eri_iovec *iov = (struct eri_iovec *) *buf;
       while (adv)
 	if (iov->len > adv)
 	  {
@@ -243,7 +237,7 @@ eri_fwrite (eri_file_t file, const void *buf, uint64_t size, uint64_t *len)
       return 0;
     }
 
-  struct iovec iov[2] = { { f->buf, f->buf_used }, { (void *) buf, size} };
+  struct eri_iovec iov[2] = { { f->buf, f->buf_used }, { (void *) buf, size} };
   int32_t res = ifwrite (__NR_pwritev, f->fd,
 			 (uint64_t) iov, 2, f->buf_offset, 0);
   eri_assert (f->buf_used >= iov[0].len && size >= iov[1].len);
@@ -314,7 +308,7 @@ eri_fread (eri_file_t file, void *buf, uint64_t size, uint64_t *len)
       return ! len;
     }
 
-  struct iovec iov[2] = { { buf, size }, { f->buf, f->buf_size } };
+  struct eri_iovec iov[2] = { { buf, size }, { f->buf, f->buf_size } };
   uint64_t read;
   int32_t res = ifread (__NR_preadv, f->fd,
 			(uint64_t) iov, 2, f->offset, &read);
@@ -338,7 +332,7 @@ eri_vfprintf (eri_file_t file, const char *fmt, va_list arg)
   for (p = fmt; *p; ++p)
     if (*p == '%') s += 2;
 
-  struct iovec *iov = __builtin_alloca (s * sizeof (struct iovec));
+  struct eri_iovec *iov = __builtin_alloca (s * sizeof (struct eri_iovec));
   int32_t niov = 1;
   while (*fmt)
     {

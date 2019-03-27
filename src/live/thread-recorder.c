@@ -226,6 +226,10 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_KILL_MAGIC)
     eri_serialize_syscall_kill_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_READ_MAGIC)
+    eri_serialize_syscall_read_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_READV_MAGIC)
+    eri_serialize_syscall_readv_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 

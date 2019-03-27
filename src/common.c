@@ -120,11 +120,11 @@ eri_sig_digest_act (const struct eri_siginfo *info,
     }
 }
 
-typedef uint8_t (*copy_user_t) (void *, void *, const void *, uint64_t);
-#define copy_user(copy, args, dst, src) \
-  ((copy_user_t) (copy)) (args, dst, src, sizeof *(dst))
-#define copy_user_error(copy, args, dst, src) \
-  (copy_user (copy, args, dst, src) ? 0 : ERI_EFAULT)
+typedef uint8_t (*copy_t) (void *, void *, const void *, uint64_t);
+#define do_copy(copy, args, dst, src) \
+  ((copy_t) (copy)) (args, dst, src, sizeof *(dst))
+#define do_copy_sys_error(copy, args, dst, src) \
+  (do_copy (copy, args, dst, src) ? 0 : ERI_EFAULT)
 
 static uint8_t
 on_sig_alt_stack (const struct eri_stack *stack, uint64_t rsp)
@@ -162,15 +162,15 @@ eri_sig_setup_user_frame (struct eri_sigframe *frame,
     {
       uint32_t fpstate_size = ctx->mctx.fpstate->size;
       rsp = eri_round_down (rsp - fpstate_size, 64);
-      if (! ((copy_user_t) copy) (args, (void *) rsp,
-				  ctx->mctx.fpstate, fpstate_size))
+      if (! ((copy_t) copy) (args, (void *) rsp,
+			     ctx->mctx.fpstate, fpstate_size))
 	return 0;
       ctx->mctx.fpstate = (void *) rsp;
     }
 
   struct eri_sigframe *user_frame
 	= (void *) (eri_round_down (rsp - sizeof *user_frame, 16) - 8);
-  return copy_user (copy, args, user_frame, frame) ? user_frame : 0;
+  return do_copy (copy, args, user_frame, frame) ? user_frame : 0;
 }
 
 #define COMMON_SYSCALL_RETURN(sregs, res) \
@@ -200,7 +200,7 @@ eri_common_syscall_rt_sigprocmask_get (
 
   if (! user_mask) return 1;
 
-  if (! copy_user (copy, args, mask, user_mask))
+  if (! do_copy (copy, args, mask, user_mask))
     COMMON_SYSCALL_RETURN_ERROR (sregs, ERI_EFAULT);
 
   if (how == ERI_SIG_BLOCK)
@@ -223,7 +223,7 @@ eri_common_syscall_rt_sigprocmask_set (
   struct eri_sigset *user_old_mask = (void *) sregs->rdx;
   if (! user_old_mask) return;
 
-  sregs->rax = copy_user_error (copy, args, user_old_mask, old_mask);
+  sregs->rax = do_copy_sys_error (copy, args, user_old_mask, old_mask);
 }
 
 uint8_t
@@ -238,7 +238,7 @@ eri_common_syscall_rt_sigaction_get (
 
   if (! user_act) return 1;
 
-  if (user_act && ! copy_user (copy, args, act, user_act))
+  if (user_act && ! do_copy (copy, args, act, user_act))
     COMMON_SYSCALL_RETURN_ERROR (sregs, ERI_EFAULT);
 
   return 1;
@@ -252,7 +252,7 @@ eri_common_syscall_rt_sigaction_set (
   struct eri_sigaction *user_old_act = (void *) sregs->rdx;
   if (! user_old_act) return;
 
-  sregs->rax = copy_user_error (copy, args, user_old_act, old_act);
+  sregs->rax = do_copy_sys_error (copy, args, user_old_act, old_act);
 }
 
 static uint64_t
@@ -299,7 +299,7 @@ eri_common_syscall_sigaltstack (
   if (user_stack)
     {
       struct eri_stack new_stack;
-      if (! copy_user (copy_from, args, &new_stack, user_stack))
+      if (! do_copy (copy_from, args, &new_stack, user_stack))
 	COMMON_SYSCALL_RETURN (sregs, ERI_EFAULT);
 
       uint64_t err = set_sig_alt_stack (stack, rsp, &new_stack);
@@ -309,7 +309,7 @@ eri_common_syscall_sigaltstack (
   if (! user_old_stack) COMMON_SYSCALL_RETURN (sregs, 0);
 
   COMMON_SYSCALL_RETURN (sregs, user_old_stack
-	? copy_user_error (copy_to, args, user_old_stack, &old_stack) : 0);
+	? do_copy_sys_error (copy_to, args, user_old_stack, &old_stack) : 0);
 }
 
 uint8_t
@@ -318,7 +318,7 @@ eri_common_syscall_rt_sigreturn (
 {
   struct eri_entry_thread_context *th_ctx = args->th_ctx;
 
-  copy_user_t copy = args->copy;
+  copy_t copy = args->copy;
   void *copy_args = args->args;
 
   const struct eri_sigframe *user_frame = (void *) (th_ctx->rsp - 8);
@@ -668,6 +668,125 @@ void eri_unserialize_syscall_kill_record (eri_file_t file,
   rec->out = eri_unserialize_uint64 (file);
   rec->result = eri_unserialize_uint64 (file);
   rec->in = eri_unserialize_uint64 (file);
+}
+
+static uint8_t
+copy_serialize_uint8_array (eri_file_t file, uint8_t *buf, uint8_t size,
+			copy_t copy, void *args, uint8_t ok, uint8_t serial)
+{
+  uint64_t cur;
+  uint8_t cur_buf[1024];
+  for (cur = 0; cur < size; cur += sizeof cur_buf)
+    {
+      uint64_t cur_size = eri_min (sizeof cur_buf, size - cur);
+      if (serial)
+	{
+	  if (ok)
+	    ok = copy (args, cur_buf, buf + cur, cur_size);
+	  eri_serialize_uint8_array (file, cur_buf, cur_size);
+	}
+      else
+	{
+	  eri_unserialize_uint8_array (file, cur_buf, cur_size);
+	  if (ok)
+	    ok = copy (args, buf + cur, cur_buf, cur_size);
+	}
+    }
+  return ok;
+}
+
+void
+eri_serialize_syscall_read_record (eri_file_t file,
+			const struct eri_syscall_read_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+  if (eri_syscall_is_error (rec->result)) return;
+
+  if (! rec->copy)
+    eri_serialize_uint8_array (file, rec->buf, rec->result);
+  else
+    copy_serialize_uint8_array (file, rec->buf, rec->result,
+				rec->copy, rec->args, 1, 1);
+}
+
+void
+eri_unserialize_syscall_read_record (eri_file_t file,
+			struct eri_syscall_read_record *rec)
+{
+  rec->result = eri_unserialize_uint64 (file);
+  rec->in = eri_unserialize_uint64 (file);
+  if (eri_syscall_is_error (rec->result)) return;
+
+  if (! rec->copy)
+    eri_unserialize_uint8_array (file, rec->buf, rec->result);
+  else
+    copy_serialize_uint8_array (file, rec->buf, rec->result,
+				rec->copy, rec->args, 1, 0);
+}
+
+static void
+serialize_iovec (eri_file_t file, struct eri_iovec *iov, uint64_t bytes,
+		 uint8_t serial)
+{
+  uint64_t cur;
+  uint8_t i = 0;
+  for (cur = 0; cur < bytes; cur += iov[i++].len)
+    {
+      uint64_t cur_size = eri_min (iov[i].len, bytes - cur);
+      if (serial)
+	eri_serialize_uint8_array (file, iov[i].base, cur_size);
+      else
+	eri_unserialize_uint8_array (file, iov[i].base, cur_size);
+    }
+}
+
+static uint8_t
+copy_serialize_iovec (eri_file_t file, struct eri_iovec *iov, uint64_t bytes,
+		      copy_t copy, void *args, uint8_t ok, uint8_t serial)
+{
+  uint64_t cur, cur_len;
+  uint8_t i = 0;
+  for (cur = 0; cur < bytes; cur += cur_len)
+    {
+      struct eri_iovec cur_iov;
+      if (ok) ok = copy (args, &cur_iov, iov + i++, sizeof cur_iov);
+
+      cur_len = ok ? eri_min (cur_iov.len, bytes - cur) : bytes - cur;
+      ok = copy_serialize_uint8_array (file, cur_iov.base,
+				       cur_len, copy, args, ok, serial);
+    }
+  return ok;
+}
+
+void
+eri_serialize_syscall_readv_record (eri_file_t file,
+			const struct eri_syscall_readv_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+  if (eri_syscall_is_error (rec->result)) return;
+
+  if (! rec->copy)
+    serialize_iovec (file, rec->iov, rec->result, 1);
+  else
+    copy_serialize_iovec (file, rec->iov, rec->result,
+			  rec->copy, rec->args, 1, 1);
+}
+
+void
+eri_unserialize_syscall_readv_record (eri_file_t file,
+			struct eri_syscall_readv_record *rec)
+{
+  rec->result = eri_unserialize_uint64 (file);
+  rec->in = eri_unserialize_uint64 (file);
+  if (eri_syscall_is_error (rec->result)) return;
+
+  if (! rec->copy)
+    serialize_iovec (file, rec->iov, rec->result, 0);
+  else
+    copy_serialize_iovec (file, rec->iov, rec->result,
+			  rec->copy, rec->args, 1, 0);
 }
 
 #define ATOMIC_RECORD_UPDATED	1

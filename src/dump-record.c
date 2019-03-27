@@ -4,6 +4,12 @@
 #include <common.h>
 #include <lib/printf.h>
 
+static uint8_t
+copy_skip (void *args, void *dst, const void *src, uint64_t size)
+{
+  return 0;
+}
+
 int32_t
 main (int32_t argc, const char **argv)
 {
@@ -106,6 +112,16 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_syscall_kill_record (file, &rec);
 	    printf ("  syscall.kill.out: %lu, ..result: %ld, ..in: %lu\n",
 		    rec.out, rec.result, rec.in);
+	  }
+	else if (magic == ERI_SYSCALL_READ_MAGIC
+		 /* identical byte array in the file */
+		 || magic == ERI_SYSCALL_READV_MAGIC)
+	  {
+	    struct eri_syscall_read_record rec = { .copy = copy_skip };
+	    eri_unserialize_syscall_read_record (file, &rec);
+	    printf ("  syscall.%s.result: %ld, ..in: %lu\n",
+		    magic == ERI_SYSCALL_READ_MAGIC ? "read" : "readv",
+		    rec.result, rec.in);
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));

@@ -686,6 +686,12 @@ struct eri_pollfd
   int16_t revents;
 };
 
+struct eri_iovec
+{
+  void *base;
+  uint64_t len;
+};
+
 #define ERI_SIG_DFL		((void *) 0)
 #define ERI_SIG_IGN		((void *) 1)
 
