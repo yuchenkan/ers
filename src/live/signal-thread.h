@@ -10,7 +10,7 @@ struct eri_mtpool;
 struct eri_lock;
 
 struct eri_live_rtld_args;
-struct eri_live_sigaction;
+struct eri_ver_sigaction;
 
 struct eri_helper;
 struct eri_live_thread;
@@ -74,7 +74,7 @@ void eri_live_signal_thread__sig_reset (
  */
 void eri_live_signal_thread__sig_prepare_sync (
 		struct eri_live_signal_thread *sig_th,
-		struct eri_siginfo *info, struct eri_live_sigaction *act);
+		struct eri_siginfo *info, struct eri_ver_sigaction *act);
 
 struct eri_live_signal_thread__sig_fd_read_args
 {

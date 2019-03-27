@@ -9,10 +9,9 @@
 #include <stdint.h>
 
 #include <compiler.h>
+#include <common.h>
 #include <lib/list.h>
 #include <lib/syscall-common.h>
-
-#include <live/common.h>
 
 struct eri_live_rtld_args;
 struct eri_siginfo;
@@ -29,7 +28,7 @@ struct eri_live_signal_thread
 
   struct eri_sigset sig_mask;
   struct eri_siginfo *sig_info;
-  struct eri_live_sigaction sig_act;
+  struct eri_ver_sigaction sig_act;
 
   uint64_t event_sig_restart;
   uint64_t event_sig_reset_restart;

@@ -197,12 +197,21 @@ eri_live_thread_recorder__rec_init (
 void
 eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *th_rec,
-			struct eri_signal_record *rec)
+			uint8_t async, void *rec)
 {
   submit_sync_async (th_rec);
 
-  eri_serialize_mark (th_rec->file, ERI_ASYNC_RECORD);
-  eri_serialize_signal_record (th_rec->file, rec);
+  if (async)
+    {
+      eri_serialize_mark (th_rec->file, ERI_ASYNC_RECORD);
+      eri_serialize_signal_record (th_rec->file, rec);
+    }
+  else
+    {
+      eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
+      eri_serialize_magic (th_rec->file, ERI_SIGNAL_MAGIC);
+      eri_serialize_ver_sigaction (th_rec->file, rec);
+    }
 }
 
 void
@@ -220,6 +229,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_uint64 (th_rec->file, (uint64_t) rec);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_RT_SIGACTION_GET_MAGIC)
+    eri_serialize_ver_sigaction (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)

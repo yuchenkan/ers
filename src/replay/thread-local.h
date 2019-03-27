@@ -33,7 +33,10 @@ struct thread_context
 eri_noreturn void main (struct thread_context *th_ctx);
 void entry (void);
 
-ERI_ENTRY_DECLARE_DO_COPY_USERS ()
+ERI_ENTRY_DECLARE_DO_COPY_USER ()
+
+uint8_t do_read_user (struct thread_context *th_ctx,
+		      const void *src, uint64_t size);
 
 void do_atomic_read_user (struct thread_context *th_ctx,
 			  uint64_t mem, uint8_t size);

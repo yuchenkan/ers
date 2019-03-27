@@ -3,11 +3,12 @@
 
 #include <stdint.h>
 
+#include <common.h>
+
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/malloc.h>
 
-#include <live/common.h>
 #include <live/thread.h>
 #include <live/tst/tst-util.h>
 
@@ -45,7 +46,7 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
     _info->code = 0;							\
     struct eri_sigframe *_frame						\
 	= eri_struct_of (_info, typeof (*_frame), info);		\
-    struct eri_live_sigaction _act = {					\
+    struct eri_ver_sigaction _act = {					\
       { handler, ERI_SA_SIGINFO | ERI_SA_RESTORER }			\
     };									\
     eri_live_thread__sig_handler (th, _frame, &_act);			\

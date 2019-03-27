@@ -42,19 +42,11 @@ void eri_mkdir (const char *path);
   ({ int32_t _s2 = sig;							\
      eri_sig_valid (_s2) && _s2 != ERI_SIGKILL && _s2 != ERI_SIGSTOP; })
 
-/* TODO: remove */
-struct eri_sig_act
+struct eri_ver_sigaction
 {
-  struct eri_lock lock;
   struct eri_sigaction act;
+  uint64_t ver;
 };
-
-void eri_sig_init_acts (struct eri_sig_act *sig_acts, eri_sig_handler_t hand);
-void eri_sig_get_act (struct eri_sig_act *sig_acts, int32_t sig,
-		      struct eri_sigaction *act);
-void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
-		      const struct eri_sigaction *act,
-		      struct eri_sigaction *old_act);
 
 #define ERI_SIG_ACT_TERM	((void *) 1)
 #define ERI_SIG_ACT_CORE	((void *) 2)
@@ -65,14 +57,13 @@ void eri_sig_set_act (struct eri_sig_act *sig_acts, int32_t sig,
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
      || _act == ERI_SIG_ACT_STOP; })
 
-void eri_sig_digest_act (const struct eri_siginfo *info,
-		const struct eri_sigset *mask, struct eri_sigaction *act);
-
 struct eri_sigframe *eri_sig_setup_user_frame (struct eri_sigframe *frame,
 		const struct eri_sigaction *act, struct eri_stack *stack,
 		const struct eri_sigset *mask, void *copy, void *args);
 
 eri_noreturn void eri_sig_act (struct eri_sigframe *frame, void *act);
+
+#define eri_th_ctx_sregs(th_ctx)	(&(th_ctx)->ctx.sregs)
 
 #define ERI_DEFINE_THREAD_UTILS(thread_type, thread_group_type) \
 static eri_unused uint8_t						\
@@ -127,13 +118,6 @@ uint8_t eri_common_syscall_rt_sigprocmask_get (
 void eri_common_syscall_rt_sigprocmask_set (
 		struct eri_entry_scratch_registers *sregs,
 		const struct eri_sigset *old_mask, void *copy, void *args);
-
-uint8_t eri_common_syscall_rt_sigaction_get (
-		struct eri_entry_scratch_registers *sregs,
-		struct eri_sigaction *act, void *copy, void *args);
-void eri_common_syscall_rt_sigaction_set (
-		struct eri_entry_scratch_registers *sregs,
-		const struct eri_sigaction *old_act, void *copy, void *args);
 
 void eri_common_syscall_sigaltstack (
 		struct eri_entry_scratch_registers *sregs, uint64_t rsp,
@@ -196,6 +180,15 @@ void eri_unserialize_stack (eri_file_t file, struct eri_stack *set);
 void eri_serialize_siginfo (eri_file_t file, const struct eri_siginfo *info);
 void eri_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info);
 
+void eri_serialize_sigaction (eri_file_t file,
+			      const struct eri_sigaction *act);
+void eri_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act);
+
+void eri_serialize_ver_sigaction (eri_file_t file,
+				  const struct eri_ver_sigaction *act);
+void eri_unserialize_ver_sigaction (eri_file_t file,
+				    struct eri_ver_sigaction *act);
+
 enum
 {
   ERI_INIT_RECORD,
@@ -246,13 +239,27 @@ void eri_serialize_init_map_record (eri_file_t file,
 void eri_unserialize_init_map_record (eri_file_t file,
 				      struct eri_init_map_record *rec);
 
+struct eri_signal_record
+{
+  uint64_t in;
+  struct eri_siginfo info;
+  struct eri_ver_sigaction act;
+};
+
+void eri_serialize_signal_record (eri_file_t file,
+				  const struct eri_signal_record *rec);
+void eri_unserialize_signal_record (eri_file_t file,
+				    struct eri_signal_record *rec);
+
 enum
 {
+  ERI_SIGNAL_MAGIC,
   ERI_SYSCALL_RESULT_MAGIC,
   ERI_SYSCALL_IN_MAGIC,
   ERI_SYSCALL_OUT_MAGIC,
   ERI_SYSCALL_CLONE_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_MAGIC,
+  ERI_SYSCALL_RT_SIGACTION_GET_MAGIC,
   ERI_SYSCALL_RT_SIGPENDING_MAGIC,
   ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC,
   ERI_SYSCALL_KILL_MAGIC,
@@ -266,18 +273,6 @@ enum
   eri_serialize_uint16 (file, magic)
 #define eri_unserialize_magic(file) \
   eri_unserialize_uint16 (file)
-
-struct eri_signal_record
-{
-  uint64_t in;
-  uint64_t act_ver;
-  struct eri_siginfo info;
-};
-
-void eri_serialize_signal_record (eri_file_t file,
-				  const struct eri_signal_record *rec);
-void eri_unserialize_signal_record (eri_file_t file,
-				    struct eri_signal_record *rec);
 
 struct eri_syscall_clone_record
 {

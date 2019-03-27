@@ -216,62 +216,73 @@ ERI_PASTE2 (.L, prefix, _extra_restore):				\
   ERI_ENTRY_FOREACH_EREG (_ERI_ENTRY_RESTORE_EREG, offset)		\
 ERI_PASTE2 (.L, prefix, _no_extra_restore):
 
-#define _ERI_ENTRY_DEFINE_COPY_USER_LABEL(pfx, op, sfx) \
+#define ERI_ENTRY_DEFINE_COPY_USER_LABEL(pfx, op, sfx) \
   ERI_PASTE2 (ERI_PASTE2 (.L, pfx, _copy_), op, sfx)
-#define _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS(pfx, op, access) \
-  ERI_MOV_LM (_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, op, _user),	\
-	      access(%rdi), %rax);					\
-  ERI_MOV_LM (_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, op, _user_fault),	\
+#define _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS(pfx, op) \
+  ERI_MOV_LM (ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, op, _user),	\
+	      THREAD_CONTEXT_ACCESS(%rdi), %rax);			\
+  ERI_MOV_LM (ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, op, _user_fault),	\
 	      THREAD_CONTEXT_ACCESS_FAULT(%rdi), %rax)
 
-#define _ERI_ENTRY_DEFINE_COPY_USER_RETURN(res, access) \
-  movq	$0, access(%rdi);						\
+#define _ERI_ENTRY_DEFINE_COPY_USER_RETURN(res) \
+  movq	$0, THREAD_CONTEXT_ACCESS(%rdi);				\
   movb	$res, %al;							\
   ret
 
-#define _ERI_ENTRY_DEFINE_COPY_USER(pfx, access) \
-ERI_FUNCTION (ERI_PASTE (pfx, _copy_from_user))				\
-  .cfi_startproc;							\
+#define ERI_ENTRY_COPY_USER(pfx, name, op, ...) \
+  _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS (pfx, name);			\
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, name, _loop):			\
+  op (__VA_ARGS__);							\
+  loop	ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, name, _loop);		\
 									\
-  _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS (pfx, load, access);		\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, load, _loop):			\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, load, _user):			\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (1);				\
+									\
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, name, _user_fault):		\
+  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (0)
+
+#define _ERI_ENTRY_COPY_LOAD_USER(pfx) \
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, load, _user):			\
   movb	(%rdx), %al;							\
   movb	%al, (%rsi);							\
   incq	%rdx;								\
-  incq	%rsi;								\
-  loop	_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, load, _loop);		\
-									\
-  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (1, access);			\
-									\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, load, _user_fault):		\
-  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (0, access);			\
-									\
+  incq	%rsi
+
+#define _ERI_ENTRY_COPY_STORE_USER(pfx) \
+  movb	(%rdx), %al;							\
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user):			\
+  movb	%al, (%rsi);							\
+  incq	%rdx;								\
+  incq	%rsi
+ 
+#define _ERI_ENTRY_DEFINE_COPY_USER(pfx) \
+ERI_FUNCTION (ERI_PASTE (pfx, _copy_from_user))				\
+  .cfi_startproc;							\
+  ERI_ENTRY_COPY_USER (pfx, load, _ERI_ENTRY_COPY_LOAD_USER, pfx);	\
   .cfi_endproc;								\
   ERI_END_FUNCTION (ERI_PASTE (pfx, _copy_from_user));			\
 									\
 ERI_FUNCTION (ERI_PASTE (pfx, _copy_to_user))				\
   .cfi_startproc;							\
-									\
-  _ERI_ENTRY_DEFINE_COPY_USER_SET_ACCESS (pfx, store, access);		\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _loop):			\
-  movb	(%rdx), %al;							\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user):			\
-  movb	%al, (%rsi);							\
-  incq	%rdx;								\
-  incq	%rsi;								\
-  loop	_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _loop);		\
-									\
-  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (1, access);			\
-									\
-_ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user_fault):		\
-  _ERI_ENTRY_DEFINE_COPY_USER_RETURN (0, access);			\
-									\
+  ERI_ENTRY_COPY_USER (pfx, store, _ERI_ENTRY_COPY_STORE_USER, pfx);	\
   .cfi_endproc;								\
   ERI_END_FUNCTION (ERI_PASTE (pfx, _copy_to_user))
 
-#define ERI_ENTRY_DEFINE_DO_COPY_USERS()				\
-  _ERI_ENTRY_DEFINE_COPY_USER (do, THREAD_CONTEXT_ACCESS);
+#define _ERI_ENTRY_COPY_READ_USER() \
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, read, _user):			\
+  movb	(%rsi), %al;							\
+  incq	%rsi
+
+#define _ERI_ENTRY_DEFINE_ACCESS_USER(pfx, access) \
+ERI_FUNCTION (ERI_PASTE (pfx, _read_user))				\
+  .cfi_startproc;							\
+  movq	%rdx, %rcx;							\
+  ERI_ENTRY_COPY_USER (pfx, access, read,				\
+		       _ERI_ENTRY_COPY_READ_USER);			\
+  .cfi_endproc;								\
+  ERI_END_FUNCTION (ERI_PASTE (pfx, _read_user))
+
+#define ERI_ENTRY_DEFINE_DO_COPY_USER() \
+  _ERI_ENTRY_DEFINE_COPY_USER (do);
 
 #ifndef __ASSEMBLER__
 
@@ -306,7 +317,7 @@ _ERI_ENTRY_DEFINE_COPY_USER_LABEL (pfx, store, _user_fault):		\
     _ctx->top = (uint64_t) (t);						\
   } while (0)
 
-#define ERI_ENTRY_DECLARE_DO_COPY_USERS() \
+#define ERI_ENTRY_DECLARE_DO_COPY_USER() \
 uint8_t do_copy_from_user (struct thread_context *th_ctx,		\
 			   void *dst, const void *src, uint64_t size);	\
 uint8_t do_copy_to_user (struct thread_context *th_ctx,			\

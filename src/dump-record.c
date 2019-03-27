@@ -62,14 +62,22 @@ main (int32_t argc, const char **argv)
 	printf ("ERI_ASYNC_RECORD\n");
 	struct eri_signal_record rec;
 	eri_unserialize_signal_record (file, &rec);
-	printf ("  in: %lu, act_ver: %lu, info.sig: %d, info.code: %d\n",
-		rec.in, rec.act_ver, rec.info.sig, rec.info.code);
+	printf ("  in: %lu, info.sig: %d", rec.in, rec.info.sig);
+	if (rec.info.sig)
+	  printf (", .code; %d, act.ver: %lu\n", rec.info.code, rec.act.ver);
+	else printf ("\n");
       }
     else if (mark == ERI_SYNC_RECORD)
       {
 	printf ("ERI_SYNC_RECORD\n");
 	uint16_t magic = eri_unserialize_magic (file);
-	if (magic == ERI_SYSCALL_RESULT_MAGIC)
+	if (magic == ERI_SIGNAL_MAGIC)
+	  {
+	    struct eri_ver_sigaction act;
+	    eri_unserialize_ver_sigaction (file, &act);
+	    printf ("  signal.act.ver: %lu\n", act.ver);
+	  }
+	else if (magic == ERI_SYSCALL_RESULT_MAGIC)
 	  printf ("  syscall.result: %ld\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_IN_MAGIC)
 	  printf ("  syscall.in: 0x%lx\n", eri_unserialize_uint64 (file));
@@ -88,6 +96,12 @@ main (int32_t argc, const char **argv)
 	else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
 	  printf ("  syscall.rt_sigaction: %lu\n",
 		  eri_unserialize_uint64 (file));
+	else if (magic == ERI_SYSCALL_RT_SIGACTION_GET_MAGIC)
+	  {
+	    struct eri_ver_sigaction act;
+	    eri_unserialize_ver_sigaction (file, &act);
+	    printf ("  syscall.rt_sigaction_get: %lu\n", act.ver);
+	  }
 	else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
 	  {
 	    struct eri_syscall_rt_sigpending_record rec;

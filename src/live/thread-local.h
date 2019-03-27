@@ -6,8 +6,8 @@
 #include <compiler.h>
 
 #include <entry.h>
+#include <common.h>
 #include <lib/syscall-common.h>
-#include <live/common.h>
 
 struct eri_siginfo;
 
@@ -25,7 +25,7 @@ struct thread_context
 
   struct eri_sigframe *sig_frame; /* Always zero in user code.  */
 
-  struct eri_live_sigaction sig_act;
+  struct eri_ver_sigaction sig_act;
   struct eri_sigframe *sig_act_frame;
 
   uint64_t access; /* Always zero in user code. */
@@ -55,7 +55,7 @@ struct thread_context
 eri_noreturn void main (void);
 void entry (void);
 
-ERI_ENTRY_DECLARE_DO_COPY_USERS ()
+ERI_ENTRY_DECLARE_DO_COPY_USER ()
 
 eri_noreturn void sig_to (void);
 eri_noreturn void sig_return (struct eri_sigframe *frame);

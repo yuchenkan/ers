@@ -49,7 +49,7 @@ struct thread_group
 
   int32_t pid;
 
-  struct eri_sig_act sig_acts[ERI_NSIG - 1];
+  // TODO act_vers
 
   struct atomic_table_slot *atomic_table;
   uint64_t atomic_table_size;
@@ -84,7 +84,19 @@ struct thread
   eri_aligned16 uint8_t stack[0];
 };
 
+#define th_ctx_sregs(th_ctx)	eri_th_ctx_sregs (th_ctx)
+#define th_sregs(th)		th_ctx_sregs ((th)->ctx)
+
 ERI_DEFINE_THREAD_UTILS (struct thread, struct thread_group)
+
+static uint8_t
+read_user (struct thread *th, const void *src, uint64_t size)
+{
+  if (! src) return 0;
+  if (internal_range (th->group, (uint64_t) src, size)) return 0;
+  return do_read_user (th->ctx, src, size);
+}
+
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);
@@ -105,7 +117,18 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->file_buf_size = rtld_args->file_buf_size;
 
   group->pid = eri_assert_syscall (getpid);
-  eri_sig_init_acts (group->sig_acts, sig_handler);
+  int32_t sig;
+  for (sig = 1; sig < ERI_NSIG; ++sig)
+    {
+      if (! eri_sig_catchable (sig)) continue;
+
+      struct eri_sigaction act = {
+	sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
+	eri_assert_sys_sigreturn
+      };
+      eri_sig_fill_set (&act.mask);
+      eri_assert_sys_sigaction (sig, &act, 0);
+    }
 
   eri_init_lock (&group->exit_lock, 0);
   group->thread_count = 1;
@@ -212,23 +235,23 @@ async_signal (struct thread *th)
 }
 
 static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
-				struct eri_ucontext *ctx);
+		struct eri_ucontext *ctx, struct eri_ver_sigaction *act);
 
 static eri_noreturn void
-raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
+raise (struct thread *th, struct eri_siginfo *info,
+       struct eri_ucontext *ctx, struct eri_ver_sigaction *act)
 {
   if (info->sig == 0) exit (th);
+  if (! eri_si_sync (info) || ! eri_sig_set_set (&th->sig_mask, info->sig))
+    { /* TODO: wait act->ver */ }
 
-  struct eri_sigaction act;
-  eri_sig_get_act (th->group->sig_acts, info->sig, &act);
-  eri_sig_digest_act (info, &th->sig_mask, &act);
+  void *a = act->act.act;
+  eri_assert (a && a != ERI_SIG_ACT_STOP);
 
-  eri_assert (act.act && act.act != ERI_SIG_ACT_STOP);
-
-  if (eri_sig_act_internal_act (act.act)) exit (th);
+  if (eri_sig_act_internal_act (a)) exit (th);
 
   struct eri_sigframe *user_frame = eri_sig_setup_user_frame (
-		eri_struct_of (ctx, struct eri_sigframe, ctx), &act,
+		eri_struct_of (ctx, struct eri_sigframe, ctx), &act->act,
 		&th->sig_alt_stack, &th->sig_mask, copy_to_user, th);
 
   if (! user_frame) exit (0);
@@ -236,16 +259,16 @@ raise (struct thread *th, struct eri_siginfo *info, struct eri_ucontext *ctx)
   if (next_record (th) == ERI_ASYNC_RECORD)
     {
       struct thread_context *th_ctx = th->ctx;
-      th_ctx->ext.ret = (uint64_t) act.act;
+      th_ctx->ext.ret = (uint64_t) a;
       th_ctx->ctx.rsp = (uint64_t) user_frame;
-      th_ctx->ctx.sregs.rax = 0;
-      th_ctx->ctx.sregs.rdi = user_frame->info.sig;
-      th_ctx->ctx.sregs.rsi = (uint64_t) &user_frame->info;
-      th_ctx->ctx.sregs.rdx = (uint64_t) &user_frame->ctx;
+      th_sregs (th)->rax = 0;
+      th_sregs (th)->rdi = user_frame->info.sig;
+      th_sregs (th)->rsi = (uint64_t) &user_frame->info;
+      th_sregs (th)->rdx = (uint64_t) &user_frame->ctx;
       async_signal (th);
     }
 
-  eri_sig_act (user_frame, act.act);
+  eri_sig_act (user_frame, a);
 }
 
 static eri_noreturn void raise_async (struct thread *th,
@@ -256,15 +279,15 @@ raise_async (struct thread *th, struct eri_ucontext *ctx)
 {
   struct eri_signal_record rec;
   eri_unserialize_signal_record (th->file, &rec);
-  /* TODO: rec.io */
-  raise (th, &rec.info, ctx);
+  // io_in (th, rec.in); TODO
+  raise (th, &rec.info, ctx, &rec.act);
 }
 
 static void
 set_ctx_from_th_ctx (struct eri_ucontext *ctx,
 		     const struct thread_context *th_ctx, uint8_t call)
 {
-#define SET_SREG(creg, reg)	ctx->mctx.reg = th_ctx->ctx.sregs.reg;
+#define SET_SREG(creg, reg)	ctx->mctx.reg = th_ctx_sregs (th_ctx)->reg;
   ERI_ENTRY_FOREACH_SREG (SET_SREG)
 #define SET_EREG(creg, reg)	ctx->mctx.reg = th_ctx->eregs.reg;
   ERI_ENTRY_FOREACH_EREG (SET_EREG)
@@ -337,7 +360,10 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   eri_assert (! internal (th->group, ctx->mctx.rip));
 
-  raise (th, info, ctx);
+  eri_assert (eri_unserialize_magic (th->file) == ERI_SIGNAL_MAGIC);
+  struct eri_ver_sigaction act;
+  eri_unserialize_ver_sigaction (th->file, &act);
+  raise (th, info, ctx, &act);
 }
 
 eri_noreturn void
@@ -353,7 +379,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 
   th_ctx->ext.rbx = 0;
 #define ZERO_REG(creg, reg, regs)	(regs)->reg = 0;
-  ERI_ENTRY_FOREACH_SREG (ZERO_REG, &th_ctx->ctx.sregs)
+  ERI_ENTRY_FOREACH_SREG (ZERO_REG, th_sregs (th))
   ERI_ENTRY_FOREACH_EREG (ZERO_REG, &th_ctx->eregs)
 
   th->tid = group->pid;
@@ -391,7 +417,7 @@ start_main (struct thread *th)
 
   th_ctx->ext.ret = rec.rip;
   th_ctx->ctx.rsp = rec.rsp;
-  th_ctx->ctx.sregs.rdx = rec.rdx;
+  th_sregs (th)->rdx = rec.rdx;
 
   th->sig_mask = rec.sig_mask;
   th->sig_alt_stack = rec.sig_alt_stack;
@@ -438,7 +464,7 @@ start_main (struct thread *th)
 static void
 swallow_single_step (struct thread_context *th_ctx)
 {
-  if (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+  if (th_ctx_sregs (th_ctx)->rflags & ERI_RFLAGS_TRACE_MASK)
     th_ctx->swallow_single_step = 1;
 }
 
@@ -491,7 +517,11 @@ atomic_update (struct thread_group *group, uint64_t mem, uint8_t size)
 static void								\
 ERI_PASTE (syscall_, name) (struct thread *th)
 
-#define SYSCALL_TO_IMPL(name)	DEFINE_SYSCALL (name) { }
+#define SYSCALL_RETURN(sregs, res) \
+  do { (sregs)->rax = res; return; } while (0)
+  
+#define SYSCALL_TO_IMPL(name) \
+DEFINE_SYSCALL (name) { SYSCALL_RETURN (th_sregs (th), ERI_ENOSYS); }
 
 DEFINE_SYSCALL (clone)
 {
@@ -501,15 +531,15 @@ DEFINE_SYSCALL (clone)
 
   struct thread_context *th_ctx = th->ctx;
 
-  uint64_t result = th_ctx->ctx.sregs.rax = rec.result;
+  uint64_t result = th_sregs (th)->rax = rec.result;
   if (eri_syscall_is_error (result)) return;
 
   eri_atomic_inc (&th->group->thread_count);
   eri_barrier ();
 
-  int32_t flags = th_ctx->ctx.sregs.rdi;
-  int32_t *user_ptid = (void *) th_ctx->ctx.sregs.rdx;
-  int32_t *user_ctid = (void *) th_ctx->ctx.sregs.r10;
+  int32_t flags = th_sregs (th)->rdi;
+  int32_t *user_ptid = (void *) th_sregs (th)->rdx;
+  int32_t *user_ctid = (void *) th_sregs (th)->r10;
   if (flags & ERI_CLONE_PARENT_SETTID)
     copy_to_user (th, user_ptid, &result, sizeof *user_ptid);
   if (flags & ERI_CLONE_CHILD_SETTID)
@@ -521,9 +551,9 @@ DEFINE_SYSCALL (clone)
   cth_ctx->ext.op = th_ctx->ext.op;
   cth_ctx->ext.rbx = th_ctx->ext.rbx;
   cth_ctx->ext.ret = th_ctx->ext.ret;
-  cth_ctx->ctx.rsp = th_ctx->ctx.sregs.rsi;
-  cth_ctx->ctx.sregs = th_ctx->ctx.sregs;
-  cth_ctx->ctx.sregs.rax = 0;
+  cth_ctx->ctx.rsp = th_sregs (th)->rsi;
+  *th_sregs (cth) = *th_sregs (th);
+  th_sregs (cth)->rax = 0;
   cth_ctx->eregs = th_ctx->eregs;
 
   *(uint64_t *) (cth_ctx->ctx.top - 8) = *(uint64_t *) (th_ctx->ctx.top - 8);
@@ -536,7 +566,7 @@ DEFINE_SYSCALL (clone)
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
-  void *new_tls = (void *) th_ctx->ctx.sregs.r8;
+  void *new_tls = (void *) th_sregs (th)->r8;
   struct eri_sys_clone_args args = {
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
     | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD
@@ -561,8 +591,8 @@ SYSCALL_TO_IMPL (setns)
 
 DEFINE_SYSCALL (set_tid_address)
 {
-  th->clear_user_tid = (void *) th->ctx->ctx.sregs.rdi;
-  th->ctx->ctx.sregs.rax = 0;
+  th->clear_user_tid = (void *) th_sregs (th)->rdi;
+  th_sregs (th)->rax = 0;
 }
 
 static uint8_t
@@ -615,8 +645,7 @@ syscall_do_exit (struct thread *th)
 	}
     }
   eri_assert (eri_unserialize_magic (th->file) == ERI_SYSCALL_OUT_MAGIC);
-  uint64_t out = eri_unserialize_uint64 (th->file);
-  (void) out; // TODO
+  // io_out (th, eri_unserialize_uint64 (th->file)); TODO
   exit (th);
 }
 
@@ -644,8 +673,8 @@ SYSCALL_TO_IMPL (getgid)
 SYSCALL_TO_IMPL (geteuid)
 SYSCALL_TO_IMPL (getegid)
 
-DEFINE_SYSCALL (gettid) { th->ctx->ctx.sregs.rax = th->user_tid; }
-DEFINE_SYSCALL (getpid) { th->ctx->ctx.sregs.rax = th->group->user_pid; }
+DEFINE_SYSCALL (gettid) { th_sregs (th)->rax = th->user_tid; }
+DEFINE_SYSCALL (getpid) { th_sregs (th)->rax = th->group->user_pid; }
 
 DEFINE_SYSCALL (getppid)
 {
@@ -718,7 +747,7 @@ SYSCALL_TO_IMPL (acct)
 SYSCALL_TO_IMPL (setpriority)
 SYSCALL_TO_IMPL (getpriority)
 
-DEFINE_SYSCALL (sched_yield) { th->ctx->ctx.sregs.rax = 0;}
+DEFINE_SYSCALL (sched_yield) { th_sregs (th)->rax = 0;}
 
 SYSCALL_TO_IMPL (sched_setparam)
 SYSCALL_TO_IMPL (sched_getparam)
@@ -737,7 +766,7 @@ SYSCALL_TO_IMPL (ioprio_get)
 
 DEFINE_SYSCALL (rt_sigprocmask)
 {
-  struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
+  struct eri_entry_scratch_registers *sregs = th_sregs (th);
   struct eri_sigset old_mask = th->sig_mask;
   if (! eri_common_syscall_rt_sigprocmask_get (
 		sregs, &old_mask, &th->sig_mask, copy_from_user, th))
@@ -749,35 +778,46 @@ DEFINE_SYSCALL (rt_sigprocmask)
 
 DEFINE_SYSCALL (rt_sigaction)
 {
-  struct eri_entry_scratch_registers *sregs = &th->ctx->ctx.sregs;
-  struct eri_sigaction act;
-  if (! eri_common_syscall_rt_sigaction_get (
-				sregs, &act, copy_from_user, th))
-    return;
+  struct eri_entry_scratch_registers *sregs = th_sregs (th);
+  int32_t sig = sregs->rdi;
+  const struct eri_sigaction *user_act = (void *) sregs->rsi;
+  struct eri_sigaction *user_old_act = (void *) sregs->rdx;
 
-  uint8_t user_act = !! sregs->rsi;
-  uint8_t user_old_act = !! sregs->rdx;
-  if (! user_act && ! user_old_act)
+  if (! eri_sig_catchable (sig)) SYSCALL_RETURN (sregs, ERI_EINVAL);
+
+  if (! user_act && ! user_old_act) SYSCALL_RETURN (sregs, 0);
+
+  if (! read_user (th, user_act, sizeof *user_act))
+    SYSCALL_RETURN (sregs, ERI_EFAULT);
+
+  if (user_old_act)
     {
-      sregs->rax = 0;
-      return;
+      eri_assert (eri_unserialize_magic (th->file)
+				== ERI_SYSCALL_RT_SIGACTION_GET_MAGIC);
+      struct eri_ver_sigaction act;
+      eri_unserialize_ver_sigaction (th->file, &act);
+
+      if (user_act) { /* TODO: update act_ver */ }
+
+      if (! copy_to_user (th, user_old_act, &act, sizeof *user_old_act))
+	SYSCALL_RETURN (sregs, ERI_EFAULT);
+
+      if (! user_act) { /* TODO: wait act_ver */ }
+      SYSCALL_RETURN (sregs, 0);
     }
 
-  int32_t sig = sregs->rdi;
-  struct eri_sig_act *sig_acts = th->group->sig_acts;
-  struct eri_sigaction old_act;
-  if (user_act)
-    eri_sig_set_act (sig_acts, sig, &act, user_old_act ? &old_act : 0);
-  else eri_sig_get_act (sig_acts, sig, &old_act);
+  eri_assert (eri_unserialize_magic (th->file)
+			    == ERI_SYSCALL_RT_SIGACTION_MAGIC);
+  uint64_t eri_unused act_ver = eri_unserialize_uint64 (th->file);
+  // TODO: update act_ver
 
-  eri_common_syscall_rt_sigaction_set (sregs, &old_act, copy_to_user, th);
+  sregs->rax = 0;
 }
 
 DEFINE_SYSCALL (sigaltstack)
 {
-  struct thread_context *th_ctx = th->ctx;
   eri_common_syscall_sigaltstack (
-		&th_ctx->ctx.sregs, th_ctx->ctx.rsp, &th->sig_alt_stack,
+		th_sregs (th), th->ctx->ctx.rsp, &th->sig_alt_stack,
 		copy_from_user, copy_to_user, th);
 }
 
@@ -800,7 +840,7 @@ DEFINE_SYSCALL (rt_sigpending)
   /* TODO */
 }
 
-DEFINE_SYSCALL (pause) { th->ctx->ctx.sregs.rax = ERI_EINTR; }
+DEFINE_SYSCALL (pause) { th_sregs (th)->rax = ERI_EINTR; }
 
 DEFINE_SYSCALL (rt_sigsuspend)
 {
@@ -1099,13 +1139,13 @@ syscall (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
 
-  int32_t nr = th_ctx->ctx.sregs.rax;
+  int32_t nr = th_sregs (th)->rax;
 
   th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
 
-  th_ctx->ctx.sregs.rax = ERI_ENOSYS;
-  th_ctx->ctx.sregs.rcx = th_ctx->ext.ret;
-  th_ctx->ctx.sregs.r11 = th_ctx->ctx.sregs.rflags;
+  th_sregs (th)->rax = ERI_ENOSYS;
+  th_sregs (th)->rcx = th_ctx->ext.ret;
+  th_sregs (th)->r11 = th_sregs (th)->rflags;
 
 #define SYSCALL(name)	ERI_PASTE (syscall_, name) (th)
   ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
@@ -1130,11 +1170,11 @@ sync_async (struct thread *th)
   if (next_record (th) != ERI_ASYNC_RECORD) return;
 
   th_ctx->sync_async_trace
-		= (th_ctx->ctx.sregs.rflags & ERI_RFLAGS_TRACE_MASK)
+		= (th_sregs (th)->rflags & ERI_RFLAGS_TRACE_MASK)
 			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
   th_ctx->sync_async_trace_steps = steps;
   /* XXX: this can be slow with large repeats... */
-  th_ctx->ctx.sregs.rflags |= ERI_RFLAGS_TRACE_MASK;
+  th_sregs (th)->rflags |= ERI_RFLAGS_TRACE_MASK;
 }
 
 static void
@@ -1185,7 +1225,7 @@ atomic (struct thread *th)
 	{
 	  eri_assert (updated);
 	  (code == _ERS_OP_ATOMIC_INC ? atomic_inc : atomic_dec) (size, mem,
-						&th_ctx->ctx.sregs.rflags);
+						&th_sregs (th)->rflags);
 	  atomic_update (th->group, mem, size);
 	}
 
@@ -1197,9 +1237,9 @@ atomic (struct thread *th)
 
       if (code == _ERS_OP_ATOMIC_CMPXCHG)
 	{
-	  atomic_cmpxchg_regs (size, &th_ctx->ctx.sregs.rax,
-			       &th_ctx->ctx.sregs.rflags, old_val);
-	  if ((th_ctx->ctx.sregs.rflags & ERI_RFLAGS_ZERO_MASK) && updated)
+	  atomic_cmpxchg_regs (size, &th_sregs (th)->rax,
+			       &th_sregs (th)->rflags, old_val);
+	  if ((th_sregs (th)->rflags & ERI_RFLAGS_ZERO_MASK) && updated)
 	    {
 	      atomic_store (mem, size, val);
 	      atomic_update (th->group, mem, size);

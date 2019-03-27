@@ -7,7 +7,6 @@
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 
-#include <live/common.h>
 #include <live/rtld.h>
 #include <live/thread.h>
 #include <live/signal-thread.h>
@@ -25,7 +24,7 @@ struct watch
 struct sig_act
 {
   struct eri_lock lock;
-  struct eri_live_sigaction act;
+  struct eri_ver_sigaction act;
 };
 
 struct signal_thread_group
@@ -101,7 +100,7 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
 
 static void
 sig_get_act (struct signal_thread_group *group, int32_t sig,
-	     struct eri_live_sigaction *act)
+	     struct eri_ver_sigaction *act)
 {
   struct sig_act *sig_act = group->sig_acts + sig - 1;
   eri_assert_lock (&sig_act->lock);
@@ -144,8 +143,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   sig_get_act (sig_th->group, info->sig, &sig_th->sig_act);
 
-  if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act.act))
-    return;
+  if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act)) return;
 
   eri_debug ("sig = %u, frame = %lx, code = %u\n",
              info->sig, frame, info->code);
@@ -905,7 +903,7 @@ eri_live_signal_thread__sig_action (struct eri_live_signal_thread *sig_th,
 {
   if (! args->act)
     {
-      struct eri_live_sigaction act;
+      struct eri_ver_sigaction act;
       sig_get_act (sig_th->group, args->sig, &act);
       *args->old_act = act.act;
       args->ver = act.ver;
@@ -961,7 +959,7 @@ eri_live_signal_thread__sig_reset (
 void
 eri_live_signal_thread__sig_prepare_sync (
 			struct eri_live_signal_thread *sig_th,
-			struct eri_siginfo *info, struct eri_live_sigaction *act)
+			struct eri_siginfo *info, struct eri_ver_sigaction *act)
 {
   if (eri_live_signal_thread__sig_mask_all (sig_th))
     {

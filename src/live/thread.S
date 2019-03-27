@@ -288,7 +288,7 @@ ATOMIC_LABEL (name):							\
 
   ERI_END_FUNCTION (entry)
 
-ERI_ENTRY_DEFINE_DO_COPY_USERS ()
+ERI_ENTRY_DEFINE_DO_COPY_USER ()
 
 ERI_FUNCTION (sig_to)
   popq	%rax	/* ctx */
