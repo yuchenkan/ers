@@ -146,15 +146,11 @@ struct eri_common_syscall_rt_sigreturn_args
 uint8_t eri_common_syscall_rt_sigreturn (
 		struct eri_common_syscall_rt_sigreturn_args *args);
 
-#define eri_common_syscall_valid_rt_sigpending(group, sregs) \
+#define eri_common_syscall_valid_rt_sigpending(sregs) \
   ({ struct eri_entry_scratch_registers *_sregs = sregs;		\
-     typeof (group) _group = group;					\
-     uint64_t _err = 0;							\
-     if (_sregs->rsi > ERI_SIG_SETSIZE)	_err = ERI_EINVAL;		\
-     else if (internal_range (_group, _sregs->rdi, ERI_SIG_SETSIZE))	\
-       _err = ERI_EFAULT;						\
-     if (_err) _sregs->rax = _err;					\
-     ! _err; })
+     uint64_t _e = 0;							\
+     if (_sregs->rsi > ERI_SIG_SETSIZE)	_e = _sregs->rax = ERI_EINVAL;	\
+     ! _e; })
 
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)

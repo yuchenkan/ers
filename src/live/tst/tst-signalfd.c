@@ -57,11 +57,8 @@ tst_live_start (void)
   eri_sig_add_set (&mask, ERI_SIGINT);
 
   eri_debug ("einval\n");
-  /* TODO */
-#if 0
   eri_assert (tst_syscall (signalfd4, 1, &mask,
 			   ERI_SIG_SETSIZE, 0) == ERI_EINVAL);
-#endif
 
   eri_debug ("new fd\n");
   int32_t fd = tst_assert_syscall (signalfd4, -1, &mask,

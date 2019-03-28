@@ -915,7 +915,7 @@ DEFINE_SYSCALL (rt_sigreturn)
 DEFINE_SYSCALL (rt_sigpending)
 {
   struct eri_entry_scratch_registers *sregs = th_sregs (th);
-  if (! eri_common_syscall_valid_rt_sigpending (th->group, sregs))
+  if (! eri_common_syscall_valid_rt_sigpending (sregs))
     return;
 
   assert_magic (th, ERI_SYSCALL_RT_SIGPENDING_MAGIC);
@@ -925,7 +925,6 @@ DEFINE_SYSCALL (rt_sigpending)
   if (! eri_syscall_is_error (rec.result))
     {
       io_in (th, rec.in);
-      /* XXX: won't core if is fully determined */
       *(struct eri_sigset *) sregs->rdi = rec.set;
     }
   sregs->rax = rec.result;
@@ -1113,6 +1112,7 @@ syscall_do_read (struct thread *th)
 {
   struct eri_entry_scratch_registers *sregs = th_sregs (th);
   int32_t nr = sregs->rax;
+  /* XXX: detect memory corruption in analysis */
   if (nr == __NR_read || nr == __NR_pread64)
     {
       assert_magic (th, ERI_SYSCALL_READ_MAGIC);

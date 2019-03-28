@@ -545,6 +545,7 @@
 #define ERI_O_TRUNC		01000
 #define ERI_O_NONBLOCK		04000
 #define ERI_O_DIRECT		040000
+#define ERI_O_DIRECTORY		0200000
 #define ERI_O_CLOEXEC		02000000
 
 #define ERI_SFD_CLOEXEC		ERI_O_CLOEXEC
@@ -680,6 +681,13 @@ struct eri_stat
   struct eri_timespec ctime;
 };
 #endif
+
+struct eri_dirent {
+  uint64_t ino;
+  int64_t off;
+  uint16_t reclen;
+  char name[0];
+};
 
 struct eri_pollfd
 {
