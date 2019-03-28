@@ -7,6 +7,7 @@
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 
+#include <live/common.h>
 #include <live/rtld.h>
 #include <live/thread.h>
 #include <live/signal-thread.h>
@@ -46,6 +47,8 @@ struct signal_thread_group
 
   struct watch watch;
   struct eri_helper *helper;
+
+  uint64_t io;
 
   struct eri_live_thread_group *thread_group;
 };
@@ -166,7 +169,9 @@ create_group (struct eri_live_rtld_args *rtld_args)
   struct signal_thread_group *group
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
-  group->thread_group = eri_live_thread__create_group (pool, rtld_args);
+  group->io = 0;
+  struct eri_live_thread__create_group_args args = { rtld_args, &group->io };
+  group->thread_group = eri_live_thread__create_group (pool, &args);
   return group;
 }
 
@@ -647,7 +652,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   struct eri_live_signal_thread__clone_args *args = event->args;
 
-  args->out = eri_live_thread__io_out (sig_th->th);
+  args->out = eri_live_out (&group->io);
   struct eri_live_signal_thread *sig_cth = event->sig_cth = create (group);
 
   init_event (sig_cth, &sig_th->sig_mask);
@@ -991,18 +996,18 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
 	     struct sig_fd_read_event *event)
 {
   struct eri_live_signal_thread__sig_fd_read_args *args = event->args;
-  int32_t fd = args->fd;
-  int32_t nr = args->nr;
-  const uint64_t *a = args->a;
-  if (args->flags & ERI_SFD_NONBLOCK)
+  struct eri_sys_syscall_args *sys_args = args->args;
+
+  eri_sys_syscall (sys_args);
+  if ((args->flags & ERI_SFD_NONBLOCK) || sys_args->result != ERI_EAGAIN)
     {
       event->done = 1;
-      args->result = eri_syscall_nr (nr, fd, a[0], a[1], a[2], a[3], a[4]);
       return;
     }
 
   if (! sig_mask_all_async (sig_th)) return;
 
+  int32_t fd = sys_args->a[0];
   struct eri_pollfd fds[] = {
     { fd, ERI_POLLIN },
     { sig_th->event_pipe[0], ERI_POLLIN }
@@ -1017,21 +1022,21 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
       eri_sig_union_set (&mask, args->mask);
       eri_assert_unlock (args->mask_lock);
 
-      args->result = eri_syscall (ppoll, fds, 2, 0, &mask, ERI_SIG_SETSIZE);
-      if (args->result != ERI_EINTR)
+      sys_args->result = eri_syscall (ppoll, fds, 2, 0, &mask, ERI_SIG_SETSIZE);
+      if (sys_args->result != ERI_EINTR)
 	{
-	  eri_assert (! eri_syscall_is_error (args->result));
+	  eri_assert (! eri_syscall_is_error (sys_args->result));
 
-	  if (fds[1].revents & ERI_POLLIN)
-	    args->result = ERI_EINTR;
+	  if (fds[1].revents & ERI_POLLIN) sys_args->result = ERI_EINTR;
 	}
 
-      if (args->result != ERI_EINTR)
-	args->result = eri_syscall_nr (nr, fd, a[0], a[1], a[2], a[3], a[4]);
-    }
-  while (args->result == ERI_EAGAIN);
+      if (sys_args->result == ERI_EINTR) break;
 
-  if (args->result != ERI_EINTR) restore_sig_mask (sig_th);
+      eri_sys_syscall (sys_args);
+    }
+  while (sys_args->result == ERI_EAGAIN);
+
+  if (sys_args->result != ERI_EINTR) restore_sig_mask (sig_th);
 }
 
 uint8_t

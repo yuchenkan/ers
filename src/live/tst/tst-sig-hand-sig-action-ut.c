@@ -143,8 +143,11 @@ tst_main (void)
     .map_end = (uint64_t) tst_live_map_end
   };
 
+  uint64_t io;
+  struct eri_live_thread__create_group_args args = { &rtld_args, &io };
+
   struct eri_live_thread_group *group
-	= eri_live_thread__create_group (&sig_th.pool, &rtld_args);
+	= eri_live_thread__create_group (&sig_th.pool, &args);
 
   struct eri_sigaction act = {
     step_hand, ERI_SA_SIGINFO | ERI_SA_ONSTACK | ERI_SA_RESTORER,

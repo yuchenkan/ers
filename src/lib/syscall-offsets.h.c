@@ -10,6 +10,10 @@
 #define SIGFRAME_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_SIGFRAME_, name, struct eri_sigframe, member)
 
+#define SYS_SYSCALL_ARGS_OFFSET(name, member) \
+  ERI_DECLARE_OFFSET (ERI_SYS_SYSCALL_ARGS_, name,			\
+		      struct eri_sys_syscall_args, member)
+
 void
 declare (void)
 {
@@ -42,4 +46,13 @@ declare (void)
   SIGFRAME_OFFSET (CTX_MCTX_RFLAGS, ctx.mctx.rflags);
 
   SIGFRAME_OFFSET (CTX_MCTX_RIP, ctx.mctx.rip);
+
+  SYS_SYSCALL_ARGS_OFFSET (NR, nr);
+  SYS_SYSCALL_ARGS_OFFSET (A0, a[0]);
+  SYS_SYSCALL_ARGS_OFFSET (A1, a[1]);
+  SYS_SYSCALL_ARGS_OFFSET (A2, a[2]);
+  SYS_SYSCALL_ARGS_OFFSET (A3, a[3]);
+  SYS_SYSCALL_ARGS_OFFSET (A4, a[4]);
+  SYS_SYSCALL_ARGS_OFFSET (A5, a[5]);
+  SYS_SYSCALL_ARGS_OFFSET (RESULT, result);
 }

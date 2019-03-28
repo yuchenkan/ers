@@ -78,15 +78,11 @@ void eri_live_signal_thread__sig_prepare_sync (
 
 struct eri_live_signal_thread__sig_fd_read_args
 {
-  int32_t fd;
-  int32_t nr;
-  const uint64_t *a;
+  struct eri_sys_syscall_args *args;
 
+  int32_t flags;
   struct eri_lock *mask_lock;
   const struct eri_sigset *mask;
-  int32_t flags;
-
-  uint64_t result;
 };
 
 uint8_t eri_live_signal_thread__sig_fd_read (

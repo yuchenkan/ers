@@ -17,6 +17,10 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
   uint64_t alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
   uint64_t map_end = eri_round_up (alloc_end, page_size);
 
+  /*
+   * guard page is required for read syscall to cause efault in live
+   * when reaching internal range.
+   */
   uint64_t base = eri_assert_syscall (mmap, map_start - page_size,
 		map_end - map_start + buf_size + 3 * page_size, 0,
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0)

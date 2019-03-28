@@ -703,36 +703,17 @@ eri_unserialize_syscall_read_record (eri_file_t file,
 
 static void
 serialize_iovec (eri_file_t file, struct eri_iovec *iov, uint64_t bytes,
-		 uint8_t serial)
+		 copy_t copy, void *args, uint8_t serial)
 {
-  uint64_t cur;
-  uint8_t i = 0;
-  for (cur = 0; cur < bytes; cur += iov[i++].len)
-    {
-      uint64_t cur_size = eri_min (iov[i].len, bytes - cur);
-      if (serial)
-	eri_serialize_uint8_array (file, iov[i].base, cur_size);
-      else
-	eri_unserialize_uint8_array (file, iov[i].base, cur_size);
-    }
-}
-
-static uint8_t
-copy_serialize_iovec (eri_file_t file, struct eri_iovec *iov, uint64_t bytes,
-		      copy_t copy, void *args, uint8_t ok, uint8_t serial)
-{
+  uint8_t ok = 1;
   uint64_t cur, cur_len;
   uint8_t i = 0;
   for (cur = 0; cur < bytes; cur += cur_len)
     {
-      struct eri_iovec cur_iov;
-      if (ok) ok = copy (args, &cur_iov, iov + i++, sizeof cur_iov);
-
-      cur_len = ok ? eri_min (cur_iov.len, bytes - cur) : bytes - cur;
-      ok = copy_serialize_uint8_array (file, cur_iov.base,
+      cur_len = ok ? eri_min (iov[i].len, bytes - cur) : bytes - cur;
+      ok = copy_serialize_uint8_array (file, iov[i].base,
 				       cur_len, copy, args, ok, serial);
     }
-  return ok;
 }
 
 void
@@ -743,11 +724,7 @@ eri_serialize_syscall_readv_record (eri_file_t file,
   eri_serialize_uint64 (file, rec->in);
   if (eri_syscall_is_error (rec->result)) return;
 
-  if (! rec->copy)
-    serialize_iovec (file, rec->iov, rec->result, 1);
-  else
-    copy_serialize_iovec (file, rec->iov, rec->result,
-			  rec->copy, rec->args, 1, 1);
+  serialize_iovec (file, rec->iov, rec->result, rec->copy, rec->args, 1);
 }
 
 void
@@ -758,11 +735,7 @@ eri_unserialize_syscall_readv_record (eri_file_t file,
   rec->in = eri_unserialize_uint64 (file);
   if (eri_syscall_is_error (rec->result)) return;
 
-  if (! rec->copy)
-    serialize_iovec (file, rec->iov, rec->result, 0);
-  else
-    copy_serialize_iovec (file, rec->iov, rec->result,
-			  rec->copy, rec->args, 1, 0);
+  serialize_iovec (file, rec->iov, rec->result, rec->copy, rec->args, 0);
 }
 
 #define ATOMIC_RECORD_UPDATED	1

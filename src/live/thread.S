@@ -310,7 +310,10 @@ ERI_FUNCTION (sig_return)
 ERI_FUNCTION (syscall_intr_syscall)
 
   pushq	%rbx
+  pushq	%rbp
+
   movq	%rdi, %rbx
+  movq	%rsi, %rbp
 
   ERI_MOV_LM (.lsyscall_intr, TC (SYSCALL_SIG_INTR)(%rbx), %rax)
 
@@ -320,18 +323,19 @@ ERI_FUNCTION (syscall_intr_syscall)
   jmp	.lsyscall_intr
 
 .lsyscall_intr_syscall:
-  movq	TC (CTX_SREGS_RAX)(%rbx), %rax
+  movq	ERI_SYS_SYSCALL_ARGS_NR(%rbp), %rax
 
-  movq	TC (CTX_SREGS_RDI)(%rbx), %rdi
-  movq	TC (CTX_SREGS_RSI)(%rbx), %rsi
-  movq	TC (CTX_SREGS_RDX)(%rbx), %rdx
-  movq	TC (CTX_SREGS_R10)(%rbx), %r10
-  movq	TC (CTX_SREGS_R8)(%rbx), %r8
-  movq	TC (CTX_SREGS_R9)(%rbx), %r9
+  movq	ERI_SYS_SYSCALL_ARGS_A0(%rbp), %rdi
+  movq	ERI_SYS_SYSCALL_ARGS_A1(%rbp), %rsi
+  movq	ERI_SYS_SYSCALL_ARGS_A2(%rbp), %rdx
+  movq	ERI_SYS_SYSCALL_ARGS_A3(%rbp), %r10
+  movq	ERI_SYS_SYSCALL_ARGS_A4(%rbp), %r8
+  movq	ERI_SYS_SYSCALL_ARGS_A5(%rbp), %r9
   syscall
 .lsyscall_intr:
   movq	$0, TC (SYSCALL_SIG_INTR)(%rbx)
-  movq	%rax, TC (CTX_SREGS_RAX)(%rbx)
+  movq	%rax, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
+  popq	%rbp
   popq	%rbx
   ret
 

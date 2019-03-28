@@ -60,7 +60,8 @@ ERI_ENTRY_DECLARE_DO_COPY_USER ()
 eri_noreturn void sig_to (void);
 eri_noreturn void sig_return (struct eri_sigframe *frame);
 
-void syscall_intr_syscall (struct thread_context *th_ctx);
+uint64_t syscall_intr_syscall (struct thread_context *th_ctx,
+			       struct eri_sys_syscall_args *args);
 
 #define SIG_HANDS(p) \
   ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (p)					\

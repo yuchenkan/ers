@@ -8,6 +8,7 @@ struct eri_sigaction;
 struct eri_siginfo;
 struct eri_ucontext;
 struct eri_sigframe;
+struct eri_rwlock;
 
 struct eri_live_rtld_args;
 struct eri_ver_sigaction;
@@ -18,9 +19,15 @@ struct eri_live_signal_thread;
 struct eri_live_thread;
 struct eri_live_thread_group;
 
+struct eri_live_thread__create_group_args
+{
+  struct eri_live_rtld_args *rtld_args;
+  uint64_t *io;
+};
+
 struct eri_live_thread_group *eri_live_thread__create_group (
 			struct eri_mtpool *pool,
-			struct eri_live_rtld_args *rtld_args);
+			struct eri_live_thread__create_group_args *args);
 void eri_live_thread__destroy_group (struct eri_live_thread_group *group);
 
 uint8_t eri_live_thread__sig_digest_act (struct eri_live_thread *th,
@@ -45,8 +52,6 @@ void eri_live_thread__join (struct eri_live_thread *th);
 
 void eri_live_thread__sig_handler (struct eri_live_thread *th,
 		struct eri_sigframe *frame, struct eri_ver_sigaction *act);
-
-uint64_t eri_live_thread__io_out (struct eri_live_thread *th);
 
 int32_t eri_live_thread__get_pid (const struct eri_live_thread *th);
 int32_t eri_live_thread__get_tid (const struct eri_live_thread *th);

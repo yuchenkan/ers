@@ -6,7 +6,7 @@
 struct eri_lock
 {
   uint32_t wait;
-  int32_t lock;
+  uint32_t lock;
 };
 
 #define ERI_INIT_LOCK(locked)	{ 0, locked }

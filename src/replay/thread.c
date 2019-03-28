@@ -1113,19 +1113,24 @@ syscall_do_read (struct thread *th)
 {
   struct eri_entry_scratch_registers *sregs = th_sregs (th);
   int32_t nr = sregs->rax;
-  void *buf = (void *) sregs->rsi;
   if (nr == __NR_read || nr == __NR_pread64)
     {
       assert_magic (th, ERI_SYSCALL_READ_MAGIC);
-      struct eri_syscall_read_record rec = { .buf = buf };
+      struct eri_syscall_read_record rec = { .buf = (void *) sregs->rsi };
       eri_unserialize_syscall_read_record (th->file, &rec);
       io_in (th, rec.in);
       sregs->rax = rec.result;
     }
   else
     {
+      struct eri_iovec *user_iov = (void *) sregs->rsi;
+      int32_t iovcnt = sregs->rdx;
+      if (iovcnt > ERI_UIO_MAXIOV) SYSCALL_RETURN (sregs, ERI_EINVAL);
+      if (! read_user (th, user_iov, sizeof *user_iov * iovcnt))
+	SYSCALL_RETURN (sregs, ERI_EFAULT);
+
       assert_magic (th, ERI_SYSCALL_READV_MAGIC);
-      struct eri_syscall_readv_record rec = { .iov = buf };
+      struct eri_syscall_readv_record rec = { .iov = user_iov };
       eri_unserialize_syscall_readv_record (th->file, &rec);
       io_in (th, rec.in);
       sregs->rax = rec.result;
