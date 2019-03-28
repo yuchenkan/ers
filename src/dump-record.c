@@ -99,10 +99,10 @@ main (int32_t argc, const char **argv)
 	      printf (", ..id: 0x%lx\n", rec.id);
 	    else printf ("\n");
 	  }
-	else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
+	else if (magic == ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
 	  printf ("  syscall.rt_sigaction: %lu\n",
 		  eri_unserialize_uint64 (file));
-	else if (magic == ERI_SYSCALL_RT_SIGACTION_GET_MAGIC)
+	else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
 	  {
 	    struct eri_ver_sigaction act;
 	    eri_unserialize_ver_sigaction (file, &act);

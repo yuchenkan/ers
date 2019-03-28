@@ -929,6 +929,7 @@ static void
 syscall_record_kill (struct eri_live_thread *th,
 		     struct eri_syscall_kill_record *rec)
 {
+  /* XXX: remove unnecessary io_in */
   rec->in = io_in (th);
   syscall_record (th, ERI_SYSCALL_KILL_MAGIC, rec);
 }
@@ -1259,10 +1260,10 @@ DEFINE_SYSCALL (rt_sigaction)
   if (user_old_act)
     {
       old_act.ver = args.ver;
-      syscall_record (th, ERI_SYSCALL_RT_SIGACTION_GET_MAGIC, &old_act);
+      syscall_record (th, ERI_SYSCALL_RT_SIGACTION_MAGIC, &old_act);
     }
-  else
-    syscall_record (th, ERI_SYSCALL_RT_SIGACTION_MAGIC, (void *) args.ver);
+  else syscall_record (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC,
+		       (void *) args.ver);
   return SYSCALL_DONE;
 }
 
@@ -1757,6 +1758,16 @@ syscall_read_read (struct thread_context *th_ctx, int32_t flags,
   return res;
 }
 
+#define syscall_read_record(th, rec, magic) \
+  do {									\
+    struct eri_live_thread *_th = th;					\
+    typeof (rec) _rec = rec;						\
+    if (_rec->result == ERI_EINTR) syscall_sig_wait (_th->ctx, 0);	\
+    /* XXX: remove unnecessary io_in */					\
+    _rec->in = io_in (_th);						\
+    syscall_record (_th, magic, _rec);					\
+  } while (0)
+
 static uint32_t
 syscall_do_read (struct eri_live_thread *th)
 {
@@ -1795,9 +1806,7 @@ syscall_do_read (struct eri_live_thread *th)
   rec.result = syscall_read_read (th->ctx, flags, &args);
 
 record:
-  if (rec.result == ERI_EINTR) syscall_sig_wait (th->ctx, 0);
-  rec.in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
+  syscall_read_record (th, &rec, ERI_SYSCALL_READ_MAGIC);
   SYSCALL_RETURN_DONE (sregs, rec.result);
 }
 
@@ -1855,9 +1864,7 @@ syscall_do_readv (struct eri_live_thread *th)
   rec.result = syscall_read_read (th->ctx, flags, &args);
 
 record:
-  if (rec.result == ERI_EINTR) syscall_sig_wait (th->ctx, 0);
-  rec.in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_READV_MAGIC, &rec);
+  syscall_read_record (th, &rec, ERI_SYSCALL_READV_MAGIC);
   if (rec.iov) eri_assert_mtfree (group->pool, rec.iov);
   SYSCALL_RETURN_DONE (sregs, rec.result);
 }

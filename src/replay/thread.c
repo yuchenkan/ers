@@ -871,7 +871,7 @@ DEFINE_SYSCALL (rt_sigaction)
   uint64_t act_ver;
   if (user_old_act)
     {
-      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_GET_MAGIC);
+      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC);
       struct eri_ver_sigaction act;
       eri_unserialize_ver_sigaction (th->file, &act);
       act_ver = act.ver;
@@ -881,7 +881,7 @@ DEFINE_SYSCALL (rt_sigaction)
     }
   else
     {
-      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC);
+      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC);
       act_ver = eri_unserialize_uint64 (th->file);
       sregs->rax = 0;
     }
