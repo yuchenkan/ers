@@ -19,6 +19,8 @@ struct init_map_args
   uint64_t size;
   uint64_t text_offset;
 
+  uint64_t debug;
+
   int32_t fd;
   uint64_t page_size;
 
@@ -99,10 +101,10 @@ eri_init_map (struct init_map_args *args)
   uint64_t segs_map_size = segs_map_end - segs_map_start;
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
-    path, args->sig_mask, args->stack_size, args->file_buf_size,
-    map_start + segs_map_size, map_end - map_start - segs_map_size
+    path, args->debug, args->sig_mask, args->stack_size, args->file_buf_size,
+    map_start + segs_map_end, map_end - map_start - segs_map_end
   };
-  ((void (*) (struct eri_replay_rtld_args *)) entry) (&rtld_args);
+  ((void (*) (void *)) map_start + entry) (&rtld_args);
   eri_assert_unreachable ();
 }
 
@@ -123,7 +125,8 @@ rtld (void **args)
   for (envp = eri_get_envp_from_args (args); *envp; ++envp)
     (void) (eri_get_arg_str (*envp, "ERS_DATA=", &path)
     || eri_get_arg_int (*envp, "ERS_STACK_SIZE=", &stack_size, 10)
-    || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+    || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
+    || eri_get_arg_int (*envp, "ERS_DEBUG=", &eri_global_enable_debug, 10));
 
   struct eri_elf64_phdr *phdrs = 0;
   uint64_t phnum = 0;
@@ -166,6 +169,7 @@ rtld (void **args)
   eri_unserialize_init_record (file, &rec);
 
   struct init_map_args init_args = {
+    .debug = eri_global_enable_debug,
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size, .sig_mask = sig_mask,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
