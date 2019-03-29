@@ -145,7 +145,7 @@ eri_common_syscall_rt_sigprocmask_set (
 		const struct eri_sigset *old_mask, void *copy, void *args)
 {
   struct eri_sigset *user_old_mask = (void *) sregs->rdx;
-  if (! user_old_mask) return;
+  if (! user_old_mask) { sregs->rax = 0; return; }
 
   sregs->rax = do_copy_sys_error (copy, args, user_old_mask, old_mask);
 }
