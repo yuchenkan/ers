@@ -3,11 +3,10 @@
 
 #include <stdint.h>
 
-#include <common.h>
-
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/malloc.h>
+#include <common/common.h>
 
 #include <live/thread.h>
 #include <live/tst/tst-util.h>

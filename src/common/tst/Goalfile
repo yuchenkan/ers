@@ -1,0 +1,5 @@
+'use strict'; /* vim: set ft=javascript: */
+
+if (goal == 'common/tst/all') return;
+
+return false;

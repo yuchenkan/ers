@@ -1,7 +1,7 @@
-#include <compiler.h>
-#include <common.h>
-
+#include <lib/compiler.h>
 #include <lib/lock.h>
+#include <common/common.h>
+
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>

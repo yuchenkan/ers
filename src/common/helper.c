@@ -1,11 +1,10 @@
-#include <compiler.h>
-#include <common.h>
-
-#include <helper.h>
-
+#include <lib/compiler.h>
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
 #include <lib/malloc.h>
+
+#include <common/common.h>
+#include <common/helper.h>
 
 struct eri_helper
 {

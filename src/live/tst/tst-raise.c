@@ -1,5 +1,5 @@
-#include <compiler.h>
-#include <common.h>
+#include <lib/compiler.h>
+#include <common/common.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>

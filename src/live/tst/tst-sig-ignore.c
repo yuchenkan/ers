@@ -1,4 +1,4 @@
-#include <compiler.h>
+#include <lib/compiler.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>

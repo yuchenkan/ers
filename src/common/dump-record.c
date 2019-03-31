@@ -1,8 +1,8 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include <common.h>
 #include <lib/printf.h>
+#include <common/common.h>
 
 static uint8_t
 copy_skip (void *args, void *dst, const void *src, uint64_t size)

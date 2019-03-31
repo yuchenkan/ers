@@ -1,8 +1,9 @@
-#include <public.h>
-#include <common.h>
+#include <public/public.h>
 
 #include <lib/util.h>
 #include <lib/cpu.h>
+#include <common/common.h>
+
 #include <live/tst/tst-registers.h>
 #include <live/tst/tst-entry-atomic.h>
 

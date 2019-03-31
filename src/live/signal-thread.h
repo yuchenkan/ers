@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <lib/compiler.h>
 #include <lib/syscall-common.h>
 
 struct eri_mtpool;

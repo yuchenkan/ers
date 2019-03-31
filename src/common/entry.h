@@ -134,7 +134,7 @@ struct eri_entry_thread_context
 #endif
 
 #ifndef ERI_ENTRY_BUILD_ENTRY_OFFSETS_H
-# include <entry-offsets.h>
+# include <common/entry-offsets.h>
 #endif
 
 #define _ERI_ENTRY_THREAD_ENTRY_TEXT_RIP_RELA(name, size, off) \

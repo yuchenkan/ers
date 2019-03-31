@@ -1,10 +1,15 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const base = goal.replace (/^live\//, '');
+const cur = 'live';
+const subs = [ 'tst' ].map (s => `${cur}/${s}`);
+const base = goal.replace (new RegExp (`^${cur}/`), '');
 
-if (base.startsWith ('tst/') && await this.invoke ('live/tst/Goalfile') !== false) return;
+if (await this.invoke ('goal/subs.g', { subs, dispatch: true })) return;
+if (base === 'all') return await this.invoke ('goal/subs.g', { subs });
 
 if (base === 'convert.c.o') return await this.invoke ('goal/compile.g', { cflags: (_, f) => f });
+
+if (env.base (base) === 'rtld.c.o') return await this.invoke ('live/rtld.c.o.g');
 
 if (new Set ([ 'live.h', 'rtld' ]).has (base))
   return await this.invoke (`${goal}.g`);

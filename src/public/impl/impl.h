@@ -1,8 +1,8 @@
 #ifndef _ERS_PUBLIC_IMPL_H
 #define _ERS_PUBLIC_IMPL_H
 
-#include <public/common.h>
-#include <public/entry-offsets.h>
+#include <public/impl/common.h>
+#include <public/impl/entry-offsets.h>
 
 #include <live/live.h>
 

@@ -1,6 +1,6 @@
-#include <lib/util.h>
+#include <public/public.h>
 
-#include <public.h>
+#include <lib/util.h>
 #include <live/tst/tst-sig-hand-ut.h>
 
 extern uint8_t enter[];

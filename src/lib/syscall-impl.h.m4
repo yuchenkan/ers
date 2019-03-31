@@ -4,7 +4,7 @@ m4_include(`m4/util.m4')
 #ifndef m4_format(`%sLIB_SYSCALL_DEDICATED_H', m4_upcase(m4_namespace))
 #define m4_format(`%sLIB_SYSCALL_DEDICATED_H', m4_upcase(m4_namespace))
 
-#include <compiler.h>
+#include <lib/compiler.h>
 #include <lib/syscall-common.h>
 
 #ifndef __ASSEMBLER__

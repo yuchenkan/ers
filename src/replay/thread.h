@@ -1,7 +1,7 @@
 #ifndef ERI_REPLAY_THREAD_H
 #define ERI_REPLAY_THREAD_H
 
-#include <compiler.h>
+#include <lib/compiler.h>
 
 struct eri_replay_rtld_args;
 

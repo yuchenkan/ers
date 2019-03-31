@@ -1,9 +1,8 @@
-#include <common.h>
-
 #include <lib/malloc.h>
 #include <lib/buf.h>
 #include <lib/printf.h>
 
+#include <common/common.h>
 #include <live/thread-recorder.h>
 
 struct eri_live_thread_recorder

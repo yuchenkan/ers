@@ -20,4 +20,4 @@ m4_define(`m4_pub_def', `#define ERS_$1')m4_dnl
 m4_define(`m4_pub_impl', `_ERS_$1')m4_dnl
 m4_define(`m4_pub_def_impl', `m4_dnl`'')m4_dnl
 m4_define(`m4_pub_va_args', `##__VA_ARGS__')m4_dnl
-m4_include(`public.h.in.m4')m4_dnl
+m4_include(`public/public.h.in.m4')m4_dnl

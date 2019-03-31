@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <lib/compiler.h>
 
 #define ERI_LST_INIT_LIST(pfx, list) \
   do { typeof (list) __eri_l = (list);					\

@@ -1,9 +1,10 @@
-#include <rtld.c>
 #include <lib/elf.h>
 #include <lib/util.c>
 #include <lib/syscall.h>
 #include <lib/syscall.c>
 #include <lib/printf.c>
+
+#include <common/rtld.c>
 
 #include <live/rtld.h>
 

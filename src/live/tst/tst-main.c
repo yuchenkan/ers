@@ -1,5 +1,5 @@
-#include <compiler.h>
-#include <common.h>
+#include <lib/compiler.h>
+#include <common/common.h>
 
 #include <live/rtld.h>
 #include <live/signal-thread.h>

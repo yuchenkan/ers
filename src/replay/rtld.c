@@ -1,12 +1,11 @@
-#include <compiler.h>
-#include <common.h>
-
-#include <rtld.h>
-
+#include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/elf.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>
+
+#include <common/rtld.h>
+#include <common/common.h>
 
 #include <replay/rtld.h>
 #include <replay/thread.h>

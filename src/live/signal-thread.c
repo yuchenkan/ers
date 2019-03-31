@@ -1,11 +1,11 @@
-#include <common.h>
-#include <helper.h>
-
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/atomic.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
+
+#include <common/common.h>
+#include <common/helper.h>
 
 #include <live/common.h>
 #include <live/rtld.h>

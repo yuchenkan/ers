@@ -1,14 +1,14 @@
-#include <compiler.h>
-#include <common.h>
-
+#include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
-#include <tst/tst-syscall.h>
+#include <common/common.h>
 
 #include <live/rtld.h>
 #include <live/thread.h>
+
+#include <tst/tst-syscall.h>
 
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>

@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
-#include <entry.h>
+#include <lib/compiler.h>
+#include <common/entry.h>
 
 struct thread;
 

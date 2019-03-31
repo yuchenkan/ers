@@ -1,9 +1,6 @@
-#include <compiler.h>
+#include <public/impl/common.h>
 
-#include <common.h>
-#include <entry.h>
-#include <helper.h>
-
+#include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/atomic.h>
@@ -11,7 +8,10 @@
 #include <lib/printf.h>
 #include <lib/syscall.h>
 
-#include <public/common.h>
+#include <common/entry.h>
+#include <common/common.h>
+#include <common/helper.h>
+
 #include <replay/rtld.h>
 #include <replay/thread.h>
 #include <replay/thread-local.h>

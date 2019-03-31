@@ -3,13 +3,13 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
-#include <entry.h>
-
+#include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/syscall-common.h>
 #include <lib/printf.h>
+
+#include <common/entry.h>
 
 #define eri_init_mtpool_from_buf(buf, size, exec) \
   ({									\
@@ -381,7 +381,6 @@ void eri_serialize_atomic_record (eri_file_t file,
 void eri_unserialize_atomic_record (eri_file_t file,
 				    struct eri_atomic_record *rec);
 
-#include <compiler.h>
 #include <lib/printf.h>
 #include <lib/syscall.h>
 

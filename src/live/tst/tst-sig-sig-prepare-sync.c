@@ -1,7 +1,8 @@
 /* vim: set ft=cpp: */
 
-#include <common.h>
 #include <lib/util.h>
+#include <common/common.h>
+
 #include <live/tst/tst-sig-race.h>
 
 static uint8_t handled;

@@ -1,6 +1,5 @@
-#include <common.h>
-
 #include <lib/cpu.h>
+#include <common/common.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>

@@ -1,9 +1,9 @@
 /* vim: set ft=gas: */
 
+#include <public/public.h>
+
 #include <lib/util.h>
 #include <lib/syscall.h>
-
-#include <public.h>
 
   .text
 

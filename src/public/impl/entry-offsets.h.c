@@ -1,7 +1,8 @@
-#define ERI_ENTRY_BUILD_ENTRY_OFFSETS_H
-#include <entry.h>
 #include <lib/util.h>
 #include <lib/offset.h>
+
+#define ERI_ENTRY_BUILD_ENTRY_OFFSETS_H
+#include <common/entry.h>
 
 enum
 {

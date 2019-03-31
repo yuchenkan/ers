@@ -1,9 +1,8 @@
-#include <common.h>
-
 #include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/atomic.h>
 #include <lib/syscall.h>
+#include <common/common.h>
 
 #include <live/signal-thread-local.h>
 #include <live/tst/tst-util.h>

@@ -1,7 +1,7 @@
 #ifndef ERI_LIB_UTIL_H
 #define ERI_LIB_UTIL_H
 
-#include <public/common.h>
+#include <public/impl/common.h>
 
 #define ERI_STR(...)		_ERS_STR (__VA_ARGS__)
 #define ERI_PASTE(x, y)		_ERS_PASTE (x, y)

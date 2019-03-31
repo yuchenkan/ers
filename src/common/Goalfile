@@ -1,10 +1,12 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const cur = 'replay';
+const cur = 'common';
 const subs = [ 'tst' ].map (s => `${cur}/${s}`);
 const base = goal.replace (new RegExp (`^${cur}/`), '');
 
 if (await this.invoke ('goal/subs.g', { subs, dispatch: true })) return;
 if (base === 'all') return await this.invoke ('goal/subs.g', { subs, extra: [ `${cur}/cur` ] });
+
+if (base === 'dump-record.c.o') return await this.invoke ('goal/compile.g', { cflags: (_, f) => f });
 
 return false;

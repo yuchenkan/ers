@@ -1,10 +1,11 @@
 /* vim: set ft=gas: */
 
-#include <entry.h>
+#include <public/impl/common.h>
+
 #include <lib/util.h>
 #include <lib/cpu.h>
 
-#include <public/common.h>
+#include <common/entry.h>
 #include <replay/thread-local-offsets.h>
 
 #define PASTE(x, y)	ERI_PASTE (x, y)

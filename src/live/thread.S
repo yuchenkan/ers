@@ -1,13 +1,13 @@
 /* vim: set ft=gas: */
 
-#include <entry.h>
+#include <public/impl/common.h>
 
 #include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/syscall.h>
 #include <lib/syscall-offsets.h>
 
-#include <public/common.h>
+#include <common/entry.h>
 #include <live/thread-local-offsets.h>
 
 #define RAX(sz)		ERI_RAX (sz)

@@ -3,11 +3,11 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
-
-#include <entry.h>
-#include <common.h>
+#include <lib/compiler.h>
 #include <lib/syscall-common.h>
+
+#include <common/entry.h>
+#include <common/common.h>
 
 struct eri_siginfo;
 

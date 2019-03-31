@@ -1,6 +1,6 @@
 #include <stdarg.h>
 
-#include <common.h>
+#include <public/impl/common.h>
 
 #include <lib/util.h>
 #include <lib/cpu.h>
@@ -11,7 +11,7 @@
 #include <lib/syscall.h>
 #include <lib/atomic.h>
 
-#include <public/common.h>
+#include <common/common.h>
 
 #include <live/common.h>
 #include <live/rtld.h>

@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-#include <common.h>
 #include <lib/malloc.h>
 #include <lib/syscall-common.h>
+#include <common/common.h>
 
 struct eri_live_thread;
 

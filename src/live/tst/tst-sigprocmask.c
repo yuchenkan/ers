@@ -1,4 +1,4 @@
-#include <compiler.h>
+#include <lib/compiler.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>

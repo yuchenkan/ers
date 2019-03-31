@@ -1,8 +1,8 @@
-#define ERI_ENTRY_BUILD_ENTRY_OFFSETS_H /* kill circular dependancy */
-#include <entry.h>
-
 #include <lib/util.h>
 #include <lib/offset.h>
+
+#define ERI_ENTRY_BUILD_ENTRY_OFFSETS_H /* kill circular dependancy */
+#include <common/entry.h>
 
 #define ENTRY_THREAD_CONTEXT_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (ERI_ENTRY_THREAD_CONTEXT_, name,		\

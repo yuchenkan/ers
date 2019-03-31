@@ -1,9 +1,8 @@
-#include <compiler.h>
-#include <common.h>
+#include <lib/compiler.h>
+#include <common/common.h>
+#include <live/signal-thread.h>
 
 #include <tst/tst-syscall.h>
-
-#include <live/signal-thread.h>
 #include <live/tst/tst-syscall.h>
 
 static int32_t ctid;

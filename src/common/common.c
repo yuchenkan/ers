@@ -1,9 +1,9 @@
-#include <common.h>
-#include <common-local.h>
-
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/syscall.h>
+
+#include <common/common.h>
+#include <common/common-local.h>
 
 uint8_t eri_global_enable_debug = 0;
 

@@ -1,8 +1,8 @@
-#include <rtld.h>
-
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/elf.h>
+
+#include <common/rtld.h>
 
 void
 eri_map_bin (int32_t fd, struct eri_seg *segs, uint16_t nsegs,

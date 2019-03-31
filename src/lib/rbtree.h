@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <compiler.h>
+#include <lib/compiler.h>
 #include <lib/util.h>
 
 /*
