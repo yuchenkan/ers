@@ -15,6 +15,7 @@ if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 
 if (new Set ([ 'public.h', 'public.h.in' ].map (s => `public/${s}`)).has (goal))
   return await this.invoke ('goal/m4.g');
+if (env.base (goal) === 'rtld.c.o') return await this.invoke ('goal/rtld.g');
 
 if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');

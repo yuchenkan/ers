@@ -1,6 +1,6 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const srcs = [ 'common/helper.c.o', 'replay/rtld.l', 'replay/thread.l',
+const srcs = [ 'replay/rtld.l', 'replay/thread.l', 'common/helper.c.o',
 	       'common/rtld.c.o', 'common/common.l', 'lib/lib.a' ];
 const script = 'replay/replay.ld';
 await this.invoke ('goal/link.g', {

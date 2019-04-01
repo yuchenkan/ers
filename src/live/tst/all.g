@@ -3,10 +3,9 @@
 let tsts = [ 'rtld', 'sig-mask-async-ut' ];
 tsts = tsts.concat ([ 'main', 'syscall', 'sync-async', 'atomic', 'atomic-ext', 'sig-action' ].map (x => `sig-hand-${x}-ut`));
 
-let commons = [ 'basic', 'clone', 'clear-tid', 'raise', 'sig-ignore', 'sig-nest',
-  'sig-exit-group', 'sig-sig-mask', 'sig-sig-prepare-sync',
-  'sigaltstack', 'sigprocmask', 'sigpending', 'sigsuspend', 'sigtimedwait', 'signalfd' ];
-commons = commons.concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));
+let commons = (await this.invoke ('live/tst/replay.g')).concat ([ 'clear-tid', 'raise',
+  'sig-ignore', 'sig-nest', 'sig-exit-group', 'sig-sig-mask', 'sig-sig-prepare-sync',
+  'sigaltstack', 'sigpending', 'sigsuspend', 'signalfd' ]);
 
 let entries = [ 'syscall', 'sync-async', 'sync-async-repeat' ];
 entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp' ].map (x => `atomic-${x}`));

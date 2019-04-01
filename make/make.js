@@ -289,7 +289,7 @@ function main () {
   const env = {
     def: def,
 
-    dir: path.dirname, base: path.basename, join: path.join,
+    dir: path.dirname, base: path.basename, join: path.join, relative: path.relative, norm,
 
     mkdir, dirs: { },
 

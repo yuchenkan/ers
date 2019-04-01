@@ -201,5 +201,6 @@ rtld (void **args)
 
   //a->map_start = (uint64_t) a;
   //a->map_end = a->map_start + 64 * 1024 * 1024;
+  eri_debug ("\n");
   call_init_map (a);
 }

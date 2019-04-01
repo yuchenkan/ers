@@ -9,8 +9,6 @@ if (base === 'all') return await this.invoke ('goal/subs.g', { subs });
 
 if (base === 'convert.c.o') return await this.invoke ('goal/compile.g', { cflags: (_, f) => f });
 
-if (env.base (base) === 'rtld.c.o') return await this.invoke ('live/rtld.c.o.g');
-
 if (new Set ([ 'live.h', 'rtld' ]).has (base))
   return await this.invoke (`${goal}.g`);
 

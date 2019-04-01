@@ -1,5 +1,16 @@
 'use strict'; /* vim: set ft=javascript: */
 
-if (goal == 'replay/tst/all') return;
+const base = goal.replace (/^replay\/tst\//, '');
+const full = x => `replay/tst/${x}`;
+
+if (base === 'all')
+  return await this.update ((await this.invoke ('live/tst/replay.g')).map (x => full (`tst-${x}.out`)));
+
+const pat = /^tst-([^.]*)\.out/;
+if (base.match (pat)) {
+  let live = `live/tst/tst-init-${base.match (pat)[1]}`;
+  await this.update ([ `${live}.out` ]);
+  return await this.invoke ('goal/tst/out.g', { src: 'replay/replay', environ: `ERS_DATA=../../${live}-data/` });
+}
 
 return false;
