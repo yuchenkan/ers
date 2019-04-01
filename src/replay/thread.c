@@ -1480,6 +1480,7 @@ atomic (struct thread *th)
     }
   else
     {
+      eri_debug ("\n");
       uint16_t code = th_ctx->ext.op.code;
       uint64_t mem = th_ctx->ext.atomic.mem;
       uint8_t size = th_ctx->ext.op.args;
@@ -1533,9 +1534,9 @@ atomic (struct thread *th)
 	th_ctx->atomic_ext_return = 1;
       else
 	th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
-    }
 
-  if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
+      if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
+    }
 }
 
 uint64_t
