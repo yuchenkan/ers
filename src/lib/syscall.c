@@ -1,2 +1,2 @@
 #include <lib/syscall.h>
-#include <lib/syscall-dedicated.c>
+#include <lib/syscall-specific.c>

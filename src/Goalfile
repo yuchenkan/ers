@@ -7,11 +7,11 @@ if (goal !== 'goal/subs.g' && await this.invoke ('goal/subs.g', { subs, dispatch
 
 if (goal === 'all') return await this.invoke ('goal/subs.g', { subs });
 
-if (goal.match (/\bsyscall-dedicated\.[^.]*.m4$/))
-  return await this.invoke (`${goal.match (/(.*)\bsyscall-dedicated\.[^.]*.m4$/)[1]}syscall-dedicated.m4.g`);
+if (goal.match (/\bsyscall-specific\.[^.]*.m4$/))
+  return await this.invoke (`${goal.match (/(.*)\bsyscall-specific\.[^.]*.m4$/)[1]}syscall-specific.m4.g`);
 
 if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');
-if (goal.match (/-dedicated\.[^.]*$/)) return await this.invoke ('goal/m4.g');
+if (goal.match (/-specific\.[^.]*$/)) return await this.invoke ('goal/m4.g');
 
 if (new Set ([ 'public.h', 'public.h.in' ].map (s => `public/${s}`)).has (goal))
   return await this.invoke ('goal/m4.g');
