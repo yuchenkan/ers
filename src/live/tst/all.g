@@ -3,9 +3,7 @@
 let tsts = [ 'rtld', 'sig-mask-async-ut' ];
 tsts = tsts.concat ([ 'main', 'syscall', 'sync-async', 'atomic', 'atomic-ext', 'sig-action' ].map (x => `sig-hand-${x}-ut`));
 
-let commons = (await this.invoke ('live/tst/replay.g')).concat ([ 'clear-tid',
-  'sig-ignore', 'sig-nest', 'sig-exit-group', 'sig-sig-mask', 'sig-sig-prepare-sync',
-  'sigaltstack', 'sigpending', 'sigsuspend', 'signalfd' ]);
+let commons = (await this.invoke ('live/tst/replay.g')).concat ([ 'clear-tid', 'sig-nest', 'signalfd' ]);
 
 let entries = [ 'syscall', 'sync-async', 'sync-async-repeat' ];
 entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp' ].map (x => `atomic-${x}`));

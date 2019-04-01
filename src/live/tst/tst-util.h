@@ -9,7 +9,7 @@
   do {									\
     typeof (n) _i;							\
     typeof (n) _n = n;							\
-    for (_i = 0; _i < _n; ++_i) eri_assert_syscall (sched_yield);	\
+    for (_i = 0; _i < _n; ++_i) tst_assert_syscall (sched_yield);	\
   } while (0)
 
 #define tst_get_tls() \
