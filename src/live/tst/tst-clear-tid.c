@@ -30,17 +30,17 @@ tst_live_start (void)
   };
   ctid = set_ctid = 1;
   tst_assert_sys_clone (&args);
-  eri_assert_sys_futex_wait (&ctid, 1, 0);
+  tst_assert_sys_futex_wait (&ctid, 1, 0);
   args.a0 = &set_ctid;
   ctid = 1;
   tst_assert_sys_clone (&args);
-  eri_assert_sys_futex_wait (&set_ctid, 1, 0);
+  tst_assert_sys_futex_wait (&set_ctid, 1, 0);
   eri_assert (ctid == 1);
 /* TODO: clear tid seg fault */
 #if 0
   args.a0 = (void *) 1;
   tst_assert_sys_clone (&args);
-  eri_assert_sys_futex_wait (&ctid, 1, 0);
+  tst_assert_sys_futex_wait (&ctid, 1, 0);
 #endif
   tst_assert_sys_exit (0);
 }

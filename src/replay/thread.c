@@ -129,7 +129,14 @@ struct thread
 ERI_DEFINE_THREAD_UTILS (struct thread, struct thread_group)
 
 #define assert_magic(th, magic) \
-  eri_assert (eri_unserialize_magic ((th)->file) == magic);
+  do {									\
+    uint16_t _magic = magic;						\
+    uint16_t _next = eri_unserialize_magic ((th)->file);		\
+    if (_next != _magic)						\
+      eri_info ("unexpected magic: %u, expecting: %u\n",		\
+		_next, _magic);						\
+    eri_assert (_next == _magic);					\
+  } while (0)
 
 static uint8_t
 read_user (struct thread *th, const void *src, uint64_t size)
@@ -600,6 +607,15 @@ ERI_PASTE (syscall_, name) (struct thread *th)
 #define SYSCALL_TO_IMPL(name) \
 DEFINE_SYSCALL (name) { SYSCALL_RETURN (th_sregs (th), ERI_ENOSYS, 0); }
 
+static uint64_t
+syscall_fetch_result (struct thread *th)
+{
+eri_debug ("!!!\n");
+  assert_magic (th, ERI_SYSCALL_RESULT_MAGIC);
+eri_debug ("!!!\n");
+  return eri_unserialize_uint64 (th->file);
+}
+
 static void
 syscall_fetch_in (struct thread *th)
 {
@@ -607,7 +623,13 @@ syscall_fetch_in (struct thread *th)
   io_in (th, eri_unserialize_uint64 (th->file));
 }
 
-/* TODO */
+static void
+syscall_fetch_result_in (struct thread *th, uint64_t *rec)
+{
+  assert_magic (th, ERI_SYSCALL_RESULT_IN_MAGIC);
+  eri_unserialize_uint64_array (th->file, rec, 2);
+  io_in (th, rec[1]);
+}
 
 static void
 syscall_fetch_out (struct thread *th)
@@ -797,10 +819,8 @@ DEFINE_SYSCALL (getpid)
 
 DEFINE_SYSCALL (getppid)
 {
-  assert_magic (th, ERI_SYSCALL_RESULT_IN_MAGIC);
   uint64_t rec[2];
-  eri_unserialize_uint64_array (th->file, rec, eri_length_of (rec));
-  io_in (th, rec[1]);
+  syscall_fetch_result_in (th, rec);
   SYSCALL_RETURN (th_sregs (th), rec[0], 1);
 }
 
@@ -1321,7 +1341,18 @@ SYSCALL_TO_IMPL (modify_ldt)
 SYSCALL_TO_IMPL (swapon)
 SYSCALL_TO_IMPL (swapoff)
 
-SYSCALL_TO_IMPL (futex)
+DEFINE_SYSCALL (futex)
+{
+  struct eri_entry_scratch_registers *sregs = th_sregs (th);
+  int32_t op = sregs->rsi;
+  int32_t cmd = op & ERI_FUTEX_CMD_MASK;
+  if (cmd == ERI_FUTEX_WAIT || cmd == ERI_FUTEX_WAKE)
+    SYSCALL_RETURN (sregs, syscall_fetch_result (th), 1);
+
+  /* TODO: support more cmd */
+  SYSCALL_RETURN (sregs, ERI_ENOSYS, 0);
+}
+
 SYSCALL_TO_IMPL (set_robust_list)
 SYSCALL_TO_IMPL (get_robust_list)
 

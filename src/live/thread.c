@@ -907,13 +907,19 @@ syscall_record (struct eri_live_thread *th, uint16_t magic, void *rec)
 }
 
 static void
+syscall_record_result (struct eri_live_thread *th)
+{
+  syscall_record (th, ERI_SYSCALL_RESULT_MAGIC, (void *) th_sregs (th)->rax);
+}
+
+static void
 syscall_record_in (struct eri_live_thread *th)
 {
   syscall_record (th, ERI_SYSCALL_IN_MAGIC, (void *) io_in (th));
 }
 
 static void
-syscall_record_res_in (struct eri_live_thread *th)
+syscall_record_result_in (struct eri_live_thread *th)
 {
   uint64_t rec[2] = { th_sregs (th)->rax, io_in (th) };
   syscall_record (th, ERI_SYSCALL_RESULT_IN_MAGIC, rec);
@@ -941,6 +947,14 @@ syscall_syscall (struct thread_context *th_ctx)
   eri_sys_syscall_args_from_sregs (&args, th_ctx_sregs (th_ctx));
   th_ctx_sregs (th_ctx)->rax = eri_sys_syscall (&args);
 };
+
+static void
+syscall_intr_syscall (struct thread_context *th_ctx)
+{
+  struct eri_sys_syscall_args args;
+  eri_sys_syscall_args_from_sregs (&args, th_ctx_sregs (th_ctx));
+  th_ctx_sregs (th_ctx)->rax = syscall_intr_sys_syscall (th_ctx, &args);
+}
 
 static void
 syscall_signal_thread (struct eri_live_thread *th)
@@ -1109,7 +1123,7 @@ DEFINE_SYSCALL (getpid)
 DEFINE_SYSCALL (getppid)
 {
   syscall_signal_thread (th);
-  syscall_record_res_in (th);
+  syscall_record_result_in (th);
   return SYSCALL_DONE;
 }
 
@@ -1749,10 +1763,10 @@ syscall_read_read (struct thread_context *th_ctx, int32_t flags,
 
   do
     {
-      res = syscall_intr_syscall (th_ctx, &poll_args);
+      res = syscall_intr_sys_syscall (th_ctx, &poll_args);
       if (res == ERI_EINTR) break;
 
-      res = syscall_intr_syscall (th_ctx, args);
+      res = syscall_intr_sys_syscall (th_ctx, args);
     }
   while (res == ERI_EAGAIN);
   return res;
@@ -1999,7 +2013,40 @@ SYSCALL_TO_IMPL (modify_ldt)
 SYSCALL_TO_IMPL (swapon)
 SYSCALL_TO_IMPL (swapoff)
 
-SYSCALL_TO_IMPL (futex)
+DEFINE_SYSCALL (futex)
+{
+  struct thread_context *th_ctx = th->ctx;
+  struct eri_entry_scratch_registers *sregs = th_sregs (th);
+
+  int32_t op = sregs->rsi;
+#if 0
+  int32_t *user_addr = (void *) sregs->rdi;
+  int32_t val = sregs->rdx;
+  const struct timespec *user_timeout = (void *) sregs->r10;
+  int32_t val2 = sregs->r10;
+  int32_t *user_addr2 = (void *) sregs->r8;
+  int32_t val3 = sregs->r9;
+#endif
+
+  int32_t cmd = op & ERI_FUTEX_CMD_MASK;
+  if (cmd == ERI_FUTEX_WAIT)
+    {
+      syscall_syscall (th_ctx);
+      syscall_record_result (th);
+      return SYSCALL_DONE;
+    }
+  else if (cmd == ERI_FUTEX_WAKE)
+    {
+      syscall_intr_syscall (th_ctx);
+      if (sregs->rax == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
+      syscall_record_result (th);
+      return SYSCALL_DONE;
+    }
+
+  /* TODO: support more cmd */
+  SYSCALL_RETURN_DONE (sregs, ERI_ENOSYS);
+}
+
 SYSCALL_TO_IMPL (set_robust_list)
 SYSCALL_TO_IMPL (get_robust_list)
 

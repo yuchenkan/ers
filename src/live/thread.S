@@ -307,7 +307,7 @@ ERI_FUNCTION (sig_return)
   ret
   ERI_END_FUNCTION (sig_return)
 
-ERI_FUNCTION (syscall_intr_syscall)
+ERI_FUNCTION (syscall_intr_sys_syscall)
 
   pushq	%rbx
   pushq	%rbp
@@ -339,4 +339,4 @@ ERI_FUNCTION (syscall_intr_syscall)
   popq	%rbx
   ret
 
-  ERI_END_FUNCTION (syscall_intr_syscall)
+  ERI_END_FUNCTION (syscall_intr_sys_syscall)
