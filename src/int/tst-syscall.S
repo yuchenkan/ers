@@ -1,4 +1,4 @@
 /* vim: set ft=gas: */
 
-#include <int/tst-syscall.h>
+#include <ers/public.h>
 #include <tst/tst-syscall-specific.S>

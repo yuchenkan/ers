@@ -2,6 +2,7 @@
 m4_include(`m4/util.m4')
 
 #include <lib/util.h>
+#include <m4_syscall_h>
 #include <m4_atomic_h>
 
 uint64_t clone (int32_t flags, void *stack, int32_t *ptid,

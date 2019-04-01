@@ -2,6 +2,7 @@
 m4_include(`m4/util.m4')
 
 #include <lib/util.h>
+#include <m4_syscall_h>
 #include <lib/syscall-offsets.h>
 
   .text
