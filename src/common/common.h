@@ -48,6 +48,8 @@ struct eri_ver_sigaction
   uint64_t ver;
 };
 
+void eri_set_sig_mask (struct eri_sigset *dst, const struct eri_sigset *src);
+
 #define ERI_SIG_ACT_TERM	((void *) 1)
 #define ERI_SIG_ACT_CORE	((void *) 2)
 #define ERI_SIG_ACT_STOP	((void *) 3)

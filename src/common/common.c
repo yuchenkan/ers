@@ -50,6 +50,15 @@ typedef uint8_t (*copy_t) (void *, void *, const void *, uint64_t);
 #define do_copy_sys_error(copy, args, dst, src) \
   (do_copy (copy, args, dst, src) ? 0 : ERI_EFAULT)
 
+void
+eri_set_sig_mask (struct eri_sigset *dst, const struct eri_sigset *src)
+{
+  struct eri_sigset set = *src;
+  eri_sig_del_set (&set, ERI_SIGKILL);
+  eri_sig_del_set (&set, ERI_SIGSTOP);
+  *dst = set;
+}
+
 static uint8_t
 on_sig_alt_stack (const struct eri_stack *stack, uint64_t rsp)
 {

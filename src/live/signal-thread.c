@@ -204,10 +204,7 @@ static void
 set_sig_mask (struct eri_live_signal_thread *sig_th,
 	      const struct eri_sigset *mask)
 {
-  struct eri_sigset set = *mask;
-  eri_sig_del_set (&set, ERI_SIGKILL);
-  eri_sig_del_set (&set, ERI_SIGSTOP);
-  sig_th->sig_mask = set;
+  eri_set_sig_mask (&sig_th->sig_mask, mask);
 }
 
 static void

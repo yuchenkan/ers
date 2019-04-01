@@ -300,21 +300,22 @@ next_record (struct thread *th)
 static eri_noreturn void
 async_signal (struct thread *th)
 {
+  eri_debug ("\n");
   eri_assert_syscall (tgkill, th->group->pid, th->tid, ERI_SIGRTMIN);
   eri_assert_unreachable ();
 }
 
-static eri_noreturn void raise (struct thread *th, struct eri_siginfo *info,
-		struct eri_ucontext *ctx, struct eri_ver_sigaction *act);
+static eri_noreturn void raise (struct thread *th, struct eri_sigframe *frame,
+				struct eri_ver_sigaction *act);
 
 static eri_noreturn void
-raise (struct thread *th, struct eri_siginfo *info,
-       struct eri_ucontext *ctx, struct eri_ver_sigaction *act)
+raise (struct thread *th, struct eri_sigframe *frame,
+       struct eri_ver_sigaction *act)
 {
-  int32_t sig = info->sig;
+  int32_t sig = frame->info.sig;
   if (sig == 0) exit (th);
 
-  if (! eri_si_sync (info) || ! eri_sig_set_set (&th->sig_mask, sig))
+  if (! eri_si_sync (&frame->info) || ! eri_sig_set_set (&th->sig_mask, sig))
     version_wait (th->group->sig_acts + sig - 1, act->ver);
 
   void *a = act->act.act;
@@ -323,8 +324,9 @@ raise (struct thread *th, struct eri_siginfo *info,
   if (eri_sig_act_internal_act (a)) exit (th);
 
   struct eri_sigframe *user_frame = eri_sig_setup_user_frame (
-		eri_struct_of (ctx, struct eri_sigframe, ctx), &act->act,
-		&th->sig_alt_stack, &th->sig_mask, copy_to_user, th);
+		frame, &act->act, &th->sig_alt_stack, &th->sig_mask,
+		copy_to_user, th);
+  eri_set_sig_mask (&th->sig_mask, &act->act.mask);
 
   if (! user_frame) exit (0);
 
@@ -344,15 +346,17 @@ raise (struct thread *th, struct eri_siginfo *info,
 }
 
 static eri_noreturn void raise_async (struct thread *th,
-				      struct eri_ucontext *ctx);
+				      struct eri_sigframe *frame);
 
 static eri_noreturn void
-raise_async (struct thread *th, struct eri_ucontext *ctx)
+raise_async (struct thread *th, struct eri_sigframe *frame)
 {
   struct eri_signal_record rec;
   eri_unserialize_signal_record (th->file, &rec);
+  eri_debug ("%u\n", rec.info.sig);
   io_in (th, rec.in);
-  raise (th, &rec.info, ctx, &rec.act);
+  frame->info = rec.info;
+  raise (th, frame, &rec.act);
 }
 
 static void
@@ -373,10 +377,12 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   struct thread *th = *(void **) ctx->stack.sp;
   struct thread_context *th_ctx = th->ctx;
+  struct eri_sigframe *frame
+		= eri_struct_of (info, struct eri_sigframe, info);
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     {
       set_ctx_from_th_ctx (ctx, th_ctx, 0);
-      raise_async (th, ctx);
+      raise_async (th, frame);
     }
 
   if (! eri_si_sync (info)) return;
@@ -411,7 +417,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	      th_ctx->sync_async_trace = 0;
 	      if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH)
 		ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
-	      raise_async (th, ctx);
+	      raise_async (th, frame);
 	    }
 
 	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
@@ -435,7 +441,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   assert_magic (th, ERI_SIGNAL_MAGIC);
   struct eri_ver_sigaction act;
   eri_unserialize_ver_sigaction (th->file, &act);
-  raise (th, info, ctx, &act);
+  raise (th, frame, &act);
 }
 
 eri_noreturn void
@@ -885,11 +891,15 @@ SYSCALL_TO_IMPL (ioprio_get)
 DEFINE_SYSCALL (rt_sigprocmask)
 {
   struct eri_entry_scratch_registers *sregs = th_sregs (th);
+  struct eri_sigset mask;
   struct eri_sigset old_mask = th->sig_mask;
   if (eri_common_syscall_rt_sigprocmask_get (
-		sregs, &old_mask, &th->sig_mask, copy_from_user, th))
-    eri_common_syscall_rt_sigprocmask_set (
-			sregs, &old_mask, copy_to_user, th);
+		sregs, &old_mask, &mask, copy_from_user, th))
+    {
+      if (sregs->rsi) eri_set_sig_mask (&th->sig_mask, &mask);
+      eri_common_syscall_rt_sigprocmask_set (
+			  sregs, &old_mask, copy_to_user, th);
+    }
   return 0;
 }
 
