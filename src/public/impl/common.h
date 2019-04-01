@@ -1,5 +1,5 @@
-#ifndef _ERS_PUBLIC_COMMON_H
-#define _ERS_PUBLIC_COMMON_H
+#ifndef _ERS_PUBLIC_IMPL_COMMON_H
+#define _ERS_PUBLIC_IMPL_COMMON_H
 
 #define __ERS_STR(...)		#__VA_ARGS__
 #define _ERS_STR(...)		__ERS_STR (__VA_ARGS__)

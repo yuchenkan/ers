@@ -2,7 +2,7 @@
 m4_include(`m4/util.m4')
 
 #include <lib/util.h>
-#include <lib/atomic.h>
+#include <m4_atomic_h>
 
 uint64_t clone (int32_t flags, void *stack, int32_t *ptid,
 		int32_t *ctid, void *new_tls);
@@ -23,7 +23,7 @@ void
 m4_ns(assert_sys_futex_wake) (void *mem, uint32_t val)
 {
   uint32_t *p = mem;
-  eri_atomic_store_rel (p, val);
+  m4_ns(atomic_store_rel) (p, val);
   m4_ns(assert_syscall) (futex, p, ERI_FUTEX_WAKE, 1);
 }
 
@@ -32,7 +32,7 @@ m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
 			      const struct eri_timespec *timeout)
 {
   uint32_t *p = mem;
-  while (eri_atomic_load_acq (p) == old_val)
+  while (m4_ns(atomic_load_acq) (p) == old_val)
     {
       uint64_t res = m4_ns(syscall) (futex, p, ERI_FUTEX_WAIT,
 				     old_val, timeout);

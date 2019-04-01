@@ -1,6 +1,6 @@
 m4_include(`m4/util.m4')m4_dnl
-m4_define(`m4_pub_start', `#ifndef ERS_PUBLIC_H
-#define ERS_PUBLIC_H')m4_dnl
+m4_define(`m4_pub_start', `#ifndef ERS_PUBLIC_PUBLIC_H
+#define ERS_PUBLIC_PUBLIC_H')m4_dnl
 m4_define(`m4_pub_end', `#endif')m4_dnl
 m4_define(`m4_pub_no_exp', `')m4_dnl
 m4_define(`m4_pub_exp_def', `m4_dnl')m4_dnl

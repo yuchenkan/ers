@@ -610,9 +610,7 @@ DEFINE_SYSCALL (name) { SYSCALL_RETURN (th_sregs (th), ERI_ENOSYS, 0); }
 static uint64_t
 syscall_fetch_result (struct thread *th)
 {
-eri_debug ("!!!\n");
   assert_magic (th, ERI_SYSCALL_RESULT_MAGIC);
-eri_debug ("!!!\n");
   return eri_unserialize_uint64 (th->file);
 }
 

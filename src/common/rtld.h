@@ -1,5 +1,5 @@
-#ifndef ERI_RTLD_H
-#define ERI_RTLD_H
+#ifndef ERI_COMMON_RTLD_H
+#define ERI_COMMON_RTLD_H
 
 #include <stdint.h>
 

@@ -1,5 +1,5 @@
-#ifndef ERI_COMPILER_H
-#define ERI_COMPILER_H
+#ifndef ERI_LIB_COMPILER_H
+#define ERI_LIB_COMPILER_H
 
 #define eri_noreturn	__attribute__ ((noreturn))
 #define eri_aligned16	__attribute__ ((aligned (16)))

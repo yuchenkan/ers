@@ -1,5 +1,5 @@
-#ifndef ERI_ENTRY_H
-#define ERI_ENTRY_H
+#ifndef ERI_COMMON_ENTRY_H
+#define ERI_COMMON_ENTRY_H
 
 #include <lib/util.h>
 #include <lib/syscall.h>

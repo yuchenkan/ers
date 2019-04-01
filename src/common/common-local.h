@@ -1,5 +1,5 @@
-#ifndef ERI_COMMON_LOCAL_H
-#define ERI_COMMON_LOCAL_H
+#ifndef ERI_COMMON_COMMON_LOCAL_H
+#define ERI_COMMON_COMMON_LOCAL_H
 
 void sig_return_back (struct eri_sigframe *frame);
 

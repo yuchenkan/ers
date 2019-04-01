@@ -1,5 +1,5 @@
-#ifndef _ERS_PUBLIC_IMPL_H
-#define _ERS_PUBLIC_IMPL_H
+#ifndef _ERS_PUBLIC_IMPL_IMPL_H
+#define _ERS_PUBLIC_IMPL_IMPL_H
 
 #include <public/impl/common.h>
 #include <public/impl/entry-offsets.h>
@@ -8,6 +8,7 @@
 
 #ifndef _ERS_EXPORT
 # define _ERS_EXP_CONST(x)		x
+# define _ERS_EXP_PASTE(x, y)		_ERS_PASTE (x, y)
 # define _ERS_EXP_REG(e, reg)		_ERS_PP_IF (e, %)%reg
 # define _ERS_EXP_ATOMIC_SIZE(sz)	_ERS_ATOMIC_SIZE (sz)
 #endif
@@ -59,7 +60,7 @@
   _ERS_OP (_ERS_PASTE (ATOMIC_, op), _ERS_EXP_ATOMIC_SIZE (sz), ATOMIC)
 
 #define _ERS_ATOMIC_SAVE_VAL(e, sz, val) \
-  _ERS_PASTE (mov, sz)	val, _ERS_ENTRY (e, ATOMIC_VAL)
+  _ERS_EXP_PASTE (mov, sz)	val, _ERS_ENTRY (e, ATOMIC_VAL)
 
 #define _ERS_ATOMIC_SAVE_MEM(e, mem) \
   leaq	mem, _ERS_RBX (e);						\
@@ -82,7 +83,8 @@
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:
 
-#define _ERS_LOAD_LOAD(sz, res, reg)	_ERS_PASTE (mov, sz)	res, reg
+#define _ERS_LOAD_LOAD(sz, res, reg) \
+  _ERS_EXP_PASTE (mov, sz)	res, reg
 
 #define _ERS_ATOMIC_LOAD(e, sz, mem, reg) \
   _ERS_ATOMIC_COMMON_LOAD (e, sz, mem, _ERS_LOAD_LOAD, reg)
@@ -120,7 +122,7 @@
   _ERS_ATOMIC_SAVE_RET (e, 20f);					\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 10:									\
-  _ERS_PASTE (mov, sz)	_ERS_ENTRY (e, ATOMIC_VAL), reg;		\
+  _ERS_EXP_PASTE (mov, sz)	_ERS_ENTRY (e, ATOMIC_VAL), reg;	\
   movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX);				\
   jmp	*_ERS_ENTRY (e, ENTRY);						\
 20:

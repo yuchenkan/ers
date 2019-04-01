@@ -1,5 +1,5 @@
-#ifndef ERI_HELPER_H
-#define ERI_HELPER_H
+#ifndef ERI_COMMON_HELPER_H
+#define ERI_COMMON_HELPER_H
 
 #include <stdint.h>
 

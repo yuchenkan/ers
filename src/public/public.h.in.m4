@@ -5,6 +5,7 @@ m4_pub_exp_nl
 m4_ifdef(`m4_pub_no_exp', `',
 `#define _ERS_EXPORT
 #define _ERS_EXP_CONST(x)		m4_pub_eval(x)
+#define _ERS_EXP_PASTE(x, y)		m4_pub_impl(m4_pub_paste) (x, y)
 #define _ERS_EXP_REG(e, reg)		m4_pub_impl(m4_pub_pp_if) (e, %)%reg
 #define _ERS_EXP_ATOMIC_SIZE(sz)	m4_pub_impl(m4_pub_paste) (m4_pub_impl(m4_pub_atomic_size), sz)
 ')m4_dnl
