@@ -11,7 +11,7 @@ if (base === 'all') {
 if (base === 'main.l') {
   let srcs = [ 'replay/thread.l', 'common/helper.c.o', 'common/common.l', 'lib/lib.a' ];
   let keep = [ '^eri_replay_start$', '^eri_global_enable_debug$' ];
-  return await this.invoke ('goal/tst/main.l.g', { srcs, keep });
+  return await this.invoke ('tst/goal/main.l.g', { srcs, keep });
 }
 
 if (base === 'tst-main.ld') return await this.invoke ('goal/m4.g');
@@ -26,7 +26,7 @@ const pat = /^tst-live-([^.]*)\.out/;
 if (base.match (pat)) {
   let live = `live/tst/tst-init-${base.match (pat)[1]}`;
   await this.update ([ `${live}.out` ]);
-  return await this.invoke ('goal/tst/out.g', { src: 'replay/replay', environ: `ERS_DATA=../../${live}-data/` });
+  return await this.invoke ('tst/goal/out.g', { src: 'replay/replay', environ: `ERS_DATA=../../${live}-data/` });
 }
 
 return false;

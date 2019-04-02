@@ -4,7 +4,7 @@ const base = goal.replace (/^int\//, '');
 
 if (base === 'tst-basic.out') {
   let live = 'ers/live';
-  return await this.invoke ('goal/tst/out.g', {
+  return await this.invoke ('tst/goal/out.g', {
     extra: [ live ], environ: `ERS_LIVE=../${live} ERS_DATA=${env.base (env.trim (goal))}-data`
   });
 }

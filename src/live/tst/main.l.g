@@ -6,4 +6,4 @@ if (typeof srcs === 'undefined')
 if (typeof keep === 'undefined')
   var keep = [ '^eri_live_signal_thread__init_main$', '^eri_global_enable_debug$' ];
 
-await this.invoke ('goal/tst/main.l.g', { srcs, keep });
+await this.invoke ('tst/goal/main.l.g', { srcs, keep });
