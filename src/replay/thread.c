@@ -1485,10 +1485,11 @@ atomic (struct thread *th)
     }
   else
     {
-      eri_debug ("\n");
       uint16_t code = th_ctx->ext.op.code;
       uint64_t mem = th_ctx->ext.atomic.mem;
       uint8_t size = th_ctx->ext.op.args;
+
+      eri_debug ("%u\n", code);
       atomic_read_write_user (th, mem, size, code == _ERS_OP_ATOMIC_LOAD);
 
       struct eri_atomic_record rec;
@@ -1517,7 +1518,7 @@ atomic (struct thread *th)
 
       if (code == _ERS_OP_ATOMIC_XCHG && updated)
 	{
-	  atomic_store (mem, size, val);
+	  atomic_store (size, mem, val);
 	  atomic_update (th->group, mem, size);
 	}
 
@@ -1527,7 +1528,7 @@ atomic (struct thread *th)
 			       &th_sregs (th)->rflags, old_val);
 	  if ((th_sregs (th)->rflags & ERI_RFLAGS_ZERO_MASK) && updated)
 	    {
-	      atomic_store (mem, size, val);
+	      atomic_store (size, mem, val);
 	      atomic_update (th->group, mem, size);
 	    }
 	}
