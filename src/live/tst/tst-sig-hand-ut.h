@@ -28,10 +28,10 @@ uint32_t tst_live_sig_hand_init_step (struct tst_live_sig_hand_step *step);
 
 #define tst_live_sig_hand_init_mtpool(pool) \
   do {									\
-    extern uint8_t tst_live_buf_start[];				\
-    extern uint8_t tst_live_buf_end[];					\
-    uint64_t _buf = (uint64_t) tst_live_buf_start;			\
-    uint64_t _buf_size = tst_live_buf_end - tst_live_buf_start;		\
+    extern uint8_t tst_main_buf_start[];				\
+    extern uint8_t tst_main_buf_end[];					\
+    uint64_t _buf = (uint64_t) tst_main_buf_start;			\
+    uint64_t _buf_size = tst_main_buf_end - tst_main_buf_start;		\
     eri_assert_syscall (mmap, _buf, _buf_size,				\
 	ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,			\
 	ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);	\
