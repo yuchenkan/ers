@@ -1,5 +1,4 @@
 #include <lib/compiler.h>
-#include <lib/syscall.h>
 #include <common/common.h>
 
 #include <tst/tst-rand.h>

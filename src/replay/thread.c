@@ -374,6 +374,7 @@ raise (struct thread *th, struct eri_sigframe *frame,
   frame->ctx.mctx.rsi = (uint64_t) a;
   frame->ctx.mctx.rdx = sig;
   frame->ctx.mctx.rcx = (uint64_t) user_frame;
+  frame->ctx.mctx.rflags = 0;
 }
 
 static void
@@ -452,6 +453,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
 	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
 	}
+      eri_debug ("single step: %lx %lx\n", ctx->mctx.rip, ctx->mctx.rcx);
     }
 
   if (sig_access_fault (th_ctx, info, ctx)) return;
@@ -1454,8 +1456,11 @@ syscall (struct thread *th)
   th_sregs (th)->rax = ERI_ENOSYS;
 
 out:
-  th_sregs (th)->rcx = th_ctx->ext.ret;
-  th_sregs (th)->r11 = th_sregs (th)->rflags;
+  if (nr != __NR_rt_sigreturn)
+    {
+      th_sregs (th)->rcx = th_ctx->ext.ret;
+      th_sregs (th)->r11 = th_sregs (th)->rflags;
+    }
 
   if (next && next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
 
