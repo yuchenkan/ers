@@ -1423,12 +1423,17 @@ syscall (struct thread *th)
   th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
 
   uint8_t next = 0;
+
+#define SYSCALL(name) \
+  do { next = ERI_PASTE (syscall_, name) (th); goto out; } while (0)
+
+  ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
+
   th_sregs (th)->rax = ERI_ENOSYS;
+
+out:
   th_sregs (th)->rcx = th_ctx->ext.ret;
   th_sregs (th)->r11 = th_sregs (th)->rflags;
-
-#define SYSCALL(name)	next = ERI_PASTE (syscall_, name) (th)
-  ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
 
   if (next && next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
 

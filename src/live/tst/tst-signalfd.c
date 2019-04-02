@@ -1,5 +1,4 @@
 #include <lib/compiler.h>
-#include <lib/lock.h>
 #include <common/common.h>
 
 #include <tst/tst-rand.h>
@@ -24,7 +23,8 @@ assert_raise_read (uint32_t delay, int32_t sig, int32_t fd)
   eri_assert (siginfo.sig == sig);
   eri_assert (siginfo.code == ERI_SI_TKILL);
   eri_assert (siginfo.pid == raise_args.pid);
-  eri_assert_sys_futex_wait (&raise_args.alive, 1, 0);
+  tst_assert_sys_futex_wait (&raise_args.alive, 1, 0);
+  raise_args.alive = 1;
 }
 
 static uint8_t handled;
