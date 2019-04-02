@@ -10,7 +10,7 @@ if (base === 'tst-basic.out') {
 }
 
 if (base === 'tst-basic') {
-  let srcs = [ 'int/tst-syscall.l', 'int/tst-basic.c.o', 'int/tst-start.S.o' ];
+  let srcs = [ 'int/tst-basic.c.o', 'int/tst-start.S.o', 'int/tst-syscall.l' ];
   return await this.invoke ('goal/link.g', { srcs, ldflags: (_, f) => f });
 }
 

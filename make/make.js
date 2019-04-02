@@ -293,7 +293,7 @@ function main () {
 
     mkdir, dirs: { },
 
-    ext: (f, e) => f.endsWith (`.${e}`),
+    ext: (f, e) => e ? f.endsWith (`.${e}`) : f.split ('.').pop (),
     exts: (f, es) => ! es.every (e => ! env.ext (f, e)),
 
     trim: s => s.split ('.').slice (0, -1).join ('.'),

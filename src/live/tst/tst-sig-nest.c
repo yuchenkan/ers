@@ -1,7 +1,7 @@
 #include <lib/compiler.h>
-#include <lib/lock.h>
 #include <common/common.h>
 
+#include <tst/tst-lock.h>
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
@@ -18,7 +18,7 @@ static void
 sig_handler (int32_t sig)
 {
   eri_info ("%u\n", sig);
-  eri_assert_unlock (sig == ERI_SIGINT ? &int_lock : &term_lock);
+  tst_assert_unlock (sig == ERI_SIGINT ? &int_lock : &term_lock);
 }
 
 static eri_noreturn void raise (void);
@@ -58,7 +58,7 @@ tst_live_start (void)
   eri_sig_empty_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
-  eri_assert_lock (&int_lock);
-  eri_assert_lock (&term_lock);
+  tst_assert_lock (&int_lock);
+  tst_assert_lock (&term_lock);
   tst_assert_sys_exit (0);
 }

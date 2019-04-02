@@ -1,5 +1,5 @@
-#ifndef TST_LIVE_TST_ENTRY_ATOMIC_H
-#define TST_LIVE_TST_ENTRY_ATOMIC_H
+#ifndef TST_LIVE_TST_TST_ENTRY_ATOMIC_H
+#define TST_LIVE_TST_TST_ENTRY_ATOMIC_H
 
 #include <stdint.h>
 

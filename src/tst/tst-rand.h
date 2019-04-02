@@ -1,5 +1,5 @@
-#ifndef TST_TST_RAND_H
-#define TST_TST_RAND_H
+#ifndef TST_TST_TST_RAND_H
+#define TST_TST_TST_RAND_H
 
 #include <stdint.h>
 

@@ -1,3 +1,6 @@
+#ifndef TST_LIVE_TST_TST_SIG_RACE_H
+#define TST_LIVE_TST_TST_SIG_RACE_H
+
 #include <lib/compiler.h>
 #include <common/common.h>
 
@@ -38,3 +41,5 @@ tst_live_start (void)							\
 									\
   tst_assert_sys_exit_group (0);					\
 }
+
+#endif
