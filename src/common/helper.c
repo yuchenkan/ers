@@ -71,7 +71,7 @@ eri_helper__start (struct eri_mtpool *pool,
     | (!! pid ? ERI_SIGCHLD : ERI_CLONE_THREAD),
     helper->stack + stack_size - 8,
     &helper->pid, &helper->alive, 0, start, helper,
-    (void *) stack_size, (void *) (uint64_t) pid
+    (void *) stack_size, eri_itop (pid)
   };
   eri_assert_sys_clone (&args);
   return helper;

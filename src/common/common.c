@@ -378,7 +378,7 @@ eri_unserialize_uint8_array (eri_file_t file, uint8_t *a, uint64_t size)
 void
 eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size)
 {
-  eri_assert_fseek (file, size, ERI_SEEK_CUR);
+  eri_assert_fseek (file, size, 1);
 }
 
 void

@@ -47,6 +47,20 @@ ERI_ENTRY_THREAD_CONTEXT_ENTRY (entry, TC (CTX))
 
   ERI_END_FUNCTION (entry)
 
+ERI_ENTRY_DEFINE_DO_COPY_USER ()
+
+#define READ_USER() \
+ERI_ENTRY_DEFINE_COPY_USER_LABEL (do, read, _user):			\
+  movb	(%rsi), %al;							\
+  incq	%rsi
+
+ERI_FUNCTION (do_read_user)
+  .cfi_startproc
+  movq	%rdx, %rcx
+  ERI_ENTRY_COPY_USER (do, read, READ_USER)
+  .cfi_endproc
+  ERI_END_FUNCTION (do_read_user)
+
 #define IF_ATOMIC_SIZE(sz, size, name) \
   cmpb	$PASTE (_ERS_ATOMIC_SIZE_, sz),	size;				\
   je	PASTE2 (.L, name, sz);
@@ -108,17 +122,3 @@ DEFINE_ATOMIC_FUNCTION (atomic_store, %dil, ATOMIC_STORE)
 DEFINE_ATOMIC_FUNCTION (atomic_inc, %dil, ATOMIC_INC_DEC, inc)
 DEFINE_ATOMIC_FUNCTION (atomic_dec, %dil, ATOMIC_INC_DEC, dec)
 DEFINE_ATOMIC_FUNCTION (atomic_cmpxchg_regs, %dil, ATOMIC_CMPXCHG_REGS)
-
-ERI_ENTRY_DEFINE_DO_COPY_USER ()
-
-#define READ_USER() \
-ERI_ENTRY_DEFINE_COPY_USER_LABEL (do, read, _user):			\
-  movb	(%rsi), %al;							\
-  incq	%rsi
-
-ERI_FUNCTION (do_read_user)
-  .cfi_startproc
-  movq	%rdx, %rcx
-  ERI_ENTRY_COPY_USER (do, read, READ_USER)
-  .cfi_endproc
-  ERI_END_FUNCTION (do_read_user)

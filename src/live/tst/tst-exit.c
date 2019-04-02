@@ -24,7 +24,7 @@ clone (uint64_t i)
   struct eri_sys_clone_args args = {
     ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack[i - 1]), 0, 0, 0,
     start, (void *) tst_rand (&rand, 0, 32), (void *) (i - 1),
-    (void *) (uint64_t) (tst_rand (&rand, 0, 5) < group)
+    eri_itop (tst_rand (&rand, 0, 5) < group)
   };
 
   tst_assert_sys_clone (&args);

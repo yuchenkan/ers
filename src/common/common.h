@@ -59,6 +59,20 @@ void eri_set_sig_mask (struct eri_sigset *dst, const struct eri_sigset *src);
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
      || _act == ERI_SIG_ACT_STOP; })
 
+struct eri_sig_setup_return_to_args
+{
+  struct eri_ucontext *ctx;
+  void *stack;
+
+  void *fn;
+  void *a0;
+  void *a1;
+  void *a2;
+  void *a3;
+
+  void *ret;
+};
+
 struct eri_sigframe *eri_sig_setup_user_frame (struct eri_sigframe *frame,
 		const struct eri_sigaction *act, struct eri_stack *stack,
 		const struct eri_sigset *mask, void *copy, void *args);

@@ -170,21 +170,22 @@ eri_fclose (eri_file_t file)
 }
 
 int32_t
-eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
+eri_fseek (eri_file_t file, int64_t offset, uint8_t rel,
 	   uint64_t *res_offset)
 {
   if (! file) return 1;
 
   if (fraw (file))
     {
-      uint64_t res = eri_syscall (lseek, fraw_fd (file), offset, whence);
+      uint64_t res = eri_syscall (lseek, fraw_fd (file), offset,
+				  rel ? ERI_SEEK_CUR : ERI_SEEK_SET);
       if (eri_syscall_is_error (res)) return 1;
       if (res_offset) *res_offset = res;
       return 0;
     }
 
   struct file *f = (struct file *) file;
-  uint64_t new_offset = whence == ERI_SEEK_SET ? offset : f->offset + offset;
+  uint64_t new_offset = rel ? f->offset + offset : offset;
   if (f->read)
     {
       if (new_offset < f->buf_offset

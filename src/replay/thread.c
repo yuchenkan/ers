@@ -249,7 +249,15 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 static void
 destroy (struct thread *th)
 {
+  uint8_t err;
+  if (eri_unserialize_uint8_or_eof (th->file, &err))
+    {
+      eri_info ("not eof %u\n", err);
+      eri_assert_unreachable ();
+    }
+
   eri_assert_fclose (th->file);
+
   struct eri_mtpool *pool = th->group->pool;
   eri_assert_mtfree (pool, th->file_buf);
   eri_assert_mtfree (pool, th->ctx);
@@ -312,10 +320,29 @@ async_signal (struct thread *th)
   eri_assert_unreachable ();
 }
 
-static eri_noreturn void raise (struct thread *th, struct eri_sigframe *frame,
-				struct eri_ver_sigaction *act);
+static eri_noreturn void do_raise (struct thread *th, void *act, int32_t sig,
+				   struct eri_sigframe *user_frame);
 
 static eri_noreturn void
+do_raise (struct thread *th, void *act, int32_t sig,
+	  struct eri_sigframe *user_frame)
+{
+  if (next_record (th) == ERI_ASYNC_RECORD)
+    {
+      struct thread_context *th_ctx = th->ctx;
+      th_ctx->ext.ret = (uint64_t) act;
+      th_ctx->ctx.rsp = (uint64_t) user_frame;
+      th_sregs (th)->rax = 0;
+      th_sregs (th)->rdi = sig;
+      th_sregs (th)->rsi = (uint64_t) &user_frame->info;
+      th_sregs (th)->rdx = (uint64_t) &user_frame->ctx;
+      async_signal (th);
+    }
+
+  eri_sig_act (user_frame, act);
+}
+
+static void
 raise (struct thread *th, struct eri_sigframe *frame,
        struct eri_ver_sigaction *act)
 {
@@ -330,32 +357,26 @@ raise (struct thread *th, struct eri_sigframe *frame,
 
   if (eri_sig_act_internal_act (a)) exit (th);
 
+  struct eri_sigframe save = *frame;
   struct eri_sigframe *user_frame = eri_sig_setup_user_frame (
 		frame, &act->act, &th->sig_alt_stack, &th->sig_mask,
 		copy_to_user, th);
   eri_set_sig_mask (&th->sig_mask, &act->act.mask);
 
   if (! user_frame) exit (0);
+  *frame = save;
 
-  if (next_record (th) == ERI_ASYNC_RECORD)
-    {
-      struct thread_context *th_ctx = th->ctx;
-      th_ctx->ext.ret = (uint64_t) a;
-      th_ctx->ctx.rsp = (uint64_t) user_frame;
-      th_sregs (th)->rax = 0;
-      th_sregs (th)->rdi = sig;
-      th_sregs (th)->rsi = (uint64_t) &user_frame->info;
-      th_sregs (th)->rdx = (uint64_t) &user_frame->ctx;
-      async_signal (th);
-    }
-
-  eri_sig_act (user_frame, a);
+  uint64_t *stack = (void *) th->ctx->ctx.top;
+  *--stack = 0;
+  frame->ctx.mctx.rsp = (uint64_t) stack;
+  frame->ctx.mctx.rip = (uint64_t) do_raise;
+  frame->ctx.mctx.rdi = (uint64_t) th;
+  frame->ctx.mctx.rsi = (uint64_t) a;
+  frame->ctx.mctx.rdx = sig;
+  frame->ctx.mctx.rcx = (uint64_t) user_frame;
 }
 
-static eri_noreturn void raise_async (struct thread *th,
-				      struct eri_sigframe *frame);
-
-static eri_noreturn void
+static void
 raise_async (struct thread *th, struct eri_sigframe *frame)
 {
   struct eri_signal_record rec;
@@ -390,6 +411,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     {
       set_ctx_from_th_ctx (ctx, th_ctx, 0);
       raise_async (th, frame);
+      return;
     }
 
   if (! eri_si_sync (info)) return;
@@ -425,6 +447,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	      if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH)
 		ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
 	      raise_async (th, frame);
+	      return;
 	    }
 
 	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
@@ -699,8 +722,7 @@ DEFINE_SYSCALL (clone)
     | (new_tls ? ERI_CLONE_SETTLS : 0),
 
     (void *) (cth_ctx->ctx.top - 8),
-    &cth->tid, &cth->alive, new_tls, start, cth,
-    (void *) (uint64_t) next_record (cth)
+    &cth->tid, &cth->alive, new_tls, start, cth, eri_itop (next_record (cth))
   };
 
   eri_assert_sys_clone (&args);
@@ -759,7 +781,7 @@ syscall_do_exit (struct thread *th)
 {
   int32_t *user_tid = th->clear_user_tid;
   eri_debug ("%lx, %u, %lu\n", user_tid, th->user_tid,
-	     eri_assert_fseek (th->file, 0, ERI_SEEK_CUR));
+	     eri_assert_fseek (th->file, 0, 1));
   if (user_tid && read_write_user_tid (th->ctx, user_tid))
     {
       uint64_t mem = (uint64_t) user_tid;

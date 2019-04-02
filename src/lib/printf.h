@@ -36,11 +36,11 @@ int32_t eri_frelease (eri_file_t file, int32_t *fd);
   ({ int32_t __fd; eri_assert (eri_frelease (file, &__fd) == 0); __fd; })
 #endif
 
-int32_t eri_fseek (eri_file_t file, int64_t offset, int32_t whence,
+int32_t eri_fseek (eri_file_t file, int64_t offset, uint8_t rel,
 		   uint64_t *res_offset);
 
-#define eri_assert_fseek(f, o, w) \
-  ({ uint64_t _res; eri_assert (eri_fseek (f, o, w, &_res) == 0); _res; })
+#define eri_assert_fseek(f, o, r) \
+  ({ uint64_t _res; eri_assert (eri_fseek (f, o, r, &_res) == 0); _res; })
 
 int32_t eri_fwrite (eri_file_t file,
 		    const void *buf, uint64_t size, uint64_t *len);

@@ -120,6 +120,8 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 #define eri_struct_of(v, t, f) \
   ((t *) ((uint64_t) v - __builtin_offsetof (t, f)))
 
+#define eri_itop(i)	((void *) (uint64_t) (i))
+
 void eri_assert_itoa (uint64_t i, char *a, uint8_t base);
 uint64_t eri_assert_atoi (const char *a, uint8_t base);
 #define eri_itoa_size(i)	(3 * sizeof (i) + 1)

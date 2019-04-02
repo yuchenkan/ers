@@ -607,8 +607,8 @@ sig_set (struct thread_context *th_ctx, struct eri_sigframe *frame,
 }
 
 static void
-sig_return_to (struct eri_live_thread *th,
-	       struct eri_ucontext *ctx, void *fn)
+sig_setup_return_to (struct eri_live_thread *th,
+		     struct eri_ucontext *ctx, void *fn)
 {
   struct thread_context *th_ctx = th->ctx;
   uint64_t *stack = (void *) th_ctx->ctx.top;
@@ -692,7 +692,7 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
     return;
 
   sig_set (th_ctx, frame, act, SIG_HAND_NONE);
-  sig_return_to (th, ctx, sig_action);
+  sig_setup_return_to (th, ctx, sig_action);
 }
 
 static void
@@ -729,7 +729,7 @@ sig_hand_return_to_user (
     }
 
   sig_set (th_ctx, frame, act, SIG_HAND_NONE);
-  sig_return_to (th, ctx, sig_action);
+  sig_setup_return_to (th, ctx, sig_action);
 }
 
 static void
@@ -2243,8 +2243,8 @@ sig_hand_sync_async_return_to_user (
   if (inst) ctx->mctx.rip = th_ctx->ext.call;
 
   sig_set (th_ctx, frame, act, SIG_HAND_NONE);
-  sig_return_to (th, ctx,
-		 intern || inst ? sig_restart_sync_async : sig_action);
+  sig_setup_return_to (th, ctx, intern || inst
+				? sig_restart_sync_async : sig_action);
 }
 
 static void
@@ -2359,14 +2359,14 @@ sig_hand_atomic (struct eri_live_thread *th, struct eri_sigframe *frame,
 	  sig_ctx->mctx.r13 = ctx->mctx.r13;
 	  sig_ctx->mctx.r14 = ctx->mctx.r14;
 	  sig_ctx->mctx.r15 = ctx->mctx.r15;
-	  sig_return_to (th, ctx, sig_restart_atomic);
+	  sig_setup_return_to (th, ctx, sig_restart_atomic);
 	}
       else
 	{
 	  eri_assert (sig_prepare_sync (th, info, act));
 
 	  sig_set (th_ctx, frame, act, SIG_HAND_NONE);
-	  sig_return_to (th, ctx, sig_restart_atomic);
+	  sig_setup_return_to (th, ctx, sig_restart_atomic);
 	}
       return;
     }
