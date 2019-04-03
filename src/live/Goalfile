@@ -1,11 +1,8 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const cur = 'live';
-const subs = [ 'tst' ].map (s => `${cur}/${s}`);
-const base = goal.replace (new RegExp (`^${cur}/`), '');
+const base = await this.invoke ('common/filter-out-sub-tst.g', { cur: 'live' });
 
-if (await this.invoke ('goal/subs.g', { subs, dispatch: true })) return;
-if (base === 'all') return await this.invoke ('goal/subs.g', { subs });
+if (! base) return;
 
 if (base === 'convert.c.o') return await this.invoke ('goal/compile.g', { cflags: (_, f) => f });
 
