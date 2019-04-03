@@ -567,6 +567,7 @@ sig_action (struct eri_live_thread *th)
       eri_assert_syscall (sigaltstack, &st, 0);
 
       eri_live_signal_thread__sig_reset (sig_th, &act->mask);
+      // if (eri_live_signal_thread__signaled (sig_th)) while (1) continue;
       eri_sig_act (th_ctx->sig_act_frame, act->act);
     }
 
@@ -2037,14 +2038,14 @@ DEFINE_SYSCALL (futex)
   int32_t cmd = op & ERI_FUTEX_CMD_MASK;
   if (cmd == ERI_FUTEX_WAIT)
     {
-      syscall_syscall (th_ctx);
+      syscall_intr_syscall (th_ctx);
+      if (sregs->rax == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
       syscall_record_result (th);
       return SYSCALL_DONE;
     }
   else if (cmd == ERI_FUTEX_WAKE)
     {
-      syscall_intr_syscall (th_ctx);
-      if (sregs->rax == ERI_EINTR) syscall_sig_wait (th_ctx, 0);
+      syscall_syscall (th_ctx);
       syscall_record_result (th);
       return SYSCALL_DONE;
     }
