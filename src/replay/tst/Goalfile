@@ -4,23 +4,26 @@ const base = goal.replace (/^replay\/tst\//, '');
 const full = x => `replay/tst/${x}`;
 
 if (base === 'all') {
-  let names = [ 'sync-async' ].concat ((await this.invoke ('live/tst/replay.g')).map (x => `live-${x}`));
+  let names = [ 'basic' ].concat ((await this.invoke ('live/tst/replay.g')).map (x => `live-${x}`));
   return await this.update (names.map (x => full (`tst-${x}.out`)));
 }
 
 if (base === 'main.l') {
   let srcs = [ 'replay/thread.l', 'common/helper.c.o', 'common/common.l', 'lib/lib.a' ];
-  let keep = [ '^eri_replay_start$', '^eri_global_enable_debug$' ];
+  let keep = [ '^eri_replay_start$' ];
   return await this.invoke ('tst/goal/main.l.g', { srcs, keep });
 }
 
 if (base === 'tst-main.ld') return await this.invoke ('goal/m4.g');
 
-if (base === 'tst-sync-async') {
-  let srcs = [ 'tst/tst-start.S.o', `${goal}.c.o`, full ('main.l') ];
+if (base === 'tst-basic') {
+  let srcs = [ 'tst/tst-start.S.o', `${goal}.c.o`, full ('main.l'), 'common/common.l', 'lib/lib.a' ];
   let script = full ('tst-main.ld');
   return await this.invoke ('goal/link.g', { srcs, extra: [ script ], ldflags: (_, f) => `${f} -T ${script}` });
 }
+
+if (base === 'tst-basic.out')
+  return await this.invoke ('tst/goal/out.g', { environ: `ERS_DATA=${env.base (env.trim (goal))}-data` });
 
 const pat = /^tst-live-([^.]*)\.out/;
 if (base.match (pat)) {

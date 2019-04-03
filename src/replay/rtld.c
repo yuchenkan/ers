@@ -172,7 +172,7 @@ rtld (void **args)
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size, .sig_mask = sig_mask,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
-    .map_start = rec.start, .map_end = rec.end,
+    .map_start = rec.map_start, .map_end = rec.map_end,
     .map_entry_offset
 	= (uint64_t) eri_replay_start - (uint64_t) eri_start,
     .nsegs = nsegs

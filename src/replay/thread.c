@@ -541,8 +541,8 @@ start_main (struct thread *th)
   th->sig_alt_stack = rec.sig_alt_stack;
 
   struct thread_group *group = th->group;
-  group->map_start = rec.start;
-  group->map_end = rec.end;
+  group->map_start = rec.map_start;
+  group->map_end = rec.map_end;
 
   uint64_t atomic_table_size = rec.atomic_table_size;
   group->atomic_table = eri_assert_calloc (&group->pool->pool,

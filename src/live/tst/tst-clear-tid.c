@@ -26,7 +26,7 @@ eri_noreturn void
 tst_live_start (void)
 {
   struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack), 0, &ctid, 0, start
+    ERI_CLONE_SUPPORTED_FLAGS, tst_stack_top (stack), 0, &ctid, 0, start
   };
   ctid = set_ctid = 1;
   tst_assert_sys_clone (&args);

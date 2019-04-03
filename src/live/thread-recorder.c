@@ -184,7 +184,7 @@ eri_live_thread_recorder__rec_init (
   eri_assert_buf_mtpool_init (&buf, th_rec->pool, 256);
 
   struct proc_smaps_line_args line_args
-			= { th_rec, rec->start, rec->end, rec->rsp };
+		= { th_rec, rec->map_start, rec->map_end, rec->rsp };
   eri_assert_buf_mtpool_init (&line_args.buf, th_rec->pool, 1024);
   eri_assert_file_foreach_line ("/proc/self/smaps", &buf,
 				proc_smaps_line, &line_args);

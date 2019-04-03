@@ -32,7 +32,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     eri_assert (ctx->mctx.reg == 0);
   TST_FOREACH_GENERAL_REG (ZERO)
 
-  eri_assert (ctx->mctx.rsp == (uint64_t) tst_clone_top (stack));
+  eri_assert (ctx->mctx.rsp == (uint64_t) tst_stack_top (stack));
   eri_assert (ctx->mctx.rip == 0);
   eri_assert ((ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK) == 0);
   eri_assert_sys_exit (0);
@@ -91,7 +91,7 @@ tst_main (void)
   extern uint8_t tst_main_map_end[];
 
   struct eri_live_rtld_args rtld_args = {
-    .rsp = (uint64_t) tst_clone_top (stack),
+    .rsp = (uint64_t) tst_stack_top (stack),
     .map_start = (uint64_t) tst_main_map_start,
     .map_end = (uint64_t) tst_main_map_end
   };

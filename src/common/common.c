@@ -511,8 +511,8 @@ eri_serialize_init_record (eri_file_t file, const struct eri_init_record *rec)
 
   eri_serialize_int32 (file, rec->user_pid);
 
-  eri_serialize_uint64 (file, rec->start);
-  eri_serialize_uint64 (file, rec->end);
+  eri_serialize_uint64 (file, rec->map_start);
+  eri_serialize_uint64 (file, rec->map_end);
   eri_serialize_uint64 (file, rec->atomic_table_size);
 }
 
@@ -529,8 +529,8 @@ eri_unserialize_init_record (eri_file_t file, struct eri_init_record *rec)
 
   rec->user_pid = eri_unserialize_int32 (file);
 
-  rec->start = eri_unserialize_uint64 (file);
-  rec->end = eri_unserialize_uint64 (file);
+  rec->map_start = eri_unserialize_uint64 (file);
+  rec->map_end = eri_unserialize_uint64 (file);
   rec->atomic_table_size = eri_unserialize_uint64 (file);
 }
 

@@ -242,8 +242,8 @@ struct eri_init_record
   struct eri_stack sig_alt_stack;
   int32_t user_pid;
 
-  uint64_t start;
-  uint64_t end;
+  uint64_t map_start;
+  uint64_t map_end;
 
   uint64_t atomic_table_size;
 };

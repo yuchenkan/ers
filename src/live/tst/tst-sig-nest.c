@@ -50,7 +50,7 @@ tst_live_start (void)
   tst_assert_sys_sigaction (ERI_SIGTERM, &act, 0);
 
   struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, tst_clone_top (stack), 0, 0, 0, raise
+    ERI_CLONE_SUPPORTED_FLAGS, tst_stack_top (stack), 0, 0, 0, raise
   };
   tst_assert_sys_clone (&args);
 

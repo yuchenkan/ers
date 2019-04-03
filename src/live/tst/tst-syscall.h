@@ -6,8 +6,6 @@
 /* ~(SIGKILL_MASK | SIGSTOP_MASK) */
 #define TST_SIGSET_MASK			0xfffffffffffbfeff
 
-#define tst_clone_top(stack)		((stack) + sizeof (stack) - 8)
-
 #define tst_assert_sys_raise(sig) \
   tst_assert_syscall (tgkill, tst_assert_syscall (getpid),		\
 		      tst_assert_syscall (gettid), sig)
@@ -28,7 +26,7 @@ struct tst_sys_clone_raise_args
   do {									\
     struct tst_sys_clone_raise_args *_args = args;			\
     _args->sig = rsig;							\
-    _args->top = tst_clone_top (stack);					\
+    _args->top = tst_stack_top (stack);					\
     _args->delay = rdelay;						\
     _args->pid = tst_assert_syscall (getpid);				\
     _args->tid = tst_assert_syscall (gettid);				\
@@ -47,7 +45,7 @@ struct tst_sys_clone_exit_group_args
 #define tst_sys_clone_exit_group_init_args(args, stack, edelay) \
   do {									\
     struct tst_sys_clone_exit_group_args *_args = args;			\
-    _args->top = tst_clone_top (stack);					\
+    _args->top = tst_stack_top (stack);					\
     _args->delay = edelay;						\
   } while (0)
 

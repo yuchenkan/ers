@@ -430,6 +430,11 @@ sig_digest_act (const struct eri_siginfo *info, struct eri_sigaction *act)
 {
   int32_t sig = info->sig;
 
+  /*
+   * 1. the linux kernel implementation is like this.
+   * 2. we depend on this to keep all sync signals recorded (ignored signal
+   *    is not recorded currently).
+   */
   if (eri_si_sync (info) && act->act == ERI_SIG_IGN) act->act = ERI_SIG_DFL;
 
   if (act->act == ERI_SIG_IGN)
@@ -551,6 +556,7 @@ sig_action (struct eri_live_thread *th)
       /* XXX: swallow? */
       th_ctx->swallow_single_step = 0;
 
+      /* XXX: detect failure to replay in analysis */
       if (! sig_setup_user_frame (th, frame)) goto core;
 
       record_signal (th, info, &th_ctx->sig_act);

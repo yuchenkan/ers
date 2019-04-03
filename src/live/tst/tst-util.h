@@ -13,7 +13,7 @@
   } while (0)
 
 #define tst_get_tls() \
-  ({ void *_tls; asm ("movq	%%fs:0, %0" : "=r" (_tls)); _tls; })
+  ({ void *_tls; asm ("movq\t%%fs:0, %0" : "=r" (_tls)); _tls; })
 
 /* XXX: check other flags */
 #define TST_RFLAGS_STATUS_MASK		0xd5
@@ -34,6 +34,9 @@ asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
 asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
 
 #define tst_enable_trace() \
-asm ("pushq	%0; popfq" : : "n" (ERI_RFLAGS_TRACE_MASK) : "cc", "memory");
+asm ("pushq\t%0; popfq" : : "n" (ERI_RFLAGS_TRACE_MASK) : "cc", "memory");
+
+#define tst_disable_trace() \
+asm ("pushq\t$0; popfq" : : : "cc", "memory");
 
 #endif
