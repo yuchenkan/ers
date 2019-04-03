@@ -1,0 +1,3 @@
+'use strict'; /* vim: set ft=javascript: */
+
+return goal === 'analysis/tst/all';

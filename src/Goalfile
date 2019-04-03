@@ -2,7 +2,7 @@
 
 if (env.base (goal) === 'Goalfile') return false;
 
-const subs = [ 'lib', 'common', 'live', 'replay', 'ers', 'int' ];
+const subs = [ 'lib', 'common', 'live', 'replay', 'analysis', 'int', 'ers' ];
 if (goal !== 'goal/subs.g' && await this.invoke ('goal/subs.g', { subs, dispatch: true })) return;
 
 if (goal === 'all') return await this.invoke ('goal/subs.g', { subs });
