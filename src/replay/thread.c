@@ -1509,6 +1509,8 @@ atomic (struct thread *th)
       th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
       th_ctx->ext.ret = th_ctx->ext.atomic.ret;
       th_ctx->atomic_ext_return = 0;
+
+      if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
     }
   else
     {
@@ -1525,6 +1527,7 @@ atomic (struct thread *th)
       uint8_t updated = rec.updated;
       uint64_t ver[2] = { rec.ver[0], rec.ver[1] };
       uint64_t old_val = rec.val;
+      eri_debug ("%u %lu %lu\n", updated, ver[0], ver[1]);
 
       atomic_wait (th->group, mem, size, ver);
 
@@ -1568,7 +1571,8 @@ atomic (struct thread *th)
       else
 	th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
 
-      if (next_record (th) == ERI_ASYNC_RECORD) async_signal (th);
+      if (! th_ctx->atomic_ext_return && next_record (th) == ERI_ASYNC_RECORD)
+	async_signal (th);
     }
 }
 

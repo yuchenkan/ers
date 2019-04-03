@@ -65,7 +65,7 @@ main (int32_t argc, const char **argv)
 	eri_unserialize_signal_record (file, &rec);
 	printf ("  in: %lu, info.sig: %d", rec.in, rec.info.sig);
 	if (rec.info.sig)
-	  printf (", .code; %d, act.ver: %lu\n", rec.info.code, rec.act.ver);
+	  printf (", .code: %d, act.ver: %lu\n", rec.info.code, rec.act.ver);
 	else printf ("\n");
       }
     else if (mark == ERI_SYNC_RECORD)
