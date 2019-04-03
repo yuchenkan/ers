@@ -58,6 +58,13 @@ eri_live_signal_thread__get_tid (
   return sig_th->tid;
 }
 
+uint8_t
+eri_live_signal_thread__signaled (
+		struct eri_live_signal_thread *sig_th)
+{
+  return 0;
+}
+
 #define UNUSED(func) \
 TST_UNUSED (ERI_PASTE (eri_live_signal_thread__, func))
 
@@ -69,5 +76,4 @@ UNUSED(sig_fd_read)
 UNUSED(sig_mask_async)
 UNUSED(sig_prepare_sync)
 UNUSED(sig_tmp_mask_async)
-UNUSED(signaled)
 UNUSED(syscall)

@@ -567,7 +567,7 @@ sig_action (struct eri_live_thread *th)
       eri_assert_syscall (sigaltstack, &st, 0);
 
       eri_live_signal_thread__sig_reset (sig_th, &act->mask);
-      // if (eri_live_signal_thread__signaled (sig_th)) while (1) continue;
+      if (eri_live_signal_thread__signaled (sig_th)) while (1) continue;
       eri_sig_act (th_ctx->sig_act_frame, act->act);
     }
 
