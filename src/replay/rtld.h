@@ -11,9 +11,8 @@
 struct eri_replay_rtld_args
 {
   const char *path;
-  uint8_t debug;
 
-  struct eri_sigset sig_mask;
+  uint8_t debug;
 
   uint64_t stack_size;
   uint64_t file_buf_size;
