@@ -21,9 +21,9 @@
 
 #define ERI_RBT_INIT_TREE(pfx, tree) \
   do {									\
-    typeof (tree) __tree = tree;					\
-    __tree->pfx##_rbt_root = 0;						\
-    __tree->pfx##_rbt_size = 0;						\
+    typeof (tree) _tree = tree;						\
+    _tree->pfx##_rbt_root = 0;						\
+    _tree->pfx##_rbt_size = 0;						\
    } while (0)
 #define ERI_RBT_TREE_FIELDS(pfx, node_type) \
   node_type *pfx##_rbt_root; uint64_t pfx##_rbt_size;
@@ -61,6 +61,10 @@ ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, node_type)
 #define ERI_DEFINE_RBTREE(attr, pfx, tree_type, \
 			  node_type, key_type, less_than) \
 ERI_DECLARE_RBTREE (attr, pfx, tree_type, node_type, key_type)		\
+									\
+static eri_unused int32_t pfx##_rbt_check_recurse (tree_type *tree,	\
+			 node_type *n, node_type **v, uint64_t *size);	\
+static eri_unused void pfx##_rbt_check (tree_type *tree);		\
 									\
 static int32_t								\
 pfx##_rbt_check_recurse (tree_type *tree, node_type *n,			\

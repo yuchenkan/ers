@@ -6,14 +6,16 @@
 #include <lib/compiler.h>
 
 #define ERI_LST_INIT_LIST(pfx, list) \
-  do { typeof (list) __eri_l = (list);					\
-       __eri_l->pfx##_lst[0]						\
-	= __eri_l->pfx##_lst[1] = __eri_l->pfx##_lst;			\
-       __eri_l->pfx##_lst_size = 0; } while (0)
+  do { typeof (list) _list = list;					\
+       _list->pfx##_lst[0]						\
+		= _list->pfx##_lst[1] = _list->pfx##_lst;		\
+       _list->pfx##_lst_size = 0; } while (0)
 #define ERI_LST_LIST_FIELDS(pfx) void *pfx##_lst[2]; uint64_t pfx##_lst_size;
 #define ERI_LST_NODE_FIELDS(pfx) void *pfx##_lst[2];
 
 #define ERI_DECLARE_LIST(attr, pfx, list_type, node_type) \
+attr eri_unused void pfx##_lst_insert_front (				\
+			list_type *list, node_type *node);		\
 attr eri_unused void pfx##_lst_append (					\
 			list_type *list, node_type *node);		\
 attr eri_unused void pfx##_lst_remove (					\
@@ -24,20 +26,27 @@ attr eri_unused uint64_t pfx##_lst_get_size (list_type *list);
 ERI_DECLARE_LIST(attr, pfx, list_type, node_type)			\
 									\
 static void								\
-pfx##_lst_insert_after (void **n, void **nn)				\
+pfx##_lst_insert_after (list_type *list, void **n, void **nn)		\
 {									\
   nn[0] = n;			/* nn->prev = n; */			\
   nn[1] = n[1];			/* nn->next = n->next; */		\
   ((void **) n[1])[0] = nn;	/* n->next->prev = nn; */		\
   n[1] = nn;			/* n->next = nn; */			\
+  ++list->pfx##_lst_size;						\
+}									\
+									\
+attr void								\
+pfx##_lst_insert_front (list_type *list, node_type *node)		\
+{									\
+  pfx##_lst_insert_after (list, (void **) list->pfx##_lst,		\
+			  node->pfx##_lst);				\
 }									\
 									\
 attr void								\
 pfx##_lst_append (list_type *list, node_type *node)			\
 {									\
-  pfx##_lst_insert_after ((void **) list->pfx##_lst[0],			\
+  pfx##_lst_insert_after (list, (void **) list->pfx##_lst[0],		\
 			  node->pfx##_lst);				\
-  ++list->pfx##_lst_size;						\
 }									\
 									\
 attr void								\

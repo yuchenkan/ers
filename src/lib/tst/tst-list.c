@@ -45,5 +45,12 @@ main (void)
       eri_assert_printf ("\n");
     }
 
+  for (i = 0; i < eri_length_of (n); ++i)
+    x_lst_insert_front (&l, n + i);
+
+  ERI_LST_FOREACH (x, &l, it)
+    eri_assert_printf ("%u %u\n", it->a, it->b);
+  eri_assert_printf ("\n");
+
   return 0;
 }
