@@ -72,7 +72,7 @@ void eri_live_signal_thread__sig_reset (
  * digested sig_act are put in the info and act.
  * Otherwise, raw sig_act for the info is put in the act.
  */
-void eri_live_signal_thread__sig_prepare_sync (
+void eri_live_signal_thread__sig_prepare (
 		struct eri_live_signal_thread *sig_th,
 		struct eri_siginfo *info, struct eri_ver_sigaction *act);
 

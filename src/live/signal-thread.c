@@ -959,7 +959,7 @@ eri_live_signal_thread__sig_reset (
 }
 
 void
-eri_live_signal_thread__sig_prepare_sync (
+eri_live_signal_thread__sig_prepare (
 			struct eri_live_signal_thread *sig_th,
 			struct eri_siginfo *info, struct eri_ver_sigaction *act)
 {

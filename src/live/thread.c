@@ -634,11 +634,11 @@ sig_setup_return_to (struct eri_live_thread *th,
 }
 
 static uint8_t
-sig_prepare_sync (struct eri_live_thread *th, struct eri_siginfo *info,
-		  struct eri_ver_sigaction *act)
+sig_prepare (struct eri_live_thread *th, struct eri_siginfo *info,
+	     struct eri_ver_sigaction *act)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
-  eri_live_signal_thread__sig_prepare_sync (sig_th, info, act);
+  eri_live_signal_thread__sig_prepare (sig_th, info, act);
 
   if (! eri_si_sync (info)) return 1;
 
@@ -694,8 +694,8 @@ sig_hand_sig_action (struct eri_live_thread *th, struct eri_sigframe *frame,
 	}
     }
 
-  /* XXX: merge sig_prepare_sync & sig_reset */
-  if (eri_si_sync (info) && ! sig_prepare_sync (th, info, act))
+  /* XXX: merge sig_prepare & sig_reset */
+  if (eri_si_sync (info) && ! sig_prepare (th, info, act))
     return;
 
   sig_set (th_ctx, frame, act, SIG_HAND_NONE);
@@ -725,7 +725,7 @@ sig_hand_return_to_user (
 
   if (intern) eri_assert (! eri_si_sync (info));
 
-  if (eri_si_sync (info) && ! sig_prepare_sync (th, info, act))
+  if (eri_si_sync (info) && ! sig_prepare (th, info, act))
     return;
 
   if (intern)
@@ -2237,7 +2237,7 @@ sig_hand_sync_async_return_to_user (
       return;
     }
 
-  if (eri_si_sync (info) && ! sig_prepare_sync (th, info, act))
+  if (eri_si_sync (info) && ! sig_prepare (th, info, act))
     return;
 
   if (intern)
@@ -2370,7 +2370,8 @@ sig_hand_atomic (struct eri_live_thread *th, struct eri_sigframe *frame,
 	}
       else
 	{
-	  eri_assert (sig_prepare_sync (th, info, act));
+	  /* Sync sigsegv sigbus are not ignorable.  */
+	  eri_assert (sig_prepare (th, info, act));
 
 	  sig_set (th_ctx, frame, act, SIG_HAND_NONE);
 	  sig_setup_return_to (th, ctx, sig_restart_atomic);
