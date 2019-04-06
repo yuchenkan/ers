@@ -14,18 +14,15 @@
  *   eri_scratch_registers + eri_extra_registers + rbx + rsp + rip
  */
 
-#define ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX(p, ...) \
+#define ERI_ENTRY_FOREACH_SGREG_NO_RCX(p, ...) \
   p (RAX, rax, ##__VA_ARGS__)						\
+  p (RDX, rdx, ##__VA_ARGS__)						\
   p (RDI, rdi, ##__VA_ARGS__)						\
   p (RSI, rsi, ##__VA_ARGS__)						\
   p (R8, r8, ##__VA_ARGS__)						\
   p (R9, r9, ##__VA_ARGS__)						\
   p (R10, r10, ##__VA_ARGS__)						\
   p (R11, r11, ##__VA_ARGS__)
-
-#define ERI_ENTRY_FOREACH_SGREG_NO_RCX(p, ...) \
-  ERI_ENTRY_FOREACH_SGREG_NO_RCX_RDX(p, ##__VA_ARGS__)			\
-  p (RDX, rdx, ##__VA_ARGS__)
 
 #define ERI_ENTRY_FOREACH_SGREG(p, ...) \
   ERI_ENTRY_FOREACH_SGREG_NO_RCX(p, ##__VA_ARGS__)			\
