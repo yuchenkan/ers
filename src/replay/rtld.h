@@ -6,8 +6,6 @@
 #include <lib/compiler.h>
 #include <lib/syscall-common.h>
 
-#include <common/entry.h>
-
 struct eri_replay_rtld_args
 {
   const char *path;
