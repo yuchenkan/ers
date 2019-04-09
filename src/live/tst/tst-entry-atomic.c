@@ -1,3 +1,4 @@
+#include <lib/util.h>
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-entry-atomic.h>
 

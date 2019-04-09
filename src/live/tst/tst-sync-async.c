@@ -2,7 +2,7 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
@@ -59,13 +59,11 @@ sig_int (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   else tst_assert_sys_exit (0);
 }
 
-eri_noreturn void tst_live_start (void);
-
 eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_init (&rand, 0);
+  tst_rand_init (&rand, 31699);
 
   struct eri_sigaction act = {
     sig_trap, ERI_SA_SIGINFO | ERI_SA_RESTORER, tst_assert_sys_sigreturn

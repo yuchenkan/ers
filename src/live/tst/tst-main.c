@@ -1,12 +1,11 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/syscall.h>
 
 #include <live/rtld.h>
 #include <live/signal-thread.h>
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
-eri_noreturn void tst_main (void **args);
 eri_noreturn void tst_live_start (void);
 
 eri_noreturn void

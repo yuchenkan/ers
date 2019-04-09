@@ -1,9 +1,7 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

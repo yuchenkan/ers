@@ -46,10 +46,9 @@
   ERI_FOREACH_REG_SIZE3 (p, ##__VA_ARGS__)				\
   p (q, ##__VA_ARGS__)
 
-#define ERI_RFLAGS_ZERO_BIT_OFFSET	6
-#define ERI_RFLAGS_TRACE_BIT_OFFSET	8
-
-#define ERI_RFLAGS_ZERO_MASK		(1 << ERI_RFLAGS_ZERO_BIT_OFFSET)
-#define ERI_RFLAGS_TRACE_MASK		(1 << ERI_RFLAGS_TRACE_BIT_OFFSET)
+#define ERI_RFLAGS_ZF		(1 << 6)
+#define ERI_RFLAGS_TF		(1 << 8)
+#define ERI_RFLAGS_DF		(1 << 10)
+#define ERI_RFLAGS_RF		(1 << 16)
 
 #endif

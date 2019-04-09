@@ -1,8 +1,9 @@
 #include <lib/compiler.h>
+#include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/rtld.h>
 #include <live/thread.h>
@@ -17,9 +18,6 @@
 static uint8_t handled;
 
 static eri_aligned16 uint8_t stack[1024 * 1024];
-
-static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
-				      struct eri_ucontext *ctx);
 
 static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
@@ -53,13 +51,13 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   step_ctx = ctx;
 
-  ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
+  ctx->mctx.rflags |= ERI_RFLAGS_TF;
 
   if (! sig_th.sig_alt_stack_installed) return;
 
   if (eri_assert_syscall (gettid) == sig_th.tid)
     {
-      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
       return;
     }
 

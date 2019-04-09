@@ -1,7 +1,7 @@
 #ifndef ERI_LIB_UTIL_H
 #define ERI_LIB_UTIL_H
 
-#include <public/impl/common.h>
+#include <public/util.h>
 
 #define ERI_STR(...)		_ERS_STR (__VA_ARGS__)
 #define ERI_PASTE(x, y)		_ERS_PASTE (x, y)
@@ -18,6 +18,10 @@
 
 #define ERI_MOV_MM(src, dst, reg) \
   movq	src, reg;							\
+  movq	reg, dst
+
+#define ERI_LEA_MM(src, dst, reg) \
+  leaq	src, reg;							\
   movq	reg, dst
 
 #define _ERI_PP_IIF_0(t, ...)		__VA_ARGS__
@@ -142,6 +146,19 @@ uint64_t eri_assert_atoi (const char *a, uint8_t base);
      uint8_t _g = eri_strncmp (_arg, _key, eri_strlen (_key)) == 0;	\
      if (_g) *_val = eri_assert_atoi (_arg + eri_strlen (_key), _base);	\
      _g; })
+
+struct eri_range
+{
+  uint64_t start, end;
+};
+
+#define eri_within(range, val) \
+  ({ struct eri_range *_range = range; uint64_t _val = val;		\
+     _val >= _range->start && _val < _range->end; })
+#define eri_cross(range, val, len) \
+  ({ struct eri_range *_range = range;					\
+     uint64_t _val = val; uint64_t _len = len;				\
+     _val + _len > _range->start && _val < _range->end;	})
 
 #endif
 

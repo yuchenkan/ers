@@ -33,8 +33,6 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
   return base;
 }
 
-eri_noreturn void rtld (void **args, uint64_t rdx);
-
 eri_noreturn void
 rtld (void **args, uint64_t rdx)
 {

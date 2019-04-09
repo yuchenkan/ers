@@ -446,7 +446,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	    {
 	      th_ctx->sync_async_trace = 0;
 	      if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH)
-		ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
+		ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
 	      raise_async (th, frame);
 	      return;
 	    }
@@ -587,7 +587,7 @@ start_main (struct thread *th)
 static void
 swallow_single_step (struct thread_context *th_ctx)
 {
-  if (th_ctx_sregs (th_ctx)->rflags & ERI_RFLAGS_TRACE_MASK)
+  if (th_ctx_sregs (th_ctx)->rflags & ERI_RFLAGS_TF)
     th_ctx->swallow_single_step = 1;
 }
 
@@ -1482,11 +1482,11 @@ sync_async (struct thread *th)
   if (next_record (th) != ERI_ASYNC_RECORD) return;
 
   th_ctx->sync_async_trace
-		= (th_sregs (th)->rflags & ERI_RFLAGS_TRACE_MASK)
+		= (th_sregs (th)->rflags & ERI_RFLAGS_TF)
 			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
   th_ctx->sync_async_trace_steps = steps;
   /* XXX: this can be slow with large repeats... */
-  th_sregs (th)->rflags |= ERI_RFLAGS_TRACE_MASK;
+  th_sregs (th)->rflags |= ERI_RFLAGS_TF;
 }
 
 static void
@@ -1556,7 +1556,7 @@ atomic (struct thread *th)
 	{
 	  atomic_cmpxchg_regs (size, &th_sregs (th)->rax,
 			       &th_sregs (th)->rflags, old_val);
-	  if ((th_sregs (th)->rflags & ERI_RFLAGS_ZERO_MASK) && updated)
+	  if ((th_sregs (th)->rflags & ERI_RFLAGS_ZF) && updated)
 	    {
 	      atomic_store (size, mem, val);
 	      atomic_update (th->group, mem, size);

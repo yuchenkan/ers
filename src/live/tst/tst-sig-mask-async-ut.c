@@ -2,7 +2,7 @@
 #include <lib/cpu.h>
 #include <lib/atomic.h>
 #include <lib/syscall.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/signal-thread-local.h>
 #include <live/tst/tst-util.h>
@@ -43,7 +43,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   if (done)
     {
       reach_done = 1;
-      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
       return;
     }
 
@@ -51,7 +51,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     {
       sig_ctx = ctx;
       eri_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
-      ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
+      ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
     }
 }
 

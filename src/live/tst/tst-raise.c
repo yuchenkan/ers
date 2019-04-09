@@ -1,5 +1,6 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
@@ -30,8 +31,6 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   tst_assert_sys_sigprocmask (0, &mask);
   eri_assert (mask.val[0] == TST_SIGSET_MASK);
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

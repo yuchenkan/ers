@@ -3,8 +3,6 @@
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
 
-eri_noreturn void tst_live_start (void);
-
 eri_noreturn void
 tst_live_start (void)
 {

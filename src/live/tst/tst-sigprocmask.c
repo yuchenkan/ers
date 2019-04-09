@@ -1,10 +1,10 @@
 #include <lib/compiler.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)
@@ -41,12 +41,16 @@ tst_live_start (void)
   tst_assert_sys_sigprocmask (0, &set3);
   eri_assert (set3.val[0] == TST_SIGSET_MASK);
 
+  eri_debug ("inval 1\n");
   eri_assert (tst_syscall (rt_sigprocmask, -1,
 			   0, 0, ERI_SIG_SETSIZE) == ERI_EINVAL);
+  eri_debug ("inval 2\n");
   eri_assert (tst_syscall (rt_sigprocmask, ERI_SIG_SETMASK,
 			   0, 0, 0) == ERI_EINVAL);
+  eri_debug ("fault 1\n");
   eri_assert (tst_syscall (rt_sigprocmask, ERI_SIG_SETMASK,
 			   0, 1, ERI_SIG_SETSIZE) == ERI_EFAULT);
+  eri_debug ("fault 2\n");
   eri_assert (tst_syscall (rt_sigprocmask, ERI_SIG_SETMASK,
 			   1, 0, ERI_SIG_SETSIZE) == ERI_EFAULT);
 

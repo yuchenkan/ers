@@ -6,7 +6,7 @@
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/malloc.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/thread.h>
 #include <live/tst/tst-util.h>

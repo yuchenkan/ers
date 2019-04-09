@@ -1,7 +1,8 @@
 #include <public/public.h>
 
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-atomic.h>
 #include <tst/tst-syscall.h>
@@ -27,8 +28,6 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (sig == ERI_SIGTRAP);
   eri_assert (eri_si_single_step (info));
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

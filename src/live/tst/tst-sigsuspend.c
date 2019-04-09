@@ -1,5 +1,6 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>

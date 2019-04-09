@@ -3,7 +3,7 @@
 #include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/rtld.h>
 #include <live/thread.h>
@@ -19,52 +19,74 @@ static struct eri_live_signal_thread sig_th;
 
 static eri_aligned16 uint8_t stack[8 * 1024 * 1024];
 
-static uint8_t raise;
+static uint8_t init;
+static struct eri_sigframe *init_frame;
+static struct eri_siginfo init_info;
+static struct eri_mcontext init_ctx;
 
 static uint8_t stepping;
 static uint32_t step_count;
 static uint32_t raise_at;
 static uint8_t reach_done;
 
-static struct eri_sigframe *enter_frame;
-static struct eri_siginfo enter_info;
-static struct eri_mcontext enter_ctx;
-
-#define raise_trap(th) \
+#define raise_int(th) \
   do {									\
     struct eri_live_thread *_th = th;					\
     eri_assert_syscall (tgkill, eri_live_thread__get_pid (_th),		\
-			eri_live_thread__get_tid (_th), ERI_SIGTRAP);	\
+			eri_live_thread__get_tid (_th), ERI_SIGINT);	\
+    eri_assert_unreachable ();						\
   } while (0)
 
-static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
-				      struct eri_ucontext *ctx);
+static eri_noreturn void
+sig_init_handler (int32_t sig,
+		  struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  init_frame = eri_struct_of (info, typeof (*init_frame), info);
+  init_info = *info;
+  init_ctx = ctx->mctx;
+  raise_int (sig_th.th);
+}
+
+static void
+sig_int_handler (int32_t sig,
+		 struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  eri_assert (0);
+}
+
+static eri_noreturn void
+int_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  if (! init)
+    {
+      init = 1;
+      tst_live_sig_hand_signal (sig_th.th, info, sig_init_handler);
+    }
+  else
+    {
+      sig_th.sig_reset = 0;
+      ctx->mctx = init_ctx;
+      tst_enable_trace ();
+      tst_live_sig_hand_signal (sig_th.th, info, sig_int_handler);
+    }
+  eri_assert_unreachable ();
+}
 
 static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (! raise)
-    {
-      enter_frame = eri_struct_of (info, typeof (*enter_frame), info);
-      enter_info = *info;
-      enter_ctx = ctx->mctx;
-
-      raise = 1;
-      goto next;
-    }
-
   struct eri_siginfo *prev_info = (void *) ctx->mctx.rsi;
-  eri_assert (enter_frame == eri_struct_of (prev_info,
-					    typeof (*enter_frame), info));
-  eri_assert (ctx->mctx.rdi == enter_info.sig);
-  eri_assert (prev_info->sig == enter_info.sig);
-  eri_assert (prev_info->code == enter_info.code);
+  eri_assert (init_frame == eri_struct_of (prev_info,
+					    typeof (*init_frame), info));
+  eri_assert (ctx->mctx.rdi == init_info.sig);
+  eri_assert (prev_info->sig == init_info.sig);
+  eri_assert (prev_info->code == init_info.code);
   struct eri_ucontext *prev_ctx = (void *) ctx->mctx.rdx;
-#define EQ(creg, reg)	eri_assert (prev_ctx->mctx.reg == enter_ctx.reg);
+#define EQ(creg, reg)	eri_assert (prev_ctx->mctx.reg == init_ctx.reg);
   TST_FOREACH_GENERAL_REG (EQ)
   EQ (RIP, rip)
   eri_assert ((prev_ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK)
-		== (enter_ctx.rflags & TST_RFLAGS_STATUS_MASK));
+		== (init_ctx.rflags & TST_RFLAGS_STATUS_MASK));
 
   if (reach_done)
     {
@@ -76,28 +98,17 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   step_count = 0;
   ++raise_at;
 
-next:
-  raise_trap (sig_th.th);
-  eri_assert_unreachable ();
+  raise_int (sig_th.th);
 }
 
 static void
 step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (! eri_si_single_step (info))
-    {
-      if (raise) ctx->mctx = enter_ctx;
-      tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
-      if (raise)
-	{
-	  ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
-	  sig_th.sig_reset = 0;
-	}
-      return;
-    }
-  eri_assert (raise);
-  //eri_debug ("%lx %u %u\n", ctx->mctx.rip, step_count, raise_at);
+  //eri_debug ("%lx %u %u %u\n", ctx->mctx.rip, stepping, step_count, raise_at);
 
+  if (ctx->mctx.rip == (uint64_t) eri_assert_sys_sigreturn)
+    ((struct eri_sigframe *) (ctx->mctx.rsp - 8))->ctx.mctx.rflags
+							|= ERI_RFLAGS_TF;
   if (! stepping)
     {
       if (! sig_th.sig_reset) return;
@@ -105,24 +116,24 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
 
   if (! stepping) return;
-  if (step_count++ != raise_at) return;
+  if (step_count++ != raise_at)
+    {
+      ctx->mctx.rflags |= ERI_RFLAGS_TF;
+      return;
+    }
+  ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
 
-  eri_debug ("%lx\n", ctx->mctx.rip);
-  if (ctx->mctx.rip == (uint64_t) sig_handler) reach_done = 1;
+  eri_debug ("%lx %lx\n", ctx->mctx.rip, ctx->mctx.rflags & ERI_RFLAGS_TF);
+  if (ctx->mctx.rip == (uint64_t) sig_int_handler) reach_done = 1;
 
   tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
 }
 
-eri_noreturn void start (void);
-
 eri_noreturn void
 start (void)
 {
-  raise_trap (sig_th.th);
-  eri_assert_unreachable ();
+  raise_int (sig_th.th);
 }
-
-eri_noreturn void tst_main (void);
 
 eri_noreturn void
 tst_main (void)
@@ -152,8 +163,11 @@ tst_main (void)
     step_hand, ERI_SA_SIGINFO | ERI_SA_ONSTACK | ERI_SA_RESTORER,
     eri_assert_sys_sigreturn
   };
-  eri_sig_fill_set (&act.mask);
+  eri_sig_empty_set (&act.mask);
   eri_assert_sys_sigaction (ERI_SIGTRAP, &act, 0);
+
+  act.act = int_hand;
+  eri_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
   sig_th.th = eri_live_thread__create_main (group, &sig_th, &rtld_args);
   eri_live_thread__clone_main (sig_th.th);

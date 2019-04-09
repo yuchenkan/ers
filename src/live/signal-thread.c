@@ -4,7 +4,8 @@
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 
-#include <common/common.h>
+#include <common/debug.h>
+#include <common/thread.h>
 #include <common/helper.h>
 
 #include <live/common.h>
@@ -146,7 +147,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   sig_get_act (sig_th->group, info->sig, &sig_th->sig_act);
 
-  if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act)) return;
+  if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act, 0))
+    return;
 
   eri_debug ("sig = %u, frame = %lx, code = %u\n",
              info->sig, frame, info->code);
@@ -299,16 +301,11 @@ init_sig_stack (struct eri_live_signal_thread *sig_th)
 	sig_th, sig_th->sig_stack, SIGNAL_THREAD_SIG_STACK_SIZE);
 }
 
-static eri_noreturn void event_loop (struct eri_live_signal_thread *sig_th);
-
 static void
 restore_sig_mask (struct eri_live_signal_thread *sig_th)
 {
   eri_assert_sys_sigprocmask (&sig_th->sig_mask, 0);
 }
-
-static eri_noreturn void start_watch (
-		struct eri_live_signal_thread *sig_th, struct eri_lock *lock);
 
 static eri_noreturn void
 start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
@@ -357,6 +354,8 @@ watch (struct eri_live_signal_thread *sig_th)
   eri_assert_sys_clone (&args);
   eri_assert_lock (&lock);
 }
+
+static eri_noreturn void event_loop (struct eri_live_signal_thread *sig_th);
 
 void
 start_group (struct eri_live_signal_thread *sig_th)
@@ -611,9 +610,6 @@ struct clone_event {
 
   struct eri_live_signal_thread *sig_cth;
 };
-
-static eri_noreturn void start (struct eri_live_signal_thread *sig_th,
-				struct clone_event *event);
 
 static eri_noreturn void
 start (struct eri_live_signal_thread *sig_th, struct clone_event *event)

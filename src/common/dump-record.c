@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 #include <lib/printf.h>
-#include <common/common.h>
+#include <common/serial.h>
 
 static uint8_t
 copy_skip (void *args, void *dst, const void *src, uint64_t size)
@@ -38,8 +38,8 @@ main (int32_t argc, const char **argv)
 		rec.sig_alt_stack.sp, rec.sig_alt_stack.flags,
 		rec.sig_alt_stack.size);
 	printf ("  user_pid: %u\n", rec.user_pid);
-	printf ("  map_start: 0x%lx, map_end: 0x%lx\n",
-		rec.map_start, rec.map_end);
+	printf ("  map_range.start: 0x%lx, .end: 0x%lx\n",
+		rec.map_range.start, rec.map_range.end);
 	printf ("  atomic_table_size: %lu\n", rec.atomic_table_size);
       }
     else if (mark == ERI_INIT_MAP_RECORD)

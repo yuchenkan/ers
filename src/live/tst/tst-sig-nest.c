@@ -1,5 +1,5 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-lock.h>
 #include <tst/tst-syscall.h>
@@ -21,8 +21,6 @@ sig_handler (int32_t sig)
   tst_assert_unlock (sig == ERI_SIGINT ? &int_lock : &term_lock);
 }
 
-static eri_noreturn void raise (void);
-
 static eri_noreturn void
 raise (void)
 {
@@ -30,8 +28,6 @@ raise (void)
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGTERM);
   tst_assert_sys_exit (0);
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

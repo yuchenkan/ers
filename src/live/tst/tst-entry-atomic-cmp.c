@@ -2,7 +2,7 @@
 
 #include <lib/util.h>
 #include <lib/cpu.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/tst/tst-registers.h>
 #include <live/tst/tst-entry-atomic.h>

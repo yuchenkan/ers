@@ -12,7 +12,7 @@
 #define _ERI_ASM_TEMPLATE_SIZE(sz, i) \
   ERI_PASTE (ERI_PASTE (_ERI_ASM_TEMPLATE_SIZE_, sz), i)
 
-#define _eri_atomic_foreach_size(_m, op, ...) \
+#define _eri_atomic_switch_size(_m, op, ...) \
   do {									\
     if (sizeof *_m == 1) op (b, _m, ##__VA_ARGS__);			\
     else if (sizeof *_m == 2) op (w, _m, ##__VA_ARGS__);		\
@@ -21,7 +21,7 @@
     else eri_assert_unreachable ();					\
   } while (0)
 
-#define _eri_atomic_foreach_size1(_m, op, ...) \
+#define _eri_atomic_switch_size1(_m, op, ...) \
   do {									\
     if (sizeof *_m == 2) op (w, _m, ##__VA_ARGS__);			\
     else if (sizeof *_m == 4) op (l, _m, ##__VA_ARGS__);		\

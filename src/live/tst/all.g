@@ -5,7 +5,7 @@ tsts = tsts.concat ([ 'main', 'syscall', 'sync-async', 'atomic', 'atomic-ext', '
 
 let commons = await this.invoke ('live/tst/replay.g');
 
-let entries = [ 'syscall', 'sync-async', 'sync-async-repeat' ];
+let entries = [ 'syscall', 'sync-async' ];
 entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp' ].map (x => `atomic-${x}`));
 
 commons = commons.concat (entries.map (t => `entry-${t}`));

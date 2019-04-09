@@ -1,4 +1,5 @@
 #include <lib/printf.h>
+#include <lib/util.h>
 #include <live/rtld.h>
 
 int32_t a;

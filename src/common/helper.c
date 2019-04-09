@@ -3,7 +3,7 @@
 #include <lib/syscall-common.h>
 #include <lib/malloc.h>
 
-#include <common/common.h>
+#include <common/debug.h>
 #include <common/helper.h>
 
 struct eri_helper

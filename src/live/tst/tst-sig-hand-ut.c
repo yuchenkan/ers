@@ -1,9 +1,10 @@
 #include <lib/compiler.h>
+#include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/malloc.h>
 #include <lib/syscall.h>
 
-#include <common/common.h>
+#include <common/debug.h>
 #include <live/rtld.h>
 
 #include <tst/tst-syscall.h>
@@ -73,7 +74,7 @@ eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
 {
 #define EQ(creg, reg, mc, c)	if (mc->reg != c->ctx.reg) return 0;
 
-  TST_FOREACH_GENERAL_REG(EQ, mctx, ctx)
+  TST_FOREACH_GENERAL_REG (EQ, mctx, ctx)
   EQ (RIP, rip, mctx, ctx)
   if ((mctx->rflags & TST_RFLAGS_STATUS_MASK)
 	!= (ctx->ctx.rflags & TST_RFLAGS_STATUS_MASK)) return 0;
@@ -83,9 +84,6 @@ eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
     return 0;
   return 1;
 }
-
-static eri_noreturn void sig_handler (int32_t sig, struct eri_siginfo *info,
-				      struct eri_ucontext *ctx);
 
 static eri_noreturn void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
@@ -115,7 +113,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 static void
 step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  //ctx->mctx.rflags |= ERI_RFLAGS_TRACE_MASK;
+  //ctx->mctx.rflags |= ERI_RFLAGS_TF;
 
   if (! step.raise)
     {
@@ -139,7 +137,7 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       if (ctx->mctx.rip == step.step.repeat) step.repeated = 1;
 
       if (ctx->mctx.rip == step.step.leave)
-	ctx->mctx.rflags &= ~ERI_RFLAGS_TRACE_MASK;
+	ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
       return;
     }
 
@@ -167,8 +165,6 @@ step_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   tst_live_sig_hand_signal (sig_th.th, info, sig_handler);
 }
 
-eri_noreturn void start (void);
-
 eri_noreturn void
 start (void)
 {
@@ -183,8 +179,6 @@ start (void)
 
   eri_assert_unreachable ();
 }
-
-eri_noreturn void tst_main (void);
 
 eri_noreturn void
 tst_main (void)

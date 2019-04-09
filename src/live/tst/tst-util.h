@@ -34,7 +34,7 @@ asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
 asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
 
 #define tst_enable_trace() \
-asm ("pushq\t%0; popfq" : : "n" (ERI_RFLAGS_TRACE_MASK) : "cc", "memory");
+asm ("pushq\t%0; popfq" : : "n" (ERI_RFLAGS_TF) : "cc", "memory");
 
 #define tst_disable_trace() \
 asm ("pushq\t$0; popfq" : : : "cc", "memory");

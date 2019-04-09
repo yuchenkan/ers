@@ -725,6 +725,12 @@ struct eri_sigaction
   struct eri_sigset mask;
 };
 
+struct eri_ver_sigaction
+{
+  struct eri_sigaction act;
+  uint64_t ver;
+};
+
 struct eri_siginfo
 {
   int32_t sig;
@@ -732,18 +738,25 @@ struct eri_siginfo
   int32_t code;
   int32_t pad;
 
-  union {
-    uint8_t pad1[112];
-    struct {
-      int32_t pid;
-      int32_t uid;
-    } kill;
-    struct {
-      int32_t pid;
-      int32_t uid;
-      int32_t status;
-    } chld;
-  };
+  union
+    {
+      uint8_t pad1[112];
+      struct
+	{
+	  int32_t pid;
+	  int32_t uid;
+	} kill;
+      struct
+	{
+	  int32_t pid;
+	  int32_t uid;
+	  int32_t status;
+	} chld;
+      struct
+	{
+	  uint64_t addr;
+	} fault;
+    };
 };
 
 struct eri_signalfd_siginfo {
@@ -790,11 +803,17 @@ struct eri_signalfd_siginfo {
      eri_si_from_kernel (_info)						\
      && (_info->sig == ERI_SIGSEGV || _info->sig == ERI_SIGBUS); })
 
-struct eri_fpstate
+struct eri_fpstate_base
 {
   uint8_t pad[464];
   uint32_t magic;
   uint32_t size;
+};
+
+struct eri_fpstate
+{
+  struct eri_fpstate_base base;
+  uint8_t ext[1024];
 };
 
 struct eri_mcontext

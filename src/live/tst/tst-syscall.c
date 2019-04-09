@@ -27,9 +27,6 @@ tst_assert_sys_clone_raise (struct tst_sys_clone_raise_args *args)
   tst_assert_sys_clone (&clone_args);
 }
 
-static eri_noreturn void start_exit_group (
-			struct tst_sys_clone_exit_group_args *args);
-
 static eri_noreturn void
 start_exit_group (struct tst_sys_clone_exit_group_args *args)
 {

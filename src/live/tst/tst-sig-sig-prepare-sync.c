@@ -1,7 +1,7 @@
 /* vim: set ft=cpp: */
 
 #include <lib/util.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <live/tst/tst-sig-race.h>
 

@@ -1,13 +1,11 @@
 #include <lib/compiler.h>
 #include <lib/syscall.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
-
-eri_noreturn void tst_live_start (void);
 
 static struct tst_rand rand;
 static uint8_t stack[3][1024 * 1024];

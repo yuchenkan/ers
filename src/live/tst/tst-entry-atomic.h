@@ -5,7 +5,7 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-entry.h>
@@ -80,7 +80,6 @@ void tst_live_entry_atomic_common_info (
 #define TST_LIVE_ENTRY_ATOMIC_DEFINE_START(cases, seed, debug) \
 static struct tst_live_entry_atomic_anchor anchor;			\
 									\
-eri_noreturn void tst_live_start (void);				\
 eri_noreturn void							\
 tst_live_start (void)							\
 {									\

@@ -1,7 +1,8 @@
 #include <public/public.h>
 
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-entry.h>
@@ -41,8 +42,6 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
     eri_assert (dst[i] == (i <= idx ? src[i] : 0));
   return ++idx != COUNT;
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

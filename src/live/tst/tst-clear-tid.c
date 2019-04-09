@@ -1,5 +1,6 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 #include <live/signal-thread.h>
 
 #include <tst/tst-syscall.h>
@@ -10,17 +11,14 @@ static int32_t set_ctid;
 
 static eri_aligned16 uint8_t stack[1024 * 1024];
 
-static eri_noreturn void start (int32_t *set);
-
 static eri_noreturn void
 start (int32_t *set)
 {
+  eri_debug ("start!!!\n");
   if (set) tst_assert_syscall (set_tid_address, set);
 
   tst_assert_sys_exit (0);
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)
@@ -31,11 +29,13 @@ tst_live_start (void)
   ctid = set_ctid = 1;
   tst_assert_sys_clone (&args);
   tst_assert_sys_futex_wait (&ctid, 1, 0);
+  eri_debug ("set_tid_address %lx\n", args.stack);
   args.a0 = &set_ctid;
   ctid = 1;
   tst_assert_sys_clone (&args);
   tst_assert_sys_futex_wait (&set_ctid, 1, 0);
   eri_assert (ctid == 1);
+  eri_debug ("done\n");
 /* TODO: clear tid seg fault */
 #if 0
   args.a0 = (void *) 1;

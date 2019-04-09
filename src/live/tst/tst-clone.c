@@ -1,5 +1,6 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
@@ -11,8 +12,6 @@ static eri_aligned16 uint8_t stack[1024 * 1024];
 static int32_t ptid, ctid;
 static void *tls = &tls;
 static int32_t a[3];
-
-static eri_noreturn void start (int32_t *a0, int32_t *a1, int32_t *a2);
 
 static eri_noreturn void
 start (int32_t *a0, int32_t *a1, int32_t *a2)
@@ -32,8 +31,6 @@ start (int32_t *a0, int32_t *a1, int32_t *a2)
   eri_debug ("exit\n");
   tst_assert_sys_exit (0);
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

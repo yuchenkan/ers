@@ -1,5 +1,6 @@
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
@@ -24,8 +25,6 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (stack.flags == ERI_SS_DISABLE);
   eri_assert (stack.size == 0);
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

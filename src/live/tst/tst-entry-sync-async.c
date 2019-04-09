@@ -1,6 +1,7 @@
 #include <public/public.h>
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-entry.h>
@@ -31,8 +32,6 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
 				     ~TST_LIVE_ENTRY_MCONTEXT_RIP_MASK);
   return 0;
 }
-
-eri_noreturn void tst_live_start (void);
 
 eri_noreturn void
 tst_live_start (void)

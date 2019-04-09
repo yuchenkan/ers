@@ -2,7 +2,7 @@
 #define TST_LIVE_TST_TST_SIG_RACE_H
 
 #include <lib/compiler.h>
-#include <common/common.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
@@ -15,8 +15,6 @@ static struct tst_sys_clone_raise_args _raise_args;			\
 									\
 static void								\
 _sig_handler (int32_t sig) { eri_debug ("\n"); }			\
-									\
-eri_noreturn void tst_live_start (void);				\
 									\
 eri_noreturn void							\
 tst_live_start (void)							\
