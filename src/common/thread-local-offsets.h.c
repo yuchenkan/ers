@@ -14,7 +14,8 @@ declare (void)
   TE_OFFSET (_ENTER, _enter);
   TE_OFFSET (_LEAVE, _leave);
   TE_OFFSET (_TH_LEAVE, _th_leave);
-  _ERI_FOREACH_REG (TE_REG_OFFSET)
+  _ERI_FOREACH_GREG (TE_REG_OFFSET)
+  TE_REG_OFFSET (RFLAGS, rflags);
   TE_OFFSET (_SIG_PENDING, _sig_pending);
   TE_OFFSET (_TH, _th);
   TE_OFFSET (_STACK, _stack);

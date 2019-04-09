@@ -290,6 +290,7 @@ eri_live_thread__create_main (struct eri_live_thread_group *group,
   eri_memset (regs, 0, sizeof *regs);
   regs->rsp = rtld_args->rsp;
   regs->rdx = rtld_args->rdx;
+  regs->rip = rtld_args->rip;
 
   eri_assert_syscall (sigaltstack, 0, &th->sig_alt_stack);
   return th;
@@ -384,6 +385,7 @@ eri_live_thread__create (struct eri_live_signal_thread *sig_th,
   regs->rax = 0;
   regs->rcx = leave;
   regs->r11 = regs->rflags;
+  regs->rip = leave;
 
   th->sig_alt_stack = pth->sig_alt_stack;
   return th;
@@ -565,7 +567,8 @@ static eri_noreturn void
 syscall_done_leave (struct eri_thread_entry *entry)
 {
   struct eri_registers *regs = eri_thread_entry__get_regs (entry);
-  regs->rcx = eri_thread_entry__get_leave (entry);
+  regs->rip = eri_thread_entry__get_leave (entry);
+  regs->rcx = regs->rip;
   regs->r11 = regs->rflags;
   eri_thread_entry__leave (entry);
 }
@@ -1722,9 +1725,11 @@ syscall (struct eri_live_thread *th)
 static eri_noreturn void
 sync_async (struct eri_live_thread *th)
 {
-  struct eri_registers *regs = eri_thread_entry__get_regs (th->entry);
+  struct eri_thread_entry *entry = th->entry;
+  struct eri_registers *regs = eri_thread_entry__get_regs (entry);
   eri_live_thread_recorder__rec_sync_async (th->rec, regs->rcx);
-  eri_thread_entry__leave (th->entry);
+  eri_thread_entry__set_restart (entry);
+  eri_thread_entry__leave (entry);
 }
 
 static eri_noreturn void
@@ -1734,6 +1739,8 @@ atomic_ext_return (struct eri_live_thread *th)
   eri_thread_entry__set_entry (entry, main_entry);
   eri_thread_entry__set_leave (entry,
 			eri_thread_entry__get_atomic_leave (entry));
+  eri_thread_entry__get_regs (entry)->rip
+			= eri_thread_entry__get_leave (entry);
   eri_thread_entry__leave (th->entry);
 }
 
@@ -1832,6 +1839,7 @@ atomic (struct eri_live_thread *th)
       eri_thread_entry__do_leave (entry);
     }
 
+  regs->rip = eri_thread_entry__get_leave (entry);
   eri_thread_entry__leave (entry);
 }
 

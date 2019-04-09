@@ -39,7 +39,6 @@ ERI_FUNCTION (enter)
 
   _ERI_FOREACH_GREG_NO_RBX_RSP (SAVE_REG)
 
-  ERI_MOV_MM (TE__LEAVE(%rbx), TE__REGS_RIP(%rbx), %rax)
   movq	TE__TH(%rbx), %rdi
   call	*TE__ENTRY(%rbx)
   ERI_ASSERT_FALSE

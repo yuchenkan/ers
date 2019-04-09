@@ -363,13 +363,16 @@ eri_thread_entry__setup_user_frame (
 
   struct eri_sigframe *user_frame
 	= (void *) (eri_round_down (rsp - sizeof *user_frame, 16) - 8);
+
+  entry->_leave = (uint64_t) act->act;
   regs->rax = 0;
   regs->rdi = frame.info.sig;
   regs->rsi = (uint64_t) &user_frame->info;
   regs->rdx = (uint64_t) &user_frame->ctx;
   regs->rsp = (uint64_t) user_frame;
+  regs->rip = (uint64_t) entry->_leave;
   regs->rflags &= ~(ERI_RFLAGS_TF | ERI_RFLAGS_DF | ERI_RFLAGS_RF);
-  entry->_leave = (uint64_t) act->act;
+
   return copy_to (entry, user_frame, &frame) ? user_frame : 0;
 }
 
