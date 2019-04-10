@@ -14,7 +14,7 @@
 #define th_text_size	(th_text_end - th_text)
 
 #define th_get_text(entry, text) \
-  ((uint64_t) (entry) + sizeof (struct eri_thread_entry) + (text - th_text))
+  ((uint64_t) (entry) + sizeof (struct eri_entry) + (text - th_text))
 #define th_get_enter(entry)	(th_get_text (entry, th_text_enter))
 #define th_get_leave(entry)	(th_get_text (entry, th_text_leave))
 
@@ -33,10 +33,10 @@
        struct eri_mcontext *_mctx = mctx;				\
        _ERI_FOREACH_REG (set_regs, _regs, _mctx) } while (0)
 
-struct eri_thread_entry *
-eri_thread_entry__create (struct eri_thread_entry__create_args *args)
+struct eri_entry *
+eri_entry__create (struct eri_entry__create_args *args)
 {
-  struct eri_thread_entry *entry = eri_assert_mtmalloc (args->pool,
+  struct eri_entry *entry = eri_assert_mtmalloc (args->pool,
 					sizeof *entry + th_text_size);
   entry->_zero = 0;
 
@@ -67,7 +67,7 @@ eri_thread_entry__create (struct eri_thread_entry__create_args *args)
 }
 
 void
-eri_thread_entry__destroy (struct eri_thread_entry *entry)
+eri_entry__destroy (struct eri_entry *entry)
 {
   eri_assert_mtfree (entry->_pool, entry);
 }
@@ -80,13 +80,13 @@ typedef eri_noreturn void (* th_noreturn_call_t) (void *);
      _c == ERI_OP_NOP || _c == ERI_OP_SYSCALL || _c == ERI_OP_SYNC_ASYNC; })
 
 eri_noreturn void
-sig_action (struct eri_thread_entry *entry)
+sig_action (struct eri_entry *entry)
 {
   th_noreturn_call (entry->_sig_action, entry->_th);
 }
 
 eri_noreturn void
-eri_thread_entry__leave (struct eri_thread_entry *entry)
+eri_entry__leave (struct eri_entry *entry)
 {
   eri_atomic_store (&entry->_op.ret, 1);
   eri_barrier ();
@@ -101,40 +101,49 @@ eri_thread_entry__leave (struct eri_thread_entry *entry)
       && entry->_regs.rflags & ERI_RFLAGS_TF)
     entry->_sig_swallow_single_step = 1;
 
-  eri_thread_entry__do_leave (entry);
+  eri_entry__do_leave (entry);
+}
+
+eri_noreturn void
+eri_entry__syscall_leave (struct eri_entry *entry, uint64_t res)
+{
+  entry->_regs.rax = res;
+  entry->_regs.rcx = entry->_leave;
+  entry->_regs.r11 = entry->_regs.rflags;
+  entry->_regs.rip = entry->_leave;
+  eri_entry__leave (entry);
 }
 
 static uint8_t
-copy (struct eri_thread_entry *entry,
-      void *dst, const void *src, uint64_t size)
+copy (struct eri_entry *entry, void *dst, const void *src, uint64_t size)
 {
-  if (! eri_thread_entry__test_access (entry)) return 0;
+  if (! eri_entry__test_access (entry)) return 0;
 
   eri_memcpy (dst, src, size);
-  eri_thread_entry__reset_test_access (entry);
+  eri_entry__reset_test_access (entry);
   return 1;
 }
 
 uint8_t
-eri_thread_entry__copy_from (struct eri_thread_entry *entry,
-			     void *dst, const void *src, uint64_t size)
+eri_entry__copy_from (struct eri_entry *entry,
+		      void *dst, const void *src, uint64_t size)
 {
   return ! eri_cross (entry->_map_range, (uint64_t) src, size)
 	 && copy (entry, dst, src, size);
 }
 
 uint8_t
-eri_thread_entry__copy_to (struct eri_thread_entry *entry,
-			   void *dst, const void *src, uint64_t size)
+eri_entry__copy_to (struct eri_entry *entry,
+		    void *dst, const void *src, uint64_t size)
 {
   return ! eri_cross (entry->_map_range, (uint64_t) dst, size)
 	 && copy (entry, dst, src, size);
 }
 
 #define copy_from_size(entry, dst, src, size) \
-  eri_thread_entry__copy_from (entry, dst, src, size)
+  eri_entry__copy_from (entry, dst, src, size)
 #define copy_to_size(entry, dst, src, size) \
-  eri_thread_entry__copy_to (entry, dst, src, size)
+  eri_entry__copy_to (entry, dst, src, size)
 
 #define copy_from(entry, dst, src) \
   ({ typeof (dst) _dst = dst;						\
@@ -148,7 +157,7 @@ eri_thread_entry__copy_to (struct eri_thread_entry *entry,
   (copy_to (entry, dst, src) ? 0 : ERI_EFAULT)
 
 uint64_t
-eri_thread_entry__syscall_get_rt_sigprocmask (struct eri_thread_entry *entry,
+eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 			struct eri_sigset *old_mask, struct eri_sigset *mask)
 {
   int32_t how = entry->_regs.rdi;
@@ -175,8 +184,8 @@ eri_thread_entry__syscall_get_rt_sigprocmask (struct eri_thread_entry *entry,
 }
 
 uint64_t
-eri_thread_entry__syscall_set_rt_sigprocmask (struct eri_thread_entry *entry,
-					      struct eri_sigset *old_mask)
+eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
+				       struct eri_sigset *old_mask)
 {
   struct eri_sigset *user_old_mask = (void *) entry->_regs.rdx;
   if (! user_old_mask) return 0;
@@ -221,8 +230,8 @@ set_sig_alt_stack (struct eri_stack *stack, uint64_t rsp,
 }
 
 uint64_t
-eri_thread_entry__syscall_sigaltstack (struct eri_thread_entry *entry,
-				       struct eri_stack *stack)
+eri_entry__syscall_sigaltstack (struct eri_entry *entry,
+				struct eri_stack *stack)
 {
   const struct eri_stack *user_stack = (void *) entry->_regs.rdi;
   struct eri_stack *user_old_stack = (void *) entry->_regs.rsi;
@@ -252,7 +261,7 @@ eri_thread_entry__syscall_sigaltstack (struct eri_thread_entry *entry,
 }
 
 uint8_t
-eri_thread_entry__syscall_rt_sigreturn (struct eri_thread_entry *entry,
+eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 			struct eri_stack *stack, struct eri_sigset *mask)
 {
   uint64_t rsp = entry->_regs.rsp;
@@ -301,8 +310,7 @@ eri_thread_entry__syscall_rt_sigreturn (struct eri_thread_entry *entry,
 }
 
 uint64_t
-eri_thread_entry__syscall_get_rt_sigtimedwait (
-			struct eri_thread_entry *entry,
+eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 			struct eri_sigset *set, struct eri_timespec *timeout)
 {
   const struct eri_sigset *user_set = (void *) entry->_regs.rdi;
@@ -317,8 +325,8 @@ eri_thread_entry__syscall_get_rt_sigtimedwait (
 }
 
 uint64_t
-eri_thread_entry__syscall_get_signalfd (struct eri_thread_entry *entry,
-				int32_t *flags, struct eri_sigset *mask)
+eri_entry__syscall_get_signalfd (struct eri_entry *entry,
+				 int32_t *flags, struct eri_sigset *mask)
 {
   const struct eri_sigset *user_mask = (void *) entry->_regs.rsi;
   uint64_t size = entry->_regs.rdx;
@@ -331,8 +339,8 @@ eri_thread_entry__syscall_get_signalfd (struct eri_thread_entry *entry,
 }
 
 struct eri_sigframe *
-eri_thread_entry__setup_user_frame (
-	struct eri_thread_entry *entry, const struct eri_sigaction *act,
+eri_entry__setup_user_frame (
+	struct eri_entry *entry, const struct eri_sigaction *act,
 	struct eri_stack *stack, const struct eri_sigset *mask)
 {
   struct eri_registers *regs = &entry->_regs;
@@ -377,7 +385,7 @@ eri_thread_entry__setup_user_frame (
 }
 
 void
-eri_thread_entry__set_signal (struct eri_thread_entry *entry,
+eri_entry__set_signal (struct eri_entry *entry,
 	const struct eri_siginfo *info, const struct eri_ucontext *ctx)
 {
   const struct eri_fpstate *fpstate = ctx->mctx.fpstate;
@@ -391,8 +399,8 @@ eri_thread_entry__set_signal (struct eri_thread_entry *entry,
 }
 
 uint8_t
-eri_thread_entry__sig_wait_pending (struct eri_thread_entry *entry,
-				    struct eri_timespec *timeout)
+eri_entry__sig_wait_pending (struct eri_entry *entry,
+			     struct eri_timespec *timeout)
 {
   eri_atomic_store (&entry->_sig_wait_pending, 1);
   eri_barrier ();
@@ -403,16 +411,14 @@ eri_thread_entry__sig_wait_pending (struct eri_thread_entry *entry,
 }
 
 uint8_t
-eri_thread_entry__sig_test_clear_single_step (
-			struct eri_thread_entry *entry, uint64_t rip)
+eri_entry__sig_test_clear_single_step (struct eri_entry *entry, uint64_t rip)
 {
   return ! entry->_op.ret || eri_within (entry->_map_range, rip)
 	 || eri_atomic_exchange (&entry->_sig_swallow_single_step, 0);
 }
 
 eri_noreturn void
-eri_thread_entry__sig_op_ret (struct eri_thread_entry *entry,
-			      struct eri_sigframe *frame)
+eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
 {
   entry->_op.ret = 0;
   entry->_sig_swallow_single_step = 0;
@@ -426,8 +432,8 @@ eri_thread_entry__sig_op_ret (struct eri_thread_entry *entry,
 }
 
 void
-eri_thread_entry__sig_test_syscall_interrupted (
-		struct eri_thread_entry *entry, struct eri_mcontext *mctx)
+eri_entry__sig_test_syscall_interrupted (
+		struct eri_entry *entry, struct eri_mcontext *mctx)
 {
   uint64_t intr = entry->_syscall_interrupt;
   if (intr && mctx->rip != intr)

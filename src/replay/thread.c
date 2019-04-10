@@ -18,13 +18,6 @@
 
 #define HELPER_STACK_SIZE	(256 * 1024)
 
-enum
-{
-#define SIG_HAND_ENUM(chand, hand)	chand,
-  ERI_ENTRY_THREAD_ENTRY_SIG_HANDS (SIG_HAND_ENUM)
-  SIG_HAND_RETURN_TO_USER
-};
-
 #define SYNC_ASYNC_TRACE_ASYNC	1
 #define SYNC_ASYNC_TRACE_BOTH	2
 
@@ -122,11 +115,6 @@ struct thread
   eri_aligned16 uint8_t sig_stack[THREAD_SIG_STACK_SIZE];
   eri_aligned16 uint8_t stack[0];
 };
-
-#define th_ctx_sregs(th_ctx)	eri_th_ctx_sregs (th_ctx)
-#define th_sregs(th)		th_ctx_sregs ((th)->ctx)
-
-ERI_DEFINE_THREAD_UTILS (struct thread, struct thread_group)
 
 #define assert_magic(th, magic) \
   do {									\
@@ -401,81 +389,6 @@ set_ctx_from_th_ctx (struct eri_ucontext *ctx,
   ctx->mctx.rip = call ? th_ctx->ext.call : th_ctx->ext.ret;
 }
 
-static void
-sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
-{
-  struct thread *th = *(void **) ctx->stack.sp;
-  struct thread_context *th_ctx = th->ctx;
-  struct eri_sigframe *frame
-		= eri_struct_of (info, struct eri_sigframe, info);
-  if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
-    {
-      set_ctx_from_th_ctx (ctx, th_ctx, 0);
-      raise_async (th, frame);
-      return;
-    }
-
-  if (! eri_si_sync (info)) return;
-
-  uint16_t code = th_ctx->ext.op.code;
-  if (eri_si_single_step (info))
-    {
-      if (th_ctx->ext.op.sig_hand != SIG_HAND_RETURN_TO_USER) return;
-      if (internal (th->group, ctx->mctx.rip)) return;
-
-      if (th_ctx->swallow_single_step)
-	{
-	  th_ctx->swallow_single_step = 0;
-	  return;
-	}
-
-      if (code == _ERS_OP_SYNC_ASYNC && th_ctx->sync_async_trace)
-	{
-	  uint8_t async = 0;
-	  if (th_ctx->sync_async_trace_steps)
-	    {
-	      if (--th_ctx->sync_async_trace_steps == 0)
-		{
-		  ctx->mctx.rip = th_ctx->ext.call;
-		  async = 1;
-		}
-	    }
-	  else if (ctx->mctx.rip != th_ctx->ext.ret) async = 1;
-
-	  if (async)
-	    {
-	      th_ctx->sync_async_trace = 0;
-	      if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH)
-		ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
-	      raise_async (th, frame);
-	      return;
-	    }
-
-	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
-	}
-      eri_debug ("single step: %lx %lx\n", ctx->mctx.rip, ctx->mctx.rcx);
-    }
-
-  if (sig_access_fault (th_ctx, info, ctx)) return;
-
-  if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
-    ctx->mctx.rip = th_ctx->ext.call;
-
-  if (th_ctx->atomic_access_fault
-      && ctx->mctx.rip == th_ctx->atomic_access_fault)
-    {
-      th_ctx->atomic_access_fault = 0;
-      set_ctx_from_th_ctx (ctx, th_ctx, 1);
-    }
-
-  eri_assert (! internal (th->group, ctx->mctx.rip));
-
-  assert_magic (th, ERI_SIGNAL_MAGIC);
-  struct eri_ver_sigaction act;
-  eri_unserialize_ver_sigaction (th->file, &act);
-  raise (th, frame, &act);
-}
-
 eri_noreturn void
 eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {
@@ -585,13 +498,6 @@ start_main (struct thread *th)
 }
 
 static void
-swallow_single_step (struct thread_context *th_ctx)
-{
-  if (th_ctx_sregs (th_ctx)->rflags & ERI_RFLAGS_TF)
-    th_ctx->swallow_single_step = 1;
-}
-
-static void
 do_atomic_wait (struct thread_group *group, uint64_t slot, uint64_t ver)
 {
   uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
@@ -623,7 +529,7 @@ atomic_update (struct thread_group *group, uint64_t mem, uint8_t size)
 }
 
 #define DEFINE_SYSCALL(name) \
-static uint8_t								\
+static eri_noreturn void						\
 ERI_PASTE (syscall_, name) (struct thread *th)
 
 #define SYSCALL_RETURN(sregs, res, next) \
@@ -1436,7 +1342,7 @@ SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages) /* deprecated */
 
-static uint64_t
+static eri_noreturn void
 syscall (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -1468,20 +1374,19 @@ out:
   return nr == __NR_rt_sigreturn;
 }
 
-static void
+static eri_noreturn void
 sync_async (struct thread *th)
 {
   eri_assert (eri_unserialize_magic (th->file) == ERI_SYNC_ASYNC_MAGIC);
   uint64_t steps = eri_unserialize_uint64 (th->file);
 
-  struct thread_context *th_ctx = th->ctx;
-  th_ctx->ext.op.sig_hand = SIG_HAND_RETURN_TO_USER;
+  struct eri_thread_entry *entry = entry;
+  struct eri_registers *regs = eri_thread_entry__get_regs (entry);
+  if (next_record (th) != ERI_ASYNC_RECORD)
+    eri_thread_entry__leave (th->entry);
 
-  swallow_single_step (th_ctx);
-
-  if (next_record (th) != ERI_ASYNC_RECORD) return;
-
-  th_ctx->sync_async_trace
+  if ()
+  th->sync_async_trace
 		= (th_sregs (th)->rflags & ERI_RFLAGS_TF)
 			? SYNC_ASYNC_TRACE_BOTH : SYNC_ASYNC_TRACE_ASYNC;
   th_ctx->sync_async_trace_steps = steps;
@@ -1499,7 +1404,7 @@ atomic_read_write_user (struct thread *th, uint64_t mem,
 	     : do_atomic_read_write_user) (th->ctx, mem, size);
 }
 
-static void
+static eri_noreturn void
 atomic (struct thread *th)
 {
   struct thread_context *th_ctx = th->ctx;
@@ -1576,12 +1481,88 @@ atomic (struct thread *th)
     }
 }
 
-uint64_t
-relax (struct thread *th)
+static eri_noreturn void
+main_entry (struct thread *th)
 {
+  struct eri_thread_entry *entry = th->entry;
+  uint16_t code = eri_thread_entry__get_op_code (entry);
+  if (code == ERI_OP_SYSCALL) syscall (th);
+  else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
+  else if (eri_op_is_atomic (code)) atomic (th);
+  else eri_assert_unreachable ();
+}
+
+static void
+sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  struct thread *th = *(void **) ctx->stack.sp;
   struct thread_context *th_ctx = th->ctx;
-  eri_debug ("%u\n", th_ctx->ext.op.code);
-  if (th_ctx->ext.op.code == _ERS_OP_SYSCALL) return syscall (th);
-  (th_ctx->ext.op.code == _ERS_OP_SYNC_ASYNC ? sync_async : atomic) (th);
-  return 0;
+  struct eri_sigframe *frame
+		= eri_struct_of (info, struct eri_sigframe, info);
+  if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
+    {
+      set_ctx_from_th_ctx (ctx, th_ctx, 0);
+      raise_async (th, frame);
+      return;
+    }
+
+  if (! eri_si_sync (info)) return;
+
+  uint16_t code = th_ctx->ext.op.code;
+  if (eri_si_single_step (info))
+    {
+      if (th_ctx->ext.op.sig_hand != SIG_HAND_RETURN_TO_USER) return;
+      if (internal (th->group, ctx->mctx.rip)) return;
+
+      if (th_ctx->swallow_single_step)
+	{
+	  th_ctx->swallow_single_step = 0;
+	  return;
+	}
+
+      if (code == _ERS_OP_SYNC_ASYNC && th_ctx->sync_async_trace)
+	{
+	  uint8_t async = 0;
+	  if (th_ctx->sync_async_trace_steps)
+	    {
+	      if (--th_ctx->sync_async_trace_steps == 0)
+		{
+		  ctx->mctx.rip = th_ctx->ext.call;
+		  async = 1;
+		}
+	    }
+	  else if (ctx->mctx.rip != th_ctx->ext.ret) async = 1;
+
+	  if (async)
+	    {
+	      th_ctx->sync_async_trace = 0;
+	      if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH)
+		ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
+	      raise_async (th, frame);
+	      return;
+	    }
+
+	  if (th_ctx->sync_async_trace != SYNC_ASYNC_TRACE_BOTH) return;
+	}
+      eri_debug ("single step: %lx %lx\n", ctx->mctx.rip, ctx->mctx.rcx);
+    }
+
+  if (sig_access_fault (th_ctx, info, ctx)) return;
+
+  if (code == _ERS_OP_SYNC_ASYNC && ctx->mctx.rip == th_ctx->ext.ret)
+    ctx->mctx.rip = th_ctx->ext.call;
+
+  if (th_ctx->atomic_access_fault
+      && ctx->mctx.rip == th_ctx->atomic_access_fault)
+    {
+      th_ctx->atomic_access_fault = 0;
+      set_ctx_from_th_ctx (ctx, th_ctx, 1);
+    }
+
+  eri_assert (! internal (th->group, ctx->mctx.rip));
+
+  assert_magic (th, ERI_SIGNAL_MAGIC);
+  struct eri_ver_sigaction act;
+  eri_unserialize_ver_sigaction (th->file, &act);
+  raise (th, frame, &act);
 }

@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #include <lib/compiler.h>
-#include <lib/syscall-common.h>
 
 struct eri_replay_rtld_args
 {

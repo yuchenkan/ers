@@ -28,7 +28,7 @@
 #define _ERS_RIP(e)		_ERS_REG (e, rip)
 
 #define _ERS_ENTRY(e, field) \
-  _ERS_REG (e, gs):_ERS_PASTE (_ERS_THREAD_ENTRY_, field)
+  _ERS_REG (e, gs):_ERS_PASTE (_ERS_ENTRY_, field)
 
 #define _ERS_ENTER(e, op) \
   movq	$(op), _ERS_ENTRY (e, OP);					\

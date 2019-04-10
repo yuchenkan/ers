@@ -15,7 +15,7 @@ extern uint8_t th_text_leave[];
 
 eri_noreturn void enter (void);
 void sig_return_back (struct eri_sigframe *frame);
-eri_noreturn void sig_op_ret (struct eri_thread_entry *entry,
+eri_noreturn void sig_op_ret (struct eri_entry *entry,
 			      struct eri_sigframe *frame);
 
 #endif

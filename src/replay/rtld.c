@@ -5,7 +5,7 @@
 #include <lib/syscall.h>
 
 #include <common/rtld.h>
-#include <common/common.h>
+#include <common/serial.h>
 
 #include <replay/rtld.h>
 #include <replay/thread.h>
@@ -42,8 +42,6 @@ eri_noreturn void init_map (uint64_t stack, struct init_map_args *args);
     ((typeof (&init_map)) ((uint64_t) _a + _a->text_offset)) (		\
 					(uint64_t) _a + _a->size, _a);	\
   } while (0)
-
-eri_noreturn void eri_init_map (struct init_map_args *args);
 
 eri_noreturn void
 eri_init_map (struct init_map_args *args)
@@ -105,8 +103,6 @@ eri_init_map (struct init_map_args *args)
   ((void (*) (void *)) map_start + entry) (&rtld_args);
   eri_assert_unreachable ();
 }
-
-eri_noreturn void rtld (void **args);
 
 eri_noreturn void
 rtld (void **args)

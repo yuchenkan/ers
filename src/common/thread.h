@@ -106,7 +106,7 @@ struct eri_registers
     _args->a[5] = _regs->r9;						\
   } while (0)
 
-struct eri_thread_entry
+struct eri_entry
 {
   uint64_t _zero; /* so that %gs:0 is always zero */
 
@@ -173,7 +173,7 @@ struct eri_thread_entry
   eri_aligned16 uint8_t text[0];
 };
 
-struct eri_thread_entry__create_args
+struct eri_entry__create_args
 {
   struct eri_mtpool *pool;
   struct eri_range *map_range;
@@ -184,99 +184,102 @@ struct eri_thread_entry__create_args
   void *sig_action;
 };
 
-struct eri_thread_entry *eri_thread_entry__create (
-			struct eri_thread_entry__create_args *args);
-void eri_thread_entry__destroy (struct eri_thread_entry *entry);
+struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);
+void eri_entry__destroy (struct eri_entry *entry);
 
-#define eri_thread_entry__get_op_ret(entry)	((entry)->_op.ret)
-#define eri_thread_entry__set_op_code(entry, op_code) \
+#define eri_entry__get_op_ret(entry)	((entry)->_op.ret)
+#define eri_entry__set_op_code(entry, op_code) \
   do { (entry)->_op.code = op_code; } while (0)
-#define eri_thread_entry__get_op_code(entry)	((entry)->_op.code)
-#define eri_thread_entry__get_op_args(entry)	((entry)->_op.args)
+#define eri_entry__get_op_code(entry)	((entry)->_op.code)
+#define eri_entry__get_op_args(entry)	((entry)->_op.args)
 
-#define eri_thread_entry__set_leave(entry, leave) \
+#define eri_entry__set_leave(entry, leave) \
   do { (entry)->_leave = leave; } while (0)
-#define eri_thread_entry__get_leave(entry)	((entry)->_leave)
+#define eri_entry__get_leave(entry)	((entry)->_leave)
 
-#define eri_thread_entry__set_restart(entry) \
-  do { struct eri_thread_entry *_entry = entry;				\
+#define eri_entry__set_restart(entry) \
+  do { struct eri_entry *_entry = entry;				\
        _entry->_regs.rip = _entry->_start; } while (0)
 
-#define eri_thread_entry__get_regs(entry)	(&(entry)->_regs)
-#define eri_thread_entry__get_stack(entry)	((entry)->_stack)
+#define eri_entry__get_regs(entry)	(&(entry)->_regs)
+#define eri_entry__get_stack(entry)	((entry)->_stack)
 
-#define eri_thread_entry__set_entry(entry, val) \
+#define eri_entry__set_entry(entry, val) \
   do { (entry)->_entry = val; } while (0)
 
-#define eri_thread_entry__set_atomic_val(entry, at_val) \
+#define eri_entry__set_atomic_val(entry, at_val) \
   do { (entry)->_atomic.val = at_val; } while (0)
-#define eri_thread_entry__get_atomic_val(entry)	((entry)->_atomic.val)
+#define eri_entry__get_atomic_val(entry)	((entry)->_atomic.val)
 
-#define eri_thread_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
-#define eri_thread_entry__get_atomic_leave(entry) \
+#define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
+#define eri_entry__get_atomic_leave(entry) \
   ((entry)->_atomic.leave)
 
-eri_noreturn void eri_thread_entry__do_leave (struct eri_thread_entry *entry);
-eri_noreturn void eri_thread_entry__leave (struct eri_thread_entry *entry);
+eri_noreturn void eri_entry__do_leave (struct eri_entry *entry);
+eri_noreturn void eri_entry__leave (struct eri_entry *entry);
+eri_noreturn void eri_entry__syscall_leave (
+			struct eri_entry *entry, uint64_t res);
+#define eri_entry__syscall_leave_if_error(entry, res) \
+  do {									\
+    struct eri_entry *_entry = entry;					\
+    uint64_t _res = res;						\
+    if (eri_syscall_is_error (_res))					\
+      eri_entry__syscall_leave (_entry, _res);				\
+  } while (0)
 
-uint8_t eri_thread_entry__copy_from (struct eri_thread_entry *entry,
-				void *dst, const void *src, uint64_t size);
-uint8_t eri_thread_entry__copy_to (struct eri_thread_entry *entry,
-				void *dst, const void *src, uint64_t size);
+uint8_t eri_entry__copy_from (struct eri_entry *entry,
+			      void *dst, const void *src, uint64_t size);
+uint8_t eri_entry__copy_to (struct eri_entry *entry,
+			    void *dst, const void *src, uint64_t size);
 
-uint64_t eri_thread_entry__syscall_interruptible (
-	struct eri_thread_entry *entry, struct eri_sys_syscall_args *args);
+uint64_t eri_entry__syscall_interruptible (
+	struct eri_entry *entry, struct eri_sys_syscall_args *args);
 
-uint64_t eri_thread_entry__syscall_get_rt_sigprocmask (
-			struct eri_thread_entry *entry,
+uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 			struct eri_sigset *old_mask, struct eri_sigset *mask);
-uint64_t eri_thread_entry__syscall_set_rt_sigprocmask (
-		struct eri_thread_entry *entry, struct eri_sigset *old_mask);
-uint64_t eri_thread_entry__syscall_sigaltstack (
-		struct eri_thread_entry *entry, struct eri_stack *stack);
-uint8_t eri_thread_entry__syscall_rt_sigreturn (
-			struct eri_thread_entry *entry,
+uint64_t eri_entry__syscall_set_rt_sigprocmask (
+		struct eri_entry *entry, struct eri_sigset *old_mask);
+uint64_t eri_entry__syscall_sigaltstack (
+		struct eri_entry *entry, struct eri_stack *stack);
+uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 			struct eri_stack *stack, struct eri_sigset *mask);
-#define eri_thread_entry__syscall_validate_rt_sigpending(entry) \
+#define eri_entry__syscall_validate_rt_sigpending(entry) \
   ((entry)->_regs.rsi > ERI_SIG_SETSIZE ? ERI_EINVAL : 0)
-uint64_t eri_thread_entry__syscall_get_rt_sigtimedwait (
-			struct eri_thread_entry *entry,
+uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 			struct eri_sigset *set, struct eri_timespec *timeout);
-uint64_t eri_thread_entry__syscall_get_signalfd (
-				struct eri_thread_entry *entry,
+uint64_t eri_entry__syscall_get_signalfd (struct eri_entry *entry,
 				int32_t *flags, struct eri_sigset *mask);
 
-struct eri_sigframe *eri_thread_entry__setup_user_frame (
-	struct eri_thread_entry *entry, const struct eri_sigaction *act,
+struct eri_sigframe *eri_entry__setup_user_frame (
+	struct eri_entry *entry, const struct eri_sigaction *act,
 	struct eri_stack *stack, const struct eri_sigset *mask);
 
-#define eri_thread_entry__get_sig_info(entry)	(&(entry)->_sig_info)
-#define eri_thread_entry__sig_is_pending(entry)	((entry)->_sig_pending)
+#define eri_entry__get_sig_info(entry)		(&(entry)->_sig_info)
+#define eri_entry__sig_is_pending(entry)	((entry)->_sig_pending)
 
-void eri_thread_entry__set_signal (struct eri_thread_entry *entry,
+void eri_entry__set_signal (struct eri_entry *entry,
 	const struct eri_siginfo *info, const struct eri_ucontext *ctx);
-#define eri_thread_entry__clear_signal(entry) \
+#define eri_entry__clear_signal(entry) \
   do { (entry)->_sig_pending = 0; } while (0)
-uint8_t eri_thread_entry__sig_wait_pending (struct eri_thread_entry *entry,
-					    struct eri_timespec *timeout);
-uint8_t eri_thread_entry__sig_test_clear_single_step (
-			struct eri_thread_entry *entry, uint64_t rip);
-void eri_thread_entry__sig_op_ret (struct eri_thread_entry *entry,
-				   struct eri_sigframe *frame);
+uint8_t eri_entry__sig_wait_pending (struct eri_entry *entry,
+				     struct eri_timespec *timeout);
+uint8_t eri_entry__sig_test_clear_single_step (
+			struct eri_entry *entry, uint64_t rip);
+void eri_entry__sig_op_ret (struct eri_entry *entry,
+			    struct eri_sigframe *frame);
 
-eri_returns_twice uint8_t eri_thread_entry__test_access (
-					struct eri_thread_entry *entry);
-#define eri_thread_entry__reset_test_access(entry) \
+eri_returns_twice uint8_t eri_entry__test_access (struct eri_entry *entry);
+#define eri_entry__reset_test_access(entry) \
   do { eri_barrier (); (entry)->_test_access = 0; } while (0)
 
-#define eri_thread_entry__sig_is_access_fault(entry, sig_info) \
-  ({ struct eri_thread_entry *_entry = entry;				\
+#define eri_entry__sig_is_access_fault(entry, sig_info) \
+  ({ struct eri_entry *_entry = entry;					\
      struct eri_siginfo *_sig_info = sig_info;				\
      eri_si_access_fault (_sig_info) && _entry->_test_access		\
 	&& ! eri_within (_entry->_map_range, _sig_info->fault.addr); })
-#define eri_thread_entry__sig_access_fault(entry, mctx) \
+#define eri_entry__sig_access_fault(entry, mctx) \
   do {									\
-    struct eri_thread_entry *_entry = entry;				\
+    struct eri_entry *_entry = entry;					\
     struct eri_mcontext *_mctx = mctx;					\
     _mctx->rax = 0;							\
     _mctx->rbx = _entry->_access.rbx;					\
@@ -290,8 +293,8 @@ eri_returns_twice uint8_t eri_thread_entry__test_access (
     _entry->_test_access = 0;						\
   } while (0)
 
-void eri_thread_entry__sig_test_syscall_interrupted (
-		struct eri_thread_entry *entry, struct eri_mcontext *mctx);
+void eri_entry__sig_test_syscall_interrupted (
+		struct eri_entry *entry, struct eri_mcontext *mctx);
 
 #define eri_init_mtpool_from_buf(buf, size, exec) \
   ({									\
