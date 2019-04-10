@@ -192,15 +192,18 @@ void eri_entry__destroy (struct eri_entry *entry);
 #define eri_entry__set_op_code(entry, op_code) \
   do { (entry)->_op.code = op_code; } while (0)
 #define eri_entry__get_op_code(entry)	((entry)->_op.code)
-#define eri_entry__get_op_args(entry)	((entry)->_op.args)
 
 #define eri_entry__set_leave(entry, leave) \
   do { (entry)->_leave = leave; } while (0)
 #define eri_entry__get_leave(entry)	((entry)->_leave)
 
 #define eri_entry__set_restart(entry) \
+  do { struct eri_entry *__entry = entry;				\
+       __entry->_regs.rip = __entry->_start; } while (0)
+#define eri_entry__set_restart_leave(entry) \
   do { struct eri_entry *_entry = entry;				\
-       _entry->_regs.rip = _entry->_start; } while (0)
+       eri_entry__set_restart (_entry);					\
+       eri_entry__leave (_entry); } while (0)
 
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
 #define eri_entry__get_th(entry)	((entry)->_th)
@@ -208,6 +211,7 @@ void eri_entry__destroy (struct eri_entry *entry);
 
 #define eri_entry__get_atomic_val(entry)	((entry)->_atomic.val)
 #define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
+#define eri_entry__get_atomic_size(entry)	(1 << (entry)->_op.args)
 
 eri_noreturn void eri_entry__do_leave (struct eri_entry *entry);
 eri_noreturn void eri_entry__leave (struct eri_entry *entry);

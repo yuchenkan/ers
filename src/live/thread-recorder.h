@@ -3,13 +3,9 @@
 
 #include <stdint.h>
 
-#include <lib/syscall-common.h>
-
 struct eri_mtpool;
-struct eri_siginfo;
-struct eri_signal_record;
 struct eri_init_record;
-struct eri_syscall_record;
+struct eri_atomic_record;
 
 struct eri_live_thread_recorder;
 
@@ -38,6 +34,6 @@ void eri_live_thread_recorder__rec_restart_sync_async (
 
 void eri_live_thread_recorder__rec_atomic (
 		struct eri_live_thread_recorder *th_rec,
-		uint8_t updated, const uint64_t *ver, uint64_t val);
+		struct eri_atomic_record *rec);
 
 #endif

@@ -117,11 +117,11 @@ m4_include(`m4/util.m4')
      _r; })
 
 #define m4_ns(atomic_inc_dec_x, __)(sz, _m, _f, cinc, inc) \
-  asm volatile ("pushq\t%q1;popfq;"					\
+  asm volatile ("pushq\t%q0;popfq;"					\
 		ERI_STR (m4_ns(atomic_inc_dec, ___) (1, sz,		\
-						     %0, cinc, inc))	\
-		";pushfq;popq\t%q1"					\
-		: "+m" (*_m), "+r" (*_f) : : "cc", "memory")
+						     %1, cinc, inc))	\
+		";pushfq;popq\t%q0"					\
+		: "+r" (*_f) : "m" (*_m) : "cc", "memory")
 
 #define m4_ns(atomic_inc_dec_x, _)(m, f, cinc, inc) \
   do {									\
@@ -137,11 +137,11 @@ m4_include(`m4/util.m4')
   m4_ns(atomic_inc_dec_x, _) (m, f, DEC, dec)
 
 #define m4_ns(atomic_cmpxchg_x, _)(sz, _m, _a, _s, _f) \
-  asm volatile ("pushq\t%q1;popfq;"					\
+  asm volatile ("pushq\t%q0;popfq;"					\
 		ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
-				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %0))	\
-		";pushfq;popq\t%q1"					\
-		: "+m" (*_m), "+r" (*_f), "+a" (*_a) : "r" (_s)		\
+				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %2))	\
+		";pushfq;popq\t%q0"					\
+		: "+r" (*_f), "+a" (*_a) : "m" (*_m), "r" (_s)		\
 		: "cc", "memory")
 
 #define m4_ns(atomic_cmpxchg_x)(m, a, s, f) \

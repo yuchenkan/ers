@@ -232,6 +232,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_uint64_array (th_rec->file, rec, 2);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
+    eri_serialize_syscall_exit_clear_tid_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
     eri_serialize_ver_sigaction (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
@@ -272,12 +274,11 @@ eri_live_thread_recorder__rec_restart_sync_async (
 void
 eri_live_thread_recorder__rec_atomic (
 			struct eri_live_thread_recorder *th_rec,
-			uint8_t updated, const uint64_t *ver, uint64_t val)
+			struct eri_atomic_record *rec)
 {
   submit_sync_async (th_rec);
 
   eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
   eri_serialize_magic (th_rec->file, ERI_ATOMIC_MAGIC);
-  struct eri_atomic_record rec = { updated, { ver[0], ver[1] }, val };
-  eri_serialize_atomic_record (th_rec->file, &rec);
+  eri_serialize_atomic_record (th_rec->file, rec);
 }

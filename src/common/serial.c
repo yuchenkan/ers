@@ -136,6 +136,23 @@ eri_unserialize_uint64_array (eri_file_t file, uint64_t *a, uint64_t size)
 }
 
 void
+eri_serialize_pair (eri_file_t file, struct eri_pair pair)
+{
+  eri_serialize_uint64 (file, pair.first);
+  eri_serialize_uint64 (file, pair.second);
+}
+
+struct eri_pair
+eri_unserialize_pair (eri_file_t file)
+{
+  struct eri_pair pair = {
+    .first = eri_unserialize_uint64 (file),
+    .second = eri_unserialize_uint64 (file)
+  };
+  return pair;
+}
+
+void
 eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set)
 {
   eri_assert_fwrite (file, set->val, ERI_SIG_SETSIZE, 0);
@@ -300,7 +317,7 @@ eri_unserialize_init_map_record (eri_file_t file,
 
 void
 eri_serialize_signal_record (eri_file_t file,
-			     const struct eri_signal_record *rec)
+			     const struct eri_async_signal_record *rec)
 {
   eri_serialize_uint64 (file, rec->in);
   eri_serialize_siginfo (file, &rec->info);
@@ -310,12 +327,45 @@ eri_serialize_signal_record (eri_file_t file,
 
 void
 eri_unserialize_signal_record (eri_file_t file,
-			       struct eri_signal_record *rec)
+			       struct eri_async_signal_record *rec)
 {
   rec->in = eri_unserialize_uint64 (file);
   eri_unserialize_siginfo (file, &rec->info);
   if (rec->info.sig)
     eri_unserialize_ver_sigaction (file, &rec->act);
+}
+
+#define ATOMIC_RECORD_UPDATED	1
+#define ATOMIC_RECORD_SAME_VER	2
+#define ATOMIC_RECORD_ZERO_VAL	4
+
+void
+eri_serialize_atomic_record (eri_file_t file,
+			     const struct eri_atomic_record *rec)
+{
+  uint8_t flags = (rec->updated ? ATOMIC_RECORD_UPDATED : 0)
+		  | (rec->ver.first == rec->ver.second
+					? ATOMIC_RECORD_SAME_VER : 0)
+		  | (rec->val == 0 ? ATOMIC_RECORD_ZERO_VAL : 0);
+  eri_serialize_uint8 (file, flags);
+  eri_serialize_uint64 (file, rec->ver.first);
+  if (! (flags & ATOMIC_RECORD_SAME_VER))
+    eri_serialize_uint64 (file, rec->ver.second);
+  if (! (flags & ATOMIC_RECORD_ZERO_VAL))
+    eri_serialize_uint64 (file, rec->val);
+}
+
+void
+eri_unserialize_atomic_record (eri_file_t file,
+			       struct eri_atomic_record *rec)
+{
+  uint8_t flags = eri_unserialize_uint8 (file);
+  rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
+  rec->ver.first = eri_unserialize_uint64 (file);
+  rec->ver.second = flags & ATOMIC_RECORD_SAME_VER
+		? rec->ver.first : eri_unserialize_uint64 (file);
+  rec->val = flags & ATOMIC_RECORD_ZERO_VAL
+		? 0 : eri_unserialize_uint64 (file);
 }
 
 void
@@ -336,6 +386,22 @@ eri_unserialize_syscall_clone_record (eri_file_t file,
   rec->result = eri_unserialize_uint64 (file);
   if (eri_syscall_is_error (rec->result)) return;
   rec->id = eri_unserialize_uint64 (file);
+}
+
+void
+eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
+			const struct eri_syscall_exit_clear_tid_record *rec)
+{
+  eri_serialize_uint64 (file, rec->out);
+  eri_serialize_atomic_record (file, &rec->clear_tid);
+}
+
+void
+eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
+			struct eri_syscall_exit_clear_tid_record *rec)
+{
+  rec->out = eri_unserialize_uint64 (file);
+  eri_unserialize_atomic_record (file, &rec->clear_tid);
 }
 
 void
@@ -490,34 +556,3 @@ eri_unserialize_syscall_readv_record (eri_file_t file,
   serialize_iovec (file, rec->iov, rec->result, rec->copy, rec->args, 0);
 }
 
-#define ATOMIC_RECORD_UPDATED	1
-#define ATOMIC_RECORD_SAME_VER	2
-#define ATOMIC_RECORD_ZERO_VAL	4
-
-void
-eri_serialize_atomic_record (eri_file_t file,
-			     const struct eri_atomic_record *rec)
-{
-  uint8_t flags = (rec->updated ? ATOMIC_RECORD_UPDATED : 0)
-		  | (rec->ver[0] == rec->ver[1] ? ATOMIC_RECORD_SAME_VER : 0)
-		  | (rec->val == 0 ? ATOMIC_RECORD_ZERO_VAL : 0);
-  eri_serialize_uint8 (file, flags);
-  eri_serialize_uint64 (file, rec->ver[0]);
-  if (! (flags & ATOMIC_RECORD_SAME_VER))
-    eri_serialize_uint64 (file, rec->ver[1]);
-  if (! (flags & ATOMIC_RECORD_ZERO_VAL))
-    eri_serialize_uint64 (file, rec->val);
-}
-
-void
-eri_unserialize_atomic_record (eri_file_t file,
-			       struct eri_atomic_record *rec)
-{
-  uint8_t flags = eri_unserialize_uint8 (file);
-  rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
-  rec->ver[0] = eri_unserialize_uint64 (file);
-  rec->ver[1] = flags & ATOMIC_RECORD_SAME_VER
-		? rec->ver[0] : eri_unserialize_uint64 (file);
-  rec->val = flags & ATOMIC_RECORD_ZERO_VAL
-		? 0 : eri_unserialize_uint64 (file);
-}

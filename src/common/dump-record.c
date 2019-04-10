@@ -61,7 +61,7 @@ main (int32_t argc, const char **argv)
     else if (mark == ERI_ASYNC_RECORD)
       {
 	printf ("ERI_ASYNC_RECORD\n");
-	struct eri_signal_record rec;
+	struct eri_async_signal_record rec;
 	eri_unserialize_signal_record (file, &rec);
 	printf ("  in: %lu, info.sig: %d", rec.in, rec.info.sig);
 	if (rec.info.sig)
@@ -99,6 +99,16 @@ main (int32_t argc, const char **argv)
 	    if (! eri_syscall_is_error (rec.result))
 	      printf (", ..id: 0x%lx\n", rec.id);
 	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
+	  {
+	    struct eri_syscall_exit_clear_tid_record rec;
+	    eri_unserialize_syscall_clone_record (file, &rec);
+	    printf ("  syscall.exit.out: %lu\n", rec.out);
+	    printf ("  syscall.exit.clear_tid.updated: %u, "
+		    "...ver: %lu %lu, ...val: 0x%lx\n",
+		    rec.clear_tid.updated, rec.clear_tid.ver.first,
+		    rec.clear_tid.ver.second, rec.clear_tid.val);
 	  }
 	else if (magic == ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
 	  printf ("  syscall.rt_sigaction: %lu\n",
@@ -153,7 +163,7 @@ main (int32_t argc, const char **argv)
 	    struct eri_atomic_record rec;
 	    eri_unserialize_atomic_record (file, &rec);
 	    printf ("  atomic.updated: %u, .ver: %lu %lu, .val: 0x%lx\n",
-		    rec.updated, rec.ver[0], rec.ver[1], rec.val);
+		    rec.updated, rec.ver.first, rec.ver.second, rec.val);
 	  }
       }
     else eri_assert_unreachable ();

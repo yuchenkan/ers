@@ -447,15 +447,10 @@ do_lock_atomic (struct eri_live_thread_group *group, uint64_t slot)
   return idx;
 }
 
-struct atomic_pair
-{
-  uint64_t first, second;
-};
-
-static struct atomic_pair
+static struct eri_pair
 lock_atomic (struct eri_live_thread_group *group, uint64_t mem, uint8_t size)
 {
-  struct atomic_pair idx = { do_lock_atomic (group, eri_atomic_slot (mem)) };
+  struct eri_pair idx = { do_lock_atomic (group, eri_atomic_slot (mem)) };
   idx.second = eri_atomic_cross_slot (mem, size)
 	? do_lock_atomic (group, eri_atomic_slot2 (mem, size)) : idx.first;
   return idx;
@@ -468,12 +463,12 @@ do_unlock_atomic (struct eri_live_thread_group *group, uint64_t idx)
   eri_atomic_and (group->atomic_table + idx, -2);
 }
 
-static struct atomic_pair
-unlock_atomic (struct eri_live_thread_group *group, struct atomic_pair *idx,
+static struct eri_pair
+unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
 	       uint8_t updated)
 {
   uint8_t cross = idx->first != idx->second;
-  struct atomic_pair ver = {
+  struct eri_pair ver = {
     group->atomic_table[idx->first] >> 1,
     group->atomic_table[idx->second] >> 1
   };
@@ -567,8 +562,7 @@ static eri_noreturn void
 syscall_restart (struct eri_entry *entry)
 {
   eri_entry__sig_wait_pending (entry, 0);
-  eri_entry__set_restart (entry);
-  eri_entry__leave (entry);
+  eri_entry__set_restart_leave (entry);
 }
 
 #define SYSCALL_TO_IMPL(name) \
@@ -659,23 +653,31 @@ syscall_do_exit (struct eri_live_thread *th)
       struct eri_live_thread_group *group = th->group;
 
       int32_t *user_tid = th->clear_user_tid;
-      struct atomic_pair idx
+      struct eri_pair idx
 	= lock_atomic (group, (uint64_t) user_tid, sizeof *user_tid);
 
       int32_t old_val;
       if (clear_user_tid (th, user_tid, &old_val))
 	{
 	  uint8_t updated = old_val != 0;
-	  struct atomic_pair ver = unlock_atomic (group, &idx, updated);
-	  eri_live_thread_recorder__rec_atomic (th->rec, updated,
-						&ver.first, 0);
+	  struct eri_syscall_exit_clear_tid_record rec = {
+	    .out = io_out (th),
+	    .clear_tid = {
+	      .updated = updated,
+	      .ver = unlock_atomic (group, &idx, updated)
+	    }
+	  };
 	  eri_syscall (futex, user_tid, ERI_FUTEX_WAKE, 1);
+	  syscall_record (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC, &rec);
+	  goto recorded;
 	}
-      else unlock_atomic (group, &idx, 0);
+
+      unlock_atomic (group, &idx, 0);
     }
 
   syscall_record_out (th);
 
+recorded:
   eri_debug ("syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);
 }
@@ -1710,8 +1712,7 @@ sync_async (struct eri_live_thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
   eri_live_thread_recorder__rec_sync_async (th->rec, regs->rcx);
-  eri_entry__set_restart (entry);
-  eri_entry__leave (entry);
+  eri_entry__set_restart_leave (entry);
 }
 
 #define atomic_mask(size) \
@@ -1757,7 +1758,7 @@ atomic (struct eri_live_thread *th)
 {
   struct eri_entry *entry = th->entry;
   uint64_t mem = eri_entry__get_atomic_mem (entry);
-  uint8_t size = 1 << eri_entry__get_op_args (entry);
+  uint8_t size = eri_entry__get_atomic_size (entry);
 
   struct eri_live_thread_group *group = th->group;
   if (eri_cross (&group->map_range, mem, size)) mem = 0;
@@ -1768,13 +1769,12 @@ atomic (struct eri_live_thread *th)
   uint16_t code = eri_entry__get_op_code (entry);
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  struct atomic_pair idx = lock_atomic (group, mem, size);
+  struct eri_pair idx = lock_atomic (group, mem, size);
 
   if (! eri_entry__test_access (entry))
     {
       unlock_atomic (group, &idx, 0);
-      eri_entry__set_restart (entry);
-      eri_entry__leave (entry);
+      eri_entry__set_restart_leave (entry);
     }
 
   if (size == 1)
@@ -1795,12 +1795,15 @@ atomic (struct eri_live_thread *th)
 	  || code == ERI_OP_ATOMIC_INC || code == ERI_OP_ATOMIC_DEC
 	  || (code == ERI_OP_ATOMIC_CMPXCHG
 	      && (regs->rflags & ERI_RFLAGS_ZF ? old_val != val : 0));
-
-  struct atomic_pair ver = unlock_atomic (group, &idx, updated);
+  struct eri_atomic_record rec = {
+    .updated = updated,
+    .ver = unlock_atomic (group, &idx, updated),
+    .val = atomic_op_output (code) ? old_val : 0
+  };
 
   /* XXX: cmpxchg16b */
-  eri_live_thread_recorder__rec_atomic (th->rec, updated, &ver.first,
-				atomic_op_output (code) ? old_val : 0);
+
+  eri_live_thread_recorder__rec_atomic (th->rec, &rec);
 
   if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
     eri_entry__atomic_interleave (entry, old_val);
@@ -1830,8 +1833,9 @@ record_signal (struct eri_live_thread *th,
       return;
     }
 
-  struct eri_signal_record rec = { io_in (th) };
+  struct eri_async_signal_record rec = { io_in (th) };
   if (info) { rec.info = *info; rec.act = *act; }
+
   eri_live_thread_recorder__rec_signal (th->rec, 1, &rec);
 }
 

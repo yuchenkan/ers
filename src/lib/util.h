@@ -160,6 +160,11 @@ struct eri_range
      uint64_t _val = val; uint64_t _len = len;				\
      _val + _len > _range->start && _val < _range->end;	})
 
+struct eri_pair
+{
+  uint64_t first, second;
+};
+
 #endif
 
 #endif

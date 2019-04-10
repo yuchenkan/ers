@@ -38,6 +38,9 @@ void eri_serialize_uint64_array (eri_file_t file,
 void eri_unserialize_uint64_array (eri_file_t file,
 				   uint64_t *a, uint64_t size);
 
+void eri_serialize_pair (eri_file_t file, struct eri_pair pair);
+struct eri_pair eri_unserialize_pair (eri_file_t file);
+
 void eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set);
 void eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
 
@@ -105,7 +108,7 @@ void eri_serialize_init_map_record (eri_file_t file,
 void eri_unserialize_init_map_record (eri_file_t file,
 				      struct eri_init_map_record *rec);
 
-struct eri_signal_record
+struct eri_async_signal_record
 {
   uint64_t in;
   struct eri_siginfo info;
@@ -113,9 +116,9 @@ struct eri_signal_record
 };
 
 void eri_serialize_signal_record (eri_file_t file,
-				  const struct eri_signal_record *rec);
+				  const struct eri_async_signal_record *rec);
 void eri_unserialize_signal_record (eri_file_t file,
-				    struct eri_signal_record *rec);
+				    struct eri_async_signal_record *rec);
 
 enum
 {
@@ -125,6 +128,7 @@ enum
   ERI_SYSCALL_OUT_MAGIC,
   ERI_SYSCALL_RESULT_IN_MAGIC,
   ERI_SYSCALL_CLONE_MAGIC,
+  ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_SET_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_MAGIC,
   ERI_SYSCALL_RT_SIGPENDING_MAGIC,
@@ -133,13 +137,25 @@ enum
   ERI_SYSCALL_READ_MAGIC,
   ERI_SYSCALL_READV_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
-  ERI_ATOMIC_MAGIC
+  ERI_ATOMIC_MAGIC,
 };
 
 #define eri_serialize_magic(file, magic) \
   eri_serialize_uint16 (file, magic)
 #define eri_unserialize_magic(file) \
   eri_unserialize_uint16 (file)
+
+struct eri_atomic_record
+{
+  uint8_t updated;
+  struct eri_pair ver;
+  uint64_t val;
+};
+
+void eri_serialize_atomic_record (eri_file_t file,
+				  const struct eri_atomic_record *rec);
+void eri_unserialize_atomic_record (eri_file_t file,
+				    struct eri_atomic_record *rec);
 
 struct eri_syscall_clone_record
 {
@@ -156,6 +172,17 @@ void eri_serialize_syscall_clone_record (eri_file_t file,
 			const struct eri_syscall_clone_record *rec);
 void eri_unserialize_syscall_clone_record (eri_file_t file,
 			struct eri_syscall_clone_record *rec);
+
+struct eri_syscall_exit_clear_tid_record
+{
+  uint64_t out;
+  struct eri_atomic_record clear_tid;
+};
+
+void eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
+			const struct eri_syscall_exit_clear_tid_record *rec);
+void eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
+			struct eri_syscall_exit_clear_tid_record *rec);
 
 struct eri_syscall_rt_sigpending_record
 {
@@ -222,18 +249,6 @@ void eri_serialize_syscall_readv_record (eri_file_t file,
 			const struct eri_syscall_readv_record *rec);
 void eri_unserialize_syscall_readv_record (eri_file_t file,
 			struct eri_syscall_readv_record *rec);
-
-struct eri_atomic_record
-{
-  uint8_t updated;
-  uint64_t ver[2];
-  uint64_t val;
-};
-
-void eri_serialize_atomic_record (eri_file_t file,
-				  const struct eri_atomic_record *rec);
-void eri_unserialize_atomic_record (eri_file_t file,
-				    struct eri_atomic_record *rec);
 
 #define eri_dump_maps() \
   do {									\
