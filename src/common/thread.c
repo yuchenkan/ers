@@ -57,6 +57,7 @@ eri_entry__create (struct eri_entry__create_args *args)
   entry->_th = args->th;
   entry->_stack = args->stack;
   entry->_entry = args->entry;
+  entry->_main_entry = args->entry;
   entry->_sig_action = args->sig_action;
 
   entry->_test_access = 0;
@@ -73,17 +74,11 @@ eri_entry__destroy (struct eri_entry *entry)
 }
 
 typedef eri_noreturn void (* th_noreturn_call_t) (void *);
-#define th_noreturn_call(fn, th)	((th_noreturn_call_t) (fn)) (th)
+#define th_noreturn_call(fn, entry)	((th_noreturn_call_t) (fn)) (entry)
 
 #define to_swallow_single_step(code) \
   ({ uint16_t _c = code;						\
      _c == ERI_OP_NOP || _c == ERI_OP_SYSCALL || _c == ERI_OP_SYNC_ASYNC; })
-
-eri_noreturn void
-sig_action (struct eri_entry *entry)
-{
-  th_noreturn_call (entry->_sig_action, entry->_th);
-}
 
 eri_noreturn void
 eri_entry__leave (struct eri_entry *entry)
@@ -94,7 +89,7 @@ eri_entry__leave (struct eri_entry *entry)
   if (eri_atomic_load (&entry->_sig_pending))
     {
       entry->_op.ret = 0;
-      th_noreturn_call (entry->_sig_action, entry->_th);
+      th_noreturn_call (entry->_sig_action, entry);
     }
 
   if (to_swallow_single_step (entry->_op.code)
@@ -112,6 +107,23 @@ eri_entry__syscall_leave (struct eri_entry *entry, uint64_t res)
   entry->_regs.r11 = entry->_regs.rflags;
   entry->_regs.rip = entry->_leave;
   eri_entry__leave (entry);
+}
+
+static eri_noreturn void
+atomic_post_interleave (struct eri_entry *entry)
+{
+  entry->_entry = entry->_main_entry;
+  entry->_leave = entry->_atomic.leave;
+  entry->_regs.rip = entry->_leave;
+  eri_entry__leave (entry);
+}
+
+eri_noreturn void
+eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
+{
+  entry->_atomic.val = val;
+  entry->_entry = atomic_post_interleave;
+  eri_entry__do_leave (entry);
 }
 
 static uint8_t

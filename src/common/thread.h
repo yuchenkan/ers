@@ -142,6 +142,7 @@ struct eri_entry
 
   uint8_t *_stack;
   void *_entry;
+  void *_main_entry;
   void *_sig_action;
 
   struct
@@ -202,18 +203,11 @@ void eri_entry__destroy (struct eri_entry *entry);
        _entry->_regs.rip = _entry->_start; } while (0)
 
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
+#define eri_entry__get_th(entry)	((entry)->_th)
 #define eri_entry__get_stack(entry)	((entry)->_stack)
 
-#define eri_entry__set_entry(entry, val) \
-  do { (entry)->_entry = val; } while (0)
-
-#define eri_entry__set_atomic_val(entry, at_val) \
-  do { (entry)->_atomic.val = at_val; } while (0)
 #define eri_entry__get_atomic_val(entry)	((entry)->_atomic.val)
-
 #define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
-#define eri_entry__get_atomic_leave(entry) \
-  ((entry)->_atomic.leave)
 
 eri_noreturn void eri_entry__do_leave (struct eri_entry *entry);
 eri_noreturn void eri_entry__leave (struct eri_entry *entry);
@@ -226,6 +220,8 @@ eri_noreturn void eri_entry__syscall_leave (
     if (eri_syscall_is_error (_res))					\
       eri_entry__syscall_leave (_entry, _res);				\
   } while (0)
+eri_noreturn void eri_entry__atomic_interleave (
+			struct eri_entry *entry, uint64_t val);
 
 uint8_t eri_entry__copy_from (struct eri_entry *entry,
 			      void *dst, const void *src, uint64_t size);

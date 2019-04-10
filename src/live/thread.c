@@ -246,8 +246,8 @@ eri_live_thread__destroy_group (struct eri_live_thread_group *group)
   eri_assert_mtfree (group->pool, group);
 }
 
-static eri_noreturn void main_entry (struct eri_live_thread *th);
-static eri_noreturn void sig_action (struct eri_live_thread *th);
+static eri_noreturn void main_entry (struct eri_entry *entry);
+static eri_noreturn void sig_action (struct eri_entry *entry);
 
 static struct eri_live_thread *
 create (struct eri_live_thread_group *group,
@@ -346,7 +346,7 @@ eri_live_thread__clone_main (struct eri_live_thread *th)
     | ERI_CLONE_SIGHAND | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID
     | ERI_SIGCHLD,
 
-    eri_entry__get_stack (th->entry), &th->tid, &th->alive, 0,
+    eri_entry__get_stack (th->entry) - 8, &th->tid, &th->alive, 0,
     start_main, th
   };
 
@@ -1714,16 +1714,6 @@ sync_async (struct eri_live_thread *th)
   eri_entry__leave (entry);
 }
 
-static eri_noreturn void
-atomic_ext_return (struct eri_live_thread *th)
-{
-  struct eri_entry *entry = th->entry;
-  eri_entry__set_entry (entry, main_entry);
-  eri_entry__set_leave (entry, eri_entry__get_atomic_leave (entry));
-  eri_entry__get_regs (entry)->rip = eri_entry__get_leave (entry);
-  eri_entry__leave (th->entry);
-}
-
 #define atomic_mask(size) \
   ({ uint8_t _size = size;						\
      _size == 1 ? 0xff : (_size == 2 ? 0xffff :				\
@@ -1813,20 +1803,16 @@ atomic (struct eri_live_thread *th)
 				atomic_op_output (code) ? old_val : 0);
 
   if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
-    {
-      eri_entry__set_atomic_val (entry, old_val);
-      eri_entry__set_entry (entry, atomic_ext_return);
-      eri_entry__do_leave (entry);
-    }
+    eri_entry__atomic_interleave (entry, old_val);
 
   regs->rip = eri_entry__get_leave (entry);
   eri_entry__leave (entry);
 }
 
 static eri_noreturn void
-main_entry (struct eri_live_thread *th)
+main_entry (struct eri_entry *entry)
 {
-  struct eri_entry *entry = th->entry;
+  struct eri_live_thread *th = eri_entry__get_th (entry);
   uint16_t code = eri_entry__get_op_code (entry);
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
@@ -1884,9 +1870,9 @@ core (struct eri_live_thread *th, uint64_t core_status)
 }
 
 static eri_noreturn void
-sig_action (struct eri_live_thread *th)
+sig_action (struct eri_entry *entry)
 {
-  struct eri_entry *entry = th->entry;
+  struct eri_live_thread *th = eri_entry__get_th (entry);
   struct eri_registers *regs = eri_entry__get_regs (entry);
   if (eri_entry__get_op_code (entry) == ERI_OP_SYNC_ASYNC
       && regs->rip == eri_entry__get_leave (entry))

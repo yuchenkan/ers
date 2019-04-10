@@ -17,7 +17,6 @@ declare (void)
   _ERI_FOREACH_GREG (EN_REG_OFFSET)
   EN_REG_OFFSET (RFLAGS, rflags);
   EN_OFFSET (_SIG_PENDING, _sig_pending);
-  EN_OFFSET (_TH, _th);
   EN_OFFSET (_STACK, _stack);
   EN_OFFSET (_ENTRY, _entry);
   EN_OFFSET (_SIG_ACTION, _sig_action);

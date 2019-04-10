@@ -39,7 +39,7 @@ ERI_FUNCTION (enter)
 
   _ERI_FOREACH_GREG_NO_RBX_RSP (SAVE_REG)
 
-  movq	EN__TH(%rbx), %rdi
+  movq	%rbx, %rdi
   call	*EN__ENTRY(%rbx)
   ERI_ASSERT_FALSE
 
@@ -121,7 +121,7 @@ ERI_FUNCTION (sig_op_ret)
   movq	%rsi, %rdi
   call	sig_return_back
 
-  movq	EN__TH(%rbx), %rdi
+  movq	%rbx, %rdi
   call	*EN__SIG_ACTION(%rbx)
   ERI_ASSERT_FALSE
 
