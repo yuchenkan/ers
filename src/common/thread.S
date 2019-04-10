@@ -18,7 +18,7 @@ ERI_SYMBOL (th_text_enter)
   .align 16
 ERI_SYMBOL (th_text_leave)
   movq	th_text - EN_SIZE + EN__REGS_RBX(%rip), %rbx
-  jmp	*th_text - EN_SIZE + EN__LEAVE(%rip)
+  jmp	*th_text - EN_SIZE + EN__REGS_RIP(%rip)
 
 ERI_SYMBOL (th_text_end)
 
@@ -122,7 +122,7 @@ ERI_FUNCTION (sig_op_ret)
   call	sig_return_back
 
   movq	%rbx, %rdi
-  call	*EN__SIG_ACTION(%rbx)
+  call	sig_action
   ERI_ASSERT_FALSE
 
   ERI_END_FUNCTION (sig_op_ret)

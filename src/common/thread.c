@@ -81,6 +81,14 @@ typedef eri_noreturn void (* th_noreturn_call_t) (void *);
      _c == ERI_OP_NOP || _c == ERI_OP_SYSCALL || _c == ERI_OP_SYNC_ASYNC; })
 
 eri_noreturn void
+sig_action (struct eri_entry *entry)
+{
+  entry->_op.ret = 0;
+  entry->_op.code = ERI_OP_NOP;
+  th_noreturn_call (entry->_sig_action, entry);
+}
+
+eri_noreturn void
 eri_entry__leave (struct eri_entry *entry)
 {
   eri_atomic_store (&entry->_op.ret, 1);
@@ -88,8 +96,9 @@ eri_entry__leave (struct eri_entry *entry)
 
   if (eri_atomic_load (&entry->_sig_pending))
     {
-      entry->_op.ret = 0;
-      th_noreturn_call (entry->_sig_action, entry);
+      if (entry->_op.code == ERI_OP_SYNC_ASYNC)
+	entry->_regs.rip = entry->_start;
+      sig_action (entry);
     }
 
   if (to_swallow_single_step (entry->_op.code)
@@ -103,9 +112,8 @@ eri_noreturn void
 eri_entry__syscall_leave (struct eri_entry *entry, uint64_t res)
 {
   entry->_regs.rax = res;
-  entry->_regs.rcx = entry->_leave;
+  entry->_regs.rcx = entry->_regs.rip;
   entry->_regs.r11 = entry->_regs.rflags;
-  entry->_regs.rip = entry->_leave;
   eri_entry__leave (entry);
 }
 
@@ -113,8 +121,7 @@ static eri_noreturn void
 atomic_post_interleave (struct eri_entry *entry)
 {
   entry->_entry = entry->_main_entry;
-  entry->_leave = entry->_atomic.leave;
-  entry->_regs.rip = entry->_leave;
+  entry->_regs.rip = entry->_atomic.leave;
   eri_entry__leave (entry);
 }
 
@@ -309,7 +316,6 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
   ctx->stack = st;
 
   set_regs_from_mctx (&entry->_regs, &ctx->mctx);
-  entry->_leave = entry->_regs.rip;
 
   frame.restorer = eri_assert_sys_sigreturn;
 
@@ -384,13 +390,12 @@ eri_entry__setup_user_frame (
   struct eri_sigframe *user_frame
 	= (void *) (eri_round_down (rsp - sizeof *user_frame, 16) - 8);
 
-  entry->_leave = (uint64_t) act->act;
   regs->rax = 0;
   regs->rdi = frame.info.sig;
   regs->rsi = (uint64_t) &user_frame->info;
   regs->rdx = (uint64_t) &user_frame->ctx;
   regs->rsp = (uint64_t) user_frame;
-  regs->rip = (uint64_t) entry->_leave;
+  regs->rip = (uint64_t) act->act;
   regs->rflags &= ~(ERI_RFLAGS_TF | ERI_RFLAGS_DF | ERI_RFLAGS_RF);
 
   return copy_to (entry, user_frame, &frame) ? user_frame : 0;
@@ -436,10 +441,18 @@ eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
   entry->_sig_swallow_single_step = 0;
 
   struct eri_mcontext *mctx = &frame->ctx.mctx;
-  uint8_t internal = eri_within (entry->_map_range, mctx->rip);
 
-  if (! internal) set_regs_from_mctx (&entry->_regs, mctx);
+  if (! eri_within (entry->_map_range, mctx->rip))
+    {
+      if (entry->_op.code == ERI_OP_SYNC_ASYNC
+	  && mctx->rip == entry->_regs.rip)
+	mctx->rip = entry->_start;
+      set_regs_from_mctx (&entry->_regs, mctx);
+    }
+  else if (entry->_op.code == ERI_OP_SYNC_ASYNC)
+    entry->_regs.rip = entry->_start;
 
+  entry->_op.code = ERI_OP_NOP;
   sig_op_ret (entry, frame);
 }
 

@@ -11,7 +11,7 @@ declare (void)
 {
   EN_OFFSET (OP, _op);
   EN_OFFSET (START, _start);
-  EN_OFFSET (LEAVE, _leave);
+  EN_OFFSET (LEAVE, _regs.rip);
   EN_OFFSET (ENTER, _th_enter);
   EN_OFFSET (RBX, _regs.rbx);
   EN_OFFSET (ATOMIC_VAL, _atomic.val);

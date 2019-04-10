@@ -284,7 +284,6 @@ eri_live_thread__create_main (struct eri_live_thread_group *group,
 
   struct eri_live_thread *th = create (group, sig_th, 0);
   struct eri_entry *entry = th->entry;
-  eri_entry__set_leave (entry, rtld_args->rip);
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
   eri_memset (regs, 0, sizeof *regs);
@@ -328,7 +327,7 @@ start_main (struct eri_live_thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
   struct eri_init_record rec = {
-    0, regs->rdx, regs->rsp, eri_entry__get_leave (entry),
+    0, regs->rdx, regs->rsp, regs->rip,
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
     eri_live_signal_thread__get_pid (th->sig_th),
     group->map_range, group->atomic_table_size
@@ -376,16 +375,13 @@ eri_live_thread__create (struct eri_live_signal_thread *sig_th,
   create_args->cth = th;
 
   struct eri_entry *entry = th->entry;
-  uint64_t leave = eri_entry__get_leave (pentry);
-  eri_entry__set_leave (entry, leave);
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
   *regs = *pregs;
   regs->rsp = pregs->rsi;
   regs->rax = 0;
-  regs->rcx = leave;
+  regs->rcx = regs->rip;
   regs->r11 = regs->rflags;
-  regs->rip = leave;
 
   th->sig_alt_stack = pth->sig_alt_stack;
   return th;
@@ -562,7 +558,7 @@ static eri_noreturn void
 syscall_restart (struct eri_entry *entry)
 {
   eri_entry__sig_wait_pending (entry, 0);
-  eri_entry__set_restart_leave (entry);
+  eri_entry__restart (entry);
 }
 
 #define SYSCALL_TO_IMPL(name) \
@@ -1712,7 +1708,7 @@ sync_async (struct eri_live_thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
   eri_live_thread_recorder__rec_sync_async (th->rec, regs->rcx);
-  eri_entry__set_restart_leave (entry);
+  eri_entry__leave (entry);
 }
 
 #define atomic_mask(size) \
@@ -1774,7 +1770,7 @@ atomic (struct eri_live_thread *th)
   if (! eri_entry__test_access (entry))
     {
       unlock_atomic (group, &idx, 0);
-      eri_entry__set_restart_leave (entry);
+      eri_entry__restart (entry);
     }
 
   if (size == 1)
@@ -1808,7 +1804,6 @@ atomic (struct eri_live_thread *th)
   if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
     eri_entry__atomic_interleave (entry, old_val);
 
-  regs->rip = eri_entry__get_leave (entry);
   eri_entry__leave (entry);
 }
 
@@ -1848,7 +1843,7 @@ die (struct eri_live_thread *th)
 }
 
 static eri_noreturn void
-core (struct eri_live_thread *th, uint64_t core_status)
+core (struct eri_live_thread *th, uint8_t term)
 {
   eri_debug ("core\n");
 
@@ -1861,13 +1856,13 @@ core (struct eri_live_thread *th, uint64_t core_status)
   eri_entry__clear_signal (th->entry);
   eri_live_signal_thread__sig_reset (sig_th, &mask);
 
-  if (eri_live_signal_thread__exit (sig_th, 1, core_status))
+  if (eri_live_signal_thread__exit (sig_th, 1, term ? 130 : 139))
     {
       if (eri_sig_act_internal_act (th->sig_act.act.act)
 	  && ! (eri_si_sync (info) && th->sig_force_masked))
 	record_signal (th, info, &th->sig_act);
 
-      if (core_status == 130) eri_assert_syscall (exit, 0);
+      if (term) eri_assert_syscall (exit, 0);
       eri_assert_unreachable ();
     }
   else die (th);
@@ -1877,18 +1872,8 @@ static eri_noreturn void
 sig_action (struct eri_entry *entry)
 {
   struct eri_live_thread *th = eri_entry__get_th (entry);
-  struct eri_registers *regs = eri_entry__get_regs (entry);
-  if (eri_entry__get_op_code (entry) == ERI_OP_SYNC_ASYNC
-      && regs->rip == eri_entry__get_leave (entry))
-    {
-      eri_entry__set_restart (entry);
-      eri_live_thread_recorder__rec_restart_sync_async (th->rec, regs->rcx);
-    }
-  eri_entry__set_op_code (entry, ERI_OP_NOP);
-
   struct eri_live_signal_thread *sig_th = th->sig_th;
 
-  uint64_t core_status = 139;
   struct eri_siginfo *info = eri_entry__get_sig_info (entry);
 
   if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) die (th);
@@ -1901,7 +1886,7 @@ sig_action (struct eri_entry *entry)
       record_signal (th, info, &th->sig_act);
       if (! eri_entry__setup_user_frame (entry, act, &th->sig_alt_stack,
 			eri_live_signal_thread__get_sig_mask (sig_th)))
-	goto core;
+	core (th, 0);
 
       eri_entry__clear_signal (entry);
       eri_live_signal_thread__sig_reset (sig_th, &act->mask);
@@ -1917,10 +1902,7 @@ sig_action (struct eri_entry *entry)
       eri_entry__leave (entry);
     }
 
-  if (act->act == ERI_SIG_ACT_TERM) core_status = 130;
-
-core:
-  core (th, core_status);
+  core (th, act->act == ERI_SIG_ACT_TERM);
 }
 
 static void

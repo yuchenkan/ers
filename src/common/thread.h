@@ -120,7 +120,6 @@ struct eri_entry
   uint64_t _start;
 
   uint64_t _enter;
-  uint64_t _leave;
 
   uint64_t _th_enter;
   uint64_t _th_leave;
@@ -189,21 +188,7 @@ struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);
 void eri_entry__destroy (struct eri_entry *entry);
 
 #define eri_entry__get_op_ret(entry)	((entry)->_op.ret)
-#define eri_entry__set_op_code(entry, op_code) \
-  do { (entry)->_op.code = op_code; } while (0)
 #define eri_entry__get_op_code(entry)	((entry)->_op.code)
-
-#define eri_entry__set_leave(entry, leave) \
-  do { (entry)->_leave = leave; } while (0)
-#define eri_entry__get_leave(entry)	((entry)->_leave)
-
-#define eri_entry__set_restart(entry) \
-  do { struct eri_entry *__entry = entry;				\
-       __entry->_regs.rip = __entry->_start; } while (0)
-#define eri_entry__set_restart_leave(entry) \
-  do { struct eri_entry *_entry = entry;				\
-       eri_entry__set_restart (_entry);					\
-       eri_entry__leave (_entry); } while (0)
 
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
 #define eri_entry__get_th(entry)	((entry)->_th)
@@ -226,6 +211,10 @@ eri_noreturn void eri_entry__syscall_leave (
   } while (0)
 eri_noreturn void eri_entry__atomic_interleave (
 			struct eri_entry *entry, uint64_t val);
+#define eri_entry__restart(entry) \
+  do { struct eri_entry *_entry = entry;				\
+       _entry->_regs.rip = _entry->_start;				\
+       eri_entry__leave (_entry); } while (0)
 
 uint8_t eri_entry__copy_from (struct eri_entry *entry,
 			      void *dst, const void *src, uint64_t size);

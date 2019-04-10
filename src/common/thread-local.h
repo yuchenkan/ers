@@ -18,4 +18,6 @@ void sig_return_back (struct eri_sigframe *frame);
 eri_noreturn void sig_op_ret (struct eri_entry *entry,
 			      struct eri_sigframe *frame);
 
+eri_noreturn void sig_action (struct eri_entry *entry);
+
 #endif
