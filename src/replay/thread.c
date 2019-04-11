@@ -1413,7 +1413,11 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       return;
     }
 
-  if (eri_si_sync (info)) assert_magic (th, ERI_SIGNAL_MAGIC);
+  if (eri_si_sync (info))
+    {
+      eri_assert (! eri_within (&th->group->map_range, ctx->mctx.rip));
+      assert_magic (th, ERI_SIGNAL_MAGIC);
+    }
   eri_entry__sig_test_op_ret (entry,
 		eri_struct_of (info, struct eri_sigframe, info));
 }

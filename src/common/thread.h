@@ -182,6 +182,8 @@ struct eri_entry__create_args
   uint8_t *stack;
   void *entry;
   void *sig_action;
+
+  void *leave;
 };
 
 struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);

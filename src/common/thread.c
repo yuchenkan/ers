@@ -46,7 +46,7 @@ eri_entry__create (struct eri_entry__create_args *args)
 
   entry->_enter = (uint64_t) enter;
   entry->_th_enter = th_get_enter (entry);
-  entry->_th_leave = th_get_leave (entry);
+  entry->_th_leave = (uint64_t) args->leave ? : th_get_leave (entry);
 
   entry->_sig_wait_pending = 0;
   entry->_sig_pending = 0;
