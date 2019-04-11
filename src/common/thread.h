@@ -143,6 +143,7 @@ struct eri_entry
   void *_entry;
   void *_main_entry;
   void *_sig_action;
+  void *_exit;
 
   struct
     {
@@ -183,7 +184,7 @@ struct eri_entry__create_args
   void *entry;
   void *sig_action;
 
-  void *leave;
+  void *exit;
 };
 
 struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);

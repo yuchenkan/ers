@@ -16,6 +16,12 @@
 #include <replay/rtld.h>
 #include <replay/thread.h>
 
+#include <replay/analyzer.h>
+
+#ifndef eri_enable_analyzer
+# define eri_enable_analyzer	0
+#endif
+
 #define HELPER_STACK_SIZE	(256 * 1024)
 
 struct version
@@ -93,6 +99,8 @@ struct thread_group
 struct thread
 {
   struct thread_group *group;
+
+  void *analyzer;
 
   struct eri_entry *entry;
   uint8_t sync_async_trace;
@@ -188,6 +196,13 @@ destroy_group (struct thread_group *group)
   eri_assert_fini_pool (pool);
 }
 
+static eri_noreturn void
+analysis (struct eri_entry *entry)
+{
+  struct thread *th = eri_entry__get_th (entry);
+  eri_analyzer__enter (th->analyzer, eri_entry__get_regs (entry));
+}
+
 static eri_noreturn void main_entry (struct eri_entry *entry);
 static eri_noreturn void sig_action (struct eri_entry *entry);
 
@@ -196,10 +211,12 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 {
   struct thread *th = eri_assert_mtmalloc (group->pool,
 				sizeof *th + group->stack_size);
+  if (eri_enable_analyzer)
+    th->analyzer = eri_analyzer__create (group->pool);
   th->group = group;
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, th->stack + group->stack_size,
-    main_entry, sig_action
+    main_entry, sig_action, eri_enable_analyzer ? analysis : 0
   };
   th->entry = eri_entry__create (&args);
   th->sync_async_trace = 0;
@@ -234,6 +251,7 @@ destroy (struct thread *th)
   struct eri_mtpool *pool = th->group->pool;
   eri_assert_mtfree (pool, th->file_buf);
   eri_entry__destroy (th->entry);
+  if (eri_enable_analyzer) eri_analyzer__destroy (th->analyzer);
   eri_assert_mtfree (pool, th);
 }
 

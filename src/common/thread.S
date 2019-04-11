@@ -45,7 +45,7 @@ ERI_FUNCTION (enter)
 
   ERI_END_FUNCTION (enter)
 
-ERI_FUNCTION (eri_entry__do_leave)
+ERI_FUNCTION (leave)
 
   movq	%rdi, %rbx
 
@@ -59,7 +59,7 @@ ERI_FUNCTION (eri_entry__do_leave)
 
   jmp	*EN__TH_LEAVE(%rbx)
 
-  ERI_END_FUNCTION (eri_entry__do_leave)
+  ERI_END_FUNCTION (leave)
 
 ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
 

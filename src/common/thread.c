@@ -46,7 +46,7 @@ eri_entry__create (struct eri_entry__create_args *args)
 
   entry->_enter = (uint64_t) enter;
   entry->_th_enter = th_get_enter (entry);
-  entry->_th_leave = (uint64_t) args->leave ? : th_get_leave (entry);
+  entry->_th_leave = th_get_leave (entry);
 
   entry->_sig_wait_pending = 0;
   entry->_sig_pending = 0;
@@ -59,6 +59,7 @@ eri_entry__create (struct eri_entry__create_args *args)
   entry->_entry = args->entry;
   entry->_main_entry = args->entry;
   entry->_sig_action = args->sig_action;
+  entry->_exit = args->exit;
 
   entry->_test_access = 0;
   entry->_syscall_interrupt = 0;
@@ -86,6 +87,13 @@ sig_action (struct eri_entry *entry)
   entry->_op.ret = 0;
   entry->_op.code = ERI_OP_NOP;
   th_noreturn_call (entry->_sig_action, entry);
+}
+
+eri_noreturn void
+eri_entry__do_leave (struct eri_entry *entry)
+{
+  if (entry->_exit) th_noreturn_call (entry->_exit, entry);
+  leave (entry);
 }
 
 eri_noreturn void
