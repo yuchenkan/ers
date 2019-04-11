@@ -1,7 +1,10 @@
 'use strict'; /* vim: set ft=javascript: */
 
 if (typeof srcs === 'undefined') var srcs = [ `${env.trim (goal)}.S.o`, `${env.trim (goal)}.c.o` ];
-if (typeof keep === 'undefined') var keep = [ `^${env.base (goal).startsWith ('tst-') ? 'tst' : 'eri'}_` ];
+if (typeof keep === 'undefined') {
+  let pfx = `${env.base (goal).startsWith ('tst-') ? 'tst' : 'eri'}_`;
+  var keep = [ `^${pfx}`, `^_${pfx}` ];
+}
 
 await this.update (srcs);
 await env.run (`ld --fatal-warnings -r ${srcs.join (' ')} -o ${goal}.o`);

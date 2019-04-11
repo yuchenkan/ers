@@ -103,7 +103,7 @@ main (int32_t argc, const char **argv)
 	else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
 	  {
 	    struct eri_syscall_exit_clear_tid_record rec;
-	    eri_unserialize_syscall_clone_record (file, &rec);
+	    eri_unserialize_syscall_exit_clear_tid_record (file, &rec);
 	    printf ("  syscall.exit.out: %lu\n", rec.out);
 	    printf ("  syscall.exit.clear_tid.updated: %u, "
 		    "...ver: %lu %lu, ...val: 0x%lx\n",

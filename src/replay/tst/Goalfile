@@ -9,7 +9,7 @@ if (base === 'all') {
 }
 
 if (base === 'main.l') {
-  let srcs = [ 'replay/thread.l', 'common/helper.c.o', 'common/common.l', 'lib/lib.a' ];
+  let srcs = [ 'replay/thread.c.o', 'common/helper.c.o', 'common/thread.l', 'common/serial.c.o', 'lib/lib.a' ];
   let keep = [ '^eri_replay_start$' ];
   return await this.invoke ('tst/goal/main.l.g', { srcs, keep });
 }
@@ -17,7 +17,7 @@ if (base === 'main.l') {
 if (base === 'tst-main.ld') return await this.invoke ('goal/m4.g');
 
 if (base === 'tst-basic') {
-  let srcs = [ 'tst/tst-start.S.o', `${goal}.c.o`, full ('main.l'), 'common/common.l', 'lib/lib.a' ];
+  let srcs = [ 'tst/tst-start.S.o', `${goal}.c.o`, full ('main.l'), 'common/serial.c.o', 'lib/lib.a' ];
   let script = full ('tst-main.ld');
   return await this.invoke ('goal/link.g', { srcs, extra: [ script ], ldflags: (_, f) => `${f} -T ${script}` });
 }

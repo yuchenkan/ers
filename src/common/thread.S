@@ -61,7 +61,7 @@ ERI_FUNCTION (eri_entry__do_leave)
 
   ERI_END_FUNCTION (eri_entry__do_leave)
 
-ERI_FUNCTION (eri_entry__syscall_interruptible)
+ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
 
   pushq	%rbx
   pushq	%rbp
@@ -93,7 +93,7 @@ ERI_FUNCTION (eri_entry__syscall_interruptible)
   popq	%rbx
   ret
 
-  ERI_END_FUNCTION (eri_entry__syscall_interruptible)
+  ERI_END_FUNCTION (eri_entry__sys_syscall_interruptible)
 
 ERI_FUNCTION (sig_return_back)
 
@@ -127,7 +127,7 @@ ERI_FUNCTION (sig_op_ret)
 
   ERI_END_FUNCTION (sig_op_ret)
 
-ERI_FUNCTION (eri_entry__test_access)
+ERI_FUNCTION (_eri_entry__test_access)
   movq	%rbx, EN__ACCESS_RBX(%rdi)
   ERI_LEA_MM (8(%rsp), EN__ACCESS_RSP(%rdi), %rax)
   movq	%rbp, EN__ACCESS_RBP(%rdi)
@@ -139,4 +139,13 @@ ERI_FUNCTION (eri_entry__test_access)
   movb	$1, EN__TEST_ACCESS(%rdi)
   movb	$1, %al
   ret
-  ERI_END_FUNCTION (eri_entry__test_access)
+  ERI_END_FUNCTION (_eri_entry__test_access)
+
+ERI_FUNCTION (eri_jump)
+  movq	%rdi, %rsp
+  movq	%rsi, %rax
+  movq	%rdx, %rdi
+  movq	%rcx, %rsi
+  movq	%r8, %rdx
+  jmp	*%rax
+  ERI_END_FUNCTION (eri_jump)

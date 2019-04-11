@@ -133,30 +133,24 @@ eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
   eri_entry__do_leave (entry);
 }
 
-static uint8_t
-copy (struct eri_entry *entry, void *dst, const void *src, uint64_t size)
+uint8_t
+eri_entry__copy_from (struct eri_entry *entry,
+		      void *dst, const void *src, uint64_t size)
 {
-  if (! eri_entry__test_access (entry)) return 0;
-
+  if (! eri_entry__test_access (entry, src, size)) return 0;
   eri_memcpy (dst, src, size);
   eri_entry__reset_test_access (entry);
   return 1;
 }
 
 uint8_t
-eri_entry__copy_from (struct eri_entry *entry,
-		      void *dst, const void *src, uint64_t size)
-{
-  return ! eri_cross (entry->_map_range, (uint64_t) src, size)
-	 && copy (entry, dst, src, size);
-}
-
-uint8_t
 eri_entry__copy_to (struct eri_entry *entry,
 		    void *dst, const void *src, uint64_t size)
 {
-  return ! eri_cross (entry->_map_range, (uint64_t) dst, size)
-	 && copy (entry, dst, src, size);
+  if (! eri_entry__test_access (entry, dst, size)) return 0;
+  eri_memcpy (dst, src, size);
+  eri_entry__reset_test_access (entry);
+  return 1;
 }
 
 #define copy_from_size(entry, dst, src, size) \
@@ -343,17 +337,13 @@ eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 }
 
 uint64_t
-eri_entry__syscall_get_signalfd (struct eri_entry *entry,
-				 int32_t *flags, struct eri_sigset *mask)
+eri_entry__syscall_get_signalfd (struct eri_entry *entry, int32_t *flags)
 {
-  const struct eri_sigset *user_mask = (void *) entry->_regs.rsi;
   uint64_t size = entry->_regs.rdx;
   *flags = entry->_regs.rax == __NR_signalfd4 ? entry->_regs.r10 : 0;
 
-  if ((*flags & ~(ERI_SFD_CLOEXEC | ERI_SFD_NONBLOCK))
-      || size != ERI_SIG_SETSIZE) return ERI_EINVAL;
-
-  return copy_from (entry, mask, user_mask) ? 0 : ERI_EINVAL; /* by kernel */
+  return (*flags & ~(ERI_SFD_CLOEXEC | ERI_SFD_NONBLOCK))
+	 || size != ERI_SIG_SETSIZE ? ERI_EINVAL : 0;
 }
 
 struct eri_sigframe *
@@ -435,7 +425,7 @@ eri_entry__sig_test_clear_single_step (struct eri_entry *entry, uint64_t rip)
 }
 
 eri_noreturn void
-eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
+_eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
 {
   entry->_op.ret = 0;
   entry->_sig_swallow_single_step = 0;

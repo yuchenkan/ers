@@ -2,7 +2,9 @@
 #include <lib/compiler.h>
 #include <lib/syscall.h>
 
-#include <common/common.h>
+#include <common/debug.h>
+#include <common/serial.h>
+
 #include <replay/rtld.h>
 #include <replay/thread.h>
 

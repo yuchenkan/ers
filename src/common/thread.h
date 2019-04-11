@@ -95,15 +95,15 @@ struct eri_registers
 
 #define eri_init_sys_syscall_args_from_registers(args, regs) \
   do {									\
-    struct eri_sys_syscall_args *_args = args;				\
+    struct eri_sys_syscall_args *__args = args;				\
     struct eri_registers *_regs = regs;					\
-    _args->nr = _regs->rax;						\
-    _args->a[0] = _regs->rdi;						\
-    _args->a[1] = _regs->rsi;						\
-    _args->a[2] = _regs->rdx;						\
-    _args->a[3] = _regs->r10;						\
-    _args->a[4] = _regs->r8;						\
-    _args->a[5] = _regs->r9;						\
+    __args->nr = _regs->rax;						\
+    __args->a[0] = _regs->rdi;						\
+    __args->a[1] = _regs->rsi;						\
+    __args->a[2] = _regs->rdx;						\
+    __args->a[3] = _regs->r10;						\
+    __args->a[4] = _regs->r8;						\
+    __args->a[5] = _regs->r9;						\
   } while (0)
 
 struct eri_entry
@@ -179,7 +179,7 @@ struct eri_entry__create_args
   struct eri_range *map_range;
 
   void *th;
-  void *stack;
+  uint8_t *stack;
   void *entry;
   void *sig_action;
 };
@@ -187,7 +187,6 @@ struct eri_entry__create_args
 struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);
 void eri_entry__destroy (struct eri_entry *entry);
 
-#define eri_entry__get_op_ret(entry)	((entry)->_op.ret)
 #define eri_entry__get_op_code(entry)	((entry)->_op.code)
 
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
@@ -216,16 +215,37 @@ eri_noreturn void eri_entry__atomic_interleave (
        _entry->_regs.rip = _entry->_start;				\
        eri_entry__leave (_entry); } while (0)
 
+eri_returns_twice uint8_t _eri_entry__test_access (struct eri_entry *entry);
+#define eri_entry__test_access(entry, mem, size) \
+  ({ struct eri_entry *_entry = entry;					\
+     eri_cross (_entry->_map_range, (uint64_t) mem, size)		\
+	? 0 : _eri_entry__test_access (_entry); })
+#define eri_entry__reset_test_access(entry) \
+  do { eri_barrier (); (entry)->_test_access = 0; } while (0)
+
 uint8_t eri_entry__copy_from (struct eri_entry *entry,
 			      void *dst, const void *src, uint64_t size);
 uint8_t eri_entry__copy_to (struct eri_entry *entry,
 			    void *dst, const void *src, uint64_t size);
 
-uint64_t eri_entry__syscall_interruptible (
+#define eri_entry__syscall(entry) \
+  ({ struct eri_sys_syscall_args _args;					\
+     eri_init_sys_syscall_args_from_registers (&_args,			\
+					eri_entry__get_regs (entry));	\
+     eri_sys_syscall (&_args); })
+uint64_t eri_entry__sys_syscall_interruptible (
 	struct eri_entry *entry, struct eri_sys_syscall_args *args);
+#define eri_entry__syscall_interruptible(entry) \
+  ({ struct eri_entry *_entry = entry;					\
+     struct eri_sys_syscall_args _args;					\
+     eri_init_sys_syscall_args_from_registers (&_args,			\
+					eri_entry__get_regs (_entry));	\
+     eri_entry__sys_syscall_interruptible (_entry, &_args); })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 			struct eri_sigset *old_mask, struct eri_sigset *mask);
+#define eri_entry__syscall_rt_sigprocmask_mask(entry) \
+  (!! (entry)->_regs.rsi)
 uint64_t eri_entry__syscall_set_rt_sigprocmask (
 		struct eri_entry *entry, struct eri_sigset *old_mask);
 uint64_t eri_entry__syscall_sigaltstack (
@@ -237,7 +257,7 @@ uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 			struct eri_sigset *set, struct eri_timespec *timeout);
 uint64_t eri_entry__syscall_get_signalfd (struct eri_entry *entry,
-				int32_t *flags, struct eri_sigset *mask);
+					  int32_t *flags);
 
 struct eri_sigframe *eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,
@@ -254,12 +274,14 @@ uint8_t eri_entry__sig_wait_pending (struct eri_entry *entry,
 				     struct eri_timespec *timeout);
 uint8_t eri_entry__sig_test_clear_single_step (
 			struct eri_entry *entry, uint64_t rip);
-void eri_entry__sig_op_ret (struct eri_entry *entry,
-			    struct eri_sigframe *frame);
-
-eri_returns_twice uint8_t eri_entry__test_access (struct eri_entry *entry);
-#define eri_entry__reset_test_access(entry) \
-  do { eri_barrier (); (entry)->_test_access = 0; } while (0)
+eri_noreturn void _eri_entry__sig_op_ret (struct eri_entry *entry,
+					  struct eri_sigframe *frame);
+#define eri_entry__sig_test_op_ret(entry, frame) \
+  do { struct eri_entry *_entry = entry;				\
+       struct eri_sigframe *_frame = frame;				\
+       eri_entry__set_signal (entry, &_frame->info, &_frame->ctx);	\
+       if (_entry->_op.ret)						\
+	 _eri_entry__sig_op_ret (_entry, _frame); } while (0)
 
 #define eri_entry__sig_is_access_fault(entry, sig_info) \
   ({ struct eri_entry *_entry = entry;					\
@@ -334,6 +356,9 @@ void eri_entry__sig_test_syscall_interrupted (
   ({ void *_act = act;							\
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
      || _act == ERI_SIG_ACT_STOP; })
+
+eri_noreturn void eri_jump (void *rsp, void *rip,
+			    void *rdi, void *rsi, void *rdx);
 
 #endif
 
