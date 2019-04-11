@@ -19,8 +19,6 @@ sig_handler (int32_t sig)
 static eri_aligned16 uint8_t stack[1024 * 1024];
 static struct tst_sys_clone_raise_args raise_args;
 
-eri_noreturn void tst_live_start (void);
-
 eri_noreturn void
 tst_live_start (void)
 {

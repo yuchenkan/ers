@@ -12,8 +12,6 @@
 
 static uint8_t stack[2 * 1024 * 1024];
 
-static eri_noreturn void tst_replay_start (void);
-
 static eri_noreturn void
 tst_replay_start (void)
 {

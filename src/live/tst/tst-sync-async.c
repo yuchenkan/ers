@@ -37,9 +37,6 @@ sig_trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (eri_si_single_step (info));
 }
 
-static eri_noreturn void sig_int (int32_t sig, struct eri_siginfo *info,
-				  struct eri_ucontext *ctx);
-
 static eri_noreturn void
 sig_int (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {

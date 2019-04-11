@@ -2,8 +2,6 @@
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
-static eri_noreturn void start_raise (struct tst_sys_clone_raise_args *args);
-
 static eri_noreturn void
 start_raise (struct tst_sys_clone_raise_args *args)
 {
