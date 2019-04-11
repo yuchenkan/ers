@@ -98,6 +98,7 @@ struct thread
   uint8_t sync_async_trace;
   uint64_t sync_async_trace_steps;
 
+  uint64_t rec;
   eri_file_t file;
   uint8_t *file_buf;
 
@@ -203,6 +204,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   th->entry = eri_entry__create (&args);
   th->sync_async_trace = 0;
 
+  th->rec = 0;
   char name[eri_build_path_len (group->path, "t", id)];
   eri_build_path (group->path, "t", id, name);
 
@@ -235,20 +237,14 @@ destroy (struct thread *th)
   eri_assert_mtfree (pool, th);
 }
 
-static uint8_t
-next_record (struct thread *th) { return eri_unserialize_mark (th->file); }
+#define next_record(th) \
+  ({ struct thread *_th = th; eri_debug ("%u\n", _th->rec++);		\
+     eri_unserialize_mark (_th->file); })
 
-static eri_noreturn void
+static void
 set_async_signal (struct thread *th)
 {
   eri_assert_syscall (tgkill, th->group->pid, th->tid, ERI_SIGRTMIN);
-  eri_assert_unreachable ();
-}
-
-static void
-test_set_async_signal (struct thread *th)
-{
-  if (next_record (th) == ERI_ASYNC_RECORD) set_async_signal (th);
 }
 
 static eri_noreturn void
@@ -265,7 +261,7 @@ start (struct thread *th, uint8_t next)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 
-  test_set_async_signal (th);
+  if (next == ERI_ASYNC_RECORD) set_async_signal (th);
   eri_entry__leave (th->entry);
 }
 
@@ -344,6 +340,12 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 
   th->tid = group->pid;
   eri_jump (eri_entry__get_stack (entry) - 8, start_main, th, 0, 0);
+}
+
+static void
+test_set_async_signal (struct thread *th)
+{
+  if (next_record (th) == ERI_ASYNC_RECORD) set_async_signal (th);
 }
 
 #define do_access(mem, read_only) \
@@ -764,8 +766,8 @@ DEFINE_SYSCALL (rt_sigaction)
       eri_unserialize_ver_sigaction (th->file, &act);
       act_ver = act.ver;
 
-      res = eri_entry__copy_to (entry,
-		user_old_act, &act, sizeof *user_old_act) ? ERI_EFAULT : 0;
+      res = eri_entry__copy_to (entry, user_old_act, &act.act,
+				sizeof *user_old_act) ? 0 : ERI_EFAULT;
     }
   else
     {
@@ -1232,6 +1234,7 @@ syscall (struct thread *th)
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
   int32_t nr = regs->rax;
+  eri_debug ("%u\n", nr);
 #define SYSCALL(name) \
   ERI_PASTE (syscall_, name) (th, entry, regs)
   ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
@@ -1245,7 +1248,7 @@ sync_async (struct thread *th)
   eri_assert (eri_unserialize_magic (th->file) == ERI_SYNC_ASYNC_MAGIC);
   uint64_t steps = eri_unserialize_uint64 (th->file);
 
-  struct eri_entry *entry = entry;
+  struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
   if (next_record (th) == ERI_ASYNC_RECORD)
@@ -1337,6 +1340,7 @@ main_entry (struct eri_entry *entry)
 static eri_noreturn void
 sig_action (struct eri_entry *entry)
 {
+  eri_debug ("\n");
   struct thread *th = eri_entry__get_th (entry);
   struct eri_siginfo *info = eri_entry__get_sig_info (entry);
   int32_t sig = info->sig;
@@ -1373,12 +1377,12 @@ fetch_async_sig_info (struct thread *th, struct eri_siginfo *info)
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
+  eri_debug ("%u %lx %lx\n", sig, info, ctx->mctx.rip);
   struct thread *th = *(void **) ctx->stack.sp;
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);
-
-  if (! eri_si_sync (info)) return;
+  else if (! eri_si_sync (info)) return;
 
   struct eri_entry *entry = th->entry;
   uint16_t code = eri_entry__get_op_code (entry);
@@ -1409,6 +1413,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       return;
     }
 
+  if (eri_si_sync (info)) assert_magic (th, ERI_SIGNAL_MAGIC);
   eri_entry__sig_test_op_ret (entry,
 		eri_struct_of (info, struct eri_sigframe, info));
 }

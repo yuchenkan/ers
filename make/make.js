@@ -126,7 +126,7 @@ if (new Set ([ 'tst/tst-common-start.S.o', 'all' ]).has (goal))
 console.log (goal, stat, goal in env.stats);
 */
   if (! (goal in env.stats) && (! stat.src || ! env.phony.size))
-    await env.run (`rm -f ${goal}`, true);
+    await env.run (`rm -rf ${goal}`, true);
 
   debug (`collect ${goal} ${goal in env.stats}`);
   finish (first);

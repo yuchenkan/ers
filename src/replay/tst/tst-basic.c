@@ -48,8 +48,7 @@ tst_main (void **args)
   extern uint8_t tst_main_map_end[];
   struct eri_init_record init_rec = {
     0, 0, (uint64_t) tst_stack_top (stack), (uint64_t) tst_replay_start,
-    .map_start = (uint64_t) tst_main_map_start,
-    .map_end = (uint64_t) tst_main_map_end,
+    .map_range = { (uint64_t) tst_main_map_start, (uint64_t) tst_main_map_end },
     .atomic_table_size = 1
   };
 
