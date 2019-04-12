@@ -77,6 +77,7 @@ struct thread_group
   uint64_t stack_size;
   uint64_t file_buf_size;
 
+  void *analyzer_group;
   struct eri_helper *helper;
 
   int32_t pid;
@@ -163,6 +164,9 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->stack_size = rtld_args->stack_size;
   group->file_buf_size = rtld_args->file_buf_size;
 
+  if (eri_enable_analyzer)
+    group->analyzer_group = eri_analyzer_group__create (group->pool);
+
   group->pid = eri_assert_syscall (getpid);
   int32_t sig;
   for (sig = 1; sig < ERI_NSIG; ++sig)
@@ -191,6 +195,8 @@ destroy_group (struct thread_group *group)
 {
   struct eri_pool *pool = &group->pool->pool;
   eri_assert_free (pool, group->atomic_table);
+  if (eri_enable_analyzer)
+    eri_analyzer_group__destroy (group->analyzer_group);
   eri_assert_free (pool, (void *) group->path);
   eri_assert_free (pool, group);
   eri_assert_fini_pool (pool);
@@ -212,7 +218,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   struct thread *th = eri_assert_mtmalloc (group->pool,
 				sizeof *th + group->stack_size);
   if (eri_enable_analyzer)
-    th->analyzer = eri_analyzer__create (group->pool);
+    th->analyzer = eri_analyzer__create (group->analyzer_group);
   th->group = group;
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, th->stack + group->stack_size,
