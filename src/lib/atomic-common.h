@@ -3,7 +3,7 @@
 
 #include <lib/util.h>
 
-#define eri_barrier()			asm volatile ("" : : : "memory")
+#define eri_barrier()			asm ("" : : : "memory")
 
 #define _ERI_ASM_TEMPLATE_SIZE_b	b
 #define _ERI_ASM_TEMPLATE_SIZE_w	w

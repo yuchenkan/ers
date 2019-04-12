@@ -22,9 +22,9 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_debug ("single step: %lx\n", ctx->mctx.rip);
 
   if (tst_assert_syscall (gettid) != tid)
-    tst_atomic_inc (&raise_steps);
+    tst_atomic_inc (&raise_steps, 0);
 
-  tst_atomic_inc (&steps);
+  tst_atomic_inc (&steps, 0);
   eri_assert (sig == ERI_SIGTRAP);
   eri_assert (eri_si_single_step (info));
 }
@@ -47,7 +47,7 @@ tst_live_start (void)
   tst_enable_trace ();
 
   tst_assert_syscall (sched_yield);
-  eri_assert (tst_atomic_load (&steps));
+  eri_assert (tst_atomic_load (&steps, 0));
 
   char dst[2];
   register char *d asm ("rdi") = dst;
@@ -59,7 +59,7 @@ tst_live_start (void)
   tst_assert_sys_clone_raise (&args);
   tst_assert_sys_futex_wait (&args.alive, 1, 0);
 
-  eri_assert (tst_atomic_load (&raise_steps));
+  eri_assert (tst_atomic_load (&raise_steps, 0));
 
   tst_assert_sys_exit (0);
 }

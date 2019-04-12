@@ -4,11 +4,8 @@
 #include <stdint.h>
 
 struct eri_mtpool;
-struct eri_sigaction;
 struct eri_siginfo;
-struct eri_ucontext;
 struct eri_sigframe;
-struct eri_rwlock;
 
 struct eri_live_rtld_args;
 struct eri_ver_sigaction;

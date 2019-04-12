@@ -4,9 +4,12 @@
 #include <stdint.h>
 
 #include <lib/compiler.h>
+#include <lib/util.h>
 
 struct eri_replay_rtld_args
 {
+  struct eri_range map_range;
+
   const char *path;
 
   uint8_t debug;

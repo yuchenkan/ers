@@ -41,22 +41,20 @@ static void
 version_wait (struct version *ver, uint64_t exp)
 {
   uint64_t now;
-  if ((now = eri_atomic_load (&ver->ver)) >= exp) return;
+  if ((now = eri_atomic_load (&ver->ver, 0)) >= exp) return;
 
-  eri_atomic_inc (&ver->wait);
-  eri_barrier ();
+  eri_atomic_inc (&ver->wait, 1);
   do
     eri_assert_sys_futex_wait (&ver->ver, now, 0);
-  while ((now = eri_atomic_load (&ver->ver)) < exp);
-  eri_atomic_dec (&ver->wait);
+  while ((now = eri_atomic_load (&ver->ver, 0)) < exp);
+  eri_atomic_dec (&ver->wait, 1);
 }
 
 static void
 version_update (struct version *ver)
 {
-  eri_atomic_inc (&ver->ver);
-  eri_barrier ();
-  if (eri_atomic_load_acq (&ver->wait))
+  eri_atomic_inc (&ver->ver, 1);
+  if (eri_atomic_load (&ver->wait, 0))
     eri_assert_syscall (futex, &ver->ver, ERI_FUTEX_WAKE, ERI_INT_MAX);
 }
 
@@ -158,6 +156,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
 
+  group->map_range = rtld_args->map_range;
   group->path = eri_assert_malloc (&pool->pool,
 				   eri_strlen (rtld_args->path) + 1);
   eri_strcpy ((void *) group->path, rtld_args->path);
@@ -165,7 +164,12 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->file_buf_size = rtld_args->file_buf_size;
 
   if (eri_enable_analyzer)
-    group->analyzer_group = eri_analyzer_group__create (group->pool);
+    {
+      struct eri_analyzer_group__create_args args = {
+        group->pool, &group->map_range
+      };
+      group->analyzer_group = eri_analyzer_group__create (&args);
+    }
 
   group->pid = eri_assert_syscall (getpid);
   int32_t sig;
@@ -217,11 +221,19 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 {
   struct thread *th = eri_assert_mtmalloc (group->pool,
 				sizeof *th + group->stack_size);
+
+  uint8_t *stack = th->stack + group->stack_size;
   if (eri_enable_analyzer)
-    th->analyzer = eri_analyzer__create (group->analyzer_group);
+    {
+      struct eri_analyzer__create_args args = {
+	group->analyzer_group, stack
+      };
+      th->analyzer = eri_analyzer__create (&args);
+    }
+
   th->group = group;
   struct eri_entry__create_args args = {
-    group->pool, &group->map_range, th, th->stack + group->stack_size,
+    group->pool, &group->map_range, th, stack,
     main_entry, sig_action, eri_enable_analyzer ? analysis : 0
   };
   th->entry = eri_entry__create (&args);
@@ -308,7 +320,6 @@ start_main (struct thread *th)
   th->sig_alt_stack = rec.sig_alt_stack;
 
   struct thread_group *group = th->group;
-  group->map_range = rec.map_range;
 
   uint64_t atomic_table_size = rec.atomic_table_size;
   group->atomic_table = eri_assert_calloc (&group->pool->pool,
@@ -374,7 +385,7 @@ test_set_async_signal (struct thread *th)
 
 #define do_access(mem, read_only) \
   ({ typeof (mem) _mem = mem;						\
-     (read_only) ? *_mem : eri_atomic_add_fetch (_mem, 0); })
+     (read_only) ? *_mem : eri_atomic_add_fetch (_mem, 0, 0); })
 
 static uint8_t
 access (struct eri_entry *entry,
@@ -520,8 +531,7 @@ DEFINE_SYSCALL (clone)
   uint64_t res = rec.result;
   if (eri_syscall_is_error (res)) syscall_leave (th, 1, res);
 
-  eri_atomic_inc (&th->group->thread_count);
-  eri_barrier ();
+  eri_atomic_inc (&th->group->thread_count, 1);
 
   int32_t flags = regs->rdi;
   int32_t *user_ptid = (void *) regs->rdx;
@@ -1298,11 +1308,11 @@ ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
   if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
     *mem = val;								\
   else if (code == ERI_OP_ATOMIC_INC)					\
-    eri_atomic_inc_x (mem, &regs->rflags);				\
+    eri_atomic_inc_x (mem, &regs->rflags, 0);				\
   else if (code == ERI_OP_ATOMIC_DEC)					\
-    eri_atomic_dec_x (mem, &regs->rflags);				\
+    eri_atomic_dec_x (mem, &regs->rflags, 0);				\
   else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
-    eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags);		\
+    eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
   else eri_assert_unreachable ();					\
 }
 

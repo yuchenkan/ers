@@ -19,7 +19,7 @@ eri_live_signal_thread__init_thread_sig_stack (
   };
   eri_assert_syscall (sigaltstack, &st, 0);
   *(struct eri_live_signal_thread **) stack = sig_th;
-  eri_atomic_store (&sig_th->sig_alt_stack_installed, 1);
+  eri_atomic_store (&sig_th->sig_alt_stack_installed, 1, 0);
 }
 
 uint8_t
@@ -34,7 +34,7 @@ eri_live_signal_thread__sig_reset (
 		struct eri_live_signal_thread *sig_th,
 		const struct eri_sigset *mask)
 {
-  eri_atomic_store (&sig_th->sig_reset, 1);
+  eri_atomic_store (&sig_th->sig_reset, 1, 0);
 }
 
 const struct eri_sigset *

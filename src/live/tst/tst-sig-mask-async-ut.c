@@ -68,7 +68,7 @@ signal (void)
 
   tst_enable_trace ();
   uint32_t res = sig_mask_async (&sig_th, &mask);
-  eri_atomic_store (&done, 1);
+  eri_atomic_store (&done, 1, 0);
 
   eri_assert_sys_sigprocmask (0, &mask);
 

@@ -24,7 +24,7 @@ void
 m4_ns(assert_sys_futex_wake) (void *mem, uint32_t val)
 {
   uint32_t *p = mem;
-  m4_ns(atomic_store_rel) (p, val);
+  m4_ns(atomic_store) (p, val, 1);
   m4_ns(assert_syscall) (futex, p, ERI_FUTEX_WAKE, 1);
 }
 
@@ -33,7 +33,7 @@ m4_ns(assert_sys_futex_wait) (void *mem, uint32_t old_val,
 			      const struct eri_timespec *timeout)
 {
   uint32_t *p = mem;
-  while (m4_ns(atomic_load_acq) (p) == old_val)
+  while (m4_ns(atomic_load) (p, 1) == old_val)
     {
       uint64_t res = m4_ns(syscall) (futex, p, ERI_FUTEX_WAIT,
 				     old_val, timeout);

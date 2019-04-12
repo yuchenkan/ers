@@ -125,7 +125,7 @@ fdf_remove_free (struct eri_live_thread_group *group, struct fdf *fdf)
   fdf_rbt_remove (group, fdf);
   if (fdf->sig_mask)
     {
-      if (! eri_atomic_dec_fetch_rel (&fdf->sig_mask->ref_count))
+      if (! eri_atomic_dec_fetch (&fdf->sig_mask->ref_count, 1))
 	eri_assert_mtfree (group->pool, fdf->sig_mask);
     }
   eri_assert_mtfree (group->pool, fdf);
@@ -258,7 +258,7 @@ create (struct eri_live_thread_group *group,
   th->group = group;
   eri_debug ("%lx %lx\n", th, sig_th);
   th->sig_th = sig_th;
-  th->id = eri_atomic_fetch_inc (&group->th_id);
+  th->id = eri_atomic_fetch_inc (&group->th_id, 0);
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
@@ -437,9 +437,8 @@ do_lock_atomic (struct eri_live_thread_group *group, uint64_t slot)
   uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
 
   uint32_t i = 0;
-  while (eri_atomic_bit_test_set (group->atomic_table + idx, 0))
+  while (eri_atomic_bit_test_set (group->atomic_table + idx, 0, 1))
     if (++i % 16 == 0) eri_assert_syscall (sched_yield);
-  eri_barrier ();
   return idx;
 }
 
@@ -455,8 +454,7 @@ lock_atomic (struct eri_live_thread_group *group, uint64_t mem, uint8_t size)
 static void
 do_unlock_atomic (struct eri_live_thread_group *group, uint64_t idx)
 {
-  eri_barrier ();
-  eri_atomic_and (group->atomic_table + idx, -2);
+  eri_atomic_and (group->atomic_table + idx, -2, 1);
 }
 
 static struct eri_pair
@@ -602,7 +600,7 @@ clear_user_tid (struct eri_live_thread *th,
   if (! eri_entry__test_access (th->entry, user_tid, sizeof *user_tid))
     return 0;
 
-  *old_val = eri_atomic_exchange (user_tid, 0);
+  *old_val = eri_atomic_exchange (user_tid, 0, 0);
   eri_entry__reset_test_access (th->entry);
   return 1;
 }
@@ -933,7 +931,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   eri_sig_diff_set (&tmp_mask, &set);
 
   eri_sig_and_set (&set, mask);
-  eri_atomic_store_rel (&th->sig_force_deliver, &set);
+  eri_atomic_store (&th->sig_force_deliver, &set, 1);
 
   eri_assert (eri_live_signal_thread__sig_tmp_mask_async (sig_th, &tmp_mask));
 
@@ -943,14 +941,14 @@ DEFINE_SYSCALL (rt_sigtimedwait)
     {
       if (eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask))
 	{
-	  eri_atomic_store (&th->sig_force_deliver, 0);
+	  eri_atomic_store (&th->sig_force_deliver, 0, 1);
 	  rec.result = ERI_EAGAIN;
 	  goto record;
 	}
       eri_entry__sig_wait_pending (entry, 0);
     }
 
-  eri_atomic_store (&th->sig_force_deliver, 0);
+  eri_atomic_store (&th->sig_force_deliver, 0, 1);
 
   struct eri_siginfo *info = eri_entry__get_sig_info (entry);
   if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP
@@ -1258,7 +1256,7 @@ syscall_read_sig_fd (struct eri_live_thread *th,
 {
   struct eri_live_thread_group *group = th->group;
   struct eri_live_signal_thread *sig_th = th->sig_th;
-  eri_atomic_inc (&mask->ref_count);
+  eri_atomic_inc (&mask->ref_count, 0);
   eri_assert_unlock (&group->fdf_lock);
 
   struct eri_live_signal_thread__sig_fd_read_args read_args = {
@@ -1266,7 +1264,7 @@ syscall_read_sig_fd (struct eri_live_thread *th,
   };
   uint8_t done = eri_live_signal_thread__sig_fd_read (sig_th, &read_args);
 
-  if (! eri_atomic_dec_fetch_rel (&mask->ref_count))
+  if (! eri_atomic_dec_fetch (&mask->ref_count, 1))
     eri_assert_mtfree (group->pool, mask);
   return done;
 }
@@ -1659,19 +1657,19 @@ static uint64_t								\
 ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
 			   struct eri_registers *regs)			\
 {									\
-  if (code == ERI_OP_ATOMIC_LOAD) return eri_atomic_load (mem);		\
+  if (code == ERI_OP_ATOMIC_LOAD) return eri_atomic_load (mem, 0);	\
   else if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
-    return eri_atomic_exchange (mem, val);				\
+    return eri_atomic_exchange (mem, val, 0);				\
   else if (code == ERI_OP_ATOMIC_INC || code == ERI_OP_ATOMIC_DEC	\
 	   || code == ERI_OP_ATOMIC_CMPXCHG)				\
     {									\
-      uint64_t res = eri_atomic_load (mem);				\
+      uint64_t res = eri_atomic_load (mem, 0);				\
       if (code == ERI_OP_ATOMIC_INC)					\
-	eri_atomic_inc_x (mem, &regs->rflags);				\
+	eri_atomic_inc_x (mem, &regs->rflags, 0);			\
       else if (code == ERI_OP_ATOMIC_DEC)				\
-	eri_atomic_dec_x (mem, &regs->rflags);				\
+	eri_atomic_dec_x (mem, &regs->rflags, 0);			\
       else								\
-	eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags);	\
+	eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
       return res;							\
     }									\
   else eri_assert_unreachable ();					\

@@ -99,10 +99,9 @@ eri_entry__do_leave (struct eri_entry *entry)
 eri_noreturn void
 eri_entry__leave (struct eri_entry *entry)
 {
-  eri_atomic_store (&entry->_op.ret, 1);
-  eri_barrier ();
+  eri_atomic_store (&entry->_op.ret, 1, 1);
 
-  if (eri_atomic_load (&entry->_sig_pending))
+  if (entry->_sig_pending)
     {
       if (entry->_op.code == ERI_OP_SYNC_ASYNC)
 	entry->_regs.rip = entry->_start;
@@ -417,8 +416,7 @@ uint8_t
 eri_entry__sig_wait_pending (struct eri_entry *entry,
 			     struct eri_timespec *timeout)
 {
-  eri_atomic_store (&entry->_sig_wait_pending, 1);
-  eri_barrier ();
+  eri_atomic_store (&entry->_sig_wait_pending, 1, 1);
 
   uint8_t res = eri_assert_sys_futex_wait (&entry->_sig_pending, 0, timeout);
   entry->_sig_wait_pending = 0;
@@ -429,7 +427,7 @@ uint8_t
 eri_entry__sig_test_clear_single_step (struct eri_entry *entry, uint64_t rip)
 {
   return ! entry->_op.ret || eri_within (entry->_map_range, rip)
-	 || eri_atomic_exchange (&entry->_sig_swallow_single_step, 0);
+	 || eri_atomic_exchange (&entry->_sig_swallow_single_step, 0, 0);
 }
 
 eri_noreturn void

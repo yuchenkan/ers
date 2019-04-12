@@ -374,29 +374,25 @@ start_group (struct eri_live_signal_thread *sig_th)
 static uint8_t
 try_hold_exit_group (int32_t *lock)
 {
-  uint8_t hold = eri_atomic_inc_fetch (lock) > 0;
-  if (! hold) eri_atomic_dec (lock);
-  eri_barrier ();
+  uint8_t hold = eri_atomic_inc_fetch (lock, 1) > 0;
+  if (! hold) eri_atomic_dec (lock, 0);
   return hold;
 }
 
 static void
 unhold_exit_group (int32_t *lock)
 {
-  eri_barrier ();
-  eri_atomic_dec (lock);
+  eri_atomic_dec (lock, 1);
 }
 
 static uint8_t
 try_lock_exit_group (struct signal_thread_group *group)
 {
-  if (eri_atomic_exchange (&group->exit_group, 1) == 1) return 0;
+  if (eri_atomic_exchange (&group->exit_group, 1, 1) == 1) return 0;
 
   while (! eri_atomic_compare_exchange (&group->exit_group_lock,
-					1, ERI_INT_MIN))
+					1, ERI_INT_MIN, 1))
     eri_assert_syscall (sched_yield);
-
-  eri_barrier ();
   return 1;
 }
 
@@ -652,7 +648,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   sig_cth->th = eri_live_thread__create (sig_cth, args->args);
 
-  eri_atomic_inc (&group->thread_count);
+  eri_atomic_inc (&group->thread_count, 1);
 
   struct eri_sys_clone_args sig_cth_args = {
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
@@ -677,7 +673,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   if (eri_syscall_is_error (args->result))
     {
-      eri_atomic_dec (&group->thread_count);
+      eri_atomic_dec (&group->thread_count, 1);
 
       eri_live_thread__destroy (sig_cth->th);
 
@@ -777,7 +773,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   struct eri_live_thread *th = sig_th->th;
 
   if (! event->group
-      && eri_atomic_dec_fetch (&group->thread_count))
+      && eri_atomic_dec_fetch (&group->thread_count, 1))
     {
       event->done = 1;
       release_event (event);
@@ -1057,7 +1053,7 @@ uint8_t
 eri_live_signal_thread__signaled (
 			struct eri_live_signal_thread *sig_th)
 {
-  return !! eri_atomic_load (&sig_th->sig_info);
+  return !! eri_atomic_load (&sig_th->sig_info, 0);
 }
 
 const struct eri_sigset *
