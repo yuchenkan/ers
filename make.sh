@@ -7,7 +7,7 @@ cflags=$(node -e "console.log ((() => { $(cat basic-cflags.g) }) ())")
 trd_xed=3rd/xed
 (cd $trd_xed && ./mfile.py --extra-flags="-g $cflags")
 
-src_xed=src/analysis/xed
+src_xed=src/analysis/xed.gen
 rm -rf $src_xed
 mkdir $src_xed
 
