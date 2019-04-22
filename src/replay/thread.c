@@ -82,6 +82,8 @@ struct thread_group
 
   struct version sig_acts[ERI_NSIG];
 
+  void *syscalls[ERI_SYSCALL_TABLE_SIZE];
+
   struct version *atomic_table;
   uint64_t atomic_table_size;
 
@@ -146,6 +148,7 @@ io_out (struct thread *th, uint64_t ver)
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);
+static void init_syscalls (struct thread_group *group);
 
 static struct thread_group *
 create_group (const struct eri_replay_rtld_args *rtld_args)
@@ -186,6 +189,8 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 
       version_init (group->sig_acts + sig - 1);
     }
+
+  init_syscalls (group);
 
   eri_init_lock (&group->exit_lock, 0);
   group->thread_count = 1;
@@ -1261,6 +1266,15 @@ SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages) /* deprecated */
 
+static void
+init_syscalls (struct thread_group *group)
+{
+  eri_memset (group->syscalls, 0, sizeof group->syscalls);
+#define INIT_SYSCALL(name) \
+  group->syscalls[ERI_PASTE (__NR_, name)] = ERI_PASTE (syscall_, name);
+  ERI_SYSCALLS (INIT_SYSCALL);
+}
+
 static eri_noreturn void
 syscall (struct thread *th)
 {
@@ -1269,11 +1283,12 @@ syscall (struct thread *th)
 
   int32_t nr = regs->rax;
   eri_debug ("%u\n", nr);
-#define SYSCALL(name) \
-  ERI_PASTE (syscall_, name) (th, entry, regs)
-  ERI_SYSCALLS (ERI_IF_SYSCALL, nr, SYSCALL)
 
-  syscall_leave (th, 0, ERI_ENOSYS);
+  struct thread_group *group = th->group;
+  eri_noreturn void (*sys) (SYSCALL_PARAMS)
+	= nr >= eri_length_of (group->syscalls) ? 0 : group->syscalls[nr];
+  if (! sys) syscall_leave (th, 0, ERI_ENOSYS);
+  sys (th, entry, regs);
 }
 
 static eri_noreturn void

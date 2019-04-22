@@ -407,6 +407,8 @@
 									\
   p (remap_file_pages, ##__VA_ARGS__) /* deprecated */
 
+#define ERI_SYSCALL_TABLE_SIZE	512
+
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 

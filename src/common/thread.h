@@ -339,9 +339,6 @@ void eri_entry__sig_test_syscall_interrupted (
        eri_sig_del_set (&_set, ERI_SIGSTOP);				\
        *(dst) = _set; } while (0)
 
-#define ERI_IF_SYSCALL(name, nr, op, ...) \
-  if ((nr) == ERI_PASTE (__NR_, name)) op (name, ##__VA_ARGS__);
-
 #define eri_atomic_slot(mem)		((mem) & ~0xf)
 #define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
 
