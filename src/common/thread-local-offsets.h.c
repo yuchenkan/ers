@@ -13,7 +13,7 @@ declare (void)
 {
   EN_OFFSET (_ENTER, _enter);
   EN_OFFSET (_TH_LEAVE, _th_leave);
-  _ERI_FOREACH_REG (EN_REG_OFFSET)
+  ERI_FOREACH_REG (EN_REG_OFFSET)
   EN_OFFSET (_SIG_PENDING, _sig_pending);
   EN_OFFSET (_STACK, _stack);
   EN_OFFSET (_ENTRY, _entry);

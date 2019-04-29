@@ -82,8 +82,6 @@ struct thread_group
 
   struct version sig_acts[ERI_NSIG];
 
-  void *syscalls[ERI_SYSCALL_TABLE_SIZE];
-
   struct version *atomic_table;
   uint64_t atomic_table_size;
 
@@ -101,11 +99,11 @@ struct thread
 {
   struct thread_group *group;
 
-  void *analyzer;
-
   struct eri_entry *entry;
   uint8_t sync_async_trace;
   uint64_t sync_async_trace_steps;
+
+  void *analyzer;
 
   uint64_t rec;
   eri_file_t file;
@@ -148,8 +146,6 @@ io_out (struct thread *th, uint64_t ver)
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);
-static void init_syscalls (struct thread_group *group);
-
 static struct thread_group *
 create_group (const struct eri_replay_rtld_args *rtld_args)
 {
@@ -190,8 +186,6 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
       version_init (group->sig_acts + sig - 1);
     }
 
-  init_syscalls (group);
-
   eri_init_lock (&group->exit_lock, 0);
   group->thread_count = 1;
 
@@ -228,14 +222,6 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 				sizeof *th + group->stack_size);
 
   uint8_t *stack = th->stack + group->stack_size;
-  if (eri_enable_analyzer)
-    {
-      struct eri_analyzer__create_args args = {
-	group->analyzer_group, stack
-      };
-      th->analyzer = eri_analyzer__create (&args);
-    }
-
   th->group = group;
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, stack,
@@ -243,6 +229,14 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   };
   th->entry = eri_entry__create (&args);
   th->sync_async_trace = 0;
+
+  if (eri_enable_analyzer)
+    {
+      struct eri_analyzer__create_args args = {
+	group->analyzer_group, th->entry
+      };
+      th->analyzer = eri_analyzer__create (&args);
+    }
 
   th->rec = 0;
   char name[eri_build_path_len (group->path, "t", id)];
@@ -273,8 +267,8 @@ destroy (struct thread *th)
 
   struct eri_mtpool *pool = th->group->pool;
   eri_assert_mtfree (pool, th->file_buf);
-  eri_entry__destroy (th->entry);
   if (eri_enable_analyzer) eri_analyzer__destroy (th->analyzer);
+  eri_entry__destroy (th->entry);
   eri_assert_mtfree (pool, th);
 }
 
@@ -1266,29 +1260,23 @@ SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages) /* deprecated */
 
-static void
-init_syscalls (struct thread_group *group)
-{
-  eri_memset (group->syscalls, 0, sizeof group->syscalls);
-#define INIT_SYSCALL(name) \
-  group->syscalls[ERI_PASTE (__NR_, name)] = ERI_PASTE (syscall_, name);
-  ERI_SYSCALLS (INIT_SYSCALL);
-}
-
 static eri_noreturn void
 syscall (struct thread *th)
 {
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  int32_t nr = regs->rax;
-  eri_debug ("%u\n", nr);
+  eri_debug ("%u\n", regs->rax);
 
-  struct thread_group *group = th->group;
-  eri_noreturn void (*sys) (SYSCALL_PARAMS)
-	= nr >= eri_length_of (group->syscalls) ? 0 : group->syscalls[nr];
-  if (! sys) syscall_leave (th, 0, ERI_ENOSYS);
-  sys (th, entry, regs);
+  switch (regs->rax)
+    {
+#define SYSCALL_CASE(name) \
+  case ERI_PASTE (__NR_, name):						\
+    ERI_PASTE (syscall_, name) (th, entry, regs);
+
+    ERI_SYSCALLS (SYSCALL_CASE)
+    default: syscall_leave (th, 0, ERI_ENOSYS);
+    }
 }
 
 static eri_noreturn void

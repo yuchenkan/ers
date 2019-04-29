@@ -37,7 +37,7 @@ ERI_FUNCTION (enter)
   pushq	$0
   popfq
 
-  _ERI_FOREACH_GREG_NO_RBX_RSP (SAVE_REG)
+  _ERI_FOREACH_GPREG_NO_RBX_RSP (SAVE_REG)
 
   movq	%rbx, %rdi
   call	*EN__ENTRY(%rbx)
@@ -52,7 +52,7 @@ ERI_FUNCTION (leave)
 #define RESTORE_REG(creg, reg) \
   movq	ERI_PASTE (EN__REGS_, creg)(%rbx), %reg;
 
-  _ERI_FOREACH_GREG_NO_RBX_RSP (RESTORE_REG)
+  _ERI_FOREACH_GPREG_NO_RBX_RSP (RESTORE_REG)
   pushq	EN__REGS_RFLAGS(%rbx)
   popfq
   RESTORE_REG (RSP, rsp)

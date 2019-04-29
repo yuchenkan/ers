@@ -9,7 +9,7 @@
 /*
  * tree_type { ERI_RBT_TREE_FIELDS (pfx, node_type) ... };
  * node_type { key_type key; ERI_RBT_NODE_FIELDS (pfx, node_type) ... };
- * int8_t less_than (tree_type *tree, key_type *k1, key_type *k2);
+ * uint8_t less_than (tree_type *tree, key_type *k1, key_type *k2);
  *
  * Zero out the ERI_RBT_TREE_FIELDS or call ERI_RBT_INIT_TREE before use.
  *

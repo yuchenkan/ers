@@ -87,14 +87,6 @@ func:
     _a > _b ? _a : _b;							\
   })
 
-#define eri_hash(x) \
-  ({									\
-    uint64_t _x = x;							\
-    _x = (_x ^ (_x >> 30)) * 0xbf58476d1ce4e5b9;			\
-    _x = (_x ^ (_x >> 27)) * 0x94d049bb133111eb;			\
-    _x ^ (_x >> 31);							\
-  })
-
 void eri_memset (void *s, char c, uint64_t n);
 void eri_memcpy (void *d, const void *s, uint64_t n);
 void eri_memmove (void *d, const void *s, uint64_t n);
@@ -164,6 +156,26 @@ struct eri_pair
 {
   uint64_t first, second;
 };
+
+#define eri_hash(x) \
+  ({									\
+    uint64_t _x = x;							\
+    _x = (_x ^ (_x >> 30)) * 0xbf58476d1ce4e5b9;			\
+    _x = (_x ^ (_x >> 27)) * 0x94d049bb133111eb;			\
+    _x ^ (_x >> 31);							\
+  })
+
+#define eri_hashs1(h, ...) \
+  ({									\
+    uint64_t _a[] = { __VA_ARGS__ };					\
+    uint64_t _h = h;							\
+    uint32_t _i;							\
+    for (_i = 0; _i < eri_length_of (_a); ++_i)				\
+      _h = eri_hash (_h + _a[_i]);					\
+    _h;									\
+  })
+
+#define eri_hashs(...)	eri_hashs1 (eri_hash (0), ##__VA_ARGS__)
 
 #endif
 

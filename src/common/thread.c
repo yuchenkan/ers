@@ -25,13 +25,13 @@
 #define set_mctx_from_regs(mctx, regs) \
   do { struct eri_mcontext *_mctx = mctx;				\
        struct eri_registers *_regs = regs;				\
-       _ERI_FOREACH_REG (set_mctx, _mctx, _regs) } while (0)
+       ERI_FOREACH_REG (set_mctx, _mctx, _regs) } while (0)
 
 #define set_regs(creg, reg, regs, mctx)	regs->reg = mctx->reg;
 #define set_regs_from_mctx(regs, mctx) \
   do { struct eri_registers *_regs = regs;				\
        struct eri_mcontext *_mctx = mctx;				\
-       _ERI_FOREACH_REG (set_regs, _regs, _mctx) } while (0)
+       ERI_FOREACH_REG (set_regs, _regs, _mctx) } while (0)
 
 struct eri_entry *
 eri_entry__create (struct eri_entry__create_args *args)

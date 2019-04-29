@@ -77,8 +77,6 @@ struct eri_live_thread_group
   struct eri_lock fdf_lock;
   ERI_RBT_TREE_FIELDS (fdf, struct fdf)
 
-  void *syscalls[ERI_SYSCALL_TABLE_SIZE];
-
   uint64_t *atomic_table;
   uint64_t atomic_table_size;
 
@@ -190,8 +188,6 @@ io_out (struct eri_live_thread *th)
   return eri_live_out (th->group->io);
 }
 
-static void init_syscalls (struct eri_live_thread_group *group);
-
 struct eri_live_thread_group *
 eri_live_thread__create_group (struct eri_mtpool *pool,
 			struct eri_live_thread__create_group_args *args)
@@ -225,8 +221,6 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   eri_init_lock (&group->fdf_lock, 0);
   ERI_RBT_INIT_TREE (fdf, group);
   init_fdf (group);
-
-  init_syscalls (group);
 
   group->atomic_table = eri_assert_mtmalloc (pool,
 		atomic_table_size * sizeof *group->atomic_table);
@@ -1630,28 +1624,21 @@ SYSCALL_TO_IMPL (process_vm_writev)
 
 SYSCALL_TO_IMPL (remap_file_pages)
 
-static void
-init_syscalls (struct eri_live_thread_group *group)
-{
-  eri_memset (group->syscalls, 0, sizeof group->syscalls);
-#define INIT_SYSCALL(name) \
-  group->syscalls[ERI_PASTE (__NR_, name)] = ERI_PASTE (syscall_, name);
-  ERI_SYSCALLS (INIT_SYSCALL);
-}
-
 static eri_noreturn void
 syscall (struct eri_live_thread *th)
 {
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  int32_t nr = regs->rax;
+  switch (regs->rax)
+    {
+#define SYSCALL_CASE(name) \
+  case ERI_PASTE (__NR_, name):						\
+    ERI_PASTE (syscall_, name) (th, entry, regs, th->sig_th);
 
-  struct eri_live_thread_group *group = th->group;
-  eri_noreturn void (*sys) (SYSCALL_PARAMS)
-	= nr >= eri_length_of (group->syscalls) ? 0 : group->syscalls[nr];
-  if (! sys) eri_entry__syscall_leave (entry, ERI_ENOSYS);
-  sys (th, entry, regs, th->sig_th);
+    ERI_SYSCALLS (SYSCALL_CASE)
+    default: eri_entry__syscall_leave (entry, ERI_ENOSYS);
+    }
 }
 
 static eri_noreturn void

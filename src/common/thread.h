@@ -1,7 +1,7 @@
 #ifndef ERI_COMMON_THREAD_H
 #define ERI_COMMON_THREAD_H
 
-#define _ERI_FOREACH_GREG_NO_RBX_RSP(p, ...) \
+#define _ERI_FOREACH_GPREG_NO_RBX_RSP(p, ...) \
   p (RAX, rax, ##__VA_ARGS__)						\
   p (RCX, rcx, ##__VA_ARGS__)						\
   p (RDX, rdx, ##__VA_ARGS__)						\
@@ -17,13 +17,13 @@
   p (R14, r14, ##__VA_ARGS__)						\
   p (R15, r15, ##__VA_ARGS__)
 
-#define _ERI_FOREACH_GREG(p, ...) \
-  _ERI_FOREACH_GREG_NO_RBX_RSP (p, ##__VA_ARGS__)			\
+#define ERI_FOREACH_GPREG(p, ...) \
+  _ERI_FOREACH_GPREG_NO_RBX_RSP (p, ##__VA_ARGS__)			\
   p (RBX, rbx, ##__VA_ARGS__)						\
   p (RSP, rsp, ##__VA_ARGS__)
 
-#define _ERI_FOREACH_REG(p, ...) \
-  _ERI_FOREACH_GREG (p, ##__VA_ARGS__)					\
+#define ERI_FOREACH_REG(p, ...) \
+  ERI_FOREACH_GPREG (p, ##__VA_ARGS__)					\
   p (RFLAGS, rflags, ##__VA_ARGS__)					\
   p (RIP, rip, ##__VA_ARGS__)
 
@@ -90,7 +90,7 @@
 struct eri_registers
 {
 #define _ERI_DECLARE_REG(creg, reg)	uint64_t reg;
-  _ERI_FOREACH_REG (_ERI_DECLARE_REG)
+  ERI_FOREACH_REG (_ERI_DECLARE_REG)
 };
 
 #define eri_init_sys_syscall_args_from_registers(args, regs) \
