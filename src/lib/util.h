@@ -87,6 +87,15 @@ func:
     _a > _b ? _a : _b;							\
   })
 
+#define eri_swap(a, b) \
+  do {									\
+    typeof (a) _a = a;							\
+    typeof (*_a) _t = *_a;						\
+    typeof (_a) _b = b;							\
+    *_a = *_b;								\
+    *_b = _t;								\
+  } while (0)
+
 void eri_memset (void *s, char c, uint64_t n);
 void eri_memcpy (void *d, const void *s, uint64_t n);
 void eri_memmove (void *d, const void *s, uint64_t n);

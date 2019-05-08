@@ -6,6 +6,8 @@
 #include <lib/util.h>
 #include <lib/rbtree.h>
 
+struct eri_block;
+
 struct eri_pool
 {
   uint8_t *buf;
@@ -18,7 +20,7 @@ struct eri_pool
   void (*cb_free) (struct eri_pool *, void *, int32_t, void *);
   void *cb_data;
 
-  ERI_RBT_TREE_FIELDS (block, struct block)
+  ERI_RBT_TREE_FIELDS (eri_block, struct eri_block)
 };
 
 int32_t eri_init_pool (struct eri_pool *pool, uint8_t *buf, uint64_t size);

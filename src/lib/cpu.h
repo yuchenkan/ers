@@ -37,6 +37,40 @@
 #define ERI_R14(sz)		ERI_PASTE (_ERI_R2_, sz) (r14)
 #define ERI_R15(sz)		ERI_PASTE (_ERI_R2_, sz) (r15)
 
+#define _ERI_CR0_b(i)		ERI_PASTE (i, L)
+#define _ERI_CR0_w(i)		ERI_PASTE (i, X)
+#define _ERI_CR0_l(i)		ERI_PASTE2 (E, i, X)
+#define _ERI_CR0_q(i)		ERI_PASTE2 (R, i, X)
+
+#define ERI_CRAX(sz)		ERI_PASTE (_ERI_CR0_, sz) (A)
+#define ERI_CRBX(sz)		ERI_PASTE (_ERI_CR0_, sz) (B)
+#define ERI_CRDX(sz)		ERI_PASTE (_ERI_CR0_, sz) (D)
+#define ERI_CRCX(sz)		ERI_PASTE (_ERI_CR0_, sz) (C)
+
+#define _ERI_CR1_b(i)		ERI_PASTE (i, L)
+#define _ERI_CR1_w(i)		i
+#define _ERI_CR1_l(i)		ERI_PASTE (E, i)
+#define _ERI_CR1_q(i)		ERI_PASTE (R, i)
+
+#define ERI_CRDI(sz)		ERI_PASTE (_ERI_CR1_, sz) (DI)
+#define ERI_CRSI(sz)		ERI_PASTE (_ERI_CR1_, sz) (SI)
+#define ERI_CRSP(sz)		ERI_PASTE (_ERI_CR1_, sz) (SP)
+#define ERI_CRBP(sz)		ERI_PASTE (_ERI_CR1_, sz) (BP)
+
+#define _ERI_CR2_b(i)		ERI_PASTE (i, B)
+#define _ERI_CR2_w(i)		ERI_PASTE (i, W)
+#define _ERI_CR2_l(i)		ERI_PASTE (i, D)
+#define _ERI_CR2_q(i)		i
+
+#define ERI_CR8(sz)		ERI_PASTE (_ERI_CR2_, sz) (R8)
+#define ERI_CR9(sz)		ERI_PASTE (_ERI_CR2_, sz) (R9)
+#define ERI_CR10(sz)		ERI_PASTE (_ERI_CR2_, sz) (R10)
+#define ERI_CR11(sz)		ERI_PASTE (_ERI_CR2_, sz) (R11)
+#define ERI_CR12(sz)		ERI_PASTE (_ERI_CR2_, sz) (R12)
+#define ERI_CR13(sz)		ERI_PASTE (_ERI_CR2_, sz) (R13)
+#define ERI_CR14(sz)		ERI_PASTE (_ERI_CR2_, sz) (R14)
+#define ERI_CR15(sz)		ERI_PASTE (_ERI_CR2_, sz) (R15)
+
 #define ERI_FOREACH_REG_SIZE3(p, ...) \
   p (b, ##__VA_ARGS__)							\
   p (w, ##__VA_ARGS__)							\
