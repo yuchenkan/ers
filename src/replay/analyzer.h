@@ -9,6 +9,8 @@ struct eri_range;
 struct eri_mtpool;
 struct eri_entry;
 struct eri_registers;
+struct eri_siginfo;
+struct eri_ucontext;
 
 #ifndef eri_analyzer_type
 # define eri_analyzer_type		void
@@ -22,6 +24,11 @@ struct eri_analyzer_group__create_args
 {
   struct eri_mtpool *pool;
   struct eri_range *map_range;
+
+  uint64_t page_size;
+  uint32_t max_inst_count;
+
+  int32_t *pid;
 };
 
 eri_analyzer_group_type *eri_analyzer_group__create (
@@ -32,6 +39,8 @@ struct eri_analyzer__create_args
 {
   eri_analyzer_group_type *group;
   struct eri_entry *entry;
+
+  int32_t *tid;
 };
 
 eri_analyzer_type *eri_analyzer__create (
@@ -40,5 +49,8 @@ void eri_analyzer__destroy (eri_analyzer_type *analyzer);
 
 eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,
 				       struct eri_registers *regs);
+
+uint8_t eri_analyzer__sig_handler (eri_analyzer_type *analyzer,
+			struct eri_siginfo *info, struct eri_ucontext *ctx);
 
 #endif

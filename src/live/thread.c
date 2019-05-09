@@ -1,5 +1,19 @@
 /* vim: set ft=cpp: */
 
+/*
+ * XXX: There is no acceptable way to completely prevent user from
+ * corrupting our memory * without hardware support (e.g. pkey, which
+ * also can't gurantee the whole safety, but can prevent most). More
+ * specificly, the protection is done for the syscalls, but it's too
+ * costly for normal memory accessing instructions.
+ *
+ * The behaviour of corrupting our memory is not undefined and user
+ * won't be signaled. It's even undetectable in the replay/analysis if
+ * the log buffer is corrupted.
+ *
+ * There shall be no other newly introduced undefined behaviour.
+ */
+
 #include <stdarg.h>
 
 #include <lib/util.h>

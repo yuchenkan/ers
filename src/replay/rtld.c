@@ -98,7 +98,7 @@ eri_init_map (struct init_map_args *args)
   uint64_t segs_map_size = segs_map_end - segs_map_start;
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
-    { map_start, map_end },
+    { map_start, map_end }, page_size,
     path, args->debug, args->stack_size, args->file_buf_size,
     map_start + segs_map_end, map_end - map_start - segs_map_end
   };

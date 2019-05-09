@@ -195,6 +195,7 @@ void eri_entry__destroy (struct eri_entry *entry);
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
 #define eri_entry__get_th(entry)	((entry)->_th)
 #define eri_entry__get_stack(entry)	((entry)->_stack)
+#define eri_entry__get_entry(entry)	((entry)->_entry)
 
 #define eri_entry__get_atomic_val(entry)	((entry)->_atomic.val)
 #define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)

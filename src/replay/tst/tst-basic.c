@@ -62,7 +62,7 @@ tst_main (void **args)
   extern uint8_t tst_main_buf_start[];
   extern uint8_t tst_main_buf_end[];
   struct eri_replay_rtld_args rtld_args = {
-    init_rec.map_range, path, eri_global_enable_debug,
+    init_rec.map_range, 4096, path, eri_global_enable_debug,
     .stack_size = 8 * 1024 * 1024,
     .file_buf_size = 64 * 1024, .buf = (uint64_t) tst_main_buf_start,
     .buf_size = tst_main_buf_end - tst_main_buf_start

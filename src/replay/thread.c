@@ -146,6 +146,7 @@ io_out (struct thread *th, uint64_t ver)
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);
+
 static struct thread_group *
 create_group (const struct eri_replay_rtld_args *rtld_args)
 {
@@ -165,12 +166,14 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   if (eri_enable_analyzer)
     {
       struct eri_analyzer_group__create_args args = {
-        group->pool, &group->map_range
+        group->pool, &group->map_range,
+	rtld_args->page_size, 64 /* XXX */, &group->pid
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
     }
 
   group->pid = eri_assert_syscall (getpid);
+
   int32_t sig;
   for (sig = 1; sig < ERI_NSIG; ++sig)
     {
@@ -233,7 +236,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   if (eri_enable_analyzer)
     {
       struct eri_analyzer__create_args args = {
-	group->analyzer_group, th->entry
+	group->analyzer_group, th->entry, &th->tid
       };
       th->analyzer = eri_analyzer__create (&args);
     }
@@ -1416,6 +1419,10 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   eri_debug ("%u %lx %lx\n", sig, info, ctx->mctx.rip);
   struct thread *th = *(void **) ctx->stack.sp;
+
+  if (eri_enable_analyzer
+      && eri_analyzer__sig_handler (th->analyzer, info, ctx))
+    sig = info->sig;
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);
