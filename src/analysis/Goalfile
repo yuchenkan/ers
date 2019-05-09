@@ -1,3 +1,13 @@
 'use strict'; /* vim: set ft=javascript: */
 
-return ! await this.invoke ('common/filter-out-sub-tst.g', { cur: 'analysis' });
+const base = await this.invoke ('common/filter-out-sub-tst.g', { cur: 'analysis' });
+
+if (! base) return;
+
+let xed = 'analysis/xed.gen';
+let inc = f => typeof f === 'undefined' ? [ xed ] : (f.startsWith ('xed-') ? `${xed}/${f}` : f);
+
+if (base === 'analyzer.c.o')
+  return await this.invoke ('goal/compile.g', { inc });
+
+return false;

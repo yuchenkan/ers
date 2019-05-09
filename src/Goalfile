@@ -25,5 +25,6 @@ if (env.ext (goal, 'o')) return await this.invoke ('goal/compile.g');
 if (env.ext (goal, 'l')) return await this.invoke ('goal/local.g');
 if (env.ext (goal, 'out')) return await this.invoke ('tst/goal/out.g');
 if (env.exts (goal, [ 'c', 'S', 'h', 'ld', 'm4', 'g', 'sh' ])) return false;
+if (goal.match (/.*\.gen\/.*\.a$/)) return false;
 
 return await this.invoke (`${goal}.g`);

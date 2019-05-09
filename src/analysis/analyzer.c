@@ -1,15 +1,19 @@
 /* vim: set ft=cpp: */
 
 #include <lib/compiler.h>
+#include <lib/cpu.h>
 #include <lib/util.h>
 #include <lib/lock.h>
+#include <lib/atomic.h>
+#include <lib/buf.h>
+#include <lib/list.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
 
 #include <common/thread.h>
 
-#include <analysis/xed.gen/xed-util.h>
-#include <analysis/xed.gen/xed-interface.h>
+#include <xed-util.h>
+#include <xed-interface.h>
 
 #include <analysis/analyzer.h>
 
@@ -39,7 +43,7 @@ enum
 #define DEF_REG_IDX(creg, reg)	ERI_PASTE (REG_IDX_, creg),
   ERI_FOREACH_REG (DEF_REG_IDX)
   REG_NUM,
-  GPREG_NUM = REG_RFLAGS
+  GPREG_NUM = REG_IDX_RFLAGS
 };
 
 struct block
@@ -73,13 +77,15 @@ struct trans
   struct block *block;
   uint64_t wait;
   uint8_t done;
+
+  ERI_RBT_NODE_FIELDS (trans, struct trans)
 };
 
 struct active
 {
   struct eri_analyzer *al;
   struct trans *trans;
-  uint64_t stack;
+  uint8_t *stack;
   uint64_t local[0];
 };
 
@@ -198,7 +204,7 @@ struct ir_dep
   struct ir_def *def;
   uint64_t ridx;
 
-  ERI_RBT_NODE_FIELDS (ir_dep)
+  ERI_RBT_NODE_FIELDS (ir_dep, struct ir_dep)
 };
 
 struct ir_inst_reg
@@ -251,14 +257,12 @@ struct ir_mem
   p (STORE, store, ##__VA_ARGS__)					\
   p (LOAD, load, ##__VA_ARGS__)						\
   p (LOAD_IMM, load_imm, ##__VA_ARGS__)					\
-  p (ZDECL, zdecl, ##__VA_ARGS__)					\
-  p (DEC, dec, ##__VA_ARGS__)						\
   p (ADD, add, ##__VA_ARGS__)						\
   p (COND_BRANCH, cond_branch, ##__VA_ARGS__)				\
 
 enum ir_node_tag
 {
-#define DEF_TAG(ctag, tag)	ERI_PASTE (IR_, tag),
+#define DEF_TAG(ctag, tag)	ERI_PASTE (IR_, ctag),
   IR_NODE_TAGS (DEF_TAG)
 };
 
@@ -268,7 +272,7 @@ struct ir_node
 
   struct ir_def seq;
 
-  ERI_RBT_TREE_FIELDS (ir_dep)
+  ERI_RBT_TREE_FIELDS (ir_dep, struct ir_dep)
   uint64_t deps;
 
   uint64_t sups;
@@ -364,7 +368,7 @@ struct ir_redun
   uint64_t key;
   ERI_LST_LIST_FIELDS (ir_redun_node)
 
-  ERI_RBT_NODE_FIELDS (ir_redun)
+  ERI_RBT_NODE_FIELDS (ir_redun, struct ir_redun)
 };
 
 ERI_DEFINE_LIST (static, ir_redun_node, struct ir_redun, struct ir_redun_node)
@@ -379,11 +383,11 @@ struct ir_dag
 {
   struct eri_mtpool *pool;
 
-  struct ir_def reg_defs[REG_NUM];
+  struct ir_def *reg_defs[REG_NUM];
 
   ERI_LST_LIST_FIELDS (ir_alloc)
 
-  ERI_RBT_TREE_FIELDS (ir_redun)
+  ERI_RBT_TREE_FIELDS (ir_redun, struct ir_redun)
 
   struct ir_def *init;
   struct ir_def *memory;
@@ -398,7 +402,7 @@ ERI_DEFINE_RBTREE (static, ir_redun, struct ir_dag,
 struct ir_local
 {
   uint64_t idx;
-  ERI_RBT_NODE_FIELDS (ir_local)
+  ERI_RBT_NODE_FIELDS (ir_local, struct ir_local)
 };
 
 struct ir_reg_def_loc
@@ -419,7 +423,7 @@ struct ir_flattened
   struct ir_def *hosts[REG_NUM];
 
   uint64_t local_size;
-  ERI_RBT_TREE_FIELDS (ir_local)
+  ERI_RBT_TREE_FIELDS (ir_local, struct ir_local)
 
   struct ir_reg_def_loc reg_def_locs[REG_NUM];
 };
@@ -541,11 +545,11 @@ ir_host_idxs_get_gpreg_idx (uint32_t host_idxs)
   return (__builtin_ffs (g) ? : REG_NUM + 1) - 1;
 }
 
-static void *p
+static void *
 ir_alloc (struct ir_dag *dag, uint64_t size)
 {
   struct ir_alloc *a = eri_assert_mtmalloc (dag->pool, size + sizeof *a);
-  ir_alloc_append (dag, a);
+  ir_alloc_lst_append (dag, a);
   return a->buf;
 }
 
@@ -556,7 +560,6 @@ ir_define (struct ir_node *node, struct ir_def *def)
   def->ridx = 0;
   def->locs.host_idxs = 0;
   def->locs.local = 0;
-  def->flags = 0;
   return def;
 }
 
@@ -667,7 +670,7 @@ ir_init_mem (struct ir_node *node, struct ir_mem *mem,
   mem->disp = args->disp;
   mem->size = args->size;
   mem->addr = args->addr;
-  return !! base + !! index;
+  return !! args->base + !! args->index;
 }
 
 static void
@@ -675,7 +678,7 @@ ir_create_store (struct ir_dag *dag,
 		 struct ir_mem_args *dst, struct ir_def *src)
 {
   struct ir_node *node = ir_alloc_node (dag, IR_STORE, 1);
-  node->deps += ir_init_mem (mode, &node->store.dst, dst);
+  node->deps += ir_init_mem (node, &node->store.dst, dst);
   ir_depand (node, &node->store.src, src);
   ir_access_mem (dag, node, &node->store.memory);
 }
@@ -685,7 +688,7 @@ ir_create_load (struct ir_dag *dag,
 		struct ir_mem_args *src, struct ir_def *prim)
 {
   struct ir_node *node = ir_alloc_node (dag, IR_LOAD, prim ? 2 : 1);
-  node->deps += ir_init_mem (mode, &node->load.src, src);
+  node->deps += ir_init_mem (node, &node->load.src, src);
   ir_depand (node, &node->load.prim, prim);
   ir_access_mem (dag, node, &node->load.memory);
   return ir_define (node, &node->load.dst);
@@ -701,14 +704,14 @@ ir_create_binary (struct ir_dag *dag, enum ir_node_tag tag,
   return ir_define (node, &node->bin.dst);
 }
 
-#define ir_eval(dag, type, tag, args) \
+#define ir_eval(dag, type, t, args) \
   ({									\
     struct ir_dag *_dag = dag;						\
     typeof (args) _args = args;						\
-    uint64_t _key = ERI_PASTE (ir_hash_, tag) (				\
-			eri_hash (ERI_PASTE (ir_eval_, tag)), _args);	\
+    uint64_t _key = ERI_PASTE (ir_hash_, t) (				\
+		eri_hash ((uint64_t) ERI_PASTE (ir_eval_, t)), _args);	\
     struct ir_redun_node *_re;						\
-    struct ir_redun *_res = ir_redun_rbt_get (_dag, _key, ERI_RBT_EQ);	\
+    struct ir_redun *_res = ir_redun_rbt_get (_dag, &_key, ERI_RBT_EQ);	\
     if (! _res)								\
       {									\
 	_res = ir_alloc (_dag, sizeof *_res);				\
@@ -719,16 +722,17 @@ ir_create_binary (struct ir_dag *dag, enum ir_node_tag tag,
     else								\
       {									\
 	ERI_LST_FOREACH (ir_redun_node, _res, _re)			\
-	  if (_re->tag == ERI_PASTE (ir_eval_, tag)			\
-	      && ERI_PASTE (ir_redun_, tag) ((void *) _re->buf, _args))	\
+	  if (_re->tag == ERI_PASTE (ir_eval_, t)			\
+	      && ERI_PASTE (ir_redun_, t) ((typeof (_args)) _re->buf,	\
+					   _args))			\
 	    goto _ret;							\
       }									\
     _re = ir_alloc (_dag,						\
-	sizeof *_re + eri_sizeof (*_args, 16) + sizeof (type));		\
-    _re->tag = ERI_PASTE (ir_eval_, tag);				\
+	sizeof *_re + eri_size_of (*_args, 16) + sizeof (type));	\
+    _re->tag = ERI_PASTE (ir_eval_, t);					\
     *(typeof (_args)) _re->buf = *_args;				\
     *(type *) (_re->buf + eri_size_of (typeof (_args), 16))		\
-			= ERI_PASTE (ir_eval_, tag) (_dag, _args); 	\
+			= ERI_PASTE (ir_eval_, t) (_dag, _args); 	\
     ir_redun_node_lst_append (_res, _re);				\
   _ret:									\
     *(type *) (_re->buf + eri_size_of (typeof (_args), 16));		\
@@ -740,7 +744,7 @@ ir_create_binary (struct ir_dag *dag, enum ir_node_tag tag,
 static uint64_t
 ir_hash_def_pair (uint64_t key, struct ir_def_pair *args)
 {
-  return ir_hashs1 (key, args->first, args->second);
+  return eri_hashs1 (key, (uint64_t) args->first, (uint64_t) args->second);
 }
 
 static uint8_t
@@ -772,8 +776,8 @@ ir_get_load_imm (struct ir_dag *dag, uint64_t imm)
 static struct ir_def *
 ir_eval_add (struct ir_dag *dag, struct ir_def_pair *args)
 {
-  struct ir_node *a = args->first.node;
-  struct ir_node *b = args->second.node;
+  struct ir_node *a = args->first->node;
+  struct ir_node *b = args->second->node;
   if (a->tag == IR_LOAD_IMM && b->tag == IR_LOAD_IMM)
     return ir_get_load_imm (dag, a->load_imm.src + b->load_imm.src);
   else if (a->tag == IR_LOAD_IMM && a->load_imm.src == 0)
@@ -798,35 +802,35 @@ struct ir_cond_branch_args
 };
 
 #define ir_cond_branch_loop(iclass) \
-  ({ xed_iclass_enum_t *_iclass = iclass;				\
+  ({ xed_iclass_enum_t _iclass = iclass;				\
      _iclass == XED_ICLASS_LOOP || _iclass == XED_ICLASS_LOOPE		\
      || _iclass == XED_ICLASS_LOOPNE; })
 #define ir_cond_branch_cnt_only(iclass) \
-  ({ xed_iclass_enum_t *_iclass = iclass;				\
+  ({ xed_iclass_enum_t _iclass = iclass;				\
      _iclass == XED_ICLASS_JECXZ || _iclass == XED_ICLASS_JRCXZ		\
      || _iclass == XED_ICLASS_LOOP; })
 #define ir_cond_branch_flags_cnt(iclass) \
-  ({ xed_iclass_enum_t *_iclass = iclass;				\
-     _iclass == XED_ICLASS_LOOPE || _iclass == XED_ICLASS_LOOPNE; })	\
+  ({ xed_iclass_enum_t _iclass = iclass;				\
+     _iclass == XED_ICLASS_LOOPE || _iclass == XED_ICLASS_LOOPNE; })
 #define ir_cond_branch_flags_only(iclass) \
   (! ir_cond_branch_cnt_only (iclass) && ! ir_cond_branch_flags_cnt (iclass))
 
 static uint64_t
-ir_hash_cond_branch (struct ir_cond_branch_args *args)
+ir_hash_cond_branch (uint64_t key, struct ir_cond_branch_args *args)
 {
   xed_iclass_enum_t iclass = args->iclass;
-  uint64_t key = eri_hashs (IR_COND_BRANCH, iclass);
+  key = eri_hashs1 (key, IR_COND_BRANCH, iclass);
 
   if (ir_cond_branch_loop (iclass))
     key = eri_hashs1 (key, args->addr);
 
   if (ir_cond_branch_cnt_only (iclass))
-    key = eri_hashs1 (key, args->cnt);
+    key = eri_hashs1 (key, (uint64_t) args->cnt);
   else if (ir_cond_branch_flags_cnt (iclass))
-    key = eri_hashs1 (key, args->flags, args->cnt);
+    key = eri_hashs1 (key, (uint64_t) args->flags, (uint64_t) args->cnt);
   else
-    key = eri_hashs1 (key, args->flags);
-  return eri_hashs1 (key, args->taken, args->fall);
+    key = eri_hashs1 (key, (uint64_t) args->flags);
+  return eri_hashs1 (key, (uint64_t) args->taken, (uint64_t) args->fall);
 }
 
 static uint8_t
@@ -835,7 +839,7 @@ ir_redun_cond_branch (struct ir_cond_branch_args *a1,
 {
   if (a1->iclass != a2->iclass
       || a1->taken != a2->taken || a1->fall != a2->fall) return 0;
-  if (ir_cond_branch_loop (iclass) && a1->addr != a2->addr) return 0;
+  if (ir_cond_branch_loop (a1->iclass) && a1->addr != a2->addr) return 0;
   if (ir_cond_branch_cnt_only (a1->iclass))
     return a1->cnt == a2->cnt;
   else if (ir_cond_branch_flags_cnt (a1->iclass))
@@ -846,25 +850,25 @@ ir_redun_cond_branch (struct ir_cond_branch_args *a1,
 static uint8_t
 ir_cond_flags_taken (uint64_t flags, xed_iclass_enum_t iclass)
 {
-  xed_flag_set_t f = { .flag = flags };
+  xed_flag_set_t f = { .flat = flags };
   switch (iclass)
     {
-    case XED_ICLASS_JB: return f.cf;
-    case XED_ICLASS_JBE: return f.cf || f.zf;
-    case XED_ICLASS_JL: return f.sf != f.of;
-    case XED_ICLASS_JLE: return f.zf || f.sf != f.of;
-    case XED_ICLASS_JNB: return ! f.cf;
-    case XED_ICLASS_JNBE: return ! f.cf || ! f.zf;
-    case XED_ICLASS_JNL: return f.sf == f.of;
-    case XED_ICLASS_JNLE: return f.zf && f.sf == f.of;
-    case XED_ICLASS_JNO: return ! f.of;
-    case XED_ICLASS_JNP: return ! f.pf;
-    case XED_ICLASS_JNS: return ! f.sf;
-    case XED_ICLASS_JNZ: return ! f.zf;
-    case XED_ICLASS_JO: return f.of;
-    case XED_ICLASS_JP: return f.pf;
-    case XED_ICLASS_JS: return f.sf;
-    case XED_ICLASS_JZ: return f.zf;
+    case XED_ICLASS_JB: return f.s.cf;
+    case XED_ICLASS_JBE: return f.s.cf || f.s.zf;
+    case XED_ICLASS_JL: return f.s.sf != f.s.of;
+    case XED_ICLASS_JLE: return f.s.zf || f.s.sf != f.s.of;
+    case XED_ICLASS_JNB: return ! f.s.cf;
+    case XED_ICLASS_JNBE: return ! f.s.cf || ! f.s.zf;
+    case XED_ICLASS_JNL: return f.s.sf == f.s.of;
+    case XED_ICLASS_JNLE: return f.s.zf && f.s.sf == f.s.of;
+    case XED_ICLASS_JNO: return ! f.s.of;
+    case XED_ICLASS_JNP: return ! f.s.pf;
+    case XED_ICLASS_JNS: return ! f.s.sf;
+    case XED_ICLASS_JNZ: return ! f.s.zf;
+    case XED_ICLASS_JO: return f.s.of;
+    case XED_ICLASS_JP: return f.s.pf;
+    case XED_ICLASS_JS: return f.s.sf;
+    case XED_ICLASS_JZ: return f.s.zf;
     default: eri_assert_unreachable ();
     }
 }
@@ -906,7 +910,7 @@ ir_eval_cond_branch (struct ir_dag *dag, struct ir_cond_branch_args *args)
 	  uint64_t icnt = cnt->node->load_imm.src;
 	  pair.first = icnt && ir_cond_flags_taken (iflags,
 		iclass == XED_ICLASS_LOOPE ? XED_ICLASS_JZ : XED_ICLASS_JNZ)
-			: taken : fall;
+			? taken : fall;
 	  pair.second = ir_get_load_imm (dag,
 				addr == 4 ? (uint32_t) icnt - 1 : icnt - 1);
 	}
@@ -917,7 +921,7 @@ ir_eval_cond_branch (struct ir_dag *dag, struct ir_cond_branch_args *args)
       if (flags->node->tag == IR_LOAD_IMM)
 	{
 	  uint64_t iflags = flags->node->load_imm.src;
-	  pair.first = ir_cond_flags_taken (flags, iclass) ? taken : fall;
+	  pair.first = ir_cond_flags_taken (iflags, iclass) ? taken : fall;
 	  return pair;
 	}
     }
@@ -945,7 +949,7 @@ ir_eval_cond_branch (struct ir_dag *dag, struct ir_cond_branch_args *args)
 static struct ir_def_pair
 ir_get_cond_branch (struct ir_dag *dag, struct ir_cond_branch_args *args)
 {
-  return ir_eval (dag, struct ir_def_pair, cond, args);
+  return ir_eval (dag, struct ir_def_pair, cond_branch, args);
 }
 
 static struct ir_def *
@@ -1020,14 +1024,15 @@ ir_create_inst (struct eri_analyzer *al, struct ir_dag *dag, uint64_t rip)
 static void
 ir_set_rip_from_inst (struct ir_dag *dag, struct ir_node *inst)
 {
-  ir_set_reg_def (dag, XED_REG_RIP, ir_get_load_imm (inst->inst.rip));
+  ir_set_reg_def (dag, XED_REG_RIP, ir_get_load_imm (dag, inst->inst.rip));
 }
 
 static void
 ir_init_inst_operands (struct ir_node *node)
 {
   uint8_t i;
-  for (i = 0; i < REG_NUM; ++i) node->inst.regs[i].op = 0;
+  for (i = 0; i < eri_length_of (node->inst.regs); ++i)
+    node->inst.regs[i].op = 0;
   node->inst.mems[0].op = 0;
   node->inst.mems[1].op = 0;
   node->inst.access_mem = 0;
@@ -1112,15 +1117,14 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
       if (xed_operand_written (op))
 	{
 	  ++deps;
-	  ir_define (node, node->inst.regs[i].dst);
+	  ir_define (node, &node->inst.regs[i].dst);
 	}
     }
   node->deps = eri_max (node->deps, deps);
 }
 
-static void
-ir_reg_idx_from_dec_op (struct xed_decoded_inst_t *dec,
-			const xed_operand_t *op);
+static uint8_t
+ir_reg_idx_from_dec_op (xed_decoded_inst_t *dec, const xed_operand_t *op)
 {
   return ir_reg_idx_from_reg (
 		xed_decoded_inst_get_reg (dec, xed_operand_name (op)));
@@ -1175,7 +1179,7 @@ ir_init_mem_args_from_inst_mem (struct ir_mem_args *args,
   args->addr = xed_decoded_inst_get_memop_address_width (dec, i) >> 3;
 }
 
-static void
+static struct ir_def *
 ir_create_load_from_inst_mem (struct ir_dag *dag, struct ir_node *inst,
 			      uint8_t i, struct ir_def *prim)
 {
@@ -1212,8 +1216,8 @@ ir_build_push (struct ir_dag *dag, xed_reg_enum_t src)
 static void
 ir_build_pop (struct ir_dag *dag, xed_reg_enum_t dst)
 {
-  struct ir_def *prim = xed_get_register_width_bits (dst) != 64;
-			? ir_get_reg_def (dag, dst) : 0;
+  struct ir_def *prim = xed_get_register_width_bits (dst) != 64
+					? ir_get_reg_def (dag, dst) : 0;
   struct ir_def_pair pair = ir_create_pop (dag,
 		ir_get_reg_def (dag, XED_REG_RSP), prim);
   ir_set_reg_def (dag, dst, pair.first);
@@ -1223,7 +1227,7 @@ ir_build_pop (struct ir_dag *dag, xed_reg_enum_t dst)
 static void
 ir_build_popf (struct ir_dag *dag, struct ir_node *inst)
 {
-  xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (&node->inst.dec);
+  xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (&inst->inst.dec);
   ir_build_pop (dag,
 		iclass == XED_ICLASS_POPF ? XED_REG_FLAGS : XED_REG_RFLAGS);
   ir_end (dag, inst);
@@ -1323,7 +1327,7 @@ ir_flatten (struct ir_flattened *flat, struct ir_node *node)
 {
   if (--node->sups) return;
 
-  ++flat->ridx
+  ++flat->ridx;
   struct ir_dep *dep;
   ERI_RBT_FOREACH (ir_dep, node, dep)
     dep->ridx = dep->def->ridx;
@@ -1331,10 +1335,9 @@ ir_flatten (struct ir_flattened *flat, struct ir_node *node)
     dep->def->ridx = flat->ridx;
 
   ir_flat_lst_insert_front (flat, node);
-  node->flattened = 1;
 
   ERI_RBT_FOREACH (ir_dep, node, dep)
-    ir_flatten (dag, flat, dep->def->node);
+    ir_flatten (flat, dep->def->node);
 }
 
 static struct ir_local *
@@ -1362,6 +1365,12 @@ static void
 ir_put_local (struct ir_flattened *flat, struct ir_local *local)
 {
   ir_local_rbt_insert (flat, local);
+}
+
+static uint8_t
+ir_local_host_idx (struct ir_flattened *flat)
+{
+  return ir_host_idxs_get_gpreg_idx (flat->local.locs.host_idxs);
 }
 
 static uint8_t
@@ -1396,7 +1405,7 @@ ir_encode_nop (uint8_t *bytes)
 static uint8_t
 ir_encode (uint8_t *bytes, xed_encoder_request_t *enc)
 {
-  uint8_t res;
+  uint32_t res;
   eri_assert (xed_encode (enc, bytes, INST_BYTES, &res) == XED_ERROR_NONE);
   return res;
 }
@@ -1409,14 +1418,14 @@ ir_reg (uint8_t idx)
 
 static void
 ir_init_encode (xed_encoder_request_t *enc,
-		xed_iclass_enum_t iclass, uint8_t op_size, uint8_t add_size)
+		xed_iclass_enum_t iclass, uint8_t op_size, uint8_t addr_size)
 {
   xed_state_t state;
   xed_state_init2 (&state, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
   xed_encoder_request_zero_set_mode (enc, &state);
   xed_encoder_request_set_iclass (enc, iclass);
-  xed_encoder_request_set_effective_operand_width (&enc, op_size << 3);
-  xed_encoder_request_set_effective_address_width (&enc, addr_size << 3);
+  xed_encoder_request_set_effective_operand_width (enc, op_size << 3);
+  xed_encoder_request_set_effective_address_size (enc, addr_size << 3);
 }
 
 static uint8_t
@@ -1455,17 +1464,17 @@ ir_min_width_signed (int64_t x, uint8_t mask)
 }
 
 static void
-ir_encode_set_mem0 (xed_encorder_request_t *enc, struct ir_enc_mem_args *mem)
+ir_encode_set_mem0 (xed_encoder_request_t *enc, struct ir_enc_mem_args *mem)
 {
   xed_encoder_request_set_base0 (enc,
 			ir_reg_from_reg_idx_opt (mem->base, mem->addr));
   xed_encoder_request_set_index (enc,
 			ir_reg_from_reg_idx_opt (mem->index, mem->addr));
-  xed_encoder_reguest_set_seg0 (enc, mem->seg);
-  xed_encoder_reguest_set_scale (enc, mem->scale);
+  xed_encoder_request_set_seg0 (enc, mem->seg);
+  xed_encoder_request_set_scale (enc, mem->scale);
   xed_encoder_request_set_memory_displacement (enc, mem->disp,
 				ir_min_width_signed (mem->disp, 0x7));
-  xed_encoder_request_set_memory_operand_length (&enc, mem->size);
+  xed_encoder_request_set_memory_operand_length (enc, mem->size);
 }
 
 static uint8_t
@@ -1477,7 +1486,7 @@ ir_encode_load (uint8_t *bytes, uint8_t dst, struct ir_enc_mem_args *src)
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
 			       ir_reg_from_reg_idx_opt (dst, src->size));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
-  xed_encoder_request_set_mem0 (enc);
+  xed_encoder_request_set_mem0 (&enc);
   ir_encode_set_mem0 (&enc, src);
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_MEM0);
   return ir_encode (bytes, &enc);
@@ -1503,7 +1512,7 @@ ir_encode_store (uint8_t *bytes, struct ir_enc_mem_args *dst, uint8_t src)
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_MOV, dst->size, dst->addr);
 
-  xed_encoder_request_set_mem0 (enc);
+  xed_encoder_request_set_mem0 (&enc);
   ir_encode_set_mem0 (&enc, dst);
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_MEM0);
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
@@ -1516,12 +1525,12 @@ static uint8_t
 ir_encode_lea (uint8_t *bytes, uint8_t dst, struct ir_enc_mem_args *src)
 {
   xed_encoder_request_t enc;
-  ir_init_encode (&enc, XED_ICLASS_MOV, src->size, dst->addr);
+  ir_init_encode (&enc, XED_ICLASS_MOV, src->size, src->addr);
 
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
 			       ir_reg_from_reg_idx (dst, src->size));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
-  xed_encoder_request_set_agen (enc);
+  xed_encoder_request_set_agen (&enc);
   ir_encode_set_mem0 (&enc, src);
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_AGEN);
   return ir_encode (bytes, &enc);
@@ -1575,7 +1584,7 @@ ir_encode_cjmp_relbr (uint8_t *bytes, xed_iclass_enum_t iclass,
   xed_encoder_request_set_relbr (&enc);
   xed_encoder_request_set_branch_displacement (&enc, rel,
 	ir_min_width_signed (rel, ir_cond_branch_loop (iclass) ? 0x1 : 0x7));
-  xed_encoder_request_set_operand_order (&xe, 0, XED_OPERAND_RELBR);
+  xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_RELBR);
   return ir_encode (bytes, &enc);
 }
 
@@ -1657,13 +1666,13 @@ ir_move (struct ir_flattened *flat, struct ir_block *blk,
       locs->local = (void *) val;
       if (idx == REG_NUM)
 	{
-	  ir_init_local_enc_mem_args (flat, locs->local + 1, &mem);
+	  ir_init_local_enc_mem_args (flat, locs->local->idx + 1, &mem);
 	  ir_emit (lea, blk, REG_IDX_RSP, &mem);
 	  ir_emit (pushf, blk);
 	}
       else
 	{
-	  ir_init_local_enc_mem_args (flat, locs->local, &mem);
+	  ir_init_local_enc_mem_args (flat, locs->local->idx, &mem);
 	  ir_emit (store, blk, &mem, idx);
 	}
     }
@@ -1687,7 +1696,7 @@ static void
 ir_try_fix_reg_host_loc (struct ir_block *blk, uint8_t reg_idx,
 			 struct ir_reg_def_loc *def_loc)
 {
-  struct ir_host_locs *locs = def_loc->def->locs;
+  struct ir_host_locs *locs = &def_loc->def->locs;
   struct reg_loc *loc = &def_loc->loc;
   if ((loc->tag == REG_LOC_REG
        && ! ir_host_idxs_set (locs->host_idxs, loc->val))
@@ -1713,24 +1722,21 @@ ir_try_update_reg_host_loc (struct ir_flattened *flat, struct ir_block *blk,
       ir_try_fix_reg_host_loc (blk, i, flat->reg_def_locs + i);
 }
 
-static uint8_t
-ir_local_host_idx (struct ir_flattened *flat)
-{
-  return ir_host_idxs_get_gpreg_idx (flat->local.locs.host_idxs);
-}
-
 static void
 ir_set_host (struct ir_flattened *flat, struct ir_block *blk,
 	     uint8_t idx, struct ir_def *def, uint32_t *free)
 {
-  struct ir_def *old = flat->hosts[i];
+  struct ir_def *old = flat->hosts[idx];
   if (old->ridx)
     {
       uint8_t num = ir_host_idxs_gpreg_num (old->locs.host_idxs);
       uint8_t i = ir_host_idxs_get_gpreg_idx (*free);
       if (num == 0 || (num == 1 && i == REG_NUM))
-	ir_move (flat, blk, REG_LOC_LOCAL,
-		 (uint64_t) ir_get_local (flat), &old->locs);
+	{
+	  if (! old->locs.local)
+	    ir_move (flat, blk, REG_LOC_LOCAL,
+		     (uint64_t) ir_get_local (flat), &old->locs);
+	}
       else if (num == 1)
 	{
 	  ir_move (flat, blk, REG_LOC_REG, i, &old->locs);
@@ -1744,7 +1750,7 @@ ir_set_host (struct ir_flattened *flat, struct ir_block *blk,
       && (def->locs.host_idxs || def->locs.local))
     ir_move (flat, blk, REG_LOC_REG, idx, &def->locs);
   else ir_host_idxs_add (&def->locs.host_idxs, idx);
-  flat->hosts[i] = def;
+  flat->hosts[idx] = def;
 }
 
 struct ir_ra
@@ -1814,6 +1820,7 @@ ir_ra_desig_def (struct ir_ra *a, uint8_t idx, struct ir_def *def)
   return a + 1;
 }
 
+#if 0
 static struct ir_ra *
 ir_ra_desig_dep_def (struct ir_ra *a, uint8_t idx,
 		     struct ir_dep *dep, struct ir_def *def)
@@ -1821,6 +1828,7 @@ ir_ra_desig_dep_def (struct ir_ra *a, uint8_t idx,
   ir_init_ra (a, idx, dep->def ? dep : 0, def);
   return a + 1;
 }
+#endif
 
 static void
 ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
@@ -1832,14 +1840,14 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 
   uint32_t i, j;
   for (i = 0; i < n && ! ir_host_idxs_set (preps_mask, REG_IDX_RSP); ++i)
-    if (ras[i]->host_idx == REG_IDX_RFLAGS)
+    if (ras[i].host_idx == REG_IDX_RFLAGS)
       {
 	struct ir_host_locs *old = &flat->hosts[REG_IDX_RFLAGS]->locs;
-	if (ras[i]->dep
+	if (ras[i].dep
 	    || (! ir_host_idxs_gpreg_num (old->host_idxs) && ! old->local))
 	  ir_host_idxs_add (&preps_mask, REG_IDX_RSP);
       }
-    else eri_assert (ras[i]->host_idx != local);
+    else eri_assert (ras[i].host_idx != local);
 
   uint32_t deps_mask = 0;
   struct ir_ra deps[REG_NUM];
@@ -1879,13 +1887,13 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 	    continue;
 	  }
 
-	uint8_t min;
+	uint8_t min = REG_NUM;
 	uint64_t min_ridx = -1;
 	for (j = 0; j < GPREG_NUM && min_ridx; ++j)
 	  {
 	    if (j == local || ir_host_idxs_set (deps_mask, j)) continue;
 
-	    if (ir_host_idxs_set (preps, j))
+	    if (ir_host_idxs_set (preps_mask, j))
 	      {
 		min = j;
 		min_ridx = 0;
@@ -1915,14 +1923,14 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
     if (ras[i].def && ras[i].host_idx != REG_NUM)
       {
 	defs[ras[i].host_idx] = ras[i].def;
-	ir_host_idxs_add (&def_mask, ras[i].host_idx);
+	ir_host_idxs_add (&defs_mask, ras[i].host_idx);
       }
 
   for (i = 0; i < n; ++i)
     if (ras[i].def && ras[i].host_idx == REG_NUM)
       {
-	uint8_t min;
-	uint64_t min_rdx = -1;
+	uint8_t min = REG_NUM;
+	uint64_t min_ridx = -1;
 	for (j = 0; j < GPREG_NUM && min_ridx; ++j)
 	  {
 	    if (j == local || ir_host_idxs_set (defs_mask, j)) continue;
@@ -1936,7 +1944,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 		    min_ridx = deps[j].dep->def->ridx;
 		  }
 	      }
-	    else if (ir_host_idxs_set (preps, j))
+	    else if (ir_host_idxs_set (preps_mask, j))
 	      {
 		min = j;
 		min_ridx = 0;
@@ -1956,7 +1964,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
   uint32_t free;
   for (i = 0; i < REG_NUM; ++i)
     if (flat->hosts[i]->ridx == 0
-	&& ! ir_host_idxs_set (preps_mask | deps_mask | defs_mask))
+	&& ! ir_host_idxs_set (preps_mask | deps_mask | defs_mask, i))
       ir_host_idxs_add (&free, i);
 
   if (ir_host_idxs_set (preps_mask, REG_IDX_RSP))
@@ -1987,12 +1995,10 @@ ir_gen_inst (struct ir_flattened *flat,
   for (inst_reg = node->inst.regs; inst_reg->op; ++inst_reg)
     {
       const xed_operand_t *op = inst_reg->op;
-      xed_operand_enum_t op_name = xed_operand_name (op);
-
       ir_init_ra (a++, ir_inst_designated_reg (dec, op)
 		      ? ir_reg_idx_from_dec_op (dec, op) : REG_NUM,
-		  ir_inst_op_read (dec, op) ? &node->inst.regs[i].src : 0,
-		  xed_operand_written (op) ? &node->inst.regs[i].dst : 0);
+		  ir_inst_op_read (dec, op) ? &inst_reg->src : 0,
+		  xed_operand_written (op) ? &inst_reg->dst : 0);
     }
 
   struct ir_dep *mems[] = {
@@ -2018,9 +2024,10 @@ ir_gen_inst (struct ir_flattened *flat,
 				ir_reg_from_reg_idx ((a++)->host_idx, size));
     }
 
-  xed_operand_t mem_op_names[] = {
+  xed_operand_enum_t mem_op_names[] = {
     XED_OPERAND_BASE0, XED_OPERAND_INDEX, XED_OPERAND_BASE1
   };
+
   for (i = 0; i < eri_length_of (mems); ++i)
     if (mems[i]->def)
       xed_operand_values_set_operand_reg (ops, mem_op_names[i],
@@ -2032,7 +2039,7 @@ ir_gen_inst (struct ir_flattened *flat,
     {
       if (xed_operand_written (inst_reg->op))
 	{
-	  flat->reg_def_locs[i].def = def;
+	  flat->reg_def_locs[i].def = &inst_reg->dst;
 	  ir_try_fix_reg_host_loc (blk, i, flat->reg_def_locs + i);
 	}
     }
@@ -2049,6 +2056,8 @@ ir_gen_inst_nop (struct ir_flattened *flat,
 
 #define ir_gen_init(...)
 
+eri_noreturn static void analysis (uint64_t *local);
+
 static void
 ir_gen_end (struct ir_flattened *flat,
 	    struct ir_node *node, struct ir_block *blk)
@@ -2062,9 +2071,9 @@ ir_gen_end (struct ir_flattened *flat,
 
   ir_assign_hosts (flat, blk, ras, REG_NUM);      
 
-  struct ir_def *regs = node->end.regs;
+  struct ir_dep *regs = node->end.regs;
   for (i = 0; i < REG_NUM; ++i)
-    blk->final_locs[i] = regs[i].locs.local->idx;
+    blk->final_locs[i] = regs[i].def->locs.local->idx;
 
   ir_emit (mov, blk, REG_IDX_RDX, ir_local_host_idx (flat));
   struct ir_enc_mem_args rsp = {
@@ -2129,12 +2138,12 @@ ir_gen_load (struct ir_flattened *flat,
 	     struct ir_node *node, struct ir_block *blk)
 {
   struct ir_ra ras[3];
-  struct ir_ra *a = ir_init_mem_ras (&node->store.src, ras);
-  a = ir_ra_gpreg_dep_def (a, &node->load.prim, &node->store.dst);
+  struct ir_ra *a = ir_init_mem_ras (&node->load.src, ras);
+  a = ir_ra_gpreg_dep_def (a, &node->load.prim, &node->load.dst);
   ir_assign_hosts (flat, blk, ras, a - ras);
 
   struct ir_enc_mem_args src;
-  a = ir_init_emit_mem_args (&node->store.src, ras, &src);
+  a = ir_init_emit_mem_args (&node->load.src, ras, &src);
   ir_emit (load, blk, a->host_idx, &src);
 }
 
@@ -2201,15 +2210,14 @@ ir_gen_cond_branch (struct ir_flattened *flat,
 		  &node->cond_branch.cnt, &node->cond_branch.dec);
       (a++)->exclusive = 1;
     }
-  else a = ir_ra_desig_dep_opt (a, REG_IDX, RCX,
-				&node->cond_branch.cnt);
+  else a = ir_ra_desig_dep_opt (a, REG_IDX_RCX, &node->cond_branch.cnt);
   a = ir_ra_gpreg_dep_def (a, &node->cond_branch.taken,
 			   &node->cond_branch.dst);
   a = ir_ra_gpreg_dep (a, &node->cond_branch.fall);
   ir_assign_hosts (flat, blk, ras, a - ras);
 
-  xed_iclass_enum_t iclass = node->quad.tag;
-  ir_gen_assign_hosts (flat, &assigns, blk);
+  uint8_t fall = (--a)->host_idx;
+  uint8_t taken = (--a)->host_idx;
 
   if (ir_cond_branch_cnt_only (iclass) || ir_cond_branch_flags_cnt (iclass))
     {
@@ -2228,9 +2236,7 @@ ir_free_deps (struct ir_flattened *flat, struct ir_node *node)
   struct ir_dep *dep;
   ERI_RBT_FOREACH (ir_dep, node, dep)
     {
-      if (def->ridx == 0)
-	flat->free_host_idxs |= def->locs.host_idxs;
-
+      struct ir_def *def = dep->def;
       if (def->ridx == 0 && def->locs.local)
 	{
 	  ir_put_local (flat, def->locs.local);
@@ -2278,7 +2284,7 @@ ir_generate (struct ir_dag *dag)
 
   struct ir_node *last = dag->last->node;
   ir_mark_supports (dag, last);
-  ir_flatten (dag, &flag, last);
+  ir_flatten (&flat, last);
 
   struct ir_node *init = dag->init->node;
   for (i = 0; i < REG_NUM; ++i)
@@ -2287,18 +2293,18 @@ ir_generate (struct ir_dag *dag)
 	struct ir_def *def = init->init.regs + i;
 	eri_assert (def->ridx);
 	def->locs.local = ir_get_local (&flat);
-	flat->reg_def_locs[i].def = def;
+	flat.reg_def_locs[i].def = def;
       }
 
   struct ir_block blk;
   eri_assert_buf_mtpool_init (&blk.insts, dag->pool, 512);
-  eri_assert_buf_mtpool_init (&blk.regs, dag->pool, 512);
+  eri_assert_buf_mtpool_init (&blk.trace_regs, dag->pool, 512);
 
   if (local != REG_IDX_RDI)
     ir_emit (mov, &blk, local, REG_IDX_RDI);
 
   struct ir_node *node;
-  ERI_LIST_FOREACH (ir_flat, &flat, node)
+  ERI_LST_FOREACH (ir_flat, &flat, node)
     {
       switch (node->tag)
 	{
@@ -2308,13 +2314,13 @@ ir_generate (struct ir_dag *dag)
 	IR_NODE_TAGS (GEN_TAG)
 	default: eri_assert_unreachable ();
 	}
-      ir_free_deps (flat, node);
+      ir_free_deps (&flat, node);
     }
 
   blk.local_size = flat.local_size;
   struct block *res = ir_output (dag->pool, &blk);
-  eri_assert_buf_fini (&blk.inst);
-  eri_assert_buf_fini (&blk.regs);
+  eri_assert_buf_fini (&blk.insts);
+  eri_assert_buf_fini (&blk.trace_regs);
   return res;
 }
 
@@ -2326,12 +2332,12 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 
   struct ir_node *init = ir_alloc_node (&dag, IR_INIT, 0);
   init->init.rip = rip;
-  dag->init = &init->seq;
+  dag.init = &init->seq;
 
   uint8_t i;
   for (i = 0; i < REG_NUM; ++i)
     if (i != REG_IDX_RIP)
-      dag->reg_defs[i] = ir_define (init, init->init.regs + i);
+      dag.reg_defs[i] = ir_define (init, init->init.regs + i);
 
   i = 0;
   while (1)
@@ -2369,37 +2375,37 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 
       if (iclass == XED_ICLASS_POPF || iclass == XED_ICLASS_POPFQ)
 	{
-	  ir_set_rip_from_inst (dag, node);
-	  ir_build_popf (dag, node);
+	  ir_set_rip_from_inst (&dag, node);
+	  ir_build_popf (&dag, node);
 	}
       else if (cate == XED_CATEGORY_UNCOND_BR)
-	ir_build_uncond_branch (dag, node);
+	ir_build_uncond_branch (&dag, node);
       else if (cate == XED_CATEGORY_COND_BR)
-	ir_build_cond_branch (dag, node);
+	ir_build_cond_branch (&dag, node);
       else if (cate == XED_CATEGORY_CALL)
-	ir_build_call (dag, node);
+	ir_build_call (&dag, node);
       else if (cate == XED_CATEGORY_RET)
-	ir_build_ret (dag, node);
+	ir_build_ret (&dag, node);
 
       if (node->tag == IR_END) break;
 
-      ir_finish_inst (dag, node, rip);
+      ir_finish_inst (&dag, node);
       rip = node->inst.rip;
-      if (++i == tf ? : al->group->max_inst_count)
+      if (++i == tf ? 1 : al->group->max_inst_count)
 	{
-	  ir_set_rip_from_inst (dag, node);
-	  ir_end (dag, 0);
+	  ir_set_rip_from_inst (&dag, node);
+	  ir_end (&dag, 0);
 	  break;
 	}
     }
 
-  struct block *res = ir_output (ir_generate (&dag));
+  struct block *res = ir_generate (&dag);
 
   struct ir_alloc *a, *na;
-  ERI_LST_FOREACH_SAFE (ir_alloc, dag, a, na)
+  ERI_LST_FOREACH_SAFE (ir_alloc, &dag, a, na)
     {
-      ir_alloc_remove (dag, a);
-      eri_assert_mtfree (dag->pool, a);
+      ir_alloc_lst_remove (&dag, a);
+      eri_assert_mtfree (dag.pool, a);
     }
   return res;
 }
@@ -2409,35 +2415,35 @@ eri_analyzer__enter (struct eri_analyzer *al,
 		     struct eri_registers *regs)
 {
   struct eri_analyzer_group *group = al->group;
-  eri_lock (group->trans_lock);
-  struct trans_key = { regs->rip, !! (regs->rflags & ERI_RFLAGS_TF) };
-  struct trans *trans = trans_rbt_get (group, &trans_key, ERI_RBT_EQ);
+  eri_assert_lock (&group->trans_lock);
+  struct trans_key key = { regs->rip, !! (regs->rflags & ERI_RFLAGS_TF) };
+  struct trans *trans = trans_rbt_get (group, &key, ERI_RBT_EQ);
   if (! trans)
     {
       trans = eri_assert_mtmalloc (group->pool, sizeof *trans);
-      trans->key = trans_key;
+      trans->key = key;
       trans->ref_count = 1;
-      trans->trans = 0;
       trans->wait = 0;
       trans->done = 0;
       trans_rbt_insert (group, trans);
-      eri_unlock (group->trans_lock);
+      eri_assert_unlock (&group->trans_lock);
 
-      trans->block = translate (al, trans->key.rip, trans->key.tf);
+      trans->block = translate (al, key.rip, key.tf);
+      eri_atomic_store (&trans->done, 1, 0);
 
-      if (eri_atomic_load (&trans->wait))
+      if (eri_atomic_load (&trans->wait, 1))
         eri_assert_syscall (futex, &trans->done,
 			    ERI_FUTEX_WAKE, ERI_INT_MAX);
     }
   else
     {
       ++trans->ref_count;
-      eri_unlock (group->trans_lock);
+      eri_assert_unlock (&group->trans_lock);
       if (! eri_atomic_load (&trans->done, 0))
 	{
 	  eri_atomic_inc (&trans->wait, 1);
 	  eri_assert_sys_futex_wait (&trans->done, 0, 0);
-	  eri_atomic_loop (&trans->wait, 1);
+	  eri_atomic_dec (&trans->wait, 1);
 	}
     }
 
@@ -2541,19 +2547,19 @@ uint8_t
 eri_analyzer__sig_handler (struct eri_analyzer *al,
 			struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
-  if (eri_entry__sig_is_access_fault (entry, info) && al->sig_info)
+  if (eri_entry__sig_is_access_fault (al->entry, info) && al->sig_info)
     {
       *al->sig_info = *info;
       al->sig_info = 0;
 
-      eri_entry__sig_access_fault (entry, &ctx->mctx);
+      eri_entry__sig_access_fault (al->entry, &ctx->mctx);
       return 0;
     }
 
   if (! al->act) return 1;
 
   struct block *blk = al->act->trans->block;
-  if ((info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid
+  if ((info->code == ERI_SI_TKILL && info->kill.pid == *al->group->pid
        && signaled (al->act, info)))
     {
 #define SET_FINAL_CTX_REG(reg, v)	do { ctx->mctx.reg = v; } while (0)
@@ -2563,7 +2569,7 @@ eri_analyzer__sig_handler (struct eri_analyzer *al,
 
   uint64_t rip = ctx->mctx.rip;
   struct eri_range range = {
-    (uint64_t) blk->insts, (uint64_t) blk->insts + insts_len
+    (uint64_t) blk->insts, (uint64_t) blk->insts + blk->insts_len
   };
   if (! eri_within (&range, rip)) return 1;
 
@@ -2590,7 +2596,7 @@ eri_analyzer__sig_handler (struct eri_analyzer *al,
   struct eri_registers regs;
 #define GET_REG_LOC(creg, reg) \
   do {									\
-    struct reg_loc *_loc = &locs[ERI_PASTE (REG_IDX_, creg)].loc;	\
+    struct reg_loc *_loc = locs + ERI_PASTE (REG_IDX_, creg);		\
     if (_loc->tag == REG_LOC_REG)					\
       regs.reg = get_reg_from_ctx_by_idx (ctx, _loc->val);		\
     else if (_loc->tag == REG_LOC_LOCAL)				\
@@ -2604,3 +2610,48 @@ eri_analyzer__sig_handler (struct eri_analyzer *al,
 
   return 1;
 }
+
+/* For xed.  */
+
+void *
+memset (void *s, int32_t c, uint64_t n)
+{
+  eri_memset (s, (char) c, n);
+  return s;
+}
+
+void *
+memcpy (void *d, const void *s, uint64_t n)
+{
+  eri_memcpy (d, s, n);
+  return d;
+}
+
+int32_t
+memcmp (const void *s1, const void *s2, uint64_t n)
+{
+  return eri_memcmp (s1, s2, n);
+}
+
+uint64_t
+strlen (const char *s)
+{
+  return eri_strlen (s);
+}
+
+char *
+strncat (char *d, const char *s, uint64_t n)
+{
+  eri_strncat (d, s, n);
+  return d;
+}
+
+int32_t
+strcmp (const char *s1, const char *s2)
+{
+  return eri_strcmp (s1, s2);
+}
+
+void abort (void) { eri_assert (0); }
+int32_t fprintf (void *a1, void *a2, ...) { return 0; }
+void *stderr;
