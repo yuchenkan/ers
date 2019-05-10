@@ -47,6 +47,13 @@ struct eri_elf64_ehdr
   uint16_t shstrndx;
 };
 
+#define ERI_ELFMAG		"\177ELF"
+#define eri_assert_elf(ident) \
+  eri_assert ((ident)[0] == *(char *) ERI_ELFMAG			\
+	      && (ident)[1] == *((char *) ERI_ELFMAG + 1)		\
+	      && (ident)[2] == *((char *) ERI_ELFMAG + 2)		\
+	      && (ident)[3] == *((char *) ERI_ELFMAG + 3));
+
 struct eri_elf64_phdr
 {
   uint32_t type;
@@ -59,18 +66,39 @@ struct eri_elf64_phdr
   uint64_t align;
 };
 
-#define ERI_ELFMAG		"\177ELF"
-#define eri_assert_elf(ident) \
-  eri_assert ((ident)[0] == *(char *) ERI_ELFMAG			\
-	      && (ident)[1] == *((char *) ERI_ELFMAG + 1)		\
-	      && (ident)[2] == *((char *) ERI_ELFMAG + 2)		\
-	      && (ident)[3] == *((char *) ERI_ELFMAG + 3));
-
 #define ERI_PF_X		0x1
 #define ERI_PF_W		0x2
 #define ERI_PF_R		0x4
 
 #define ERI_PT_LOAD		1
+#define ERI_PT_DYNAMIC		2
+
+struct eri_elf64_shdr
+{
+  uint32_t name;
+  uint32_t type;
+  uint64_t flags;
+  uint64_t addr;
+  uint64_t offset;
+  uint64_t size;
+  uint32_t link;
+  uint32_t info;
+  uint64_t addralign;
+  uint64_t entsize;
+};
+
+#define ERI_SHT_RELA		4
+
+struct eri_elf64_rela
+{
+  uint64_t offset;
+  uint64_t info;
+  int64_t addend;
+};
+
+#define eri_elf64_r_type(info)	((info) & 0xffffffff)
+
+#define R_X86_64_RELATIVE	8
 
 #define eri_get_envp_from_args(args) \
   ({ void *_args = args; uint64_t _argc = *(uint64_t *) _args;		\
@@ -99,5 +127,11 @@ struct eri_seg
     _seg->vaddr = _phdr->vaddr;						\
     _seg->memsz = _phdr->memsz;						\
   } while (0)
+
+struct eri_relative
+{
+  uint64_t offset;
+  int64_t addend;
+};
 
 #endif

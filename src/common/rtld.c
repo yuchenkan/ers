@@ -50,3 +50,11 @@ eri_map_bin (int32_t fd, struct eri_seg *segs, uint16_t nsegs,
 	}
     }
 }
+
+void
+eri_map_reloc (struct eri_relative *rels, uint64_t nrels, uint64_t base)
+{
+  uint64_t i;
+  for (i = 0; i < nrels; ++i)
+    *(uint64_t *) (base + rels[i].offset) = base + rels[i].addend;
+}

@@ -29,9 +29,7 @@
 #define ERI_PP_IIF(c, t, ...) \
   ERI_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
-#if 0
 #define ERI_OMIT(...)
-#endif
 
 #define ERI_SYMBOL(symbol) \
   .global symbol;							\
@@ -64,10 +62,18 @@ func:
 
 #include <stdint.h>
 
+#define eri_xassert(exp, log) \
+  do { if (! (exp))							\
+	 {								\
+	   log ("%s\n", #exp);						\
+	   asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15");	\
+	 } } while (0)
+
 #ifndef eri_assert
 # define eri_assert(exp) \
   do { if (! (exp))							\
-	 asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15"); } while (0)
+	 asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15");	} while (0)
+
 #endif
 
 #define eri_assert_unreachable() \

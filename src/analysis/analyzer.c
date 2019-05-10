@@ -11,6 +11,7 @@
 #include <lib/malloc.h>
 
 #include <common/thread.h>
+#include <common/debug.h>
 
 #include <xed-util.h>
 #include <xed-interface.h>
@@ -147,7 +148,7 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
   ERI_RBT_FOREACH_SAFE (trans, group, t, nt)
     {
       trans_rbt_remove (group, t);
-      eri_assert (t->ref_count == 0);
+      eri_lassert (t->ref_count == 0);
       eri_assert_mtfree (group->pool, t->block);
       eri_assert_mtfree (group->pool, t);
     }
@@ -459,7 +460,7 @@ static uint8_t
 ir_reg_idx_from_reg (xed_reg_enum_t reg)
 {
   uint8_t reg_idx = ir_reg_idx_from_reg_opt (reg);
-  eri_assert (reg_idx != REG_NUM);
+  eri_lassert (reg_idx != REG_NUM);
   return reg_idx;
 }
 
@@ -499,7 +500,7 @@ static xed_reg_enum_t
 ir_reg_from_reg_idx (uint8_t reg_idx, uint8_t size)
 {
   xed_reg_enum_t reg = ir_reg_from_reg_idx_opt (reg_idx, size);
-  eri_assert (reg != XED_REG_INVALID);
+  eri_lassert (reg != XED_REG_INVALID);
   return reg;
 }
 
@@ -1083,10 +1084,10 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
       const xed_operand_t *op = xed_inst_operand (inst, i);
       xed_operand_enum_t op_name = xed_operand_name (op);
 
-      eri_assert (op_name != XED_OPERAND_SEG0);
-      eri_assert (op_name != XED_OPERAND_SEG1);
-      eri_assert (op_name != XED_OPERAND_INDEX);
-      eri_assert (op_name != XED_OPERAND_OUTREG);
+      eri_lassert (op_name != XED_OPERAND_SEG0);
+      eri_lassert (op_name != XED_OPERAND_SEG1);
+      eri_lassert (op_name != XED_OPERAND_INDEX);
+      eri_lassert (op_name != XED_OPERAND_OUTREG);
 
       if (op_name == XED_OPERAND_BASE0 || op_name == XED_OPERAND_BASE1
 	  || (op_name >= XED_OPERAND_REG0 && op_name <= XED_OPERAND_REG8))
@@ -1106,8 +1107,8 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
       else if (op_name == XED_OPERAND_RELBR)
 	node->inst.relbr = 1;
       else
-	eri_assert (op_name == XED_OPERAND_IMM0
-		    || op_name == XED_OPERAND_IMM1);
+	eri_lassert (op_name == XED_OPERAND_IMM0
+		     || op_name == XED_OPERAND_IMM1);
     }
 
   for (inst_reg = node->inst.regs; inst_reg->op; ++inst_reg)
@@ -1398,7 +1399,7 @@ struct ir_enc_mem_args
 static uint8_t
 ir_encode_nop (uint8_t *bytes)
 {
-  eri_assert (xed_encode_nop (bytes, 1) == XED_ERROR_NONE);
+  eri_lassert (xed_encode_nop (bytes, 1) == XED_ERROR_NONE);
   return 1;
 }
 
@@ -1406,7 +1407,7 @@ static uint8_t
 ir_encode (uint8_t *bytes, xed_encoder_request_t *enc)
 {
   uint32_t res;
-  eri_assert (xed_encode (enc, bytes, INST_BYTES, &res) == XED_ERROR_NONE);
+  eri_lassert (xed_encode (enc, bytes, INST_BYTES, &res) == XED_ERROR_NONE);
   return res;
 }
 
@@ -1451,7 +1452,7 @@ static uint8_t
 ir_min_width_unsigned (int64_t x, uint8_t mask)
 {
   uint8_t res = xed_shortest_width_unsigned (x, mask & 0x7);
-  eri_assert (res != 8 || mask & 0x8);
+  eri_lassert (res != 8 || mask & 0x8);
   return res;
 }
 
@@ -1459,7 +1460,7 @@ static uint8_t
 ir_min_width_signed (int64_t x, uint8_t mask)
 {
   uint8_t res = xed_shortest_width_signed (x, mask & 0x7);
-  eri_assert (res != 8 || mask & 0x8);
+  eri_lassert (res != 8 || mask & 0x8);
   return res;
 }
 
@@ -1629,13 +1630,13 @@ ir_move (struct ir_flattened *flat, struct ir_block *blk,
   uint8_t idx = ir_host_idxs_get_gpreg_idx (locs->host_idxs);
   if (tag == REG_LOC_REG)
     {
-      eri_assert (! ir_host_idxs_set (locs->host_idxs, val));
+      eri_lassert (! ir_host_idxs_set (locs->host_idxs, val));
       ir_host_idxs_add (&locs->host_idxs, val);
       if (val == REG_IDX_RFLAGS)
 	{
 	  if (! locs->local)
 	    {
-	      eri_assert (idx != REG_NUM);
+	      eri_lassert (idx != REG_NUM);
 	      locs->local = ir_get_local (flat);
 	      ir_init_local_enc_mem_args (flat, locs->local->idx, &mem);
 	      ir_emit (store, blk, &mem, idx);
@@ -1648,7 +1649,7 @@ ir_move (struct ir_flattened *flat, struct ir_block *blk,
 	{
 	  if (! locs->local)
 	    {
-	      eri_assert (ir_host_idxs_set (locs->host_idxs, REG_IDX_RFLAGS));
+	      eri_lassert (ir_host_idxs_set (locs->host_idxs, REG_IDX_RFLAGS));
 
 	      locs->local = ir_get_local (flat);
 	      ir_init_local_enc_mem_args (flat, locs->local->idx + 1, &mem);
@@ -1662,7 +1663,7 @@ ir_move (struct ir_flattened *flat, struct ir_block *blk,
     }
   else
     {
-      eri_assert (! locs->local);
+      eri_lassert (! locs->local);
       locs->local = (void *) val;
       if (idx == REG_NUM)
 	{
@@ -1836,7 +1837,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 {
   uint32_t preps_mask = 0;
   uint8_t local = ir_local_host_idx (flat);
-  eri_assert (local != REG_NUM);
+  eri_lassert (local != REG_NUM);
 
   uint32_t i, j;
   for (i = 0; i < n && ! ir_host_idxs_set (preps_mask, REG_IDX_RSP); ++i)
@@ -1847,7 +1848,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 	    || (! ir_host_idxs_gpreg_num (old->host_idxs) && ! old->local))
 	  ir_host_idxs_add (&preps_mask, REG_IDX_RSP);
       }
-    else eri_assert (ras[i].host_idx != local);
+    else eri_lassert (ras[i].host_idx != local);
 
   uint32_t deps_mask = 0;
   struct ir_ra deps[REG_NUM];
@@ -1910,7 +1911,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 		min_ridx = flat->hosts[i]->ridx;
 	      }
 	  }
-	eri_assert (min_ridx != -1);
+	eri_lassert (min_ridx != -1);
 	a->host_idx = min;
 	deps[min] = *a;
 	ir_host_idxs_add (&deps_mask, min);
@@ -1955,7 +1956,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 		min_ridx = flat->hosts[i]->ridx;
 	      }
 	  }
-	eri_assert (min_ridx != -1);
+	eri_lassert (min_ridx != -1);
 	ras[i].host_idx = min;
 	defs[min] = ras[i].def;
 	ir_host_idxs_add (&defs_mask, min);
@@ -2291,7 +2292,7 @@ ir_generate (struct ir_dag *dag)
     if (i != REG_IDX_RIP)
       {
 	struct ir_def *def = init->init.regs + i;
-	eri_assert (def->ridx);
+	eri_lassert (def->ridx);
 	def->locs.local = ir_get_local (&flat);
 	flat.reg_def_locs[i].def = def;
       }
@@ -2327,6 +2328,8 @@ ir_generate (struct ir_dag *dag)
 static struct block *
 translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 {
+  eri_debug ("\n");
+
   struct ir_dag dag = { al->group->pool };
   ERI_LST_INIT_LIST (ir_alloc, &dag);
 
@@ -2345,30 +2348,34 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
       struct ir_node *node = ir_create_inst (al, &dag, rip);
       if (! node) break;
 
+      eri_debug ("\n");
+
       ir_build_inst_operands (&dag, node);
 
       xed_decoded_inst_t *dec = &node->inst.dec;
       xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
       xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (dec);
 
+      eri_debug ("%s\n", xed_iclass_enum_t2str (iclass));
+
 #if 0
-      eri_assert (iclass != XED_ICLASS_BOUND);
-      eri_assert (iclass != XED_ICLASS_INT);
-      eri_assert (iclass != XED_ICLASS_INT1);
-      eri_assert (iclass != XED_ICLASS_JMP_FAR);
-      eri_assert (iclass != XED_ICLASS_CALL_FAR);
-      eri_assert (iclass != XED_ICLASS_RET_FAR);
+      eri_lassert (iclass != XED_ICLASS_BOUND);
+      eri_lassert (iclass != XED_ICLASS_INT);
+      eri_lassert (iclass != XED_ICLASS_INT1);
+      eri_lassert (iclass != XED_ICLASS_JMP_FAR);
+      eri_lassert (iclass != XED_ICLASS_CALL_FAR);
+      eri_lassert (iclass != XED_ICLASS_RET_FAR);
 #endif
-      eri_assert (iclass != XED_ICLASS_IRET); /* XXX: ??? */
-      eri_assert (iclass != XED_ICLASS_IRETD);
-      eri_assert (iclass != XED_ICLASS_IRETQ);
+      eri_lassert (iclass != XED_ICLASS_IRET); /* XXX: ??? */
+      eri_lassert (iclass != XED_ICLASS_IRETD);
+      eri_lassert (iclass != XED_ICLASS_IRETQ);
 
       /* TODO: rep */
 
       if (cate == XED_CATEGORY_SYSCALL)
 	{
 	  /* XXX: error out */
-	  eri_assert (0);
+	  eri_lassert (0);
 	}
 
       /* XXX: XSAVE / XRESTORE */
@@ -2414,6 +2421,8 @@ eri_noreturn void
 eri_analyzer__enter (struct eri_analyzer *al,
 		     struct eri_registers *regs)
 {
+  eri_debug ("\n");
+
   struct eri_analyzer_group *group = al->group;
   eri_assert_lock (&group->trans_lock);
   struct trans_key key = { regs->rip, !! (regs->rflags & ERI_RFLAGS_TF) };
@@ -2652,6 +2661,6 @@ strcmp (const char *s1, const char *s2)
   return eri_strcmp (s1, s2);
 }
 
-void abort (void) { eri_assert (0); }
+void abort (void) { eri_lassert (0); }
 int32_t fprintf (void *a1, void *a2, ...) { return 0; }
 void *stderr;

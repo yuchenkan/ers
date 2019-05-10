@@ -11,7 +11,7 @@
 #include <replay/rtld.h>
 #include <replay/thread.h>
 
-#define INIT_STACK_SIZE		(2 * 4096)
+#define INIT_STACK_SIZE		(1024 * 4096)
 
 struct init_map_args
 {
@@ -88,6 +88,39 @@ eri_init_map (struct init_map_args *args)
   struct eri_seg *segs = args->segs;
   uint16_t nsegs = args->nsegs;
   eri_map_bin (fd, segs, nsegs, map_start, page_size);
+
+  eri_assert (ehdr.shentsize == sizeof (struct eri_elf64_shdr));
+  eri_assert (ehdr.shnum < 128);
+
+  struct eri_elf64_shdr shdrs[ehdr.shnum];
+  eri_assert_syscall (lseek, fd, ehdr.shoff, ERI_SEEK_SET);
+  eri_assert_sys_read (fd, shdrs, sizeof shdrs);
+
+  uint64_t i, j, k;
+  for (i = 0; i < ehdr.shnum; ++i)
+    if (shdrs[i].type == ERI_SHT_RELA)
+      {
+	uint64_t nrels = shdrs[i].size / sizeof (struct eri_elf64_rela);
+	struct eri_elf64_rela relas[1024];
+	struct eri_relative rels[eri_length_of (relas)];
+	eri_assert_syscall (lseek, fd, shdrs[i].offset, ERI_SEEK_SET);
+
+	for (j = 0; j < nrels; j += eri_length_of (relas))
+	  {
+	    uint64_t n = eri_min (eri_length_of (relas), nrels - j);
+	    eri_assert_sys_read (fd, relas, sizeof relas[0] * n);
+	    for (k = 0; k < n; ++k)
+	      {
+		eri_assert (eri_elf64_r_type (relas[k].info)
+						  == R_X86_64_RELATIVE);
+		rels[k].offset = relas[k].offset;
+		rels[k].addend = relas[k].addend;
+	      }
+	    eri_map_reloc (rels, n, map_start);
+	  }
+	break;
+      }
+
   eri_assert_syscall (close, fd);
 
   const char *path = (void *) (segs + nsegs);

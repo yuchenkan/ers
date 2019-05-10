@@ -10,7 +10,8 @@
 #include <lib/syscall-common.h>
 
 static uint64_t
-parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
+parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs,
+	   struct eri_relative **rels, uint64_t *nrels)
 {
   struct eri_elf64_ehdr ehdr;
   assert (fread (&ehdr, sizeof ehdr, 1, f) == 1);
@@ -21,7 +22,7 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
   assert (fseek (f, ehdr.phoff, SEEK_SET) == 0);
   assert (fread (phdrs, ehdr.phentsize, ehdr.phnum, f) == ehdr.phnum);
 
-  uint16_t i, j = 0;
+  uint64_t i, j = 0;
   for (i = 0; i < ehdr.phnum; ++i)
     if (phdrs[i].type == ERI_PT_LOAD) ++j;
 
@@ -32,6 +33,35 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs)
   for (i = 0; i < ehdr.phnum; ++i)
     if (phdrs[i].type == ERI_PT_LOAD)
       eri_seg_from_phdr (*segs + j++, phdrs + i);
+
+  assert (ehdr.shentsize == sizeof (struct eri_elf64_shdr));
+  struct eri_elf64_shdr shdrs[ehdr.shnum];
+  assert (fseek (f, ehdr.shoff, SEEK_SET) == 0);
+  assert (fread (shdrs, ehdr.shentsize, ehdr.shnum, f) == ehdr.shnum);
+
+  if (rels)
+    {
+      *rels = 0;
+      *nrels = 0;
+      for (i = 0; i < ehdr.shnum; ++i)
+	if (shdrs[i].type == ERI_SHT_RELA)
+	  {
+	    *nrels = shdrs[i].size / sizeof (struct eri_elf64_rela);
+	    struct eri_elf64_rela *relas = malloc (sizeof *relas * *nrels);
+	    assert (fseek (f, shdrs[i].offset, SEEK_SET) == 0);
+	    assert (fread (relas, sizeof relas[0], *nrels, f) == *nrels);
+	    *rels = malloc (sizeof **rels * *nrels);
+	    for (j = 0; j < *nrels; ++j)
+	      {
+		eri_assert (eri_elf64_r_type (relas[j].info)
+						  == R_X86_64_RELATIVE);
+		(*rels)[j].offset = relas[j].offset;
+		(*rels)[j].addend = relas[j].addend;
+	      }
+	    free (relas);
+	    break;
+	  }
+    }
 
   return ehdr.entry;
 }
@@ -44,7 +74,9 @@ convert_bin (const char *elf, const char *bin)
 
   struct eri_seg *segs;
   uint16_t nsegs;
-  uint64_t entry = parse_elf (ef, &segs, &nsegs);
+  struct eri_relative *rels;
+  uint64_t nrels;
+  uint64_t entry = parse_elf (ef, &segs, &nsegs, &rels, &nrels);
 
   FILE *bf = fopen (bin, "wb");
   assert (bf);
@@ -63,11 +95,14 @@ convert_bin (const char *elf, const char *bin)
   assert (fseek (bf, 0, SEEK_END) == 0);
   /* XXX: endianess */
   assert (fwrite (segs, sizeof segs[0], nsegs, bf) == nsegs);
+  assert (fwrite (rels, sizeof rels[0], nrels, bf) == nrels);
   assert (fwrite (&nsegs, sizeof nsegs, 1, bf) == 1);
+  assert (fwrite (&nrels, sizeof nrels, 1, bf) == 1);
   assert (fwrite (&entry, sizeof entry, 1, bf) == 1);
 
   fclose (bf);
   free (segs);
+  free (rels);
   fclose (ef);
 }
 
@@ -79,7 +114,7 @@ convert_header (const char *elf, const char *header)
 
   struct eri_seg *segs;
   uint16_t nsegs;
-  uint64_t entry = parse_elf (ef, &segs, &nsegs);
+  uint64_t entry = parse_elf (ef, &segs, &nsegs, 0, 0);
 
   assert (nsegs == 1);
   assert (segs[0].filesz == segs[0].memsz);

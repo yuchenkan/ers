@@ -23,4 +23,6 @@ uint8_t eri_global_enable_debug;
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
 
+#define eri_lassert(exp)	eri_xassert (exp, eri_debug)
+
 #endif

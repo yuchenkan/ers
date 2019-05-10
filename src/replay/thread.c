@@ -367,7 +367,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {
   eri_global_enable_debug = rtld_args->debug;
   eri_debug ("%lx, %lx, %u\n",
-	     eri_replay_start, rtld_args->buf, rtld_args->buf_size);
+	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size);
   struct thread_group *group = create_group (rtld_args);
   struct thread *th = create (group, 0, 0);
   struct eri_entry *entry = th->entry;
