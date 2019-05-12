@@ -12,10 +12,11 @@
 
 static eri_unused uint8_t eri_enable_debug = 0;
 uint8_t eri_global_enable_debug;
+#define eri_enabled_debug() \
+  (eri_enable_debug || eri_global_enable_debug)
 #define eri_debug(fmt, ...) \
   do {									\
-    if (eri_enable_debug || eri_global_enable_debug)			\
-      _eri_log (DEBUG, fmt, ##__VA_ARGS__);				\
+    if (eri_enabled_debug ()) _eri_log (DEBUG, fmt, ##__VA_ARGS__);	\
   } while (0)
 
 #define eri_info(fmt, ...)	_eri_log (INFO, fmt, ##__VA_ARGS__)
