@@ -1,6 +1,32 @@
 #ifndef ERI_LIB_SYSCALL_H
 #define ERI_LIB_SYSCALL_H
 
+#ifndef ERI_APPLY_ERS
 #include <lib/syscall-specific.h>
+#else
+
+#include <tst/tst-syscall-specific.h>
+
+#define eri_syscall	tst_syscall
+#define eri_syscall_nr	tst_syscall_nr
+#define eri_assert_syscall	tst_assert_syscall
+#define eri_assert_syscall_nr	tst_assert_syscall_nr
+#define eri_sys_syscall	tst_sys_syscall
+#define eri_sys_clone	tst_sys_clone
+#define eri_assert_sys_clone	tst_assert_sys_clone
+#define eri_assert_sys_sigreturn	tst_assert_sys_sigreturn
+#define eri_assert_sys_sigaction	tst_assert_sys_sigaction
+#define eri_assert_sys_sigprocmask	tst_assert_sys_sigprocmask
+#define eri_assert_sys_futex_wake	tst_assert_sys_futex_wake
+#define eri_assert_sys_futex_wait	tst_assert_sys_futex_wait
+#define eri_assert_sys_thread_die	tst_assert_sys_thread_die
+#define eri_assert_sys_exit	tst_assert_sys_exit
+#define eri_assert_sys_exit_group	tst_assert_sys_exit_group
+#define eri_assert_sys_exit_nr	tst_assert_sys_exit_nr
+#define eri_assert_sys_read	tst_assert_sys_read
+#define eri_assert_sys_write	tst_assert_sys_write
+#define eri_assert_sys_mkdir	tst_assert_sys_mkdir
+
+#endif
 
 #endif

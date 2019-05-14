@@ -7,11 +7,13 @@ if (goal !== 'goal/subs.g' && await this.invoke ('goal/subs.g', { subs, dispatch
 
 if (goal === 'all') return await this.invoke ('goal/subs.g', { subs });
 
-const spec_m4 = /(.*)\b-specific\.[^.]*.m4$/;
+const spec_m4 = /(.*\b[-\/])([a-z]*)-specific\.[^.]*.m4$/;
 if (goal.match (spec_m4)) {
-  const leading = goal.match (spec_m4)[1];
-  if (new Set ([ 'syscall', 'lock' ]).has (leading.match (/\b([a-z]*)$/)[1]))
-    return await this.invoke (`${leading}-specific.m4.g`);
+  const { 1: leading, 2: name } = goal.match (spec_m4);
+  if (name === 'syscall')
+    return await this.invoke (`${leading}syscall-specific.m4.g`);
+  else if (new Set ([ 'lock', 'printf' ]).has (name))
+    return await this.invoke (`${leading}specific.m4.g`);
 }
 
 if (goal.match (/-offsets\.h$/)) return await this.invoke ('goal/offset.g');

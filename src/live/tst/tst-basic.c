@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <lib/compiler.h>
 #include <common/debug.h>
 
@@ -6,6 +8,6 @@
 eri_noreturn void
 tst_live_start (void)
 {
-  eri_info ("start\n");
+  //eri_info ("start\n"); TODO
   tst_assert_sys_exit (0);
 }
