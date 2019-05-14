@@ -369,6 +369,40 @@ eri_unserialize_atomic_record (eri_file_t file,
 }
 
 void
+eri_serialize_syscall_res_in_record (eri_file_t file,
+			const struct eri_syscall_res_in_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+}
+
+void
+eri_unserialize_syscall_res_in_record (eri_file_t file,
+			struct eri_syscall_res_in_record *rec)
+{
+  rec->result = eri_unserialize_uint64 (file);
+  rec->in = eri_unserialize_uint64 (file);
+}
+
+void
+eri_serialize_syscall_res_io_record (eri_file_t file,
+			const struct eri_syscall_res_io_record *rec)
+{
+  eri_serialize_uint64 (file, rec->out);
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+}
+
+void
+eri_unserialize_syscall_res_io_record (eri_file_t file,
+			struct eri_syscall_res_io_record *rec)
+{
+  rec->out = eri_unserialize_uint64 (file);
+  rec->result = eri_unserialize_uint64 (file);
+  rec->in = eri_unserialize_uint64 (file);
+}
+
+void
 eri_serialize_syscall_clone_record (eri_file_t file,
 			const struct eri_syscall_clone_record *rec)
 {
@@ -444,23 +478,6 @@ eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
     rec->in = eri_unserialize_uint64 (file);
   if (! eri_syscall_is_error (rec->result))
     eri_unserialize_siginfo (file, &rec->info);
-}
-
-void
-eri_serialize_syscall_kill_record (eri_file_t file,
-			const struct eri_syscall_kill_record *rec)
-{
-  eri_serialize_uint64 (file, rec->out);
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
-}
-
-void eri_unserialize_syscall_kill_record (eri_file_t file,
-			struct eri_syscall_kill_record *rec)
-{
-  rec->out = eri_unserialize_uint64 (file);
-  rec->result = eri_unserialize_uint64 (file);
-  rec->in = eri_unserialize_uint64 (file);
 }
 
 static uint8_t

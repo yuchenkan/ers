@@ -126,14 +126,14 @@ enum
   ERI_SYSCALL_RESULT_MAGIC,
   ERI_SYSCALL_IN_MAGIC,
   ERI_SYSCALL_OUT_MAGIC,
-  ERI_SYSCALL_RESULT_IN_MAGIC,
+  ERI_SYSCALL_RES_IN_MAGIC,
+  ERI_SYSCALL_RES_IO_MAGIC,
   ERI_SYSCALL_CLONE_MAGIC,
   ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_SET_MAGIC,
   ERI_SYSCALL_RT_SIGACTION_MAGIC,
   ERI_SYSCALL_RT_SIGPENDING_MAGIC,
   ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC,
-  ERI_SYSCALL_KILL_MAGIC,
   ERI_SYSCALL_READ_MAGIC,
   ERI_SYSCALL_READV_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
@@ -156,6 +156,29 @@ void eri_serialize_atomic_record (eri_file_t file,
 				  const struct eri_atomic_record *rec);
 void eri_unserialize_atomic_record (eri_file_t file,
 				    struct eri_atomic_record *rec);
+
+struct eri_syscall_res_in_record
+{
+  uint64_t result;
+  uint64_t in;
+};
+
+void eri_serialize_syscall_res_in_record (eri_file_t file,
+			const struct eri_syscall_res_in_record *rec);
+void eri_unserialize_syscall_res_in_record (eri_file_t file,
+			struct eri_syscall_res_in_record *rec);
+
+struct eri_syscall_res_io_record
+{
+  uint64_t out;
+  uint64_t result;
+  uint64_t in;
+};
+
+void eri_serialize_syscall_res_io_record (eri_file_t file,
+			const struct eri_syscall_res_io_record *rec);
+void eri_unserialize_syscall_res_io_record (eri_file_t file,
+			struct eri_syscall_res_io_record *rec);
 
 struct eri_syscall_clone_record
 {
@@ -207,18 +230,6 @@ void eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec);
 void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
-
-struct eri_syscall_kill_record
-{
-  uint64_t out;
-  uint64_t result;
-  uint64_t in;
-};
-
-void eri_serialize_syscall_kill_record (eri_file_t file,
-			const struct eri_syscall_kill_record *rec);
-void eri_unserialize_syscall_kill_record (eri_file_t file,
-			struct eri_syscall_kill_record *rec);
 
 struct eri_syscall_read_record
 {

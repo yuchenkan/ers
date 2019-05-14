@@ -235,15 +235,14 @@ uint8_t eri_entry__copy_to (struct eri_entry *entry,
 #define eri_entry__syscall(entry) \
   ({ struct eri_sys_syscall_args _args;					\
      eri_init_sys_syscall_args_from_registers (&_args,			\
-					eri_entry__get_regs (entry));	\
+					       &(entry)->_regs);	\
      eri_sys_syscall (&_args); })
 uint64_t eri_entry__sys_syscall_interruptible (
 	struct eri_entry *entry, struct eri_sys_syscall_args *args);
 #define eri_entry__syscall_interruptible(entry) \
   ({ struct eri_entry *_entry = entry;					\
      struct eri_sys_syscall_args _args;					\
-     eri_init_sys_syscall_args_from_registers (&_args,			\
-					eri_entry__get_regs (_entry));	\
+     eri_init_sys_syscall_args_from_registers (&_args, &_entry->_regs);	\
      eri_entry__sys_syscall_interruptible (_entry, &_args); })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,

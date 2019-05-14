@@ -77,7 +77,7 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
   jmp	.lsyscall_interrupt
 
 .lsyscall:
-  movq	ERI_SYS_SYSCALL_ARGS_NR(%rbp), %rax
+  movl	ERI_SYS_SYSCALL_ARGS_NR(%rbp), %eax
 
   movq	ERI_SYS_SYSCALL_ARGS_A0(%rbp), %rdi
   movq	ERI_SYS_SYSCALL_ARGS_A1(%rbp), %rsi

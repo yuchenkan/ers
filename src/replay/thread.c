@@ -495,16 +495,6 @@ syscall_fetch_in (struct thread *th)
   io_in (th, eri_unserialize_uint64 (th->file));
 }
 
-static uint64_t
-syscall_fetch_result_in (struct thread *th)
-{
-  uint64_t rec[2];
-  assert_magic (th, ERI_SYSCALL_RESULT_IN_MAGIC);
-  eri_unserialize_uint64_array (th->file, rec, eri_length_of (rec));
-  io_in (th, rec[1]);
-  return rec[0];
-}
-
 static void
 syscall_fetch_out (struct thread *th)
 {
@@ -512,14 +502,32 @@ syscall_fetch_out (struct thread *th)
   io_out (th, eri_unserialize_uint64 (th->file));
 }
 
-static void
-syscall_fetch_kill (struct thread *th,
-		    struct eri_syscall_kill_record *rec)
+static uint64_t
+syscall_fetch_res_in (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_KILL_MAGIC);
-  eri_unserialize_syscall_kill_record (th->file, rec);
+  assert_magic (th, ERI_SYSCALL_RES_IN_MAGIC);
+  struct eri_syscall_res_in_record rec;
+  eri_unserialize_syscall_res_in_record (th->file, &rec);
+  io_in (th, rec.in);
+  return rec.result;
+}
+
+static void
+syscall_fetch_res_io (struct thread *th,
+		      struct eri_syscall_res_io_record *rec)
+{
+  assert_magic (th, ERI_SYSCALL_RES_IO_MAGIC);
+  eri_unserialize_syscall_res_io_record (th->file, rec);
   io_out (th, rec->out);
   io_in (th, rec->in);
+}
+
+static eri_noreturn void
+syscall_do_res_io (struct thread *th)
+{
+  struct eri_syscall_res_io_record rec;
+  syscall_fetch_res_io (th, &rec);
+  syscall_leave (th, 1, rec.result);
 }
 
 DEFINE_SYSCALL (clone)
@@ -682,7 +690,7 @@ DEFINE_SYSCALL (getpid) { syscall_leave (th, 0, th->group->user_pid); }
 
 DEFINE_SYSCALL (getppid)
 {
-  syscall_leave (th, 1, syscall_fetch_result_in (th));
+  syscall_leave (th, 1, syscall_fetch_res_in (th));
 }
 
 SYSCALL_TO_IMPL (setreuid)
@@ -904,19 +912,11 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   syscall_leave (th, 1, rec.result);
 }
 
-static eri_noreturn void
-syscall_do_kill (struct thread *th)
-{
-  struct eri_syscall_kill_record rec;
-  syscall_fetch_kill (th, &rec);
-  syscall_leave (th, 1, rec.result);
-}
-
-DEFINE_SYSCALL (kill) { syscall_do_kill (th); }
-DEFINE_SYSCALL (tkill) { syscall_do_kill (th); }
-DEFINE_SYSCALL (tgkill) { syscall_do_kill (th); }
-DEFINE_SYSCALL (rt_sigqueueinfo) { syscall_do_kill (th); }
-DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (th); }
+DEFINE_SYSCALL (kill) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (tkill) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (tgkill) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (rt_sigqueueinfo) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_res_io (th); }
 
 SYSCALL_TO_IMPL (restart_syscall)
 
@@ -964,8 +964,8 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   if (! access (entry, user_mask, sizeof *user_mask, 1))
     syscall_leave (th, 0, ERI_EINVAL);
 
-  struct eri_syscall_kill_record rec;
-  syscall_fetch_kill (th, &rec);
+  struct eri_syscall_res_io_record rec;
+  syscall_fetch_res_io (th, &rec);
   syscall_leave (th, 1, rec.result);
 }
 
@@ -986,14 +986,14 @@ SYSCALL_TO_IMPL (fanotify_mark)
 SYSCALL_TO_IMPL (userfaultfd)
 SYSCALL_TO_IMPL (perf_event_open)
 
-SYSCALL_TO_IMPL (open)
-SYSCALL_TO_IMPL (openat)
-SYSCALL_TO_IMPL (creat)
+DEFINE_SYSCALL (open) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (openat) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (creat) { syscall_do_res_io (th); }
 
-DEFINE_SYSCALL (close) { syscall_do_kill (th); }
-DEFINE_SYSCALL (dup) { syscall_do_kill (th); }
-DEFINE_SYSCALL (dup2) { syscall_do_kill (th); }
-DEFINE_SYSCALL (dup3) { syscall_do_kill (th); }
+DEFINE_SYSCALL (close) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (dup) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (dup2) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (dup3) { syscall_do_res_io (th); }
 
 SYSCALL_TO_IMPL (name_to_handle_at)
 SYSCALL_TO_IMPL (open_by_handle_at)
@@ -1003,7 +1003,7 @@ DEFINE_SYSCALL (fcntl)
   int32_t cmd = regs->rsi;
   if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC
       || cmd == ERI_F_GETFL || cmd == ERI_F_SETFL)
-    syscall_do_kill (th);
+    syscall_do_res_io (th);
 
   syscall_leave (th, 0, ERI_ENOSYS);
 }
@@ -1093,7 +1093,8 @@ SYSCALL_TO_IMPL (io_getevents)
 SYSCALL_TO_IMPL (io_submit)
 SYSCALL_TO_IMPL (io_cancel)
 
-SYSCALL_TO_IMPL (lseek)
+DEFINE_SYSCALL (lseek) { syscall_do_res_io (th); }
+
 SYSCALL_TO_IMPL (ioctl)
 
 SYSCALL_TO_IMPL (stat)

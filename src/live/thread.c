@@ -106,7 +106,7 @@ struct eri_live_thread_group
 ERI_DEFINE_RBTREE (static, fdf, struct eri_live_thread_group,
 		   struct fdf, int32_t, eri_less_than)
 
-static struct fdf *
+static void
 fdf_alloc_insert (struct eri_live_thread_group *group, int32_t fd,
 		  int32_t flags, const struct eri_sigset *sig_mask)
 {
@@ -122,15 +122,14 @@ fdf_alloc_insert (struct eri_live_thread_group *group, int32_t fd,
       fdf->sig_mask->mask = *sig_mask;
     }
   fdf_rbt_insert (group, fdf);
-  return fdf;
 }
 
-static struct fdf *
+static void
 fdf_dup (struct eri_live_thread_group *group, int32_t fd,
 	 const struct fdf *fdf)
 {
-  return fdf_alloc_insert (group, fd, fdf->flags,
-			   fdf->sig_mask ? &fdf->sig_mask->mask : 0);
+  fdf_alloc_insert (group, fd, fdf->flags,
+		    fdf->sig_mask ? &fdf->sig_mask->mask : 0);
 }
 
 static void
@@ -493,6 +492,38 @@ unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
   return ver;
 }
 
+/*
+ * Guide of syscalls:
+ *
+ * 1. strictly record any order that may used as sync method, record and
+ *    inc io version before syscalls that may produce externally visible
+ *    side effect, record io version after syscalls that may use external
+ *    side effect.
+ *
+ *    This is not applied to the memory related syscalls, while these
+ *    syscalls can indeed be used as sync method. This is because memory
+ *    related syscalls also affect normal instructions with memory
+ *    operands, which obviously can not be precisely recorded.
+ *
+ *    We can develop the level of common sync usages in the analysis.
+ *
+ * 2. try to not record deterministic syscalls, e.g. gettid / pid. This
+ *    is basically for the performance reason, non practicable sync by
+ *    any unncessary records shall be removed by the analysis. Accepting
+ *    recording more than necessary eases the implementation particularly
+ *    in error handling (or completely leaving the error handling to the
+ *    kernel).
+ *
+ *    EFAULT is treated as deterministic syscall result providing special
+ *    treatement of memory related operations.
+ *
+ * 3. Any results that can't be easily got shall be reported by the
+ *    analyzer (possibly as undefined behaviour), such results includs:
+ *
+ *    a) how much bytes writes when EFAULT returns.
+ *
+ *    Keep updating this list.
+ */
 static void
 syscall_record (struct eri_live_thread *th, uint16_t magic, void *rec)
 {
@@ -512,12 +543,10 @@ syscall_record_in (struct eri_live_thread *th)
 }
 
 static void
-syscall_record_result_in (struct eri_live_thread *th)
+syscall_record_res_in (struct eri_live_thread *th, uint64_t res)
 {
-  uint64_t rec[2] = {
-    eri_entry__get_regs (th->entry)->rax, io_in (th)
-  };
-  syscall_record (th, ERI_SYSCALL_RESULT_IN_MAGIC, rec);
+  struct eri_syscall_res_in_record rec = { res, io_in (th) };
+  syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
 }
 
 static void
@@ -527,27 +556,35 @@ syscall_record_out (struct eri_live_thread *th)
 }
 
 static void
-syscall_record_kill (struct eri_live_thread *th,
-		     struct eri_syscall_kill_record *rec)
+syscall_record_res_io (struct eri_live_thread *th,
+		       struct eri_syscall_res_io_record *rec)
 {
-  /* XXX: remove unnecessary io_in */
   rec->in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_KILL_MAGIC, rec);
-}
-
-static uint64_t
-syscall_signal_thread (struct eri_live_thread *th)
-{
-  struct eri_sys_syscall_args args;
-  struct eri_registers *regs = eri_entry__get_regs (th->entry);
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-  return eri_live_signal_thread__syscall (th->sig_th, &args);
+  syscall_record (th, ERI_SYSCALL_RES_IO_MAGIC, rec);
 }
 
 #define SYSCALL_PARAMS \
   struct eri_live_thread *th, struct eri_entry *entry,			\
   struct eri_registers *regs, struct eri_live_signal_thread *sig_th
 #define SYSCALL_ARGS	th, entry, regs, sig_th
+
+static eri_noreturn void
+syscall_do_res_io (SYSCALL_PARAMS)
+{
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  rec.result = eri_entry__syscall (entry);
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+static uint64_t
+syscall_do_signal_thread (struct eri_live_thread *th)
+{
+  struct eri_sys_syscall_args args;
+  struct eri_registers *regs = eri_entry__get_regs (th->entry);
+  eri_init_sys_syscall_args_from_registers (&args, regs);
+  return eri_live_signal_thread__syscall (th->sig_th, &args);
+}
 
 #define DEFINE_SYSCALL(name) \
 static eri_noreturn void						\
@@ -700,8 +737,8 @@ DEFINE_SYSCALL (getpid)
 
 DEFINE_SYSCALL (getppid)
 {
-  uint64_t res = syscall_signal_thread (th);
-  syscall_record_result_in (th);
+  uint64_t res = syscall_do_signal_thread (th);
+  syscall_record_res_in (th, res);
   eri_entry__syscall_leave (entry, res);
 }
 
@@ -993,16 +1030,16 @@ record:
 static eri_noreturn void
 syscall_do_kill (SYSCALL_PARAMS)
 {
-  /* XXX: remove unnecessary record (error, sig == 0 etc) */
-  struct eri_syscall_kill_record rec = {
-    io_out (th), syscall_signal_thread (th)
+  /* XXX: try to reduce unnecessary record (error, sig == 0 etc) */
+  struct eri_syscall_res_io_record rec = {
+    io_out (th), syscall_do_signal_thread (th)
   };
 
   if (! eri_syscall_is_error (rec.result)
       && eri_live_signal_thread__signaled (sig_th))
     eri_entry__sig_wait_pending (entry, 0);
 
-  syscall_record_kill (th, &rec);
+  syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1062,7 +1099,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   if (! eri_entry__copy_from (entry, &mask, user_mask, sizeof mask))
     eri_entry__syscall_leave (entry, ERI_EINVAL); /* by kernel */
 
-  struct eri_syscall_kill_record rec = { io_out (th) };
+  struct eri_syscall_res_io_record rec = { io_out (th) };
   if (fd == -1)
     {
       int32_t fdf_flags = flags & ERI_SFD_NONBLOCK;
@@ -1092,7 +1129,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   eri_assert_unlock (&group->fdf_lock);
 
 record:
-  syscall_record_kill (th, &rec);
+  syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1113,17 +1150,43 @@ SYSCALL_TO_IMPL (fanotify_mark)
 SYSCALL_TO_IMPL (userfaultfd)
 SYSCALL_TO_IMPL (perf_event_open)
 
-/* TODO */
-SYSCALL_TO_IMPL (open)
-SYSCALL_TO_IMPL (openat)
-SYSCALL_TO_IMPL (creat)
+static eri_noreturn void
+syscall_do_open (SYSCALL_PARAMS)
+{
+  struct eri_live_thread_group *group = th->group;
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  eri_assert_lock (&group->fdf_lock);
+  rec.result = eri_entry__syscall_interruptible (entry);
+  if (! eri_syscall_is_error (rec.result))
+    {
+      uint8_t openat = regs->rax == __NR_openat;
+      int32_t fd = rec.result;
+      int32_t flags = openat ? regs->rdx : regs->rsi;
+      /*
+       * XXX: the following two operations may cause crash when some
+       * close is not done through us
+       */
+      if (! (flags & ERI_O_NONBLOCK)) /* to keep open blockable */
+	eri_assert_syscall (fcntl, fd, ERI_F_SETFL, flags | ERI_O_NONBLOCK);
+      fdf_alloc_insert (th->group, fd, flags & ERI_O_NONBLOCK, 0);
+    }
+  eri_assert_unlock (&group->fdf_lock);
+
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+DEFINE_SYSCALL (open) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (openat) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (creat) { syscall_do_open (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (close)
 {
   struct eri_live_thread_group *group = th->group;
   int32_t fd = regs->rdi;
 
-  struct eri_syscall_kill_record rec = { io_out (th) };
+  struct eri_syscall_res_io_record rec = { io_out (th) };
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.result = ERI_EBADF; goto record; }
 
@@ -1134,7 +1197,7 @@ DEFINE_SYSCALL (close)
   eri_assert_unlock (&group->fdf_lock);
 
 record:
-  syscall_record_kill (th, &rec);
+  syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1143,7 +1206,7 @@ DEFINE_SYSCALL (dup)
   struct eri_live_thread_group *group = th->group;
   int32_t fd = regs->rdi;
 
-  struct eri_syscall_kill_record rec = { io_out (th) };
+  struct eri_syscall_res_io_record rec = { io_out (th) };
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.result = ERI_EBADF; goto record; }
 
@@ -1154,7 +1217,7 @@ DEFINE_SYSCALL (dup)
   eri_assert_unlock (&group->fdf_lock);
 
 record:
-  syscall_record_kill (th, &rec);
+  syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1170,7 +1233,7 @@ syscall_do_dup2 (SYSCALL_PARAMS)
   if (fd == new_fd)
     eri_entry__syscall_leave (entry, dup3 ? ERI_EINVAL : new_fd);
 
-  struct eri_syscall_kill_record rec = { io_out (th) };
+  struct eri_syscall_res_io_record rec = { io_out (th) };
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.result = ERI_EBADF; goto record; }
 
@@ -1187,7 +1250,7 @@ syscall_do_dup2 (SYSCALL_PARAMS)
   eri_assert_unlock (&group->fdf_lock);
 
 record:
-  syscall_record_kill (th, &rec);
+  syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1206,7 +1269,7 @@ DEFINE_SYSCALL (fcntl)
   if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC
       || cmd == ERI_F_GETFL || cmd == ERI_F_SETFL)
     {
-      struct eri_syscall_kill_record rec = { io_out (th) };
+      struct eri_syscall_res_io_record rec = { io_out (th) };
       struct fdf *fdf = fdf_try_lock (group, fd);
       if (! fdf) { rec.result = ERI_EBADF; goto record_kill; }
 
@@ -1226,7 +1289,7 @@ DEFINE_SYSCALL (fcntl)
       eri_assert_unlock (&group->fdf_lock);
 
     record_kill:
-      syscall_record_kill (th, &rec);
+      syscall_record_res_io (th, &rec);
       eri_entry__syscall_leave (entry, rec.result);
     }
 
@@ -1301,7 +1364,7 @@ syscall_read_read (struct eri_entry *entry, int32_t flags,
       res = eri_entry__sys_syscall_interruptible (entry, &poll_args);
       if (res == ERI_EINTR) break;
 
-      res = eri_entry__sys_syscall_interruptible (entry, args);
+      res = eri_sys_syscall (args);
     }
   while (res == ERI_EAGAIN);
   return res;
@@ -1350,6 +1413,7 @@ syscall_do_read (SYSCALL_PARAMS)
       goto record;
     }
 
+  eri_assert_unlock (&group->fdf_lock);
   rec.result = syscall_read_read (entry, flags, &args);
 
 record:
@@ -1408,6 +1472,7 @@ syscall_do_readv (SYSCALL_PARAMS)
       goto record;
     }
 
+  eri_assert_unlock (&group->fdf_lock);
   rec.result = syscall_read_read (entry, flags, &args);
 
 record:
@@ -1447,7 +1512,8 @@ SYSCALL_TO_IMPL (io_getevents)
 SYSCALL_TO_IMPL (io_submit)
 SYSCALL_TO_IMPL (io_cancel)
 
-SYSCALL_TO_IMPL (lseek)
+DEFINE_SYSCALL (lseek) { syscall_do_res_io (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (ioctl)
 
 SYSCALL_TO_IMPL (stat)

@@ -6,6 +6,6 @@
 eri_noreturn void
 tst_live_start (void)
 {
-  //eri_info ("start\n"); TODO
+  eri_info ("start\n");
   tst_assert_sys_exit (0);
 }

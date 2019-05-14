@@ -85,11 +85,18 @@ main (int32_t argc, const char **argv)
 	  printf ("  syscall.in: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_OUT_MAGIC)
 	  printf ("  syscall.out: %lu\n", eri_unserialize_uint64 (file));
-	else if (magic == ERI_SYSCALL_RESULT_IN_MAGIC)
+	else if (magic == ERI_SYSCALL_RES_IN_MAGIC)
 	  {
-	    uint64_t rec[2];
-	    eri_unserialize_uint64_array (file, rec, eri_length_of (rec));
-	    printf ("  syscall.result: %ld, .in: %lu\n", rec[0], rec[1]);
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    printf ("  syscall.result: %ld, .in: %lu\n", rec.result, rec.in);
+	  }
+	else if (magic == ERI_SYSCALL_RES_IO_MAGIC)
+	  {
+	    struct eri_syscall_res_io_record rec;
+	    eri_unserialize_syscall_res_io_record (file, &rec);
+	    printf ("  syscall.out: %lu, .result: %ld, .in: %lu\n",
+		    rec.out, rec.result, rec.in);
 	  }
 	else if (magic == ERI_SYSCALL_CLONE_MAGIC)
 	  {
@@ -139,13 +146,6 @@ main (int32_t argc, const char **argv)
 	    if (! eri_syscall_is_error (rec.result) && rec.info.sig)
 	      printf (", ..code: %d\n", rec.info.code);
 	    else printf ("\n");
-	  }
-	else if (magic == ERI_SYSCALL_KILL_MAGIC)
-	  {
-	    struct eri_syscall_kill_record rec;
-	    eri_unserialize_syscall_kill_record (file, &rec);
-	    printf ("  syscall.kill.out: %lu, ..result: %ld, ..in: %lu\n",
-		    rec.out, rec.result, rec.in);
 	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC
 		 /* identical byte array in the file */

@@ -228,8 +228,10 @@ eri_live_thread_recorder__rec_syscall (
       || magic == ERI_SYSCALL_IN_MAGIC || magic == ERI_SYSCALL_OUT_MAGIC
       || magic == ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
     eri_serialize_uint64 (th_rec->file, (uint64_t) rec);
-  else if (magic == ERI_SYSCALL_RESULT_IN_MAGIC)
-    eri_serialize_uint64_array (th_rec->file, rec, 2);
+  else if (magic == ERI_SYSCALL_RES_IN_MAGIC)
+    eri_serialize_syscall_res_in_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_RES_IO_MAGIC)
+    eri_serialize_syscall_res_io_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
@@ -240,8 +242,6 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
     eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_KILL_MAGIC)
-    eri_serialize_syscall_kill_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_READ_MAGIC)
     eri_serialize_syscall_read_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_READV_MAGIC)
