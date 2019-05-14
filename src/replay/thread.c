@@ -512,22 +512,21 @@ syscall_fetch_res_in (struct thread *th)
   return rec.result;
 }
 
-static void
-syscall_fetch_res_io (struct thread *th,
-		      struct eri_syscall_res_io_record *rec)
+static uint64_t
+syscall_fetch_res_io (struct thread *th)
 {
   assert_magic (th, ERI_SYSCALL_RES_IO_MAGIC);
-  eri_unserialize_syscall_res_io_record (th->file, rec);
-  io_out (th, rec->out);
-  io_in (th, rec->in);
+  struct eri_syscall_res_io_record rec;
+  eri_unserialize_syscall_res_io_record (th->file, &rec);
+  io_out (th, rec.out);
+  io_in (th, rec.in);
+  return rec.result;
 }
 
 static eri_noreturn void
 syscall_do_res_io (struct thread *th)
 {
-  struct eri_syscall_res_io_record rec;
-  syscall_fetch_res_io (th, &rec);
-  syscall_leave (th, 1, rec.result);
+  syscall_leave (th, 1, syscall_fetch_res_io (th));
 }
 
 DEFINE_SYSCALL (clone)
@@ -964,9 +963,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   if (! access (entry, user_mask, sizeof *user_mask, 1))
     syscall_leave (th, 0, ERI_EINVAL);
 
-  struct eri_syscall_res_io_record rec;
-  syscall_fetch_res_io (th, &rec);
-  syscall_leave (th, 1, rec.result);
+  syscall_leave (th, 1, syscall_fetch_res_io (th));
 }
 
 DEFINE_SYSCALL (signalfd) { syscall_do_signalfd (SYSCALL_ARGS); }
@@ -1041,17 +1038,11 @@ syscall_do_read (SYSCALL_PARAMS)
   else
     {
       struct eri_mtpool *pool = th->group->pool;
-      struct eri_iovec *user_iov = (void *) regs->rsi;
-      int32_t iov_cnt = regs->rdx;
-      if (iov_cnt > ERI_UIO_MAXIOV) syscall_leave (th, 0, ERI_EINVAL);
 
-      uint64_t iov_size = sizeof (struct eri_iovec) * iov_cnt;
-      struct eri_iovec *iov = eri_assert_mtmalloc (pool, iov_size);
-      if (! eri_entry__copy_from (entry, iov, user_iov, iov_size))
-	{
-	  eri_assert_mtfree (pool, iov);
-	  syscall_leave (th, 0, ERI_EFAULT);
-	}
+      struct eri_iovec *iov;
+      int32_t iov_cnt;
+      syscall_leave_if_error (th, 0,
+	eri_entry__syscall_get_rw_iov (entry, pool, &iov, &iov_cnt));
 
       assert_magic (th, ERI_SYSCALL_READV_MAGIC);
       struct eri_syscall_readv_record rec = { .iov = iov };
@@ -1068,11 +1059,26 @@ DEFINE_SYSCALL (readv) { syscall_do_read (SYSCALL_ARGS); }
 DEFINE_SYSCALL (preadv) { syscall_do_read (SYSCALL_ARGS); }
 DEFINE_SYSCALL (preadv2) { syscall_do_read (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (write)
-SYSCALL_TO_IMPL (pwrite64)
-SYSCALL_TO_IMPL (writev)
-SYSCALL_TO_IMPL (pwritev)
-SYSCALL_TO_IMPL (pwritev2)
+static eri_noreturn void
+syscall_do_write (SYSCALL_PARAMS)
+{
+  int32_t nr = regs->rax;
+  if (nr != __NR_write && nr != __NR_pwrite64)
+    {
+      struct eri_iovec *user_iov = (void *) regs->rsi;
+      int32_t iov_cnt = regs->rdx;
+      if (iov_cnt > ERI_UIO_MAXIOV) syscall_leave (th, 0, ERI_EINVAL);
+      if (! access (entry, user_iov, sizeof *user_iov * iov_cnt, 0))
+	syscall_leave (th, 0, ERI_EFAULT);
+    }
+  syscall_leave (th, 1, syscall_fetch_res_io (th));
+}
+
+DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwrite64) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (writev) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwritev) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwritev2) { syscall_do_write (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (fallocate)
 

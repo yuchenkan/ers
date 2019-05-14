@@ -353,6 +353,28 @@ eri_entry__syscall_get_signalfd (struct eri_entry *entry, int32_t *flags)
 	 || size != ERI_SIG_SETSIZE ? ERI_EINVAL : 0;
 }
 
+uint64_t
+eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
+	struct eri_mtpool *pool, struct eri_iovec **iov, int32_t *iov_cnt)
+{
+  const struct eri_iovec *user_iov = (void *) entry->_regs.rsi;
+  *iov_cnt = entry->_regs.rdx;
+
+  if (*iov_cnt > ERI_UIO_MAXIOV) return ERI_EINVAL;
+
+  /* XXX: fastiov */
+  uint64_t iov_size = sizeof **iov * *iov_cnt;
+  *iov = eri_assert_mtmalloc (pool, iov_size);
+
+  if (! eri_entry__copy_from (entry, *iov, user_iov, iov_size))
+    {
+      eri_assert_mtfree (pool, *iov);
+      return ERI_EFAULT;
+    }
+
+  return 0;
+}
+
 struct eri_sigframe *
 eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,

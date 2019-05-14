@@ -222,7 +222,10 @@ eri_noreturn void eri_entry__atomic_interleave (
 eri_returns_twice uint8_t _eri_entry__test_access (struct eri_entry *entry);
 #define eri_entry__test_access(entry, mem, size) \
   ({ struct eri_entry *_entry = entry;					\
-     eri_cross (_entry->_map_range, (uint64_t) mem, size)		\
+     uint64_t _mem = (uint64_t) mem;					\
+     eri_cross (_entry->_map_range, _mem, size)				\
+     /* otherwise will be protected the guard page */			\
+     && _mem >= _entry->_map_range->start				\
 	? 0 : _eri_entry__test_access (_entry); })
 #define eri_entry__reset_test_access(entry) \
   do { eri_barrier (); (entry)->_test_access = 0; } while (0)
@@ -261,6 +264,8 @@ uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 			struct eri_sigset *set, struct eri_timespec *timeout);
 uint64_t eri_entry__syscall_get_signalfd (struct eri_entry *entry,
 					  int32_t *flags);
+uint64_t eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
+	struct eri_mtpool *pool, struct eri_iovec **iov, int32_t *iov_cnt);
 
 struct eri_sigframe *eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,

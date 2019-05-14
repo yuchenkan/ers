@@ -520,7 +520,9 @@ unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
  * 3. Any results that can't be easily got shall be reported by the
  *    analyzer (possibly as undefined behaviour), such results includs:
  *
- *    a) how much bytes writes when EFAULT returns.
+ *    a) how much bytes writes when EFAULT returns. [DELETED]
+ *       As long as the order of memory operations is determined, the
+ *       result can be determined. XXX: test this.
  *
  *    Keep updating this list.
  */
@@ -1314,7 +1316,7 @@ SYSCALL_TO_IMPL (epoll_wait)
 SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
-#define syscall_read_remove_internal(map_range, buf, count) \
+#define syscall_rw_remove_internal(map_range, buf, count) \
   do {									\
     struct eri_range *_map_range = map_range;				\
     uint64_t *_buf = buf;						\
@@ -1322,7 +1324,7 @@ SYSCALL_TO_IMPL (epoll_ctl)
     if (_count && eri_cross (_map_range, *_buf, _count))		\
       {									\
 	if (*_buf >= _map_range->start) *_buf = 0;			\
-	/* NOTE: other wise guard page will cause efault eventually */	\
+	/* otherwise guard page will cause efault eventually */		\
       }									\
   } while (0)
 
@@ -1346,15 +1348,21 @@ syscall_read_sig_fd (struct eri_live_thread *th,
   return done;
 }
 
+/*
+ * This is so mainly because initialy we want to record the order
+ * of memory related info, e.g. EFAULT, which is discarded as discussed
+ * in the guide of syscalls. This is preserved now for the consistency
+ * with signalfd, see signal-thread.c, and it's not that hard to impl.
+ */
 static uint64_t
-syscall_read_read (struct eri_entry *entry, int32_t flags,
-		   struct eri_sys_syscall_args *args)
+syscall_read_write (struct eri_entry *entry, int32_t flags,
+		    struct eri_sys_syscall_args *args, uint8_t read)
 {
   uint64_t res = eri_sys_syscall (args);
   if ((flags & ERI_O_NONBLOCK) || res != ERI_EAGAIN) return res;
 
   int32_t fd = args->a[0];
-  struct eri_pollfd pollfd = { fd, ERI_POLLIN };
+  struct eri_pollfd pollfd = { fd, read ? ERI_POLLIN : ERI_POLLOUT };
   struct eri_sys_syscall_args poll_args = {
     __NR_poll, { (uint64_t) &pollfd, 1, -1 }
   };
@@ -1390,14 +1398,14 @@ syscall_do_read (SYSCALL_PARAMS)
   uint64_t buf = regs->rsi;
   uint64_t count = regs->rdx;
 
+  syscall_rw_remove_internal (&group->map_range, &buf, count);
+
   struct eri_syscall_read_record rec = {
     .copy = eri_entry__copy_from, .args = entry
   };
 
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.result = ERI_EBADF; goto record; }
-
-  syscall_read_remove_internal (&group->map_range, &buf, count);
 
   rec.buf = (void *) buf;
 
@@ -1414,11 +1422,28 @@ syscall_do_read (SYSCALL_PARAMS)
     }
 
   eri_assert_unlock (&group->fdf_lock);
-  rec.result = syscall_read_read (entry, flags, &args);
+  rec.result = syscall_read_write (entry, flags, &args, 1);
 
 record:
   syscall_read_record (th, &rec, ERI_SYSCALL_READ_MAGIC);
   eri_entry__syscall_leave (entry, rec.result);
+}
+
+static uint64_t
+syscall_get_rw_iov (struct eri_live_thread *th,
+		    struct eri_iovec **iov, int32_t *iov_cnt)
+{
+  struct eri_live_thread_group *group = th->group;
+  uint64_t res = eri_entry__syscall_get_rw_iov (th->entry,
+						group->pool, iov, iov_cnt);
+  if (!eri_syscall_is_error (res))
+    {
+      int32_t i;
+      for (i = 0; i < *iov_cnt; ++i)
+	syscall_rw_remove_internal (&group->map_range,
+				    (void *) &(*iov)[i].base, (*iov)[i].len);
+    }
+  return res;
 }
 
 static eri_noreturn void
@@ -1427,21 +1452,11 @@ syscall_do_readv (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
   int32_t nr = regs->rax;
   int32_t fd = regs->rdi;
-  const struct eri_iovec *user_iov = (void *) regs->rsi;
-  int32_t iov_cnt = regs->rdx;
 
-  if (iov_cnt > ERI_UIO_MAXIOV)
-    eri_entry__syscall_leave (entry, ERI_EINVAL);
-
-  /* XXX: fastiov */
-  uint64_t iov_size = sizeof (struct eri_iovec) * iov_cnt;
-  struct eri_iovec *iov = eri_assert_mtmalloc (group->pool, iov_size);
-
-  if (! eri_entry__copy_from (entry, iov, user_iov, iov_size))
-    {
-      eri_assert_mtfree (group->pool, iov);
-      eri_entry__syscall_leave (entry, ERI_EFAULT);
-    }
+  struct eri_iovec *iov;
+  int32_t iov_cnt;
+  eri_entry__syscall_leave_if_error (entry,
+				syscall_get_rw_iov (th, &iov, &iov_cnt));
 
   struct eri_syscall_readv_record rec = {
     .iov = iov, .copy = eri_entry__copy_from, .args = entry
@@ -1449,11 +1464,6 @@ syscall_do_readv (SYSCALL_PARAMS)
 
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.result = ERI_EBADF; goto record; }
-
-  int32_t i;
-  for (i = 0; i < iov_cnt; ++i)
-    syscall_read_remove_internal (&group->map_range,
-				  (void *) &iov[i].base, iov[i].len);
 
   int flags = fdf->flags;
   struct eri_sys_syscall_args args = {
@@ -1473,11 +1483,11 @@ syscall_do_readv (SYSCALL_PARAMS)
     }
 
   eri_assert_unlock (&group->fdf_lock);
-  rec.result = syscall_read_read (entry, flags, &args);
+  rec.result = syscall_read_write (entry, flags, &args, 1);
 
 record:
   syscall_read_record (th, &rec, ERI_SYSCALL_READV_MAGIC);
-  eri_assert_mtfree (group->pool, rec.iov);
+  eri_assert_mtfree (group->pool, iov);
   eri_entry__syscall_leave (entry, rec.result);
 }
 
@@ -1487,11 +1497,71 @@ DEFINE_SYSCALL (readv) { syscall_do_readv (SYSCALL_ARGS); }
 DEFINE_SYSCALL (preadv) { syscall_do_readv (SYSCALL_ARGS); }
 DEFINE_SYSCALL (preadv2) { syscall_do_readv (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (write)
-SYSCALL_TO_IMPL (pwrite64)
-SYSCALL_TO_IMPL (writev)
-SYSCALL_TO_IMPL (pwritev)
-SYSCALL_TO_IMPL (pwritev2)
+static eri_noreturn void
+syscall_do_write (SYSCALL_PARAMS)
+{
+  struct eri_live_thread_group *group = th->group;
+  int32_t nr = regs->rax;
+  int32_t fd = regs->rdi;
+  uint64_t buf = regs->rsi;
+  uint64_t count = regs->rdx;
+
+  syscall_rw_remove_internal (&group->map_range, &buf, count);
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  struct fdf *fdf = fdf_try_lock (group, fd);
+  if (! fdf) { rec.result = ERI_EBADF; goto record; }
+  if (fdf->sig_mask) { rec.result = ERI_EINVAL; goto record; }
+
+  int32_t flags = fdf->flags;
+  struct eri_sys_syscall_args args = { nr, { fd, buf, count, regs->r10 } };
+
+  eri_assert_unlock (&group->fdf_lock);
+  rec.result = syscall_read_write (entry, flags, &args, 0);
+
+record:
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+static eri_noreturn void
+syscall_do_writev (SYSCALL_PARAMS)
+{
+  struct eri_live_thread_group *group = th->group;
+  int32_t nr = regs->rax;
+  int32_t fd = regs->rdi;
+
+  struct eri_iovec *iov;
+  int32_t iov_cnt;
+  eri_entry__syscall_leave_if_error (entry,
+				syscall_get_rw_iov (th, &iov, &iov_cnt));
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  struct fdf *fdf = fdf_try_lock (group, fd);
+  if (! fdf) { rec.result = ERI_EBADF; goto record; }
+  if (fdf->sig_mask) { rec.result = ERI_EINVAL; goto record; }
+
+  int32_t flags = fdf->flags;
+  struct eri_sys_syscall_args args = {
+    nr, { fd, (uint64_t) iov, iov_cnt, regs->r10, regs->r8 }
+  };
+
+  eri_assert_unlock (&group->fdf_lock);
+  rec.result = syscall_read_write (entry, flags, &args, 0);
+
+record:
+  syscall_record_res_io (th, &rec);
+  eri_assert_mtfree (group->pool, iov);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwrite64) { syscall_do_write (SYSCALL_ARGS); }
+DEFINE_SYSCALL (writev) { syscall_do_writev (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwritev) { syscall_do_writev (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pwritev2) { syscall_do_writev (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (fallocate)
 

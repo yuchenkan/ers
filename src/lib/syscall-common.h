@@ -554,6 +554,8 @@
 #define ERI_SFD_NONBLOCK	ERI_O_NONBLOCK
 
 #define ERI_POLLIN		0x0001
+#define ERI_POLLPRI		0x0002
+#define ERI_POLLOUT		0x0004
 
 #define ERI_F_DUPFD		0
 #define ERI_F_GETFL		3
