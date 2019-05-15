@@ -23,7 +23,7 @@
   p (RSP, rsp, ##__VA_ARGS__)
 
 #define ERI_FOREACH_REG(p, ...) \
-  ERI_FOREACH_GPREG (p, ##__VA_ARGS__)					\
+  ERI_FOREACH_GPREG (p, ##__VA_ARGS__)	/* keep gpregs first */		\
   p (RFLAGS, rflags, ##__VA_ARGS__)					\
   p (RIP, rip, ##__VA_ARGS__)
 
