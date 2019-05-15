@@ -1064,7 +1064,7 @@ ir_set_rip_from_inst (struct ir_dag *dag, struct ir_node *inst)
   ir_set_rip_from_imm (dag, inst->inst.rip);
 }
 
-static void
+static eri_unused void
 ir_dump_inst (eri_file_t log, struct ir_node *node)
 {
   uint64_t rip = node->inst.rip;
@@ -1727,11 +1727,21 @@ ir_encode_inst (uint8_t *bytes, xed_decoded_inst_t *dec)
 }
 
 static void
+ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
+{
+  eri_assert_fprintf (log, "%lx:", rip);
+
+  char dis[64];
+  eri_assert (xed_format_context (XED_SYNTAX_ATT, dec,
+				  dis, sizeof dis, rip, 0, 0));
+  eri_assert_fprintf (log, " %s\n", dis);
+}
+
+static void
 ir_emit_raw (struct ir_block *blk, uint8_t *bytes, uint8_t len)
 {
   if (eri_enabled_debug ())
     {
-      eri_assert_printf ("%lx:", blk->insts.off);
       xed_decoded_inst_t dec;
       xed_decoded_inst_zero (&dec);
       xed_decoded_inst_set_mode (&dec, XED_MACHINE_MODE_LONG_64,
@@ -1740,17 +1750,12 @@ ir_emit_raw (struct ir_block *blk, uint8_t *bytes, uint8_t len)
       eri_assert (err != XED_ERROR_BUFFER_TOO_SHORT);
       if (err != XED_ERROR_NONE)
 	{
+	  eri_assert_printf ("%lx:", blk->insts.off);
 	  uint8_t i;
 	  for (i = 0; i < len; ++i) eri_assert_printf (" %x", bytes[i]);
 	  eri_assert_printf ("\n");
 	}
-      else
-	{
-	  char dis[64];
-	  eri_assert (xed_format_context (XED_SYNTAX_ATT, &dec,
-			dis, sizeof dis, blk->insts.off, 0, 0));
-	  eri_assert_printf (" %s\n", dis);
-	}
+      else ir_dump_dis_dec (ERI_STDOUT, blk->insts.off, &dec);
     }
 
   eri_assert_buf_append (&blk->insts, bytes, len);
@@ -1855,9 +1860,11 @@ static void
 ir_try_fix_reg_host_loc (struct ir_block *blk, uint8_t reg_idx,
 			 struct ir_reg_def_loc *def_loc)
 {
-  // eri_debug ("def: %lx, host_idxs: %x, local: %lx, tag: %u, val: %u\n",
-  //	     def_loc->def, def_loc->def->locs.host_idxs,
-  //	     def_loc->def->locs.local, def_loc->loc.tag, def_loc->loc.val);
+#if 0
+  eri_debug ("def: %lx, host_idxs: %x, local: %lx, tag: %u, val: %u\n",
+	     def_loc->def, def_loc->def->locs.host_idxs,
+	     def_loc->def->locs.local, def_loc->loc.tag, def_loc->loc.val);
+#endif
 
   struct ir_host_locs *locs = &def_loc->def->locs;
   struct reg_loc *loc = &def_loc->loc;
@@ -1905,13 +1912,19 @@ ir_set_host (struct ir_flattened *flat, struct ir_block *blk,
 	     uint8_t idx, struct ir_def *def, uint32_t *free)
 {
   struct ir_def *old = flat->hosts[idx];
-  // eri_debug ("idx: %u, def: %lx, old: %lx, free: %x\n",
-  //	     idx, def, old, *free);
+#if 0
+  eri_debug ("idx: %u, def: %lx, old: %lx, free: %x\n",
+	     idx, def, old, *free);
+#endif
 
   if (old == def) return;
 
   if (ir_def_in_use (flat, old))
     {
+#if 0
+      eri_debug ("save %lx %lu %x %u\n", old, old->ridx,
+		 old->locs.host_idxs, ir_is_reg_def (flat, old));
+#endif
       uint8_t num = ir_host_idxs_gpreg_num (old->locs.host_idxs);
       if (num <= 1)
 	{
@@ -2034,9 +2047,34 @@ ir_dump_ras (eri_file_t log, struct ir_ra *ras, uint32_t n)
     }
 }
 
+struct ir_update_reg_def
+{
+  uint8_t idx;
+  struct ir_def *def;
+};
+
 static void
-ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
-		 struct ir_ra *ras, uint32_t n)
+ir_init_update_reg_def (struct ir_update_reg_def *up,
+			uint8_t idx, struct ir_def *def)
+{
+  up->idx = idx;
+  up->def = def;
+}
+
+static void
+ir_try_free_local (struct ir_flattened *flat, struct ir_def *def)
+{
+  if (! ir_def_in_use (flat, def) && def->locs.local)
+    {
+      ir_put_local (flat, def->locs.local);
+      def->locs.local = 0;
+    }
+}
+
+static void
+ir_assign_hosts_ups (struct ir_flattened *flat, struct ir_block *blk,
+		     struct ir_ra *ras, uint32_t n,
+		     struct ir_update_reg_def *ups, uint32_t nups)
 {
   uint32_t preps_mask = 0;
   uint8_t local = ir_local_host_idx (flat);
@@ -2070,19 +2108,6 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
       {
 	struct ir_ra *a = ras + i;
 
-	for (j = 0; j < REG_NUM; ++j)
-	  {
-	    struct ir_ra *e = deps + j;
-	    if (ir_host_idxs_set (deps_mask, j) && e->dep->def == a->dep->def
-		&& (! e->def || ! a->def) && ! e->exclusive && ! a->exclusive)
-	      {
-		a->host_idx = j;
-		if (a->def) e->def = a->def;
-	      }
-	  }
-
-	if (a->host_idx != REG_NUM) continue;
-
 	a->host_idx = ir_host_idxs_get_gpreg_idx (
 				a->dep->def->locs.host_idxs & ~deps_mask);
 	if (a->host_idx != REG_NUM)
@@ -2096,6 +2121,19 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
     if (ras[i].dep && ras[i].host_idx == REG_NUM)
       {
 	struct ir_ra *a = ras + i;
+
+	for (j = 0; j < REG_NUM; ++j)
+	  {
+	    struct ir_ra *e = deps + j;
+	    if (ir_host_idxs_set (deps_mask, j) && e->dep->def == a->dep->def
+		&& (! e->def || ! a->def) && ! e->exclusive && ! a->exclusive)
+	      {
+		a->host_idx = j;
+		if (a->def) e->def = a->def;
+	      }
+	  }
+
+	if (a->host_idx != REG_NUM) continue;
 
 	uint8_t min = REG_NUM;
 	uint64_t min_ridx = -1;
@@ -2189,22 +2227,34 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
 	deps[i].dep->def->ridx = deps[i].dep->ridx;
       }
 
+  struct ir_def *old_reg_defs[nups];
+  for (i = 0; i < nups; ++i)
+    {
+      uint8_t idx = ups[i].idx;
+      old_reg_defs[i] = flat->reg_def_locs[idx].def;
+      flat->reg_def_locs[idx].def = ups[i].def;
+    }
+
   // eri_debug ("defs %lx\n", free);
   for (i = 0; i < REG_NUM; ++i)
     if (ir_host_idxs_set (defs_mask, i))
       ir_set_host (flat, blk, i, defs[i], &free);
 
+  for (i = 0; i < nups; ++i)
+    {
+      uint8_t idx = ups[i].idx;
+      ir_try_free_local (flat, old_reg_defs[i]);
+      ir_try_fix_reg_host_loc (blk, idx, flat->reg_def_locs + idx);
+    }
+
   // if (eri_enabled_debug ()) ir_dump_ras (ERI_STDOUT, ras, n);
 }
 
 static void
-ir_try_free_local (struct ir_flattened *flat, struct ir_def *def)
+ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
+		 struct ir_ra *ras, uint32_t n)
 {
-  if (! ir_def_in_use (flat, def) && def->locs.local)
-    {
-      ir_put_local (flat, def->locs.local);
-      def->locs.local = 0;
-    }
+  ir_assign_hosts_ups (flat, blk, ras, n, 0, 0);
 }
 
 static void
@@ -2218,14 +2268,19 @@ ir_gen_inst (struct ir_flattened *flat,
   struct ir_ra ras[eri_length_of (node->inst.regs) + 4] = { { 0 } };
   struct ir_ra *a = ras;
 
+  struct ir_update_reg_def ups[eri_length_of (node->inst.regs)];
+  struct ir_update_reg_def *up = ups;
+
   struct ir_inst_reg *inst_reg;
   for (inst_reg = node->inst.regs; inst_reg->op; ++inst_reg)
     {
       const xed_operand_t *op = inst_reg->op;
-      ir_init_ra (a++, ir_inst_designated_reg (dec, op)
-		      ? ir_reg_idx_from_dec_op (dec, op) : REG_NUM,
+      uint8_t idx = ir_reg_idx_from_dec_op (dec, op);
+      ir_init_ra (a++, ir_inst_designated_reg (dec, op) ? idx : REG_NUM,
 		  ir_inst_op_read (dec, op) ? &inst_reg->src : 0,
 		  xed_operand_written (op) ? &inst_reg->dst : 0);
+      if (xed_operand_written (op))
+	ir_init_update_reg_def (up++, idx, &inst_reg->dst);
     }
 
   struct ir_dep *mems[] = {
@@ -2238,7 +2293,7 @@ ir_gen_inst (struct ir_flattened *flat,
   for (i = 0; i < eri_length_of (mems); ++i)
     if (mems[i]) a = ir_ra_gpreg_dep_opt (a, mems[i]);
 
-  ir_assign_hosts (flat, blk, ras, a - ras);
+  ir_assign_hosts_ups (flat, blk, ras, a - ras, ups, up - ups);
 
   xed_operand_values_t *ops = xed_decoded_inst_operands (dec);
 
@@ -2263,15 +2318,6 @@ ir_gen_inst (struct ir_flattened *flat,
 
   ir_emit (inst, blk, &node->inst.dec);
 
-  for (inst_reg = node->inst.regs; inst_reg->op; ++inst_reg)
-    {
-      if (xed_operand_written (inst_reg->op))
-	{
-	  ir_try_free_local (flat, flat->reg_def_locs[i].def);
-	  flat->reg_def_locs[i].def = &inst_reg->dst;
-	  ir_try_fix_reg_host_loc (blk, i, flat->reg_def_locs + i);
-	}
-    }
   ir_trace_update_rip_host_loc (blk, node->inst.rip);
 }
 
@@ -2487,6 +2533,8 @@ ir_output (struct eri_mtpool *pool, struct ir_block *blk)
 static struct block *
 ir_generate (struct ir_dag *dag)
 {
+  eri_debug ("\n");
+
   struct ir_flattened flat = { dag, { 0, -1 }, { 0, 0 } };
   ERI_LST_INIT_LIST (ir_flat, &flat);
   uint8_t local = REG_IDX_RBP;
@@ -2526,7 +2574,7 @@ ir_generate (struct ir_dag *dag)
   struct ir_node *node;
   ERI_LST_FOREACH (ir_flat, &flat, node)
     {
-      eri_debug ("%s\n", ir_node_tag_str (node->tag));
+      // eri_debug ("%s\n", ir_node_tag_str (node->tag));
       switch (node->tag)
 	{
 #define GEN_TAG(ctag, tag) \
@@ -2569,13 +2617,15 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
       if (! node) break;
 
       // eri_debug ("\n");
-      if (eri_enabled_debug ()) ir_dump_inst (ERI_STDOUT, node);
+      // if (eri_enabled_debug ()) ir_dump_inst (ERI_STDOUT, node);
 
       ir_build_inst_operands (&dag, node);
 
       xed_decoded_inst_t *dec = &node->inst.dec;
       xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
       xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (dec);
+
+      if (eri_enabled_debug ()) ir_dump_dis_dec (ERI_STDOUT, rip, dec);
 
 #if 0
       eri_lassert (iclass != XED_ICLASS_BOUND);
