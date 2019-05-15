@@ -1425,8 +1425,8 @@ static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   struct thread *th = *(void **) ctx->stack.sp;
-  eri_debug ("%u %lx %lx\n", sig, info,
-	     ctx->mctx.rip - th->group->map_range.start);
+  eri_debug ("%u %lx %lx %lx\n", sig, info,
+	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
 
   if (eri_enable_analyzer
       && eri_analyzer__sig_handler (th->analyzer, info, ctx))

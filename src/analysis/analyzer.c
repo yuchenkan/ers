@@ -2108,8 +2108,9 @@ ir_assign_hosts_ups (struct ir_flattened *flat, struct ir_block *blk,
       {
 	struct ir_ra *a = ras + i;
 
+	uint32_t rms = deps_mask | preps_mask;
 	a->host_idx = ir_host_idxs_get_gpreg_idx (
-				a->dep->def->locs.host_idxs & ~deps_mask);
+				a->dep->def->locs.host_idxs & ~rms);
 	if (a->host_idx != REG_NUM)
 	  {
 	    deps[a->host_idx] = *a;
@@ -2135,11 +2136,13 @@ ir_assign_hosts_ups (struct ir_flattened *flat, struct ir_block *blk,
 
 	if (a->host_idx != REG_NUM) continue;
 
+	uint32_t rms = deps_mask | preps_mask;
+
 	uint8_t min = REG_NUM;
 	uint64_t min_ridx = -1;
 	for (j = 0; j < GPREG_NUM && min_ridx; ++j)
 	  {
-	    if (j == local || ir_host_idxs_set (deps_mask, j)) continue;
+	    if (j == local || ir_host_idxs_set (rms, j)) continue;
 
 	    if (ir_host_idxs_set (preps_mask, j))
 	      {
@@ -2147,7 +2150,7 @@ ir_assign_hosts_ups (struct ir_flattened *flat, struct ir_block *blk,
 		min_ridx = 0;
 	      }
 	    else if (ir_host_idxs_gpreg_num (
-			flat->hosts[i]->locs.host_idxs & ~deps_mask) > 1)
+			flat->hosts[i]->locs.host_idxs & ~rms) > 1)
 	     {
 		min = j;
 		min_ridx = 0;
@@ -2574,7 +2577,7 @@ ir_generate (struct ir_dag *dag)
   struct ir_node *node;
   ERI_LST_FOREACH (ir_flat, &flat, node)
     {
-      // eri_debug ("%s\n", ir_node_tag_str (node->tag));
+      eri_debug ("%s\n", ir_node_tag_str (node->tag));
       switch (node->tag)
 	{
 #define GEN_TAG(ctag, tag) \
@@ -2734,6 +2737,7 @@ eri_analyzer__enter (struct eri_analyzer *al,
   act->al = al;
   act->trans = trans;
   act->stack = eri_entry__get_stack (al->entry) - 8;
+  eri_debug ("%lx\n", act->stack);
   uint64_t *local_reg = act->local;
 
 #define SAVE_LOCAL_REG(creg, reg) \
