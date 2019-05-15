@@ -1,4 +1,4 @@
-/* vim: set ft=cpp: */
+#define ERI_APPLY_ERS
 
 #include <lib/compiler.h>
 #include <lib/util.h>

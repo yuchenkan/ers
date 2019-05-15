@@ -1213,6 +1213,8 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
 
   ir_init_inst_operands (node);
 
+  if (xed_decoded_inst_get_iclass (dec) == XED_ICLASS_NOP) return;
+
   uint64_t deps = 0;
   struct ir_inst_reg *inst_reg = node->inst.regs;
   uint8_t i;
@@ -2279,6 +2281,8 @@ ir_gen_end (struct ir_flattened *flat,
   ir_emit (load_imm, blk, REG_IDX_RSI, (uint64_t) analysis);
   ir_emit (load_imm, blk, REG_IDX_RCX, (uint64_t) eri_jump);
   ir_emit (jmp, blk, REG_IDX_RCX);
+
+  blk->sig_info.sig = 0;
 }
 
 static void
@@ -2404,9 +2408,9 @@ ir_gen_cond_branch (struct ir_flattened *flat,
       (a++)->exclusive = 1;
     }
   else a = ir_ra_desig_dep_opt (a, REG_IDX_RCX, &node->cond_branch.cnt);
-  a = ir_ra_gpreg_dep_def (a, &node->cond_branch.taken,
+  a = ir_ra_gpreg_dep (a, &node->cond_branch.taken);
+  a = ir_ra_gpreg_dep_def (a, &node->cond_branch.fall,
 			   &node->cond_branch.dst);
-  a = ir_ra_gpreg_dep (a, &node->cond_branch.fall);
   ir_assign_hosts (flat, blk, ras, a - ras);
 
   uint8_t fall = (--a)->host_idx;
@@ -2715,11 +2719,11 @@ analysis (uint64_t *local)
   if (eri_within (al->group->map_range, regs.rip))
     {
       struct eri_registers *en_regs = eri_entry__get_regs (en);
-      void *th = (void *) regs.rbx;
       regs.rbx = en_regs->rbx;
+      regs.rip = en_regs->rip;
       *en_regs = regs;
       eri_noreturn void (*entry) (void *) = eri_entry__get_entry (en);
-      entry (th);
+      entry (en);
     }
   else eri_analyzer__enter (al, &regs);
 }
