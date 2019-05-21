@@ -1994,7 +1994,7 @@ ir_assign_more_than_one_host_gpregs (
     if (ir_host_idxs_set (def->locs.host_idxs, i)
 	&& ! assigns[i].destroyed && ! assigns[i].def
 	&& (! assigns[i].dep || assigns[i].dep == def)
-	&& ++n)
+	&& n++)
       return 1;
   return 0;
 }
@@ -2031,6 +2031,7 @@ ir_assign_dep_pick (struct ir_flattened *flat,
 	  }
       }
 
+  // eri_debug ("pick %s\n", reg_idx_str (min));
   eri_lassert (min != REG_NUM);
   ir_assign_set_dep (assigns, min, ra);
 }
@@ -2100,7 +2101,9 @@ ir_assign_def_pick (struct ir_flattened *flat,
 	  }
       }
 
+  // eri_debug ("pick %s\n", reg_idx_str (min));
   eri_lassert (min != REG_NUM);
+  ra->host_idx = min;
   assigns[i].def = ra->def;
 }
 
@@ -2145,7 +2148,7 @@ ir_assign_check_rflags (struct ir_flattened *flat,
       }
 
   for (i = 0; i < n; ++i)
-    if (ras[i].host_idx == REG_NUM && ras[i].dep->def == old) 
+    if (ras[i].host_idx == REG_NUM && ras[i].dep && ras[i].dep->def == old)
       {
 	assigns[REG_IDX_RSP].destroyed = 1;
 	return;
@@ -2156,6 +2159,7 @@ static void
 ir_assign_set_host (struct ir_flattened *flat, uint8_t idx,
 		    struct ir_def *def)
 {
+  // eri_debug ("%s = %lx\n", reg_idx_str (idx), def);
   ir_host_idxs_del (&flat->hosts[idx]->locs.host_idxs, idx);
   flat->hosts[idx] = def;
   ir_host_idxs_add (&def->locs.host_idxs, idx);
@@ -2186,6 +2190,7 @@ static void
 ir_assign_move (struct ir_flattened *flat, struct ir_block *blk,
 		struct reg_loc dst, struct reg_loc src)
 {
+  // eri_debug ("\n");
   struct ir_enc_mem_args mem;
   if (dst.tag == REG_LOC_REG)
     {
@@ -2242,6 +2247,7 @@ static void
 ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
 		 struct ir_def *def, struct ir_assign *assigns)
 {
+  // eri_debug ("\n");
   if (! ir_host_idxs_has_gpreg (def->locs.host_idxs))
     {
       struct ir_def *check_rsp_reg_def = flat->hosts[REG_IDX_RSP];
@@ -2257,7 +2263,7 @@ ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
     }
 
   uint8_t i;
-  for (i = 0; i < REG_NUM; ++i)
+  for (i = 0; i < GPREG_NUM; ++i)
     if (! ir_def_in_use (flat, flat->hosts[i])
 	&& ! assigns[i].dep && ! assigns[i].def && ! assigns[i].destroyed)
       break;
@@ -2266,7 +2272,7 @@ ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
     REG_LOC_REG, ir_host_idxs_get_gpreg_idx (def->locs.host_idxs)
   };
 
-  if (i != REG_NUM)
+  if (i != GPREG_NUM)
     {
       struct reg_loc dst = { REG_LOC_REG, i };
       ir_assign_set_host (flat, i, def);
@@ -2275,7 +2281,7 @@ ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
     }
 
   struct reg_loc dst = { REG_LOC_LOCAL, ir_assign_get_local (flat, def) };
-  ir_assign_move (flat, blk, src, dst);
+  ir_assign_move (flat, blk, dst, src);
 }
 
 static void
@@ -2303,8 +2309,6 @@ ir_assign_load_dep (struct ir_flattened *flat, struct ir_block *blk,
 {
   eri_assert (ir_host_locs_has_gpreg_or_local (&def->locs));
 
-  struct ir_def *check_reg_def = flat->hosts[idx];
-
   struct reg_loc dst = { REG_LOC_REG, idx };
   struct reg_loc src = {
     REG_LOC_REG, ir_host_idxs_get_gpreg_idx (def->locs.host_idxs)
@@ -2324,7 +2328,6 @@ ir_assign_load_dep (struct ir_flattened *flat, struct ir_block *blk,
       src.val = def->locs.local->idx;
     }
   ir_assign_move (flat, blk, dst, src);
-  ir_try_update_reg_host_loc (flat, blk, check_reg_def);
 }
 
 static void
@@ -2337,9 +2340,9 @@ ir_assign_assign (struct ir_flattened *flat,
   if (i == REG_IDX_RFLAGS)
     {
       uint8_t i;
-      for (i = 0; i < REG_NUM && assigns[i].dep != old; ++i)
+      for (i = 0; i < GPREG_NUM && assigns[i].dep != old; ++i)
 	continue;
-      if (i != REG_NUM && ir_assign_may_spill (flat, old, i))
+      if (i != GPREG_NUM && ir_assign_may_spill (flat, old, i))
 	{
 	  ir_assign_prepare_rflags (flat, blk, assigns);
 	  ir_assign_spill (flat, blk, old, assigns);
@@ -2348,27 +2351,36 @@ ir_assign_assign (struct ir_flattened *flat,
 
   if (assigns[i].dep && assigns[i].dep != old)
     {
+      struct ir_def *check_reg_def = 0;
+
       if (i == REG_IDX_RFLAGS)
 	ir_assign_prepare_rflags (flat, blk, assigns);
       if (ir_def_in_use (flat, old) && ir_assign_may_spill (flat, old, i))
-	ir_assign_spill (flat, blk, old, assigns);
+	{
+	  check_reg_def = old;
+	  ir_assign_spill (flat, blk, old, assigns);
+	}
 
       ir_assign_load_dep (flat, blk, i, assigns[i].dep);
+
+      if (check_reg_def)
+	ir_try_update_reg_host_loc (flat, blk, check_reg_def);
     }
+
+  if (! assigns[i].def) return;
 
   struct ir_assign_def_in_use_args args = {
     flat, next_reg_defs, assigns, i
   };
-  if (assigns[i].def && ir_assign_def_in_use (&args)
-      && ir_assign_may_spill (flat, args.old, i))
+  if (ir_assign_def_in_use (&args)
+      && ir_assign_may_spill (flat, flat->hosts[i], i))
     {
+      assigns[i].check_reg_def = flat->hosts[i];
       if (i == REG_IDX_RFLAGS)
 	ir_assign_prepare_rflags (flat, blk, assigns);
       ir_assign_spill (flat, blk, args.old, assigns);
-
-      assigns[i].check_reg_def = args.old;
-      ir_assign_set_host (flat, i, assigns[i].def);
     };
+  ir_assign_set_host (flat, i, assigns[i].def);
 }
 
 /* void (*gen) (struct ir_block *, struct ir_ra *, void *) */
@@ -2381,7 +2393,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_block *blk,
   struct ir_def *next_reg_defs[REG_NUM] = { 0 };
   for (i = 0; i < n; ++i)
     if (ras[i].reg_def != REG_NUM)
-      next_reg_defs[i] = ras[i].def;
+      next_reg_defs[ras[i].reg_def] = ras[i].def;
 
   struct ir_assign assigns[REG_NUM] = { 0 };
 
@@ -2548,15 +2560,10 @@ ir_gen_end (struct ir_flattened *flat,
   uint8_t i, j = 0;
   struct ir_dep *regs = node->end.regs;
   for (i = 0; i < REG_NUM; ++i)
-    {
-      flat->reg_def_locs[i].def = regs[i].def;
-      ir_try_fix_reg_host_loc (blk, i, flat->reg_def_locs + i);
+    if (i != ir_local_host_idx (flat) && i != REG_IDX_RIP)
+      ir_init_ra (ras + j++, i, 0, &flat->dummy);
 
-      if (i != ir_local_host_idx (flat) && i != REG_IDX_RIP)
-	ir_init_ra (ras + j++, i, 0, &flat->dummy);
-    }
-
-  ir_assign_hosts (flat, blk, ras, j, ir_do_gen_end, node);
+  ir_assign_hosts (flat, blk, ras, j, ir_do_gen_end, flat);
 
   for (i = 0; i < REG_NUM; ++i)
     blk->final_locs[i] = regs[i].def->locs.local->idx;
@@ -2819,7 +2826,7 @@ ir_generate (struct ir_dag *dag)
   struct ir_node *node;
   ERI_LST_FOREACH (ir_flat, &flat, node)
     {
-      eri_debug ("%s\n", ir_node_tag_str (node->tag));
+      // eri_debug ("%s\n", ir_node_tag_str (node->tag));
       switch (node->tag)
 	{
 #define GEN_TAG(ctag, tag) \
