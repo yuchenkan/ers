@@ -1,6 +1,8 @@
 #ifndef ERI_COMMON_THREAD_H
 #define ERI_COMMON_THREAD_H
 
+#include <lib/syscall-common.h>
+
 #define _ERI_FOREACH_GPREG_NO_RBX_RSP(p, ...) \
   p (RAX, rax, ##__VA_ARGS__)						\
   p (RCX, rcx, ##__VA_ARGS__)						\
@@ -105,6 +107,22 @@ struct eri_registers
     __args->a[4] = _regs->r8;						\
     __args->a[5] = _regs->r9;						\
   } while (0)
+
+#define _ERI_SET_MCTX_FROM_REGS(creg, reg)	_mctx->reg = _regs->reg;
+#define eri_mcontext_from_registers(mctx, regs) \
+  do {									\
+    struct eri_mcontext *_mctx = mctx;					\
+    struct eri_registers *_regs = regs;					\
+    ERI_FOREACH_REG (_ERI_SET_MCTX_FROM_REGS)				\
+  } while (0);
+
+#define _ERI_SET_REGS_FROM_MCTX(creg, reg)	_regs->reg = _mctx->reg;
+#define eri_registers_from_mcontext(regs, mctx) \
+  do {									\
+    struct eri_registers *_regs = regs;					\
+    struct eri_mcontext *_mctx = mctx;					\
+    ERI_FOREACH_REG (_ERI_SET_REGS_FROM_MCTX)				\
+  } while (0);
 
 struct eri_entry
 {

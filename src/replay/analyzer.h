@@ -51,6 +51,6 @@ eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,
 				       struct eri_registers *regs);
 
 uint8_t eri_analyzer__sig_handler (eri_analyzer_type *analyzer,
-			struct eri_siginfo *info, struct eri_ucontext *ctx);
+			struct eri_siginfo *info, struct eri_mcontext *mctx);
 
 #endif

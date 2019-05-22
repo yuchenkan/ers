@@ -1429,9 +1429,13 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_debug ("%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
 	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
 
-  if (eri_enable_analyzer
-      && eri_analyzer__sig_handler (th->analyzer, info, ctx))
+  struct eri_mcontext saved_mctx;
+  if (eri_enable_analyzer)
     {
+      saved_mctx = ctx->mctx;
+      if (! eri_analyzer__sig_handler (th->analyzer, info, &ctx->mctx))
+	return;
+
       sig = info->sig;
       eri_debug ("fixed %u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
 		 ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
@@ -1439,21 +1443,21 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);
-  else if (! eri_si_sync (info)) return;
+  else if (! eri_si_sync (info)) goto skip;
 
   struct eri_entry *entry = th->entry;
   uint16_t code = eri_entry__get_op_code (entry);
   if (eri_si_single_step (info))
     {
       if (eri_entry__sig_test_clear_single_step (entry, ctx->mctx.rip))
-	return;
+	goto skip;
 
       if (code == ERI_OP_SYNC_ASYNC && th->sync_async_trace)
 	{
 	  if (th->sync_async_trace_steps
 		? --th->sync_async_trace_steps
 		: ctx->mctx.rip == eri_entry__get_regs (entry)->rip)
-	    return;
+	    goto skip;
 
 	  th->sync_async_trace_steps = 0;
 	  ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
@@ -1477,4 +1481,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
     }
   eri_entry__sig_test_op_ret (entry,
 		eri_struct_of (info, struct eri_sigframe, info));
+  return;
+
+skip:
+  if (eri_enable_analyzer) ctx->mctx = saved_mctx;
 }

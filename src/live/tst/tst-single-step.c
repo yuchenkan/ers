@@ -14,7 +14,7 @@
 static int32_t tid;
 static uint64_t steps;
 static uint64_t raise_steps;
-static char *src = "ab";
+static char *src = "abcdef";
 
 static uint8_t stack[1024 * 1024];
 
@@ -51,10 +51,10 @@ tst_live_start (void)
   tst_assert_syscall (sched_yield);
   eri_assert (tst_atomic_load (&steps, 0));
 
-  char dst[2];
+  char dst[eri_strlen (src)];
   register char *d asm ("rdi") = dst;
   register char *s asm ("rsi") = src;
-  register uint32_t c asm ("ecx") = 2;
+  register uint32_t c asm ("ecx") = sizeof dst;
   asm (ERI_STR (ERS_SYNC_ASYNC (1, rep movsb))
        : : "r" (c), "r" (d), "r" (s) : "memory");
 

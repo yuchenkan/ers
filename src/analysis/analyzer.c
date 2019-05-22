@@ -18,7 +18,7 @@
 
 #include <analysis/analyzer.h>
 
-// #define DUMP_INST
+#define DUMP_INST
 
 enum reg_loc_tag
 {
@@ -1999,7 +1999,7 @@ static void
 ir_assign_dep_try_current (struct ir_assign *assigns, struct ir_ra *ra)
 {
   uint8_t i;
-  for (i = 0; i < REG_NUM; ++i)
+  for (i = 0; i < GPREG_NUM; ++i)
     if (! assigns[i].dep && ! assigns[i].destroyed
 	&& ir_host_idxs_set (ra->dep->def->locs.host_idxs, i)
 	&& (! assigns[i].def || (! ra->exclusive && ! ra->def)))
@@ -2289,8 +2289,14 @@ ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
   uint8_t i;
   for (i = 0; i < GPREG_NUM; ++i)
     if (! ir_def_in_use (flat, flat->hosts[i])
-	&& ! assigns[i].dep && ! assigns[i].def && ! assigns[i].destroyed)
+	&& def == assigns[i].dep && ! assigns[i].destroyed)
       break;
+
+  if (i == GPREG_NUM)
+    for (i = 0; i < GPREG_NUM; ++i)
+      if (! ir_def_in_use (flat, flat->hosts[i])
+	  && ! assigns[i].dep && ! assigns[i].def && ! assigns[i].destroyed)
+	break;
 
   struct reg_loc src = {
     REG_LOC_REG, ir_host_idxs_get_gpreg_idx (def->locs.host_idxs)
@@ -2747,7 +2753,7 @@ ir_do_gen_cond_branch (struct ir_block *blk, struct ir_ra *ras,
   if (ir_cond_branch_cnt_only (iclass) || ir_cond_branch_flags_cnt (iclass))
     {
       uint8_t bytes[INST_BYTES];
-      uint8_t len = ir_encode_mov (bytes, fall, taken);
+      uint8_t len = ir_encode_mov (bytes, taken, fall);
       ir_emit (cjmp_relbr, blk, iclass, node->cond_branch.addr, len);
       ir_emit_raw (blk, bytes, len);
     }
@@ -2771,9 +2777,20 @@ ir_gen_cond_branch (struct ir_flattened *flat,
       (a++)->exclusive = 1;
     }
   else a = ir_ra_desig_dep_opt (a, REG_IDX_RCX, &node->cond_branch.cnt);
-  a = ir_ra_gpreg_dep (a, &node->cond_branch.taken);
-  a = ir_ra_gpreg_dep_def (a, &node->cond_branch.fall,
-			   &node->cond_branch.dst);
+
+  if (ir_cond_branch_cnt_only (iclass) || ir_cond_branch_flags_cnt (iclass))
+    {
+      a = ir_ra_gpreg_dep_def (a, &node->cond_branch.taken,
+			       &node->cond_branch.dst);
+      a = ir_ra_gpreg_dep (a, &node->cond_branch.fall);
+    }
+  else
+    {
+      a = ir_ra_gpreg_dep (a, &node->cond_branch.taken);
+      a = ir_ra_gpreg_dep_def (a, &node->cond_branch.fall,
+			       &node->cond_branch.dst);
+    }
+
   struct ir_do_gen_cond_branch_args args = { node, a };
   ir_assign_hosts (flat, blk, ras, a - ras, ir_do_gen_cond_branch, &args);
 }
@@ -2997,9 +3014,10 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
+  // eri_debug ("rip = %lx rcx = %lx\n", regs->rip, regs->rcx);
 #ifdef DUMP_INST
   if (eri_assert_syscall (gettid) == eri_assert_syscall (getpid))
-    eri_debug ("rip = %lx\n", regs->rip);
+    eri_debug ("rip = %lx rcx = %lx\n", regs->rip, regs->rcx);
 #endif
 
   struct eri_analyzer_group *group = al->group;
@@ -3055,8 +3073,7 @@ analysis_enter (struct eri_analyzer *al,
 #define raise(al) \
   do { struct eri_analyzer *_al = al;					\
        eri_assert_syscall (tgkill, *_al->group->pid,			\
-			   *_al->tid, ERI_SIGRTMIN + 1);		\
-       eri_assert_unreachable (); } while (0)
+			   *_al->tid, ERI_SIGRTMIN + 1); } while (0)
 
 eri_noreturn void
 eri_analyzer__enter (struct eri_analyzer *al,
@@ -3103,16 +3120,15 @@ analysis (uint64_t *local)
   if (! blk->new_tf && act->trans->key.tf)
     act->local[blk->final_locs[REG_IDX_RFLAGS]] |= ERI_RFLAGS_TF;
 
-  // eri_debug ("%u\n", act->trans->key.tf);
-  if (blk->sig_info.sig || act->trans->key.tf)
-    raise (al);
-
   struct eri_registers regs;
 #define SET_FINAL_REG(reg, v)	do { regs.reg = v; } while (0)
   GET_REGS (act->local, blk->final_locs, SET_FINAL_REG);
 
   eri_barrier (); /* XXX: why */
-  release_active (al);
+
+  // eri_debug ("%u\n", act->trans->key.tf);
+  if (blk->sig_info.sig || act->trans->key.tf) raise (al);
+  else release_active (al);
 
   struct eri_entry *en = al->entry;
   if (eri_within (al->group->map_range, regs.rip))
@@ -3147,12 +3163,12 @@ signaled (struct active *act, struct eri_siginfo *info)
 }
 
 static uint64_t
-get_reg_from_ctx_by_idx (struct eri_ucontext *ctx, uint8_t idx)
+get_reg_from_ctx_by_idx (struct eri_mcontext *mctx, uint8_t idx)
 {
   switch (idx)
    {
 #define GET_REG_FROM_CTX(creg, reg) \
-   case (ERI_PASTE (REG_IDX_, creg)): return ctx->mctx.reg;
+   case (ERI_PASTE (REG_IDX_, creg)): return mctx->reg;
    ERI_FOREACH_REG (GET_REG_FROM_CTX)
    default: eri_assert_unreachable ();
    }
@@ -3160,14 +3176,14 @@ get_reg_from_ctx_by_idx (struct eri_ucontext *ctx, uint8_t idx)
 
 uint8_t
 eri_analyzer__sig_handler (struct eri_analyzer *al,
-			struct eri_siginfo *info, struct eri_ucontext *ctx)
+			struct eri_siginfo *info, struct eri_mcontext *mctx)
 {
   if (eri_entry__sig_is_access_fault (al->entry, info) && al->sig_info)
     {
       *al->sig_info = *info;
       al->sig_info = 0;
 
-      eri_entry__sig_access_fault (al->entry, &ctx->mctx);
+      eri_entry__sig_access_fault (al->entry, mctx);
       return 0;
     }
 
@@ -3177,12 +3193,12 @@ eri_analyzer__sig_handler (struct eri_analyzer *al,
   if ((info->code == ERI_SI_TKILL && info->kill.pid == *al->group->pid
        && signaled (al->act, info)))
     {
-#define SET_FINAL_CTX_REG(reg, v)	do { ctx->mctx.reg = v; } while (0)
+#define SET_FINAL_CTX_REG(reg, v)	do { mctx->reg = v; } while (0)
       GET_REGS (al->act->local, blk->final_locs, SET_FINAL_CTX_REG);
       goto cont;
     }
 
-  uint64_t rip = ctx->mctx.rip;
+  uint64_t rip = mctx->rip;
   struct eri_range range = {
     (uint64_t) blk->insts, (uint64_t) blk->insts + blk->insts_len
   };
@@ -3213,15 +3229,14 @@ eri_analyzer__sig_handler (struct eri_analyzer *al,
   do {									\
     struct reg_loc *_loc = locs + ERI_PASTE (REG_IDX_, creg);		\
     if (_loc->tag == REG_LOC_REG)					\
-      regs.reg = get_reg_from_ctx_by_idx (ctx, _loc->val);		\
+      regs.reg = get_reg_from_ctx_by_idx (mctx, _loc->val);		\
     else if (_loc->tag == REG_LOC_LOCAL)				\
       regs.reg = al->act->local[_loc->val];				\
     else								\
       regs.reg = _loc->val;						\
   } while (0);
   ERI_FOREACH_REG (GET_REG_LOC)
-#define SET_CTX_REG(creg, reg)	ctx->mctx.reg = regs.reg;
-  ERI_FOREACH_REG (SET_CTX_REG)
+  eri_mcontext_from_registers (mctx, &regs);
 
 cont:
   release_active (al);
