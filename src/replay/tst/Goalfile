@@ -4,7 +4,7 @@ const base = goal.replace (/^replay\/tst\//, '');
 const full = x => `replay/tst/${x}`;
 
 if (base === 'all') {
-  let names = [ 'basic' ].concat ((await this.invoke ('live/tst/replay.g')).map (x => `live-${x}`));
+  let names = [ 'basic' ].concat (await this.invoke (full ('live.g'), { list: true }));
   return await this.update (names.map (x => full (`tst-${x}.out`)));
 }
 
@@ -25,11 +25,8 @@ if (base === 'tst-basic') {
 if (base === 'tst-basic.out')
   return await this.invoke ('tst/goal/out.g', { environ: `ERS_DATA=${env.base (env.trim (goal))}-data` });
 
-const pat = /^tst-live-([^.]*)\.out/;
-if (base.match (pat)) {
-  let live = `live/tst/tst-init-${base.match (pat)[1]}`;
-  await this.update ([ `${live}.out` ]);
-  return await this.invoke ('tst/goal/out.g', { src: 'replay/replay', environ: `ERS_DATA=../../${live}-data/` });
-}
+const pat = /^tst-([^.]*)\.out$/;
+if (base.match (pat) && await this.invoke (full ('live.g'), { name: base.match (pat)[1], src: 'replay/replay' }))
+  return;
 
 return false;

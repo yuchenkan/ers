@@ -1378,6 +1378,7 @@ main_entry (struct eri_entry *entry)
 {
   struct thread *th = eri_entry__get_th (entry);
   uint16_t code = eri_entry__get_op_code (entry);
+  eri_debug ("%u\n", code);
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
   else if (eri_op_is_atomic (code)) atomic (th);
@@ -1425,12 +1426,16 @@ static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   struct thread *th = *(void **) ctx->stack.sp;
-  eri_debug ("%u %lx %lx %lx\n", sig, info,
+  eri_debug ("%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
 	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
 
   if (eri_enable_analyzer
       && eri_analyzer__sig_handler (th->analyzer, info, ctx))
-    sig = info->sig;
+    {
+      sig = info->sig;
+      eri_debug ("fixed %u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
+		 ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
+    }
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);

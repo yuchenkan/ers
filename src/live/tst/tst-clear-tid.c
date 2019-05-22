@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <lib/compiler.h>
 #include <lib/util.h>
 #include <common/debug.h>
@@ -14,7 +16,7 @@ static eri_aligned16 uint8_t stack[1024 * 1024];
 static eri_noreturn void
 start (int32_t *set)
 {
-  eri_debug ("start!!!\n");
+  eri_info ("start!!!\n");
   if (set) tst_assert_syscall (set_tid_address, set);
 
   tst_assert_sys_exit (0);

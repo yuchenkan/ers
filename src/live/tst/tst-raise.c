@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <lib/compiler.h>
 #include <lib/util.h>
 #include <common/debug.h>
@@ -48,7 +50,7 @@ tst_live_start (void)
   tst_assert_sys_sigaction (ERI_SIGINT, &act, &old_act);
   eri_assert (old_act.act == ERI_SIG_DFL);
 
-  eri_debug ("%lx\n", &old_act);
+  eri_info ("%lx\n", &old_act);
 
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
   eri_assert (handled);

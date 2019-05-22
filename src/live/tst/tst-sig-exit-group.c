@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <lib/util.h>
 #include <live/tst/tst-sig-race.h>
 

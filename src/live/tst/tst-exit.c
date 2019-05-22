@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <lib/compiler.h>
 #include <lib/syscall.h>
 #include <common/debug.h>

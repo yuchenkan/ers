@@ -1,3 +1,15 @@
 'use strict'; /* vim: set ft=javascript: */
 
-return goal === 'analysis/tst/all';
+const base = goal.replace (/^analysis\/tst\//, '');
+const full = x => `analysis/tst/${x}`;
+const live = 'replay/tst/live.g';
+
+const filter = x => ! new Set([ 'single-step' /* TODO rep */ ]).has (x);
+if (base === 'all')
+  return await this.update ((await this.invoke (live, { list: true, filter })).map (x => full (`tst-${x}.out`)));
+
+const pat = /^tst-([^.]*)\.out$/;
+if (base.match (pat) && await this.invoke (live, { name: base.match (pat)[1], src: 'analysis/analysis' }))
+  return;
+
+return false;

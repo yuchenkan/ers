@@ -18,6 +18,8 @@
 
 #include <analysis/analyzer.h>
 
+// #define DUMP_INST
+
 enum reg_loc_tag
 {
   REG_LOC_REG,
@@ -71,6 +73,8 @@ struct block
   uint64_t final_locs[REG_NUM];
   struct eri_siginfo sig_info;
 
+  uint8_t new_tf;
+
   uint64_t local_size;
 
   eri_aligned16 uint8_t buf[0];
@@ -90,7 +94,7 @@ struct trans
 
   struct block *block;
   uint64_t wait;
-  uint8_t done;
+  uint32_t done;
 
   ERI_RBT_NODE_FIELDS (trans, struct trans)
 };
@@ -112,6 +116,9 @@ struct eri_analyzer_group
   uint32_t max_inst_count;
 
   int32_t *pid;
+
+  struct block empty_block;
+  struct trans tf_ret_trans;
 
   struct eri_lock trans_lock;
   ERI_RBT_TREE_FIELDS (trans, struct trans)
@@ -151,6 +158,16 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->page_size = args->page_size;
   group->max_inst_count = args->max_inst_count;
   group->pid = args->pid;
+
+  group->empty_block.sig_info.sig = 0;
+  uint8_t i;
+  for (i = 0; i < REG_NUM; ++i)
+    group->empty_block.final_locs[i] = i;
+
+  group->tf_ret_trans.key.tf = 1;
+  group->tf_ret_trans.ref_count = 1;
+  group->tf_ret_trans.block = &group->empty_block;
+
   eri_init_lock (&group->trans_lock, 0);
   ERI_RBT_INIT_TREE (trans, group);
   return group;
@@ -1352,6 +1369,10 @@ ir_build_pop (struct ir_dag *dag, xed_reg_enum_t dst)
 					? ir_get_reg_def (dag, dst) : 0;
   struct ir_def_pair pair = ir_create_pop (dag,
 		ir_get_reg_def (dag, XED_REG_RSP), prim);
+#if 0
+  eri_debug ("%s %u %lx\n",
+	     xed_reg_enum_t2str (dst), ir_reg_idx_from_reg (dst), pair.first);
+#endif
   ir_set_reg_def (dag, dst, pair.first);
   ir_set_reg_def (dag, XED_REG_RSP, pair.second);
 }
@@ -1722,7 +1743,7 @@ ir_encode_inst (uint8_t *bytes, xed_decoded_inst_t *dec)
   return ir_encode (bytes, dec);
 }
 
-static void
+static eri_unused void
 ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
 {
   eri_assert_fprintf (log, "%lx:", rip);
@@ -1736,7 +1757,9 @@ ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
 static void
 ir_emit_raw (struct ir_block *blk, uint8_t *bytes, uint8_t len)
 {
-  if (eri_enabled_debug ())
+#ifdef DUMP_INST
+  if (eri_enabled_debug ()
+      && eri_assert_syscall (gettid) == eri_assert_syscall (getpid))
     {
       xed_decoded_inst_t dec;
       xed_decoded_inst_zero (&dec);
@@ -1753,6 +1776,7 @@ ir_emit_raw (struct ir_block *blk, uint8_t *bytes, uint8_t len)
 	}
       else ir_dump_dis_dec (ERI_STDOUT, blk->insts.off, &dec);
     }
+#endif
 
   eri_assert_buf_append (&blk->insts, bytes, len);
   // eri_debug ("rip: %lx\n", blk->insts.off);
@@ -2281,6 +2305,7 @@ ir_assign_spill (struct ir_flattened *flat, struct ir_block *blk,
     }
 
   struct reg_loc dst = { REG_LOC_LOCAL, ir_assign_get_local (flat, def) };
+  // eri_debug ("%lu\n", dst.val);
   ir_assign_move (flat, blk, dst, src);
 }
 
@@ -2565,6 +2590,12 @@ ir_gen_end (struct ir_flattened *flat,
 
   ir_assign_hosts (flat, blk, ras, j, ir_do_gen_end, flat);
 
+#if 0
+  eri_debug ("%lx %x %lu\n", regs[REG_IDX_RFLAGS].def,
+	     regs[REG_IDX_RFLAGS].def->locs.host_idxs,
+	     regs[REG_IDX_RFLAGS].def->locs.local->idx);
+#endif
+
   for (i = 0; i < REG_NUM; ++i)
     blk->final_locs[i] = regs[i].def->locs.local->idx;
   blk->sig_info.sig = 0;
@@ -2764,28 +2795,29 @@ ir_update_free_deps (struct ir_flattened *flat, struct ir_node *node)
 }
 
 static struct block *
-ir_output (struct eri_mtpool *pool, struct ir_block *blk)
+ir_output (struct eri_mtpool *pool, struct ir_block *blk, uint8_t new_tf)
 {
   uint64_t ilen = eri_round_up (blk->insts.off, 16);
-  struct block *out = eri_assert_mtmalloc (pool,
-			sizeof *out + ilen + blk->trace_regs.off);
-  // eri_debug ("out->buf: %lx\n", out->buf);
-  out->insts = out->buf;
-  eri_memcpy (out->insts, blk->insts.buf, blk->insts.off);
-  out->insts_len = blk->insts.off;
-  out->trace_regs = (void *) (out->buf + ilen);
-  eri_memcpy (out->trace_regs, blk->trace_regs.buf, blk->trace_regs.off);
-  out->ntrace_regs = blk->trace_regs.off / sizeof (struct trace_reg);
-  eri_memcpy (out->final_locs, blk->final_locs, sizeof out->final_locs);
-  out->sig_info = blk->sig_info;
-  out->local_size = blk->local_size;
-  return out;
+  struct block *res = eri_assert_mtmalloc (pool,
+			sizeof *res + ilen + blk->trace_regs.off);
+  // eri_debug ("res->buf: %lx\n", res->buf);
+  res->insts = res->buf;
+  eri_memcpy (res->insts, blk->insts.buf, blk->insts.off);
+  res->insts_len = blk->insts.off;
+  res->trace_regs = (void *) (res->buf + ilen);
+  eri_memcpy (res->trace_regs, blk->trace_regs.buf, blk->trace_regs.off);
+  res->ntrace_regs = blk->trace_regs.off / sizeof (struct trace_reg);
+  eri_memcpy (res->final_locs, blk->final_locs, sizeof res->final_locs);
+  res->sig_info = blk->sig_info;
+  res->new_tf = new_tf;
+  res->local_size = blk->local_size;
+  return res;
 }
 
 static struct block *
-ir_generate (struct ir_dag *dag)
+ir_generate (struct ir_dag *dag, uint8_t new_tf)
 {
-  eri_debug ("\n");
+  // eri_debug ("\n");
 
   struct ir_flattened flat = { dag, { 0, -1 }, { 0, 0 } };
   ERI_LST_INIT_LIST (ir_flat, &flat);
@@ -2839,7 +2871,7 @@ ir_generate (struct ir_dag *dag)
     }
 
   blk.local_size = flat.local_size;
-  struct block *res = ir_output (dag->pool, &blk);
+  struct block *res = ir_output (dag->pool, &blk, new_tf);
   eri_assert_buf_fini (&blk.insts);
   eri_assert_buf_fini (&blk.trace_regs);
   return res;
@@ -2848,8 +2880,6 @@ ir_generate (struct ir_dag *dag)
 static struct block *
 translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 {
-  eri_info ("rip = %lx\n", rip);
-
   struct ir_dag dag = { al->group->pool };
   ERI_LST_INIT_LIST (ir_alloc, &dag);
 
@@ -2861,6 +2891,8 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
   for (i = 0; i < REG_NUM; ++i)
     if (i != REG_IDX_RIP)
       dag.reg_defs[i] = ir_define (init, init->init.regs + i);
+
+  uint8_t new_tf = 0;
 
   i = 0;
   while (1)
@@ -2877,7 +2909,11 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
       xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
       xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (dec);
 
-      if (eri_enabled_debug ()) ir_dump_dis_dec (ERI_STDOUT, rip, dec);
+#ifdef DUMP_INST
+      if (eri_enabled_debug ()
+	  && eri_assert_syscall (gettid) == eri_assert_syscall (getpid))
+	ir_dump_dis_dec (ERI_STDOUT, rip, dec);
+#endif
 
 #if 0
       eri_lassert (iclass != XED_ICLASS_BOUND);
@@ -2905,6 +2941,7 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 	{
 	  ir_set_rip_from_inst (&dag, node);
 	  ir_build_popf (&dag, node);
+	  new_tf = 1;
 	}
       else if (cate == XED_CATEGORY_UNCOND_BR)
 	ir_build_uncond_branch (&dag, node);
@@ -2927,9 +2964,12 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 	  break;
 	}
     }
-  // eri_debug ("\n");
+#ifdef DUMP_INST
+  if (eri_assert_syscall (gettid) == eri_assert_syscall (getpid))
+    eri_debug ("\n");
+#endif
 
-  struct block *res = ir_generate (&dag);
+  struct block *res = ir_generate (&dag, new_tf);
 
   struct ir_alloc *a, *na;
   ERI_LST_FOREACH_SAFE (ir_alloc, &dag, a, na)
@@ -2940,11 +2980,27 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
   return res;
 }
 
-eri_noreturn void
-eri_analyzer__enter (struct eri_analyzer *al,
-		     struct eri_registers *regs)
+static void
+init_act_local (struct active *act, struct eri_registers *regs,
+		uint8_t tf_ret)
 {
-  eri_info ("rip = %lx\n", regs->rip);
+  uint64_t *l = act->local;
+
+#define SAVE_LOCAL_REG(creg, reg) \
+  if (tf_ret || ERI_PASTE (REG_IDX_, creg) != REG_IDX_RIP)			\
+    *l++ = ! tf_ret && ERI_PASTE (REG_IDX_, creg) == REG_IDX_RFLAGS		\
+				? regs->reg & ~ERI_RFLAGS_TF : regs->reg;
+  ERI_FOREACH_REG (SAVE_LOCAL_REG)
+}
+
+static eri_noreturn void
+analysis_enter (struct eri_analyzer *al,
+	        struct eri_registers *regs)
+{
+#ifdef DUMP_INST
+  if (eri_assert_syscall (gettid) == eri_assert_syscall (getpid))
+    eri_debug ("rip = %lx\n", regs->rip);
+#endif
 
   struct eri_analyzer_group *group = al->group;
   eri_assert_lock (&group->trans_lock);
@@ -2982,28 +3038,42 @@ eri_analyzer__enter (struct eri_analyzer *al,
   struct block *blk = trans->block;
   struct active *act = eri_assert_mtmalloc (group->pool,
 				sizeof *act + blk->local_size * 8);
-  eri_atomic_store (&al->act, act, 0);
   act->al = al;
   act->trans = trans;
   act->stack = eri_entry__get_stack (al->entry) - 8;
-  eri_debug ("%lx\n", act->stack);
-  uint64_t *local_reg = act->local;
+  // eri_debug ("%lx\n", act->stack);
+  init_act_local (act, regs, 0);
 
-#define SAVE_LOCAL_REG(creg, reg) \
-  if (ERI_PASTE (REG_IDX_, creg) != REG_IDX_RIP)			\
-    *(local_reg++) = regs->reg;
-  ERI_FOREACH_REG (SAVE_LOCAL_REG)
+  eri_atomic_store (&al->act, act, 0);
 
+  // eri_debug ("leave\n");
   eri_jump (0, blk->insts, act->local, 0, 0);
 
   eri_assert_unreachable ();
 }
 
-static uint8_t
-active_single_step (struct active *act)
+#define raise(al) \
+  do { struct eri_analyzer *_al = al;					\
+       eri_assert_syscall (tgkill, *_al->group->pid,			\
+			   *_al->tid, ERI_SIGRTMIN + 1);		\
+       eri_assert_unreachable (); } while (0)
+
+eri_noreturn void
+eri_analyzer__enter (struct eri_analyzer *al,
+		     struct eri_registers *regs)
 {
-  struct block *blk = act->trans->block;
-  return act->local[blk->final_locs[REG_IDX_RFLAGS]] & ERI_RFLAGS_TF;
+  if (regs->rflags & ERI_RFLAGS_TF)
+    {
+      struct active *act = eri_assert_mtmalloc (al->group->pool,
+				sizeof *act + REG_NUM * 8);
+      act->trans = &al->group->tf_ret_trans;
+      init_act_local (act, regs, 1);
+
+      eri_atomic_store (&al->act, act, 0);
+      raise (al);
+    }
+
+  analysis_enter (al, regs);
 }
 
 #define GET_REG(creg, reg, local, locs, set, ...) \
@@ -3030,8 +3100,12 @@ analysis (uint64_t *local)
   struct block *blk = act->trans->block;
   // TODO check e.g. memory
 
-  if (blk->sig_info.sig || active_single_step (act))
-    eri_assert_syscall (tgkill, *al->group->pid, *al->tid, ERI_SIGRTMIN + 1);
+  if (! blk->new_tf && act->trans->key.tf)
+    act->local[blk->final_locs[REG_IDX_RFLAGS]] |= ERI_RFLAGS_TF;
+
+  // eri_debug ("%u\n", act->trans->key.tf);
+  if (blk->sig_info.sig || act->trans->key.tf)
+    raise (al);
 
   struct eri_registers regs;
 #define SET_FINAL_REG(reg, v)	do { regs.reg = v; } while (0)
@@ -3050,7 +3124,7 @@ analysis (uint64_t *local)
       eri_noreturn void (*entry) (void *) = eri_entry__get_entry (en);
       entry (en);
     }
-  else eri_analyzer__enter (al, &regs);
+  else analysis_enter (al, &regs);
 }
 
 static uint8_t
@@ -3063,7 +3137,7 @@ signaled (struct active *act, struct eri_siginfo *info)
       return 1;
     }
 
-  if (act->local[blk->final_locs[REG_IDX_RFLAGS]] & ERI_RFLAGS_TF)
+  if (act->trans->key.tf)
     {
       info->sig = ERI_SIGTRAP;
       info->code = ERI_TRAP_TRACE;

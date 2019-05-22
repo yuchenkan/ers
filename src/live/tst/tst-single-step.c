@@ -1,3 +1,5 @@
+#define ERI_APPLY_ERS
+
 #include <public/public.h>
 
 #include <lib/compiler.h>
