@@ -81,7 +81,7 @@ typedef eri_noreturn void (* th_noreturn_call_t) (void *);
   ({ uint16_t _c = code;						\
      _c == ERI_OP_NOP || _c == ERI_OP_SYSCALL || _c == ERI_OP_SYNC_ASYNC; })
 
-eri_noreturn void
+static eri_noreturn void
 sig_action (struct eri_entry *entry)
 {
   entry->_op.ret = 0;

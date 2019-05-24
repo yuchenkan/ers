@@ -50,7 +50,16 @@ void eri_analyzer__destroy (eri_analyzer_type *analyzer);
 eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,
 				       struct eri_registers *regs);
 
-uint8_t eri_analyzer__sig_handler (eri_analyzer_type *analyzer,
-			struct eri_siginfo *info, struct eri_mcontext *mctx);
+struct eri_analyzer__sig_handler_args
+{
+  eri_analyzer_type *analyzer;
+  struct eri_siginfo *info;
+  struct eri_ucontext *ctx;
+
+  uint8_t (*handler) (struct eri_siginfo *, struct eri_ucontext *, void *);
+  void *args;
+};
+
+uint8_t eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args);
 
 #endif

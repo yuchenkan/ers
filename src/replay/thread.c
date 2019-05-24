@@ -1422,42 +1422,31 @@ fetch_async_sig_info (struct thread *th, struct eri_siginfo *info)
   eri_assert (! eri_si_sync (info));
 }
 
-static void
-sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+static uint8_t
+handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
+	       struct thread *th)
 {
-  struct thread *th = *(void **) ctx->stack.sp;
+  int32_t sig = info->sig;
   eri_debug ("%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
 	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
 
-  struct eri_mcontext saved_mctx;
-  if (eri_enable_analyzer)
-    {
-      saved_mctx = ctx->mctx;
-      if (! eri_analyzer__sig_handler (th->analyzer, info, &ctx->mctx))
-	return;
-
-      sig = info->sig;
-      eri_debug ("fixed %u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
-		 ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
-    }
-
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);
-  else if (! eri_si_sync (info)) goto skip;
+  else if (! eri_si_sync (info)) return 0;
 
   struct eri_entry *entry = th->entry;
   uint16_t code = eri_entry__get_op_code (entry);
   if (eri_si_single_step (info))
     {
       if (eri_entry__sig_test_clear_single_step (entry, ctx->mctx.rip))
-	goto skip;
+	return 0;
 
       if (code == ERI_OP_SYNC_ASYNC && th->sync_async_trace)
 	{
 	  if (th->sync_async_trace_steps
 		? --th->sync_async_trace_steps
 		: ctx->mctx.rip == eri_entry__get_regs (entry)->rip)
-	    goto skip;
+	    return 0;
 
 	  th->sync_async_trace_steps = 0;
 	  ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
@@ -1471,7 +1460,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 	eri_entry__set_signal (entry, info, ctx);
 
       eri_entry__sig_access_fault (entry, &ctx->mctx);
-      return;
+      return 0;
     }
 
   if (eri_si_sync (info))
@@ -1479,10 +1468,22 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       eri_assert (! eri_within (&th->group->map_range, ctx->mctx.rip));
       assert_magic (th, ERI_SIGNAL_MAGIC);
     }
-  eri_entry__sig_test_op_ret (entry,
-		eri_struct_of (info, struct eri_sigframe, info));
-  return;
+  return 1;
+}
 
-skip:
-  if (eri_enable_analyzer) ctx->mctx = saved_mctx;
+static void
+sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
+{
+  struct thread *th = *(void **) ctx->stack.sp;
+  if (eri_enable_analyzer)
+    {
+      struct eri_analyzer__sig_handler_args args = {
+	th->analyzer, info, ctx, (void *) handle_signal, th
+      };
+      if (! eri_analyzer__sig_handler (&args)) return;
+    }
+  else if (! handle_signal (info, ctx, th)) return;
+
+  eri_entry__sig_test_op_ret (th->entry,
+		eri_struct_of (info, struct eri_sigframe, info));
 }

@@ -102,6 +102,12 @@ func:
     *_b = _t;								\
   } while (0)
 
+#define eri_abs(a) \
+  ({									\
+    typeof (a) _a = a;							\
+    _a >= 0 ? _a : -_a;							\
+  })
+
 void eri_memset (void *s, char c, uint64_t n);
 void eri_memcpy (void *d, const void *s, uint64_t n);
 void eri_memmove (void *d, const void *s, uint64_t n);
