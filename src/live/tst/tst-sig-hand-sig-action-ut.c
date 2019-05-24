@@ -54,7 +54,7 @@ sig_int_handler (int32_t sig,
   eri_assert (0);
 }
 
-static eri_noreturn void
+static void
 int_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 {
   if (! init)
@@ -69,7 +69,6 @@ int_hand (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       tst_enable_trace ();
       tst_live_sig_hand_signal (sig_th.th, info, sig_int_handler);
     }
-  eri_assert_unreachable ();
 }
 
 static eri_noreturn void

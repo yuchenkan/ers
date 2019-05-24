@@ -113,20 +113,6 @@ ERI_FUNCTION (sig_return_back)
 
   ERI_END_FUNCTION (sig_return_back)
 
-ERI_FUNCTION (sig_op_ret)
-
-  movq	%rdi, %rbx
-  movq	EN__STACK(%rbx), %rsp
-
-  movq	%rsi, %rdi
-  call	sig_return_back
-
-  movq	%rbx, %rdi
-  call	sig_action
-  ERI_ASSERT_FALSE
-
-  ERI_END_FUNCTION (sig_op_ret)
-
 ERI_FUNCTION (_eri_entry__test_access)
   movq	%rbx, EN__ACCESS_RBX(%rdi)
   ERI_LEA_MM (8(%rsp), EN__ACCESS_RSP(%rdi), %rax)

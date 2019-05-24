@@ -452,7 +452,7 @@ eri_entry__sig_test_clear_single_step (struct eri_entry *entry, uint64_t rip)
 	 || eri_atomic_exchange (&entry->_sig_swallow_single_step, 0, 0);
 }
 
-eri_noreturn void
+void
 _eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
 {
   entry->_op.ret = 0;
@@ -471,7 +471,11 @@ _eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
     entry->_regs.rip = entry->_start;
 
   entry->_op.code = ERI_OP_NOP;
-  sig_op_ret (entry, frame);
+
+  mctx->rip = (uint64_t) sig_action;
+  mctx->rsp = (uint64_t) entry->_stack - 8;
+  mctx->rdi = (uint64_t) entry;
+  mctx->rflags = 0;
 }
 
 void
