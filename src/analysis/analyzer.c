@@ -3187,7 +3187,7 @@ get_reg_from_mctx_by_idx (struct eri_mcontext *mctx, uint8_t idx)
    }
 }
 
-uint8_t
+void
 eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 {
   struct eri_analyzer *al = args->analyzer;
@@ -3202,7 +3202,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 	  al->sig_info = 0;
 
 	  eri_entry__sig_access_fault (al->entry, mctx);
-	  return 0;
+	  return;
 	}
 
       eri_lassert (! al->act && ! al->act_sig_info.sig);
@@ -3217,13 +3217,17 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
       ERI_FOREACH_REG (GET_MCTX)
       al->act_sig_info.sig = 0;
 
-      if (args->handler (info, args->ctx, args->args)) return 1;
+      if (args->handler (info, args->ctx, args->args)) return;
 
       *mctx = saved;
-      return 0;
+      return;
     }
 
-  if (! al->act) return args->handler (info, args->ctx, args->args);
+  if (! al->act)
+    {
+      args->handler (info, args->ctx, args->args);
+      return;
+    }
 
   struct trans *trans = al->act->trans;
   struct block *blk = trans->block;
@@ -3233,7 +3237,10 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
     (uint64_t) blk->insts, (uint64_t) blk->insts + blk->insts_len
   };
   if (! eri_within (&range, rip))
-    return args->handler (info, args->ctx, args->args);
+    {
+      args->handler (info, args->ctx, args->args);
+      return;
+    }
 
   struct reg_loc locs[REG_NUM];
 
@@ -3264,14 +3271,8 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
   struct eri_mcontext saved = *mctx;
   eri_mcontext_from_registers (mctx, &regs);
 
-  if (args->handler (info, args->ctx, args->args))
-    {
-      release_active (al);
-      return 1;
-    }
-
-  *mctx = saved;
-  return 0;
+  if (args->handler (info, args->ctx, args->args)) release_active (al);
+  else *mctx = saved;
 }
 
 /* For xed.  */

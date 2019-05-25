@@ -60,6 +60,7 @@ struct eri_analyzer__sig_handler_args
   void *args;
 };
 
-uint8_t eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args);
+void eri_analyzer__sig_handler (
+			struct eri_analyzer__sig_handler_args *args);
 
 #endif

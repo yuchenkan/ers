@@ -1468,6 +1468,9 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
       eri_assert (! eri_within (&th->group->map_range, ctx->mctx.rip));
       assert_magic (th, ERI_SIGNAL_MAGIC);
     }
+
+  eri_entry__sig_test_op_ret (th->entry,
+		eri_struct_of (info, struct eri_sigframe, info));
   return 1;
 }
 
@@ -1480,10 +1483,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       struct eri_analyzer__sig_handler_args args = {
 	th->analyzer, info, ctx, (void *) handle_signal, th
       };
-      if (! eri_analyzer__sig_handler (&args)) return;
+      eri_analyzer__sig_handler (&args);
     }
-  else if (! handle_signal (info, ctx, th)) return;
-
-  eri_entry__sig_test_op_ret (th->entry,
-		eri_struct_of (info, struct eri_sigframe, info));
+  else handle_signal (info, ctx, th);
 }
