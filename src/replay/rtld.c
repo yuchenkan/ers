@@ -87,6 +87,7 @@ eri_init_map (struct init_map_args *args)
 
   struct eri_seg *segs = args->segs;
   uint16_t nsegs = args->nsegs;
+  eri_assert (! (segs[0].prot & ERI_PROT_WRITE));
   eri_map_bin (fd, segs, nsegs, map_start, page_size);
 
   eri_assert (ehdr.shentsize == sizeof (struct eri_elf64_shdr));

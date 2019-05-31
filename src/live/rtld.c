@@ -23,13 +23,13 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
    * when reaching internal range.
    */
   uint64_t base = eri_assert_syscall (mmap, map_start - page_size,
-		map_end - map_start + buf_size + 3 * page_size, 0,
+		map_end - map_start + buf_size + page_size, 0,
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0)
 	+ page_size - map_start;
 
   rtld_args->map_start = base + map_start - page_size;
-  rtld_args->buf = base + map_end + page_size;
-  rtld_args->map_end = rtld_args->buf + buf_size + page_size;
+  rtld_args->buf = base + map_end;
+  rtld_args->map_end = rtld_args->buf + buf_size;
   return base;
 }
 
