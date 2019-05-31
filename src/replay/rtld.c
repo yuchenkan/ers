@@ -56,7 +56,7 @@ eri_init_map (struct init_map_args *args)
 
 #define fixed_mmap(start, end) \
     eri_assert_syscall (mmap, start, end - start, 0, \
-		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, - 1, 0)
+		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0)
   uint8_t remap = end > map_start && start < map_end;
   if (! remap) fixed_mmap (map_start, map_end);
   else if (start <= map_start && end < map_end) fixed_mmap (end, map_end);
@@ -87,6 +87,7 @@ eri_init_map (struct init_map_args *args)
 
   struct eri_seg *segs = args->segs;
   uint16_t nsegs = args->nsegs;
+  /* Work as guard page for writes.  */
   eri_assert (! (segs[0].prot & ERI_PROT_WRITE));
   eri_map_bin (fd, segs, nsegs, map_start, page_size);
 
