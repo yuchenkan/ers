@@ -5,7 +5,7 @@ const full = x => `replay/tst/${x}`;
 
 if (base === 'all') {
   let names = [ 'basic' ].concat (await this.invoke (full ('live.g'), { list: true }));
-  return await this.update (names.map (x => full (`tst-${x}.out`)));
+  return await this.update (names.map (x => full (`tst-live-${x}.out`)));
 }
 
 if (base === 'main.l') {
@@ -25,8 +25,8 @@ if (base === 'tst-basic') {
 if (base === 'tst-basic.out')
   return await this.invoke ('tst/goal/out.g', { environ: `ERS_DATA=${env.base (env.trim (goal))}-data` });
 
-const pat = /^tst-([^.]*)\.out$/;
-if (base.match (pat) && await this.invoke (full ('live.g'), { name: base.match (pat)[1], src: 'replay/replay' }))
-  return;
+const pat = /^tst-live-([^.]*)\.out$/;
+if (base.match (pat))
+  return await this.invoke (full ('live.g'), { name: base.match (pat)[1], src: 'replay/replay' });
 
 return false;

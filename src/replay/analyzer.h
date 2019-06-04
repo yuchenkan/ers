@@ -28,6 +28,7 @@ struct eri_analyzer_group__create_args
   const char *log;
 
   uint64_t page_size;
+  uint64_t file_buf_size;
   uint32_t max_inst_count;
 
   int32_t *pid;

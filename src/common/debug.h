@@ -7,6 +7,10 @@
 #include <lib/syscall.h>
 #include <lib/printf.h>
 
+#include <common/common.h>
+
+struct eri_mtpool;
+
 static eri_unused void
 _eri_cvflog (uint8_t enabled, eri_file_t f, const char *fmt, va_list arg)
 {
@@ -33,9 +37,13 @@ uint8_t eri_global_enable_debug;
 
 #define _eri_fmt(level, fmt)	"[" ERI_STR (level) " %s:%u(%s)%lu]\t" fmt
 
+#define _eri_unify_file(file) \
+  ({ const char *_file = file;						\
+     _file[0] == '.' && _file[1] == '/' ? _file + 2 : _file; })
+
 #define _eri_stream(fn, level, fmt, ...) \
-  fn (_eri_fmt (level, fmt), __FILE__, __LINE__, __FUNCTION__,		\
-      eri_assert_syscall (gettid), ##__VA_ARGS__)
+  fn (_eri_fmt (level, fmt), _eri_unify_file (__FILE__), __LINE__,	\
+      __FUNCTION__, eri_assert_syscall (gettid), ##__VA_ARGS__)
 
 #define eri_debug(fmt, ...) \
   _eri_stream (_eri_debug, DEBUG, fmt, ##__VA_ARGS__)
@@ -83,7 +91,8 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 #define eri_do_log(enabled, file, flags, level, fmt, ...) \
   _eri_log (enabled, file, flags,					\
 	    fmt, "[" ERI_STR (level) " %s:%u(%s)]\t" fmt,		\
-	    __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+	    _eri_unify_file (__FILE__), __LINE__, __FUNCTION__,		\
+	    ##__VA_ARGS__)
 
 #define eri_log_tee()	(eri_global_enable_debug >= 9)
 
@@ -103,6 +112,22 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 
 #define eri_log_info(log, fmt, ...) \
   eri_do_log (1, log, ERI_LOG_PCTX | ERI_LOG_TEE, INFO, fmt, ##__VA_ARGS__)
+
+static eri_unused void
+eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,
+	const char *log, const char *name, uint64_t id, uint64_t buf_size)
+{
+  if (! log) { file->file = 0; return; }
+
+  eri_malloc_open_path (pool, file, log, name, id,
+			eri_enabled_debug () ? 0 : buf_size);
+}
+
+static eri_unused void
+eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
+{
+  if (file->file) eri_free_close (pool, file);
+}
 
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)

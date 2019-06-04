@@ -212,7 +212,6 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 
   uint64_t stack_size = 2 * 1024 * 1024;
   const char *path = "ers-data";
-  uint64_t file_buf_size = 64 * 1024;
 
   if (rtld_args->envp)
     {
@@ -221,8 +220,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 	(void) (eri_get_arg_int (*p, "ERS_ATOMIC_TABLE_SIZE=",
 				 &atomic_table_size, 10)
 	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
-	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path)
-	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path));
     }
 
   struct eri_live_thread_group *group
@@ -246,7 +244,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   eri_strcpy ((void *) group->path, path);
   eri_live_thread_recorder__init_group (group->path);
 
-  group->file_buf_size = file_buf_size;
+  group->file_buf_size = args->file_buf_size;
 
   group->io = args->io;
   return group;

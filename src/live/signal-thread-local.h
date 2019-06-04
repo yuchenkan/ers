@@ -8,6 +8,8 @@
 
 #include <stdint.h>
 
+#include <common/common.h>
+
 #include <lib/compiler.h>
 #include <lib/list.h>
 #include <lib/syscall-common.h>
@@ -24,7 +26,7 @@ struct eri_live_signal_thread
   struct signal_thread_group *group;
 
   uint64_t id;
-  eri_file_t log;
+  struct eri_buf_file log;
 
   int32_t alive;
 

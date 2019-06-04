@@ -1,4 +1,5 @@
 #include <lib/syscall.h>
+#include <lib/malloc.h>
 #include <common/common.h>
 
 void
@@ -19,11 +20,28 @@ eri_build_path (const char *path, const char *name, uint64_t id, char *buf)
 }
 
 eri_file_t
-eri_open_path (const char *path, const char *name, uint64_t id)
+eri_open_path (const char *path, const char *name, uint64_t id,
+	       void *buf, uint64_t buf_size)
 {
   char full_name[eri_build_path_len (path, name, id)];
   eri_build_path (path, name, id, full_name);
-  return eri_assert_fopen (full_name, 0, 0, 0);
+  return eri_assert_fopen (full_name, 0, buf, buf_size);
+}
+
+void
+eri_malloc_open_path (struct eri_mtpool *pool,
+	struct eri_buf_file *file, const char *path, const char *name,
+	uint64_t id, uint64_t buf_size)
+{
+  file->buf = buf_size ? eri_assert_mtmalloc (pool, buf_size) : 0;
+  file->file = eri_open_path (path, name, id, file->buf, buf_size);
+}
+
+void
+eri_free_close (struct eri_mtpool *pool, struct eri_buf_file *file)
+{
+  eri_assert_fclose (file->file);
+  if (file->buf) eri_assert_mtfree (pool, file->buf);
 }
 
 void

@@ -5,10 +5,19 @@ const full = x => `analysis/tst/${x}`;
 const live = 'replay/tst/live.g';
 
 if (base === 'all')
-  return await this.update ((await this.invoke (live, { list: true })).map (x => full (`tst-${x}.out`)));
+  return await this.update ((await this.invoke (live, { list: true })).map (x => full (`tst-live-${x}.diff`)));
 
-const pat = /^tst-([^.]*)\.out$/;
-if (base.match (pat) && await this.invoke (live, { name: base.match (pat)[1], src: 'analysis/analysis' }))
-  return;
+const out = /^tst-live-([^.]*)\.out$/;
+if (base.match (out))
+  return await this.invoke (live, { name: base.match (out)[1], src: 'analysis/analysis' });
+
+const diff = /^tst-live-([^.]*)\.diff$/;
+if (base.match (diff)) {
+  let name = base.match (diff)[1];
+  let re = `replay/tst/tst-live-${name}`;
+  let al = env.trim (goal);
+  await this.update  ([ `${re}.out`, `${al}.out`, full ('diff.sh') ]);
+  return await env.run (`bash ${full ('diff.sh')} ${re}-log ${al}-log ${goal}.log && touch ${goal}`);
+}
 
 return false;

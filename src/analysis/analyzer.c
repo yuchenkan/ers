@@ -156,6 +156,7 @@ struct eri_analyzer_group
   const char *log;
 
   uint64_t page_size;
+  uint64_t file_buf_size;
   uint32_t max_inst_count;
 
   int32_t *pid;
@@ -177,7 +178,7 @@ ERI_DEFINE_RBTREE (static, trans, struct eri_analyzer_group,
 struct eri_analyzer
 {
   struct eri_analyzer_group *group;
-  eri_file_t log;
+  struct eri_buf_file log;
 
   struct eri_entry *entry;
   int32_t *tid;
@@ -200,6 +201,7 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->map_range = args->map_range;
   group->log = args->log;
   group->page_size = args->page_size;
+  group->file_buf_size = args->file_buf_size;
   group->max_inst_count = args->max_inst_count;
   group->pid = args->pid;
 
@@ -230,7 +232,8 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   struct eri_analyzer_group *group = args->group;
   struct eri_analyzer *al = eri_assert_mtmalloc (group->pool, sizeof *al);
   al->group = group;
-  al->log = group->log ? eri_open_path (group->log, "a", args->id) : 0;
+  eri_open_log (group->pool, &al->log, group->log, "a",
+		args->id, group->file_buf_size);
   al->entry = args->entry;
   al->tid = args->tid;
   al->sig_info = 0;
@@ -242,7 +245,8 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
 void
 eri_analyzer__destroy (struct eri_analyzer *al)
 {
-  if (al->log) eri_assert_fclose (al->log);
+  struct eri_mtpool *pool = al->group->pool;
+  eri_close_log (pool, &al->log);
   eri_assert_mtfree (al->group->pool, al);
 }
 
@@ -1437,7 +1441,7 @@ ir_decode (struct eri_analyzer *al, struct ir_dag *dag,
   if (err == XED_ERROR_BUFFER_TOO_SHORT) return 0;
 
   if (err == XED_ERROR_NONE)
-    ir_dump_dis_dec (al->log, rip, dec);
+    ir_dump_dis_dec (al->log.file, rip, dec);
 
   if (err != XED_ERROR_NONE)
     ir_err_end (dag, node, 0, len, bytes);
@@ -3815,7 +3819,6 @@ ir_generate (struct ir_dag *dag, uint8_t new_tf)
   struct ir_block blk = { dag->log };
   eri_assert_buf_mtpool_init (&blk.insts, dag->pool, 512);
   eri_assert_buf_mtpool_init (&blk.traces, dag->pool, 512);
-  blk.sig_info.sig = 0;
   ir_init_trace_accesses (&blk.trace_reads, dag->pool, flat.read_num);
   ir_init_trace_accesses (&blk.trace_writes, dag->pool, flat.write_num);
 
@@ -3860,9 +3863,9 @@ ir_fini_accesses (struct ir_accesses *acc)
 static struct block *
 translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
 {
-  log2 (al->log, "rip = %lx\n", rip);
+  log2 (al->log.file, "rip = %lx\n", rip);
 
-  struct ir_dag dag = { al->group->pool, al->log };
+  struct ir_dag dag = { al->group->pool, al->log.file };
   ERI_LST_INIT_LIST (ir_alloc, &dag);
 
   dag.map_start = ir_get_load_imm (&dag, al->group->map_range->start);
@@ -3892,10 +3895,10 @@ translate (struct eri_analyzer *al, uint64_t rip, uint8_t tf)
       struct ir_node *node = ir_create_inst (al, &dag);
       if (! node) break;
 
-      log8 (al->log, "\n");
+      log8 (al->log.file, "\n");
       ir_build_inst_operands (&dag, node);
 
-      ir_dump_inst (al->log, node);
+      ir_dump_inst (al->log.file, node);
 
       xed_decoded_inst_t *dec = &node->inst.dec;
       xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
@@ -3988,7 +3991,7 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
-  log3 (al->log, "rip = %lx rcx = %lx\n", regs->rip, regs->rcx);
+  log3 (al->log.file, "rip = %lx rcx = %lx\n", regs->rip, regs->rcx);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   struct eri_analyzer_group *group = al->group;
@@ -4034,7 +4037,7 @@ analysis_enter (struct eri_analyzer *al,
 
   eri_atomic_store (&al->act, act, 0);
 
-  log3 (al->log, "leave\n");
+  log3 (al->log.file, "leave\n");
   eri_jump (0, blk->insts, act->local, 0, 0);
 }
 
@@ -4186,7 +4189,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
       args->handler (info, args->ctx, args->args);
       return;
     }
-  log2 (al->log, "%lx\n", rip - (uint64_t) blk->insts);
+  log2 (al->log.file, "%lx\n", rip - (uint64_t) blk->insts);
 
   struct reg_loc locs[REG_NUM];
 

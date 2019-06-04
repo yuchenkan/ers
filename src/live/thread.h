@@ -19,6 +19,7 @@ struct eri_live_thread_group;
 struct eri_live_thread__create_group_args
 {
   struct eri_live_rtld_args *rtld_args;
+  uint64_t file_buf_size;
   uint64_t *io;
 };
 
