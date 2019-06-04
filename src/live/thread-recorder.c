@@ -3,13 +3,22 @@
 #include <lib/printf.h>
 
 #include <common/debug.h>
+#include <common/common.h>
 #include <common/serial.h>
 
+#include <live/debug.h>
 #include <live/thread-recorder.h>
+
+void
+eri_live_thread_recorder__init_group (const char *path)
+{
+  eri_mkdir (path);
+}
 
 struct eri_live_thread_recorder
 {
   struct eri_mtpool *pool;
+  eri_file_t log;
 
   uint8_t pending_sync_async;
   uint64_t sync_async_cnt;
@@ -20,12 +29,12 @@ struct eri_live_thread_recorder
 
 struct eri_live_thread_recorder *
 eri_live_thread_recorder__create (struct eri_mtpool *pool,
-				  const char *path, uint64_t id,
-				  uint64_t buf_size)
+	const char *path, uint64_t id, eri_file_t log, uint64_t buf_size)
 {
   struct eri_live_thread_recorder *th_rec
 		= eri_assert_mtmalloc (pool, sizeof *th_rec + buf_size);
   th_rec->pool = pool;
+  th_rec->log = log;
 
   th_rec->pending_sync_async = 0;
 
@@ -67,8 +76,6 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
 		    uint64_t map_start, uint64_t map_end, uint64_t rsp,
 		    char *buf)
 {
-  eri_debug ("\n");
-
   const char *b = buf;
   const char *d = eri_strtok (b, '-');
   *(char *) d = '\0';
@@ -121,8 +128,8 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
 	}
     }
 
-  eri_debug ("%s %lx %lx %u %u\n",
-	     path ? : "<>", start, end, prot, grows_done);
+  eri_live_debug (th_rec->log, "%s %lx %lx %u %u\n",
+		  path ? : "<>", start, end, prot, grows_done);
 
   uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
   eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
@@ -141,7 +148,6 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
       eri_serialize_uint64 (file, end);
       eri_serialize_uint8_array (file, (void *) data_start, end - data_start);
     }
-  eri_debug ("leave\n");
 }
 
 struct proc_smaps_line_args
@@ -192,7 +198,7 @@ eri_live_thread_recorder__rec_init (
 				proc_smaps_line, &line_args);
   eri_assert_buf_fini (&line_args.buf);
   eri_assert_buf_fini (&buf);
-  eri_debug ("leave rec_init\n");
+  eri_live_debug (th_rec->log, "leave rec_init\n");
 }
 
 void

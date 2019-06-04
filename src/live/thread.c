@@ -2,14 +2,14 @@
 
 /*
  * XXX: There is no acceptable way to completely prevent user from
- * corrupting our memory * without hardware support (e.g. pkey, which
- * also can't gurantee the whole safety, but can prevent most). More
- * specificly, the protection is done for the syscalls, but it's too
+ * corrupting our memory without hardware support (e.g. pkey, while which
+ * can't gurantee the whole safety, but most).
+ * The protection is done for the syscalls, but it's too
  * costly for normal memory accessing instructions.
  *
  * The behaviour of corrupting our memory is not undefined and user
- * won't be signaled. It's even undetectable in the replay/analysis if
- * the log buffer is corrupted.
+ * won't be signaled. It's may even undetectable in the replay/analysis if
+ * the record buffer is corrupted.
  *
  * There shall be no other newly introduced undefined behaviour.
  */
@@ -25,10 +25,10 @@
 #include <lib/syscall.h>
 #include <lib/atomic.h>
 
-#include <common/debug.h>
 #include <common/thread.h>
 #include <common/serial.h>
 
+#include <live/debug.h>
 #include <live/common.h>
 #include <live/rtld.h>
 #include <live/signal-thread.h>
@@ -45,6 +45,8 @@ struct eri_live_thread
   struct eri_live_signal_thread *sig_th;
 
   uint64_t id;
+  eri_file_t log;
+
   int32_t alive;
   struct eri_lock start_lock;
   int32_t *clear_user_tid;
@@ -94,7 +96,6 @@ struct eri_live_thread_group
   uint64_t *atomic_table;
   uint64_t atomic_table_size;
 
-  uint64_t th_id;
   uint64_t stack_size;
 
   const char *path;
@@ -239,9 +240,12 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 		atomic_table_size * sizeof *group->atomic_table);
   group->atomic_table_size = atomic_table_size;
 
-  group->th_id = 0;
   group->stack_size = stack_size;
-  group->path = path;
+
+  group->path = eri_assert_mtmalloc (pool, eri_strlen (path) + 1);
+  eri_strcpy ((void *) group->path, path);
+  eri_live_thread_recorder__init_group (group->path);
+
   group->file_buf_size = file_buf_size;
 
   group->io = args->io;
@@ -255,6 +259,7 @@ eri_live_thread__destroy_group (struct eri_live_thread_group *group)
   ERI_RBT_FOREACH_SAFE (fdf, group, fd, nfd)
     fdf_remove_free (group, fd);
 
+  eri_assert_mtfree (group->pool, (void *) group->path);
   eri_assert_mtfree (group->pool, group->atomic_table);
   eri_assert_mtfree (group->pool, group);
 }
@@ -269,14 +274,15 @@ create (struct eri_live_thread_group *group,
   struct eri_live_thread *th
 	= eri_assert_mtmalloc (group->pool, sizeof *th + group->stack_size);
   th->group = group;
-  eri_debug ("%lx %lx\n", th, sig_th);
   th->sig_th = sig_th;
-  th->id = eri_atomic_fetch_inc (&group->th_id, 0);
+  th->id = eri_live_signal_thread__get_id (sig_th);
+  th->log = eri_live_signal_thread__get_log (sig_th);
+  eri_live_debug (th->log, "%lx %lx\n", th, sig_th);
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
   th->rec = eri_live_thread_recorder__create (
-		group->pool, group->path, th->id, group->file_buf_size);
+	group->pool, group->path, th->id, th->log, group->file_buf_size);
 
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, th->stack + group->stack_size,
@@ -311,7 +317,7 @@ eri_live_thread__create_main (struct eri_live_thread_group *group,
 static eri_noreturn void
 start (struct eri_live_thread *th)
 {
-  eri_debug ("%lx\n", th);
+  eri_live_debug (th->log, "%lx\n", th);
   eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
   eri_assert (eri_assert_syscall (getppid)
 	      == eri_live_signal_thread__get_pid (th->sig_th));
@@ -421,7 +427,7 @@ eri_live_thread__clone (struct eri_live_thread *th)
     &th->tid, &th->alive, new_tls, start, th
   };
 
-  eri_debug ("clone %lx\n", args.stack);
+  eri_live_debug (th->log, "clone %lx\n", args.stack);
   uint64_t res = eri_sys_clone (&args);
 
   eri_sig_empty_set (&mask);
@@ -661,7 +667,7 @@ clear_user_tid (struct eri_live_thread *th,
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
-  eri_debug ("exit\n");
+  eri_live_debug (th->log, "exit\n");
   int32_t nr = regs->rax;
   uint8_t exit_group = nr == __NR_exit_group;
   int32_t status = regs->rdi;
@@ -699,7 +705,7 @@ syscall_do_exit (SYSCALL_PARAMS)
   syscall_record_out (th);
 
 recorded:
-  eri_debug ("syscall exit\n");
+  eri_live_debug (th->log, "syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);
 }
 
@@ -1934,7 +1940,7 @@ die (struct eri_live_thread *th)
 static eri_noreturn void
 core (struct eri_live_thread *th, uint8_t term)
 {
-  eri_debug ("core\n");
+  eri_live_debug (th->log, "core\n");
 
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
@@ -2076,8 +2082,8 @@ eri_live_thread__sig_handler (
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
-  eri_debug ("sig = %u, frame = %lx, rip = %lx\n",
-	     info->sig, frame, ctx->mctx.rip);
+  eri_live_debug (th->log, "sig = %u, frame = %lx, rip = %lx\n",
+		  info->sig, frame, ctx->mctx.rip);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)

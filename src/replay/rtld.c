@@ -6,6 +6,7 @@
 
 #include <common/debug.h>
 #include <common/rtld.h>
+#include <common/common.h>
 #include <common/serial.h>
 
 #include <replay/rtld.h>

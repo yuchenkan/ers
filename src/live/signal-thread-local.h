@@ -11,6 +11,7 @@
 #include <lib/compiler.h>
 #include <lib/list.h>
 #include <lib/syscall-common.h>
+#include <lib/printf.h>
 
 struct eri_live_rtld_args;
 struct eri_siginfo;
@@ -21,6 +22,10 @@ struct eri_live_thread;
 struct eri_live_signal_thread
 {
   struct signal_thread_group *group;
+
+  uint64_t id;
+  eri_file_t log;
+
   int32_t alive;
 
   ERI_LST_NODE_FIELDS (thread)

@@ -28,10 +28,10 @@
 symbol:
 
 #define TST_WEAK_BLANK_ZERO(func) \
-asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret")
+asm (ERI_STR (TST_WEAK_SYMBOL (func)) "xorq	%rax, %rax; ret");
 
 #define TST_WEAK_BLANK(func) \
-asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret")
+asm (ERI_STR (TST_WEAK_SYMBOL (func)) "ret");
 
 #define tst_enable_trace() \
 asm ("pushq\t%0; popfq" : : "n" (ERI_RFLAGS_TF) : "cc", "memory");

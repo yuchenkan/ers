@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <lib/compiler.h>
+#include <lib/printf.h>
 #include <lib/syscall-common.h>
 
 struct eri_mtpool;
@@ -97,6 +98,11 @@ uint8_t eri_live_signal_thread__signaled (
 		struct eri_live_signal_thread *sig_th);
 
 const struct eri_sigset *eri_live_signal_thread__get_sig_mask (
+		const struct eri_live_signal_thread *sig_th);
+
+uint64_t eri_live_signal_thread__get_id (
+		const struct eri_live_signal_thread *sig_th);
+eri_file_t eri_live_signal_thread__get_log (
 		const struct eri_live_signal_thread *sig_th);
 
 int32_t eri_live_signal_thread__get_pid (

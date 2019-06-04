@@ -6,7 +6,6 @@
 #include <live/tst/tst-util.h>
 #include <live/tst/sig-hand-ut.h>
 
-
 TST_UNUSED (eri_helper__invoke)
 
 void
@@ -58,12 +57,12 @@ eri_live_signal_thread__get_tid (
   return sig_th->tid;
 }
 
-uint8_t
-eri_live_signal_thread__signaled (
-		struct eri_live_signal_thread *sig_th)
-{
-  return 0;
-}
+#define ZERO(func) \
+TST_WEAK_BLANK_ZERO (ERI_PASTE (eri_live_signal_thread__, func))
+
+ZERO (get_id)
+ZERO (get_log)
+ZERO (signaled)
 
 #define UNUSED(func) \
 TST_UNUSED (ERI_PASTE (eri_live_signal_thread__, func))
