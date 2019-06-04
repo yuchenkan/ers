@@ -25,6 +25,8 @@ struct eri_analyzer_group__create_args
   struct eri_mtpool *pool;
   struct eri_range *map_range;
 
+  const char *log;
+
   uint64_t page_size;
   uint32_t max_inst_count;
 
@@ -38,6 +40,7 @@ void eri_analyzer_group__destroy (eri_analyzer_group_type *group);
 struct eri_analyzer__create_args
 {
   eri_analyzer_group_type *group;
+  uint64_t id;
   struct eri_entry *entry;
 
   int32_t *tid;

@@ -6,7 +6,6 @@
 #include <common/common.h>
 #include <common/serial.h>
 
-#include <live/debug.h>
 #include <live/thread-recorder.h>
 
 void
@@ -128,8 +127,8 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
 	}
     }
 
-  eri_live_debug (th_rec->log, "%s %lx %lx %u %u\n",
-		  path ? : "<>", start, end, prot, grows_done);
+  eri_log (th_rec->log, "%s %lx %lx %u %u\n",
+	   path ? : "<>", start, end, prot, grows_done);
 
   uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
   eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
@@ -198,7 +197,7 @@ eri_live_thread_recorder__rec_init (
 				proc_smaps_line, &line_args);
   eri_assert_buf_fini (&line_args.buf);
   eri_assert_buf_fini (&buf);
-  eri_live_debug (th_rec->log, "leave rec_init\n");
+  eri_log (th_rec->log, "leave rec_init\n");
 }
 
 void

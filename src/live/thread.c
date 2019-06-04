@@ -25,10 +25,10 @@
 #include <lib/syscall.h>
 #include <lib/atomic.h>
 
+#include <common/debug.h>
 #include <common/thread.h>
 #include <common/serial.h>
 
-#include <live/debug.h>
 #include <live/common.h>
 #include <live/rtld.h>
 #include <live/signal-thread.h>
@@ -277,7 +277,7 @@ create (struct eri_live_thread_group *group,
   th->sig_th = sig_th;
   th->id = eri_live_signal_thread__get_id (sig_th);
   th->log = eri_live_signal_thread__get_log (sig_th);
-  eri_live_debug (th->log, "%lx %lx\n", th, sig_th);
+  eri_log (th->log, "%lx %lx\n", th, sig_th);
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
@@ -317,7 +317,7 @@ eri_live_thread__create_main (struct eri_live_thread_group *group,
 static eri_noreturn void
 start (struct eri_live_thread *th)
 {
-  eri_live_debug (th->log, "%lx\n", th);
+  eri_log (th->log, "%lx\n", th);
   eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
   eri_assert (eri_assert_syscall (getppid)
 	      == eri_live_signal_thread__get_pid (th->sig_th));
@@ -427,7 +427,7 @@ eri_live_thread__clone (struct eri_live_thread *th)
     &th->tid, &th->alive, new_tls, start, th
   };
 
-  eri_live_debug (th->log, "clone %lx\n", args.stack);
+  eri_log (th->log, "clone %lx\n", args.stack);
   uint64_t res = eri_sys_clone (&args);
 
   eri_sig_empty_set (&mask);
@@ -667,7 +667,7 @@ clear_user_tid (struct eri_live_thread *th,
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
-  eri_live_debug (th->log, "exit\n");
+  eri_log (th->log, "exit\n");
   int32_t nr = regs->rax;
   uint8_t exit_group = nr == __NR_exit_group;
   int32_t status = regs->rdi;
@@ -705,7 +705,7 @@ syscall_do_exit (SYSCALL_PARAMS)
   syscall_record_out (th);
 
 recorded:
-  eri_live_debug (th->log, "syscall exit\n");
+  eri_log (th->log, "syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);
 }
 
@@ -1940,7 +1940,7 @@ die (struct eri_live_thread *th)
 static eri_noreturn void
 core (struct eri_live_thread *th, uint8_t term)
 {
-  eri_live_debug (th->log, "core\n");
+  eri_log (th->log, "core\n");
 
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
@@ -2082,8 +2082,8 @@ eri_live_thread__sig_handler (
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
-  eri_live_debug (th->log, "sig = %u, frame = %lx, rip = %lx\n",
-		  info->sig, frame, ctx->mctx.rip);
+  eri_log (th->log, "sig = %u, frame = %lx, rip = %lx\n",
+	   info->sig, frame, ctx->mctx.rip);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)

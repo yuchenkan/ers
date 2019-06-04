@@ -22,6 +22,9 @@ struct init_map_args
 
   uint64_t debug;
 
+  uint8_t conf;
+  uint8_t log;
+
   int32_t fd;
   uint64_t page_size;
 
@@ -80,6 +83,8 @@ eri_init_map (struct init_map_args *args)
       call_init_map ((void *) restart);
     }
 
+  /* NOTE: most utils not work in this function.  */
+
   int32_t fd = args->fd;
   struct eri_elf64_ehdr ehdr;
   eri_assert_sys_read (fd, &ehdr, sizeof ehdr);
@@ -126,7 +131,12 @@ eri_init_map (struct init_map_args *args)
 
   eri_assert_syscall (close, fd);
 
-  const char *path = (void *) (segs + nsegs);
+  const char *c = (void *) (segs + nsegs);
+  const char *path = c;
+  while (*c++) continue;
+  const char *conf = args->conf ? c : 0;
+  if (args->conf) while (*c++) continue;
+  const char *log = args->log ? c : 0;
 
   uint64_t segs_map_start = eri_round_down (segs[0].vaddr, page_size);
   uint64_t segs_alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
@@ -134,8 +144,8 @@ eri_init_map (struct init_map_args *args)
   uint64_t segs_map_size = segs_map_end - segs_map_start;
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
-    { map_start, map_end }, page_size,
-    path, args->debug, args->stack_size, args->file_buf_size,
+    { map_start, map_end }, page_size, args->debug, path, conf, log,
+    args->stack_size, args->file_buf_size,
     map_start + segs_map_end, map_end - map_start - segs_map_end
   };
   ((void (*) (void *)) map_start + entry) (&rtld_args);
@@ -150,13 +160,15 @@ rtld (void **args)
   eri_assert_sys_sigprocmask (&set, 0);
 
   const char *path = "ers-data";
-  const char *conf = "";
+  const char *conf = 0;
+  const char *log = 0;
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
   char **envp;
   for (envp = eri_get_envp_from_args (args); *envp; ++envp)
     (void) (eri_get_arg_str (*envp, "ERS_DATA=", (void *) &path)
     || eri_get_arg_str (*envp, "ERS_CONF=", (void *) &conf)
+    || eri_get_arg_str (*envp, "ERS_LOG=", (void *) &log)
     || eri_get_arg_int (*envp, "ERS_STACK_SIZE=", &stack_size, 10)
     || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
     || eri_get_arg_int (*envp, "ERS_DEBUG=", &eri_global_enable_debug, 10));
@@ -203,16 +215,19 @@ rtld (void **args)
 
   struct init_map_args init_args = {
     .debug = eri_global_enable_debug,
+    .conf = !! conf, .log = !! log,
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
     .map_start = rec.map_range.start, .map_end = rec.map_range.end,
     .map_entry_offset
+	/* main replay entry: eri_replay_start */
 	= (uint64_t) eri_replay_start - (uint64_t) eri_start,
     .nsegs = nsegs
   };
   uint64_t data_size = sizeof init_args + sizeof segs
-			+ eri_strlen (path) + eri_strlen (conf) + 2;
+	+ eri_strlen (path) + 1 + (conf ? eri_strlen (conf) + 1 : 0)
+	+ (log ? eri_strlen (log) + 1 : 0);
   uint64_t text_start_offset = eri_round_up (data_size, 16);
 
   extern uint8_t eri_init_map_text_start[];
@@ -229,8 +244,17 @@ rtld (void **args)
 		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
   eri_memcpy (a, &init_args, sizeof *a);
   eri_memcpy (a->segs, segs, sizeof segs);
-  eri_strcpy ((void *) (a->segs + nsegs), path);
-  eri_strcpy ((char *) (a->segs + nsegs) + eri_strlen (path) + 1, conf);
+
+  char *c = (void *) (a->segs + nsegs);
+  eri_strcpy (c, path);
+  c += eri_strlen (path) + 1;
+  if (conf)
+    {
+      eri_strcpy (c, conf);
+      c += eri_strlen (conf) + 1;
+    }
+  if (log) eri_strcpy (c, log);
+
   uint64_t text_start = (uint64_t) a + text_start_offset;
   //eri_assert_printf ("%lx %lx\n", text, eri_init_map_text_start);
   eri_memcpy ((void *) text_start, eri_init_map_text_start, text_size);

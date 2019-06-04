@@ -73,6 +73,8 @@ struct thread_group
   struct eri_range map_range;
 
   const char *path;
+  const char *log;
+
   uint64_t stack_size;
   uint64_t file_buf_size;
 
@@ -99,6 +101,7 @@ struct thread_group
 struct thread
 {
   struct thread_group *group;
+  eri_file_t log;
 
   struct eri_entry *entry;
   uint8_t sync_async_trace;
@@ -128,8 +131,8 @@ struct thread
     uint16_t _magic = magic;						\
     uint16_t _next = eri_unserialize_magic ((th)->file);		\
     if (_next != _magic)						\
-      eri_info ("unexpected magic: %u, expecting: %u\n",		\
-		_next, _magic);						\
+      eri_log_info (th->log, "unexpected magic: %u, expecting: %u\n",	\
+		    _next, _magic);					\
     eri_assert (_next == _magic);					\
   } while (0)
 
@@ -161,14 +164,22 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->path = eri_assert_malloc (&pool->pool,
 				   eri_strlen (rtld_args->path) + 1);
   eri_strcpy ((void *) group->path, rtld_args->path);
+  group->log = rtld_args->log ? eri_assert_malloc (&pool->pool,
+			eri_strlen (rtld_args->log) + 1) : 0;
+  if (rtld_args->log)
+    {
+      eri_mkdir (rtld_args->log);
+      eri_strcpy ((void *) group->log, rtld_args->log);
+    }
+
   group->stack_size = rtld_args->stack_size;
   group->file_buf_size = rtld_args->file_buf_size;
 
   if (eri_enable_analyzer)
     {
       struct eri_analyzer_group__create_args args = {
-        group->pool, &group->map_range,
-	rtld_args->page_size, 64 /* XXX */, &group->pid
+        group->pool, &group->map_range, group->log,
+	rtld_args->page_size, 64 /* XXX parameterize */, &group->pid
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
     }
@@ -204,6 +215,7 @@ destroy_group (struct thread_group *group)
   eri_assert_free (pool, group->atomic_table);
   if (eri_enable_analyzer)
     eri_analyzer_group__destroy (group->analyzer_group);
+  if (group->log) eri_assert_free (pool, (void *) group->log);
   eri_assert_free (pool, (void *) group->path);
   eri_assert_free (pool, group);
   eri_assert_fini_pool (pool);
@@ -227,6 +239,8 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 
   uint8_t *stack = th->stack + group->stack_size;
   th->group = group;
+  th->log = group->log ? eri_open_path (group->log, "l", id) : 0; 
+
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, stack,
     main_entry, sig_action, eri_enable_analyzer ? analysis : 0
@@ -237,7 +251,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   if (eri_enable_analyzer)
     {
       struct eri_analyzer__create_args args = {
-	group->analyzer_group, th->entry, &th->tid
+	group->analyzer_group, id, th->entry, &th->tid
       };
       th->analyzer = eri_analyzer__create (&args);
     }
@@ -263,10 +277,11 @@ destroy (struct thread *th)
   uint8_t err;
   if (eri_unserialize_uint8_or_eof (th->file, &err))
     {
-      eri_info ("not eof %u\n", err);
+      eri_log_info (th->log, "not eof %u\n", err);
       eri_assert_unreachable ();
     }
 
+  if (th->log) eri_assert_fclose (th->log);
   eri_assert_fclose (th->file);
 
   struct eri_mtpool *pool = th->group->pool;
@@ -277,7 +292,7 @@ destroy (struct thread *th)
 }
 
 #define next_record(th) \
-  ({ struct thread *_th = th; eri_debug ("%u\n", _th->rec++);		\
+  ({ struct thread *_th = th; eri_log (th->log, "%u\n", _th->rec++);	\
      eri_unserialize_mark (_th->file); })
 
 static void
@@ -312,7 +327,7 @@ start_main (struct thread *th)
   eri_unserialize_init_record (th->file, &rec);
   eri_assert (rec.ver == 0);
 
-  eri_debug ("rec.rip: %lx, rec.rsp: %lx\n", rec.rip, rec.rsp);
+  eri_log (th->log, "rec.rip: %lx, rec.rsp: %lx\n", rec.rip, rec.rsp);
 
   struct eri_registers *regs = eri_entry__get_regs (th->entry);
   regs->rip = rec.rip;
@@ -337,8 +352,8 @@ start_main (struct thread *th)
     {
       struct eri_init_map_record rec;
       eri_unserialize_init_map_record (th->file, &rec);
-      eri_debug ("rec.start: %lx, rec.end: %lx, rec.prot: %u\n",
-		 rec.start, rec.end, rec.prot);
+      eri_log (th->log, "rec.start: %lx, rec.end: %lx, rec.prot: %u\n",
+	       rec.start, rec.end, rec.prot);
       uint64_t size = rec.end - rec.start;
       uint8_t prot = rec.prot;
       uint8_t init_prot = prot | (rec.data_count ? ERI_PROT_WRITE : 0);
@@ -369,6 +384,9 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   eri_global_enable_debug = rtld_args->debug;
   eri_debug ("%lx, %lx, %u\n",
 	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size);
+  if (eri_global_enable_debug && ! rtld_args->log)
+    rtld_args->log = eri_enable_analyzer
+				? "ers-analysis-log" : "ers-replay-log";
   struct thread_group *group = create_group (rtld_args);
   struct thread *th = create (group, 0, 0);
   struct eri_entry *entry = th->entry;
@@ -604,30 +622,30 @@ cleanup (void *args)
 {
   struct thread *th = args;
   eri_assert_sys_futex_wait (&th->alive, 1, 0);
-  eri_debug ("destroy %lu\n", th->tid);
+  eri_log (th->log, "destroy %lu\n", th->tid);
   destroy (th);
 }
 
 static eri_noreturn void
 exit (struct thread *th)
 {
-  eri_debug ("\n");
+  eri_log (th->log, "\n");
   struct thread_group *group = th->group;
   eri_assert_lock (&group->exit_lock);
   if (--group->thread_count)
     {
       eri_helper__invoke (group->helper, cleanup, th);
       eri_assert_unlock (&group->exit_lock);
-      eri_debug ("exit\n");
+      eri_log (th->log, "exit\n");
       eri_assert_sys_exit (0);
     }
 
   eri_assert_unlock (&group->exit_lock);
 
-  eri_debug ("exit helper\n");
+  eri_log (th->log, "exit helper\n");
   eri_helper__exit (group->helper);
 
-  eri_debug ("final exit\n");
+  eri_log (th->log, "final exit\n");
   eri_preserve (&group->pool->pool);
 
   destroy (th);
@@ -1277,7 +1295,7 @@ syscall (struct thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  eri_debug ("%u\n", regs->rax);
+  eri_log (th->log, "%u\n", regs->rax);
 
   switch (regs->rax)
     {
@@ -1379,7 +1397,7 @@ main_entry (struct eri_entry *entry)
 {
   struct thread *th = eri_entry__get_th (entry);
   uint16_t code = eri_entry__get_op_code (entry);
-  eri_debug ("%u\n", code);
+  eri_log (th->log, "%u\n", code);
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
   else if (eri_op_is_atomic (code)) atomic (th);
@@ -1389,8 +1407,8 @@ main_entry (struct eri_entry *entry)
 static eri_noreturn void
 sig_action (struct eri_entry *entry)
 {
-  eri_debug ("\n");
   struct thread *th = eri_entry__get_th (entry);
+  eri_log (th->log, "\n");
   struct eri_siginfo *info = eri_entry__get_sig_info (entry);
   int32_t sig = info->sig;
   if (sig == 0) exit (th);
@@ -1428,8 +1446,8 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 	       struct thread *th)
 {
   int32_t sig = info->sig;
-  eri_debug ("%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
-	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
+  eri_log (th->log, "%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
+	   ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);

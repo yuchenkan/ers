@@ -11,9 +11,11 @@ struct eri_replay_rtld_args
   struct eri_range map_range;
   uint64_t page_size;
 
-  const char *path;
-
   uint8_t debug;
+
+  const char *path;
+  const char *conf;
+  const char *log;
 
   uint64_t stack_size;
   uint64_t file_buf_size;

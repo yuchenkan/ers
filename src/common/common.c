@@ -18,6 +18,14 @@ eri_build_path (const char *path, const char *name, uint64_t id, char *buf)
   eri_strcpy (buf, a);
 }
 
+eri_file_t
+eri_open_path (const char *path, const char *name, uint64_t id)
+{
+  char full_name[eri_build_path_len (path, name, id)];
+  eri_build_path (path, name, id, full_name);
+  return eri_assert_fopen (full_name, 0, 0, 0);
+}
+
 void
 eri_mkdir (const char *path)
 {
