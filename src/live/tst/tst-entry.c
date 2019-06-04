@@ -37,7 +37,7 @@ trap (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   struct tst_live_entry_mcontext tctx;
 #define GET(cr, r)	tctx.r = ctx->mctx.r;
   TST_LIVE_ENTRY_MCONTEXT_FOREACH_REG (GET)
-  tctx.rflags &= TST_RFLAGS_STATUS_MASK;
+  tctx.rflags &= ERI_RFLAGS_STATUS_MASK;
 
   if (! pack->step (&tctx, pack->args))
     {

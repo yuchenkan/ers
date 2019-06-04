@@ -15,9 +15,6 @@
 #define tst_get_tls() \
   ({ void *_tls; asm ("movq\t%%fs:0, %0" : "=r" (_tls)); _tls; })
 
-/* XXX: check other flags */
-#define TST_RFLAGS_STATUS_MASK		0xd5
-
 #define TST_UNUSED(func) \
   asm (ERI_STR (ERI_SYMBOL (func)) ERI_STR (ERI_ASSERT_FALSE));
 

@@ -32,7 +32,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   eri_assert (ctx->mctx.rsp == (uint64_t) tst_stack_top (stack));
   eri_assert (ctx->mctx.rip == 0);
-  eri_assert ((ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK) == 0);
+  eri_assert ((ctx->mctx.rflags & ERI_RFLAGS_STATUS_MASK) == 0);
   eri_assert_sys_exit (0);
 }
 

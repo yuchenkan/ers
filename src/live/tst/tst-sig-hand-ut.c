@@ -76,8 +76,8 @@ eq (struct eri_mcontext *mctx, struct context *ctx, struct step *step)
 
   TST_FOREACH_GENERAL_REG (EQ, mctx, ctx)
   EQ (RIP, rip, mctx, ctx)
-  if ((mctx->rflags & TST_RFLAGS_STATUS_MASK)
-	!= (ctx->ctx.rflags & TST_RFLAGS_STATUS_MASK)) return 0;
+  if ((mctx->rflags & ERI_RFLAGS_STATUS_MASK)
+	!= (ctx->ctx.rflags & ERI_RFLAGS_STATUS_MASK)) return 0;
 
   if (step->step.mem_size
       && eri_memcmp (step->mem, ctx->mem, step->step.mem_size))

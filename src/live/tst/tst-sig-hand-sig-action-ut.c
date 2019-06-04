@@ -84,8 +84,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 #define EQ(creg, reg)	eri_assert (prev_ctx->mctx.reg == init_ctx.reg);
   TST_FOREACH_GENERAL_REG (EQ)
   EQ (RIP, rip)
-  eri_assert ((prev_ctx->mctx.rflags & TST_RFLAGS_STATUS_MASK)
-		== (init_ctx.rflags & TST_RFLAGS_STATUS_MASK));
+  eri_assert ((prev_ctx->mctx.rflags & ERI_RFLAGS_STATUS_MASK)
+		== (init_ctx.rflags & ERI_RFLAGS_STATUS_MASK));
 
   if (reach_done)
     {

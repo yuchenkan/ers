@@ -859,6 +859,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask))
     exit (th);
   th->sig_alt_stack = st;
+  eri_log (th->log.file, "%lx\n", regs->rsi);
   eri_entry__leave (entry);
 }
 
@@ -1297,7 +1298,7 @@ syscall (struct thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  eri_log (th->log.file, "%u\n", regs->rax);
+  eri_log (th->log.file, "%lu %lx %lx\n", regs->rax, regs->rip, regs->rsi);
 
   switch (regs->rax)
     {
@@ -1394,12 +1395,32 @@ atomic (struct thread *th)
   eri_entry__leave (entry);
 }
 
+static uint64_t
+hash_regs (eri_file_t log, struct eri_entry *entry)
+{
+  struct eri_registers *regs = eri_entry__get_regs (entry);
+
+  if (eri_enabled_debug ())
+    {
+#define LOG_GPREG(creg, reg) \
+  eri_log (log, ERI_STR (reg) " %lx\n", regs->reg);
+      ERI_FOREACH_GPREG (LOG_GPREG)
+      eri_log (log, "rflags %lx\n", regs->rflags & ERI_RFLAGS_STATUS_MASK);
+      eri_log (log, "rip %lx\n", regs->rip);
+    }
+
+  return eri_hashs (
+#define HASH_GPREG(creg, reg)	regs->reg,
+	ERI_FOREACH_GPREG (HASH_GPREG)
+	regs->rflags & ERI_RFLAGS_STATUS_MASK, regs->rip);
+}
+
 static eri_noreturn void
 main_entry (struct eri_entry *entry)
 {
   struct thread *th = eri_entry__get_th (entry);
   uint16_t code = eri_entry__get_op_code (entry);
-  eri_log (th->log.file, "%u\n", code);
+  eri_log (th->log.file, "%u %lx\n", code, hash_regs (th->log.file, entry));
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
   else if (eri_op_is_atomic (code)) atomic (th);
@@ -1423,6 +1444,8 @@ sig_action (struct eri_entry *entry)
   version_wait (th->group->sig_acts + sig - 1, act.ver);
 
   if (eri_sig_act_internal_act (act.act.act)) exit (th);
+
+  eri_log (th->log.file, "%u\n", sig);
 
   if (! eri_entry__setup_user_frame (entry, &act.act,
 				     &th->sig_alt_stack, &th->sig_mask))
@@ -1449,8 +1472,9 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 {
   int32_t sig = info->sig;
   if (eri_enabled_debug ())
-    eri_log (th->log.file, "%u %lx %lx %lx %lx\n", sig, info, ctx->mctx.rip,
-	     ctx->mctx.rip - th->group->map_range.start, ctx->mctx.rsp);
+    eri_log (th->log.file, "%u %lx %lx %lx %lx %lx\n", sig, info,
+	     ctx->mctx.rip, ctx->mctx.rip - th->group->map_range.start,
+	     ctx->mctx.r11, ctx->mctx.rflags);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     fetch_async_sig_info (th, info);
@@ -1475,8 +1499,6 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 	  fetch_async_sig_info (th, info);
 	}
     }
-
-  if (! eri_enabled_debug ()) eri_log (th->log.file, "%u\n", sig);
 
   if (eri_entry__sig_is_access_fault (entry, info))
     {

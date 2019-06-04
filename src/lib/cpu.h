@@ -85,4 +85,7 @@
 #define ERI_RFLAGS_DF		(1 << 10)
 #define ERI_RFLAGS_RF		(1 << 16)
 
+/* XXX: check other flags */
+#define ERI_RFLAGS_STATUS_MASK	0xd5
+
 #endif

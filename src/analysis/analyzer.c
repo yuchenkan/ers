@@ -1213,7 +1213,7 @@ ir_create_cond_str_op (struct ir_dag *dag, struct ir_cond_str_op_args *args)
   if (ir_cond_str_op_rdi (iclass))
     defs[1] = ir_define (node, &node->cond_str_op.def_rdi);
   if (ir_cond_str_op_rsi (iclass))
-    defs[2] = ir_define (node, &node->cond_str_op.def_rdi);
+    defs[2] = ir_define (node, &node->cond_str_op.def_rsi);
   if (ir_cond_str_op_def_rax (iclass))
     defs[3] = ir_define (node, &node->cond_str_op.def_rax);
   defs[4] = ir_define (node, &node->cond_str_op.def_rcx);
@@ -3991,7 +3991,8 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
-  log3 (al->log.file, "rip = %lx rcx = %lx\n", regs->rip, regs->rcx);
+  log2 (al->log.file, "rip = %lx rcx = %lx r11 = %lx rflags = %lx\n",
+	regs->rip, regs->rcx, regs->r11, regs->rflags);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   struct eri_analyzer_group *group = al->group;
@@ -4047,6 +4048,7 @@ raise (struct eri_analyzer *al,
 {
   al->act_sig_info = *info;
   eri_mcontext_from_registers (&al->act_sig_mctx, regs);
+  al->act_sig_mctx.rflags |= 0x202; /* IF & 0x2 */
   eri_assert_syscall (tgkill, *al->group->pid, *al->tid, ERI_SIGRTMIN + 1);
 }
 
@@ -4054,6 +4056,7 @@ static void
 raise_single_step (struct eri_analyzer *al, struct eri_registers *regs)
 {
   struct eri_siginfo info = { .sig = ERI_SIGTRAP, .code = ERI_TRAP_TRACE };
+  eri_log (al->log.file, "%lx %lx\n", regs->rsi, regs->rflags);
   raise (al, &info, regs);
 }
 
