@@ -103,7 +103,7 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
     eri_do_log (!! _log, log, _f, DEBUG, fmt, ##__VA_ARGS__);	\
   } while (0)
 
-#define eri_log_raw(log, fmt, ...) \
+#define eri_rlog(log, fmt, ...) \
   do {									\
     typeof (log) _log = log;						\
     uint32_t _f = eri_log_tee () ? ERI_LOG_TEE : 0;			\
@@ -112,6 +112,20 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 
 #define eri_log_info(log, fmt, ...) \
   eri_do_log (1, log, ERI_LOG_PCTX | ERI_LOG_TEE, INFO, fmt, ##__VA_ARGS__)
+
+#define eri_logn(n, log, fmt, ...) \
+  eri_log (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
+
+#define eri_log2(log, fmt, ...)	eri_logn (2, log, fmt, ##__VA_ARGS__)
+#define eri_log3(log, fmt, ...)	eri_logn (3, log, fmt, ##__VA_ARGS__)
+#define eri_log8(log, fmt, ...)	eri_logn (8, log, fmt, ##__VA_ARGS__)
+
+#define eri_rlogn(n, log, fmt, ...) \
+  eri_rlog (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
+
+#define eri_rlog2(log, fmt, ...)	eri_rlogn (2, log, fmt, ##__VA_ARGS__)
+#define eri_rlog3(log, fmt, ...)	eri_rlogn (3, log, fmt, ##__VA_ARGS__)
+
 
 static eri_unused void
 eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,

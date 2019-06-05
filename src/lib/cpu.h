@@ -88,4 +88,40 @@
 /* XXX: check other flags */
 #define ERI_RFLAGS_STATUS_MASK	0xd5
 
+#define ERI_FOREACH_GPREG_NO_RBX_RSP(p, ...) \
+  p (RAX, rax, ##__VA_ARGS__)						\
+  p (RCX, rcx, ##__VA_ARGS__)						\
+  p (RDX, rdx, ##__VA_ARGS__)						\
+  p (RSI, rsi, ##__VA_ARGS__)						\
+  p (RDI, rdi, ##__VA_ARGS__)						\
+  p (RBP, rbp, ##__VA_ARGS__)						\
+  p (R8, r8, ##__VA_ARGS__)						\
+  p (R9, r9, ##__VA_ARGS__)						\
+  p (R10, r10, ##__VA_ARGS__)						\
+  p (R11, r11, ##__VA_ARGS__)						\
+  p (R12, r12, ##__VA_ARGS__)						\
+  p (R13, r13, ##__VA_ARGS__)						\
+  p (R14, r14, ##__VA_ARGS__)						\
+  p (R15, r15, ##__VA_ARGS__)
+
+#define ERI_FOREACH_GPREG(p, ...) \
+  ERI_FOREACH_GPREG_NO_RBX_RSP (p, ##__VA_ARGS__)			\
+  p (RBX, rbx, ##__VA_ARGS__)						\
+  p (RSP, rsp, ##__VA_ARGS__)
+
+#define ERI_FOREACH_REG(p, ...) \
+  ERI_FOREACH_GPREG (p, ##__VA_ARGS__)	/* keep gpregs first */		\
+  p (RFLAGS, rflags, ##__VA_ARGS__)					\
+  p (RIP, rip, ##__VA_ARGS__)
+
+#ifndef __ASSEMBLER__
+
+struct eri_registers
+{
+#define _ERI_DECLARE_REG(creg, reg)	uint64_t reg;
+  ERI_FOREACH_REG (_ERI_DECLARE_REG)
+};
+
+#endif
+
 #endif

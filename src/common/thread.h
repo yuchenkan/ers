@@ -1,40 +1,11 @@
 #ifndef ERI_COMMON_THREAD_H
 #define ERI_COMMON_THREAD_H
 
-#include <lib/syscall-common.h>
-
-#define _ERI_FOREACH_GPREG_NO_RBX_RSP(p, ...) \
-  p (RAX, rax, ##__VA_ARGS__)						\
-  p (RCX, rcx, ##__VA_ARGS__)						\
-  p (RDX, rdx, ##__VA_ARGS__)						\
-  p (RSI, rsi, ##__VA_ARGS__)						\
-  p (RDI, rdi, ##__VA_ARGS__)						\
-  p (RBP, rbp, ##__VA_ARGS__)						\
-  p (R8, r8, ##__VA_ARGS__)						\
-  p (R9, r9, ##__VA_ARGS__)						\
-  p (R10, r10, ##__VA_ARGS__)						\
-  p (R11, r11, ##__VA_ARGS__)						\
-  p (R12, r12, ##__VA_ARGS__)						\
-  p (R13, r13, ##__VA_ARGS__)						\
-  p (R14, r14, ##__VA_ARGS__)						\
-  p (R15, r15, ##__VA_ARGS__)
-
-#define ERI_FOREACH_GPREG(p, ...) \
-  _ERI_FOREACH_GPREG_NO_RBX_RSP (p, ##__VA_ARGS__)			\
-  p (RBX, rbx, ##__VA_ARGS__)						\
-  p (RSP, rsp, ##__VA_ARGS__)
-
-#define ERI_FOREACH_REG(p, ...) \
-  ERI_FOREACH_GPREG (p, ##__VA_ARGS__)	/* keep gpregs first */		\
-  p (RFLAGS, rflags, ##__VA_ARGS__)					\
-  p (RIP, rip, ##__VA_ARGS__)
-
-#ifndef __ASSEMBLER__
-
 #include <stdint.h>
 
 #include <lib/compiler.h>
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/syscall.h>
 #include <lib/malloc.h>
 
@@ -88,12 +59,6 @@
 #define eri_op_is_atomic(code) \
   ({ uint16_t _code = code;						\
      _code >= ERI_OP_ATOMIC_LOAD && _code <= ERI_OP_ATOMIC_CMPXCHG; })
-
-struct eri_registers
-{
-#define _ERI_DECLARE_REG(creg, reg)	uint64_t reg;
-  ERI_FOREACH_REG (_ERI_DECLARE_REG)
-};
 
 #define eri_init_sys_syscall_args_from_registers(args, regs) \
   do {									\
@@ -332,57 +297,5 @@ void _eri_entry__sig_op_ret (struct eri_entry *entry,
 
 void eri_entry__sig_test_syscall_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx);
-
-#define eri_init_mtpool_from_buf(buf, size, exec) \
-  ({									\
-    uint8_t *_buf = (void *) buf;					\
-    uint64_t _size = size;						\
-    eri_assert_syscall (mmap, _buf, _size,				\
-	/* XXX: exec security */					\
-	ERI_PROT_READ | ERI_PROT_WRITE | ((exec) ? ERI_PROT_EXEC : 0),	\
-	ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);	\
-									\
-    struct eri_mtpool *_pool = (void *) _buf;				\
-    uint64_t _pool_size = eri_size_of (*_pool, 16);			\
-    eri_assert (_size >= _pool_size);					\
-    eri_assert_init_mtpool (_pool, _buf + _pool_size,			\
-			    _size - _pool_size);			\
-    _pool;								\
-  })
-
-#define eri_sig_valid(sig) \
-  ({ int32_t _s1 = sig; _s1 > 0 && _s1 < ERI_NSIG; })
-#define eri_sig_catchable(sig) \
-  ({ int32_t _s2 = sig;							\
-     eri_sig_valid (_s2) && _s2 != ERI_SIGKILL && _s2 != ERI_SIGSTOP; })
-
-#define eri_set_sig_mask(dst, src) \
-  do { struct eri_sigset _set = *(src);					\
-       eri_sig_del_set (&_set, ERI_SIGKILL);				\
-       eri_sig_del_set (&_set, ERI_SIGSTOP);				\
-       *(dst) = _set; } while (0)
-
-#define eri_atomic_slot(mem)		((mem) & ~0xf)
-#define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
-
-#define eri_atomic_cross_slot(mem, size) \
-  ({ uint64_t _mem = mem;						\
-     eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
-
-#define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
-
-#define ERI_SIG_ACT_TERM	((void *) 1)
-#define ERI_SIG_ACT_CORE	((void *) 2)
-#define ERI_SIG_ACT_STOP	((void *) 3)
-
-#define eri_sig_act_internal_act(act) \
-  ({ void *_act = act;							\
-     _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
-     || _act == ERI_SIG_ACT_STOP; })
-
-eri_noreturn void eri_jump (void *rsp, void *rip,
-			    void *rdi, void *rsi, void *rdx);
-
-#endif
 
 #endif

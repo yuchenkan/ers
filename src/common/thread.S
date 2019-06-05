@@ -1,10 +1,10 @@
 /* vim: set ft=gas: */
 
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <lib/syscall-common.h>
 #include <lib/syscall-offsets.h>
 
-#include <common/thread.h>
 #include <common/thread-local-offsets.h>
 
   .section .rodata
@@ -37,7 +37,7 @@ ERI_FUNCTION (enter)
   pushq	$0
   popfq
 
-  _ERI_FOREACH_GPREG_NO_RBX_RSP (SAVE_REG)
+  ERI_FOREACH_GPREG_NO_RBX_RSP (SAVE_REG)
 
   movq	%rbx, %rdi
   call	*EN__ENTRY(%rbx)
@@ -52,7 +52,7 @@ ERI_FUNCTION (leave)
 #define RESTORE_REG(creg, reg) \
   movq	ERI_PASTE (EN__REGS_, creg)(%rbx), %reg;
 
-  _ERI_FOREACH_GPREG_NO_RBX_RSP (RESTORE_REG)
+  ERI_FOREACH_GPREG_NO_RBX_RSP (RESTORE_REG)
   pushq	EN__REGS_RFLAGS(%rbx)
   popfq
   RESTORE_REG (RSP, rsp)
@@ -126,12 +126,3 @@ ERI_FUNCTION (_eri_entry__test_access)
   movb	$1, %al
   ret
   ERI_END_FUNCTION (_eri_entry__test_access)
-
-ERI_FUNCTION (eri_jump)
-  movq	%rdi, %rsp
-  movq	%rsi, %rax
-  movq	%rdx, %rdi
-  movq	%rcx, %rsi
-  movq	%r8, %rdx
-  jmp	*%rax
-  ERI_END_FUNCTION (eri_jump)

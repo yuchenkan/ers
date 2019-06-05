@@ -7,7 +7,7 @@ if (! base) return;
 let xed = 'analysis/xed.gen';
 let inc = f => typeof f === 'undefined' ? [ xed ] : (f.startsWith ('xed-') ? `${xed}/${f}` : f);
 
-if (base === 'analyzer.c.o')
+if (base === 'translate.c.o')
   return await this.invoke ('goal/compile.g', { inc });
 
 return false;
