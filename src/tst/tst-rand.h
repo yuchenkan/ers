@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include <lib/printf.h>
+#include <tst/tst-printf.h>
 #include <tst/tst-syscall.h>
 
 struct tst_rand
@@ -24,7 +24,7 @@ uint64_t tst_rand_next (struct tst_rand *rand);
   do {									\
     uint64_t _seed = seed;						\
     _seed = _seed ? : tst_assert_syscall (gettid);			\
-    eri_fprintf (ERI_STDERR, "seed = %lu\n", _seed);			\
+    tst_fprintf (ERI_STDERR, "seed = %lu\n", _seed);			\
     tst_rand_seed (rand, _seed);					\
   } while (0)
 

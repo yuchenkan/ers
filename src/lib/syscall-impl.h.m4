@@ -16,7 +16,7 @@ m4_include(`m4/util.m4')
       ERI_STR (m4_syscall(1))						\
       : "=a" (__res)							\
       : "0" (nr) ERI_PASTE (_ERI_SYSCALL_ARGS_, nargs)			\
-      : "memory", "cc", "r11", "cx"					\
+      : "memory", "r11", "cx"						\
     );									\
     __res;								\
   })

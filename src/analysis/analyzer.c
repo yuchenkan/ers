@@ -45,6 +45,8 @@ struct eri_analyzer_group
 
   int32_t *pid;
 
+  uint8_t exit;
+
   struct eri_lock trans_lock;
   ERI_RBT_TREE_FIELDS (trans, struct trans)
 };
@@ -72,6 +74,9 @@ struct eri_analyzer
   struct eri_trans_active *act;
   struct eri_siginfo act_sig_info;
   struct eri_mcontext act_sig_mctx;
+
+  void *exit;
+  void *args;
 };
 
 struct eri_analyzer_group *
@@ -88,6 +93,7 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->file_buf_size = args->file_buf_size;
   group->max_inst_count = args->max_inst_count;
   group->pid = args->pid;
+  group->exit = 0;
 
   eri_init_lock (&group->trans_lock, 0);
   ERI_RBT_INIT_TREE (trans, group);
@@ -102,7 +108,7 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
     {
       trans_rbt_remove (group, t);
       eri_lassert (t->ref_count == 0);
-      eri_trans_destroy (group->pool, t->trans);
+      if (t->trans) eri_trans_destroy (group->pool, t->trans);
       eri_assert_mtfree (group->pool, t);
     }
   eri_assert_mtfree (group->pool, group);
@@ -118,6 +124,8 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
 		args->id, group->file_buf_size);
   al->entry = args->entry;
   al->tid = args->tid;
+  al->exit = args->exit;
+  al->args = args->args;
   al->sig_info = 0;
   al->act = 0;
   al->act_sig_info.sig = 0;
@@ -130,6 +138,21 @@ eri_analyzer__destroy (struct eri_analyzer *al)
   struct eri_mtpool *pool = al->group->pool;
   eri_close_log (pool, &al->log);
   eri_assert_mtfree (al->group->pool, al);
+}
+
+static eri_noreturn void
+exit (struct eri_analyzer *al)
+{
+  eri_noreturn void (*e) (void *) = al->exit;
+  e (al->args);
+}
+
+eri_noreturn void
+eri_analyzer__exit_group (struct eri_analyzer *al)
+{
+  // TODO do analysis
+  eri_atomic_store (&al->group->exit, 1, 0);
+  exit (al);
 }
 
 static uint8_t
@@ -181,7 +204,7 @@ analysis_enter (struct eri_analyzer *al,
     }
   else
     {
-      ++trans->ref_count;
+      eri_atomic_inc (&trans->ref_count, 0);
       eri_assert_unlock (&group->trans_lock);
       if (! eri_atomic_load (&trans->done, 0))
 	{
@@ -192,6 +215,12 @@ analysis_enter (struct eri_analyzer *al,
     }
 
   struct eri_trans *tr = trans->trans;
+  if (! tr)
+    {
+      eri_atomic_dec (&trans->ref_count, 1);
+      eri_analyzer__exit_group (al);
+    }
+
   struct eri_trans_create_active_args args = {
     group->pool, al, tr, eri_entry__get_stack (al->entry) - 8, regs
   };
@@ -248,6 +277,8 @@ analysis (struct eri_trans_active *act)
   struct eri_siginfo info;
   uint8_t tf = eri_trans_leave_active (act, &regs, &info);
   release_active (al);
+
+  if (eri_atomic_load (&al->group->exit, 0)) exit (al);
 
   if (info.sig) raise (al, &info, &regs);
   else if (tf) raise_single_step (al, &regs);

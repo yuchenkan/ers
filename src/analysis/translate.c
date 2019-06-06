@@ -3740,6 +3740,17 @@ ir_fini_accesses (struct ir_accesses *acc)
   eri_assert_buf_fini (&acc->conds);
 }
 
+static void
+ir_free_all (struct ir_dag *dag)
+{
+  struct ir_alloc *a, *na;
+  ERI_LST_FOREACH_SAFE (ir_alloc, dag, a, na)
+    {
+      ir_alloc_lst_remove (dag, a);
+      eri_assert_mtfree (dag->pool, a);
+    }
+}
+
 struct eri_trans *
 eri_translate (struct eri_translate_args *args)
 {
@@ -3772,6 +3783,7 @@ eri_translate (struct eri_translate_args *args)
     }
 
   uint8_t new_tf = 0;
+  struct eri_trans *res = 0;
 
   i = 0;
   while (1)
@@ -3804,8 +3816,9 @@ eri_translate (struct eri_translate_args *args)
 
       if (cate == XED_CATEGORY_SYSCALL)
 	{
-	  /* TODO: error out */
-	  eri_lassert (0);
+	  /* XXX: diagnositic */
+	  eri_log_info (log, "raw syscall detected\n");
+	  goto out;
 	}
 
       if (iclass == XED_ICLASS_POPF || iclass == XED_ICLASS_POPFQ)
@@ -3826,7 +3839,7 @@ eri_translate (struct eri_translate_args *args)
 
       if (node->tag == IR_END) break;
 
-      eri_assert (node->tag == IR_INST);
+      eri_lassert (node->tag == IR_INST);
       ir_finish_inst (&dag, node);
       if (++i == max_inst_count)
 	{
@@ -3836,19 +3849,14 @@ eri_translate (struct eri_translate_args *args)
     }
 
   eri_log2 (dag.log, "\n");
-  struct eri_trans *res = ir_generate (&dag, args->analysis);
+  res = ir_generate (&dag, args->analysis);
   res->data = args->data;
   res->rip = args->rip;
   res->tf = args->tf;
   res->new_tf = new_tf;
 
-  struct ir_alloc *a, *na;
-  ERI_LST_FOREACH_SAFE (ir_alloc, &dag, a, na)
-    {
-      ir_alloc_lst_remove (&dag, a);
-      eri_assert_mtfree (dag.pool, a);
-    }
-
+out:
+  ir_free_all (&dag);
   ir_fini_accesses (&dag.reads);
   ir_fini_accesses (&dag.writes);
   return res;

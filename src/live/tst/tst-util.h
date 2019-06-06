@@ -3,7 +3,8 @@
 
 #include <lib/util.h>
 #include <lib/cpu.h>
-#include <lib/syscall.h>
+
+#include <tst/tst-syscall.h>
 
 #define tst_yield(n) \
   do {									\

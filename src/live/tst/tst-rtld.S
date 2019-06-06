@@ -3,7 +3,7 @@
 #include <public/public.h>
 
 #include <lib/util.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 
   .text
 

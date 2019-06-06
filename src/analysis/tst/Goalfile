@@ -4,8 +4,11 @@ const base = goal.replace (/^analysis\/tst\//, '');
 const full = x => `analysis/tst/${x}`;
 const live = 'replay/tst/live.g';
 
-if (base === 'all')
-  return await this.update ((await this.invoke (live, { list: true })).map (x => full (`tst-live-${x}.diff`)));
+if (base === 'all') {
+  let diffs = (await this.invoke (live, { list: true })).map (x => full (`tst-live-${x}.diff`));
+  let divs = (await this.invoke ('live/tst/diverge.g')).map (x => full (`tst-live-diverge-${x}.out`));
+  return await this.update (diffs.concat (divs));
+}
 
 const out = /^tst-live-([^.]*)\.out$/;
 if (base.match (out))

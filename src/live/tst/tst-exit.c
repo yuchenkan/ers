@@ -1,7 +1,7 @@
 #define ERI_APPLY_ERS
 
 #include <lib/compiler.h>
-#include <lib/syscall.h>
+#include <lib/syscall-common.h>
 #include <common/debug.h>
 
 #include <tst/tst-rand.h>

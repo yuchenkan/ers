@@ -1,4 +1,5 @@
 #include <lib/util.h>
+#include <lib/syscall.h>
 #include <lib/atomic.h>
 
 #include <live/signal-thread.h>

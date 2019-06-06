@@ -45,12 +45,16 @@ struct eri_analyzer__create_args
   struct eri_entry *entry;
 
   int32_t *tid;
+
+  void *exit; /* noreturn void (*) (void *) */
+  void *args;
 };
 
 eri_analyzer_type *eri_analyzer__create (
 			struct eri_analyzer__create_args *args);
 void eri_analyzer__destroy (eri_analyzer_type *analyzer);
 
+eri_noreturn void eri_analyzer__exit_group (eri_analyzer_type *analyzer);
 eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,
 				       struct eri_registers *regs);
 
