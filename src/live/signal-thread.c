@@ -178,9 +178,9 @@ create_group (struct eri_live_rtld_args *rtld_args)
     {
       char **p;
       for (p = rtld_args->envp; *p; ++p)
-	(void) (eri_get_arg_str (*p, "ERS_LOG=", (void *) &log)
-	|| eri_get_arg_int (*p, "ERS_DEBUG=", &eri_global_enable_debug, 10)
-	|| eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10));
+	(void) (eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
+	|| eri_get_arg_str (*p, "ERI_LOG=", (void *) &log)
+	|| eri_get_arg_int (*p, "ERI_DEBUG=", &eri_global_enable_debug, 10));
 
       if (eri_global_enable_debug && ! log) log = "ers-live-log";
     }

@@ -168,10 +168,10 @@ rtld (void **args)
   for (envp = eri_get_envp_from_args (args); *envp; ++envp)
     (void) (eri_get_arg_str (*envp, "ERS_DATA=", (void *) &path)
     || eri_get_arg_str (*envp, "ERS_CONF=", (void *) &conf)
-    || eri_get_arg_str (*envp, "ERS_LOG=", (void *) &log)
     || eri_get_arg_int (*envp, "ERS_STACK_SIZE=", &stack_size, 10)
     || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
-    || eri_get_arg_int (*envp, "ERS_DEBUG=", &eri_global_enable_debug, 10));
+    || eri_get_arg_str (*envp, "ERI_LOG=", (void *) &log)
+    || eri_get_arg_int (*envp, "ERI_DEBUG=", &eri_global_enable_debug, 10));
 
   struct eri_elf64_phdr *phdrs = 0;
   uint64_t phnum = 0;
