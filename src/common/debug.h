@@ -55,7 +55,7 @@ uint8_t eri_global_enable_debug;
 #define ERI_LOG_TEE	2
 
 static eri_unused void
-_eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
+_eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 	  const char *fmt, const char *fmt_ctx, ...)
 {
   va_list arg;
@@ -69,7 +69,7 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 	  _eri_cvflog (enabled, ERI_STDOUT, fmt_ctx, tee);
 	  va_end (tee);
 	}
-      _eri_cvflog (enabled, f, fmt_ctx, arg);
+      _eri_cvflog (enabled, file, fmt_ctx, arg);
     }
   else
     {
@@ -83,7 +83,7 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 	  _eri_cvflog (enabled, ERI_STDOUT, fmt, arg);
 	  va_end (tee);
 	}
-      _eri_cvflog (enabled, f, fmt, arg);
+      _eri_cvflog (enabled, file, fmt, arg);
     }
   va_end (arg);
 }
@@ -96,25 +96,29 @@ _eri_log (uint8_t enabled, eri_file_t f, uint32_t flags,
 
 #define eri_log_tee()	(eri_global_enable_debug >= 9)
 
-#define eri_log(log, fmt, ...) \
+#define eri_log(file, fmt, ...) \
   do {									\
-    typeof (log) _log = log;						\
+    eri_file_t _file = file;						\
     uint32_t _f = ERI_LOG_PCTX | (eri_log_tee () ? ERI_LOG_TEE : 0);	\
-    eri_do_log (!! _log, log, _f, DEBUG, fmt, ##__VA_ARGS__);	\
+    eri_do_log (!! _file, _file, _f, DEBUG, fmt, ##__VA_ARGS__);	\
   } while (0)
 
-#define eri_rlog(log, fmt, ...) \
+#define eri_rlog(file, fmt, ...) \
   do {									\
-    typeof (log) _log = log;						\
+    eri_file_t _file = file;						\
     uint32_t _f = eri_log_tee () ? ERI_LOG_TEE : 0;			\
-    eri_do_log (!! _log, log, _f, DEBUG, fmt, ##__VA_ARGS__);		\
+    eri_do_log (!! _file, _file, _f, DEBUG, fmt, ##__VA_ARGS__);	\
   } while (0)
 
 #define eri_log_info(log, fmt, ...) \
   eri_do_log (1, log, ERI_LOG_PCTX | ERI_LOG_TEE, INFO, fmt, ##__VA_ARGS__)
 
 #define eri_logn(n, log, fmt, ...) \
-  eri_log (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
+  do {									\
+    eri_file_t _log = log;						\
+    eri_log (eri_global_enable_debug >= (n) ? _log : 0, fmt,		\
+	     ##__VA_ARGS__);						\
+  } while (0)
 
 #define eri_log2(log, fmt, ...)	eri_logn (2, log, fmt, ##__VA_ARGS__)
 #define eri_log3(log, fmt, ...)	eri_logn (3, log, fmt, ##__VA_ARGS__)
