@@ -14,7 +14,7 @@
 
 ERI_FUNCTION (tst_start)
   TST_INIT
-  movq	%rdi, %rsi
+  movq	%rdi, %rsi	/* ERI_TST_DIVERGE */
   movq	%rsp, %rdi
   call	TST_MAIN
   ERI_ASSERT_FALSE
