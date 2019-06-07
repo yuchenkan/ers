@@ -629,9 +629,9 @@ DEFINE_SYSCALL (clone)
   if (! eri_syscall_is_error (res))
     {
       if (flags & ERI_CLONE_PARENT_SETTID)
-	eri_entry__copy_to (entry, user_ptid, &res, sizeof *user_ptid);
+	(void) eri_entry__copy_to_obj (entry, user_ptid, &res);
       if (flags & ERI_CLONE_CHILD_SETTID)
-	eri_entry__copy_to (entry, user_ctid, &res, sizeof *user_ctid);
+	(void) eri_entry__copy_to_obj (entry, user_ctid, &res);
       rec.id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
     }
@@ -655,7 +655,7 @@ static uint8_t
 clear_user_tid (struct eri_live_thread *th,
 		int32_t *user_tid, int32_t *old_val)
 {
-  if (! eri_entry__test_access (th->entry, user_tid, sizeof *user_tid))
+  if (! eri_entry__test_access (th->entry, user_tid, sizeof *user_tid, 0))
     return 0;
 
   *old_val = eri_atomic_exchange (user_tid, 0, 0);
@@ -871,7 +871,7 @@ DEFINE_SYSCALL (rt_sigaction)
     eri_entry__syscall_leave (entry, 0);
 
   struct eri_sigaction act;
-  if (user_act && ! eri_entry__copy_from (entry, &act, user_act, sizeof act))
+  if (user_act && ! eri_entry__copy_from_obj (entry, &act, user_act))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_ver_sigaction old_act;
@@ -881,8 +881,8 @@ DEFINE_SYSCALL (rt_sigaction)
   if (! eri_live_signal_thread__sig_action (sig_th, &args))
     syscall_restart (entry);
 
-  uint64_t res = user_old_act && ! eri_entry__copy_to (
-		entry, user_old_act, &old_act.act, sizeof *user_old_act)
+  uint64_t res = user_old_act
+	&& ! eri_entry__copy_to_obj (entry, user_old_act, &old_act.act)
 	? ERI_EFAULT : 0;
 
   if (user_old_act)
@@ -932,8 +932,8 @@ DEFINE_SYSCALL (rt_sigpending)
   rec.result = eri_live_signal_thread__syscall (sig_th, &args);
 
   if (! eri_syscall_is_error (rec.result)
-      && ! eri_entry__copy_to (entry, (void *) regs->rdi,
-			       &rec.set, ERI_SIG_SETSIZE))
+      && eri_entry__copy_to (entry, (void *) regs->rdi,
+			     &rec.set, ERI_SIG_SETSIZE) != ERI_SIG_SETSIZE)
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   if (eri_syscall_is_error (rec.result)) goto record;
@@ -963,7 +963,7 @@ DEFINE_SYSCALL (rt_sigsuspend)
     eri_entry__syscall_leave (entry, ERI_EINVAL);
 
   struct eri_sigset mask;
-  if (! eri_entry__copy_from (entry, &mask, user_mask, sizeof mask))
+  if (! eri_entry__copy_from_obj (entry, &mask, user_mask))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &mask))
@@ -1023,8 +1023,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   eri_entry__clear_signal (entry);
   eri_live_signal_thread__sig_reset (sig_th, 0);
 
-  if (user_info && ! eri_entry__copy_to (entry,
-				user_info, &rec.info, sizeof *user_info))
+  if (user_info && ! eri_entry__copy_to_obj (entry, user_info, &rec.info))
     rec.result = ERI_EFAULT;
 
 record:
@@ -1103,7 +1102,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
 		eri_entry__syscall_get_signalfd (entry, &flags));
 
   struct eri_sigset mask;
-  if (! eri_entry__copy_from (entry, &mask, user_mask, sizeof mask))
+  if (! eri_entry__copy_from_obj (entry, &mask, user_mask))
     eri_entry__syscall_leave (entry, ERI_EINVAL); /* by kernel */
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
@@ -1861,7 +1860,7 @@ atomic (struct eri_live_thread *th)
 
   struct eri_pair idx = lock_atomic (group, mem, size);
 
-  if (! eri_entry__test_access (entry, mem, size))
+  if (! eri_entry__test_access (entry, (void *) mem, size, 0))
     {
       unlock_atomic (group, &idx, 0);
       eri_entry__restart (entry);
@@ -2081,8 +2080,8 @@ eri_live_thread__sig_handler (
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
-  eri_log (th->log, "sig = %u, frame = %lx, rip = %lx\n",
-	   info->sig, frame, ctx->mctx.rip);
+  eri_log (th->log, "sig = %u, frame = %lx, rip = %lx rax = %lx\n",
+	   info->sig, frame, ctx->mctx.rip, ctx->mctx.rax);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)
@@ -2094,6 +2093,7 @@ eri_live_thread__sig_handler (
   uint16_t code = eri_entry__get_op_code (entry);
   if (eri_entry__sig_is_access_fault (entry, info))
     {
+      uint64_t fault_addr = info->fault.addr;
       if (code == ERI_OP_SYSCALL
 	  /* NOTE: rax should be set after every access done */
 	  && eri_entry__get_regs (entry)->rax == __NR_rt_sigreturn)
@@ -2109,7 +2109,7 @@ eri_live_thread__sig_handler (
 	  eri_entry__set_signal (entry, info, ctx);
 	}
 
-      eri_entry__sig_access_fault (entry, &ctx->mctx);
+      eri_entry__sig_access_fault (entry, &ctx->mctx, fault_addr);
       return;
     }
 

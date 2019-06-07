@@ -524,7 +524,7 @@ static uint8_t
 access (struct eri_entry *entry,
         void *mem, uint64_t size, uint8_t read_only)
 {
-  if (! eri_entry__test_access (entry, mem, size)) return 0;
+  if (! eri_entry__test_access (entry, mem, size, 0)) return 0;
   uint64_t i;
   for (i = 0; i < size; ++i) do_access ((uint8_t *) mem + i, read_only);
   eri_entry__reset_test_access (entry);
@@ -545,13 +545,13 @@ DEFINE_ATOMIC_DO_ACCESS (uint64_t)
 
 static uint8_t
 atomic_access (struct eri_entry *entry,
-	       uint64_t mem, uint64_t size, uint8_t read_only)
+	       void *mem, uint64_t size, uint8_t read_only)
 {
-  if (! eri_entry__test_access (entry, mem, size)) return 0;
-  if (size == 1) atomic_do_access_uint8_t ((void *) mem, read_only);
-  else if (size == 2) atomic_do_access_uint16_t ((void *) mem, read_only);
-  else if (size == 4) atomic_do_access_uint32_t ((void *) mem, read_only);
-  else if (size == 8) atomic_do_access_uint64_t ((void *) mem, read_only);
+  if (! eri_entry__test_access (entry, mem, size, 0)) return 0;
+  if (size == 1) atomic_do_access_uint8_t (mem, read_only);
+  else if (size == 2) atomic_do_access_uint16_t (mem, read_only);
+  else if (size == 4) atomic_do_access_uint32_t (mem, read_only);
+  else if (size == 8) atomic_do_access_uint64_t (mem, read_only);
   else eri_assert_unreachable ();
   eri_entry__reset_test_access (entry);
   return 1;
@@ -678,9 +678,9 @@ DEFINE_SYSCALL (clone)
   int32_t *user_ptid = (void *) regs->rdx;
   int32_t *user_ctid = (void *) regs->r10;
   if (flags & ERI_CLONE_PARENT_SETTID)
-    eri_entry__copy_to (entry, user_ptid, &res, sizeof *user_ptid);
+    (void) eri_entry__copy_to_obj (entry, user_ptid, &res);
   if (flags & ERI_CLONE_CHILD_SETTID)
-    eri_entry__copy_to (entry, user_ctid, &res, sizeof *user_ctid);
+    (void) eri_entry__copy_to_obj (entry, user_ctid, &res);
 
   int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
   struct thread *cth = create (th->group, rec.id, clear_user_tid);
@@ -772,7 +772,7 @@ syscall_do_exit (SYSCALL_PARAMS)
 {
   int32_t *user_tid = th->clear_user_tid;
   if (user_tid
-      && atomic_access (entry, (uint64_t) user_tid, sizeof *user_tid, 0))
+      && atomic_access (entry, user_tid, sizeof *user_tid, 0))
     {
       assert_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC);
       struct eri_syscall_exit_clear_tid_record rec;
@@ -943,8 +943,8 @@ DEFINE_SYSCALL (rt_sigaction)
       eri_unserialize_ver_sigaction (th->file, &act);
       act_ver = act.ver;
 
-      res = eri_entry__copy_to (entry, user_old_act, &act.act,
-				sizeof *user_old_act) ? 0 : ERI_EFAULT;
+      res = eri_entry__copy_to_obj (entry, user_old_act, &act.act)
+		? 0 : ERI_EFAULT;
     }
   else
     {
@@ -1481,7 +1481,7 @@ atomic (struct thread *th)
   uint64_t mem = eri_entry__get_atomic_mem (entry);
   uint8_t size = eri_entry__get_atomic_size (entry);
 
-  if (! atomic_access (entry, mem, size, code == ERI_OP_ATOMIC_LOAD))
+  if (! atomic_access (entry, (void *) mem, size, code == ERI_OP_ATOMIC_LOAD))
     eri_entry__restart (entry);
 
   assert_magic (th, ERI_ATOMIC_MAGIC);
@@ -1631,7 +1631,7 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
       if (eri_op_is_atomic (code))
 	eri_entry__set_signal (entry, info, ctx);
 
-      eri_entry__sig_access_fault (entry, &ctx->mctx);
+      eri_entry__sig_access_fault (entry, &ctx->mctx, info->fault.addr);
       return 0;
     }
 

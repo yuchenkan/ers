@@ -161,7 +161,7 @@ copy_user (void *dst, const void *src, uint64_t size,
 {
   struct eri_analyzer *al = args;
   eri_atomic_store (&al->sig_info, info, 1);
-  if (! eri_entry__copy_from (al->entry, dst, src, size)) return 0;
+  if (eri_entry__copy_from (al->entry, dst, src, size) != size) return 0;
   eri_atomic_store (&al->sig_info, 0, 1);
   return 1;
 }
@@ -310,7 +310,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 	  *al->sig_info = *info;
 	  al->sig_info = 0;
 
-	  eri_entry__sig_access_fault (al->entry, mctx);
+	  eri_entry__sig_access_fault (al->entry, mctx, info->fault.addr);
 	  return;
 	}
 

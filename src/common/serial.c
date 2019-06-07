@@ -462,14 +462,14 @@ copy_serialize_uint8_array (eri_file_t file, uint8_t *buf, uint8_t size,
       if (serial)
 	{
 	  if (ok)
-	    ok = copy (args, cur_buf, buf + cur, cur_size);
+	    ok = copy (args, cur_buf, buf + cur, cur_size) == cur_size;
 	  eri_serialize_uint8_array (file, cur_buf, cur_size);
 	}
       else
 	{
 	  eri_unserialize_uint8_array (file, cur_buf, cur_size);
 	  if (ok)
-	    ok = copy (args, buf + cur, cur_buf, cur_size);
+	    ok = copy (args, buf + cur, cur_buf, cur_size) == cur_size;
 	}
     }
   return ok;

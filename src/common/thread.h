@@ -130,6 +130,8 @@ struct eri_entry
 
   struct
     {
+      uint64_t mem;
+      uint64_t done;
       uint64_t rbx;
       uint64_t rsp;
       uint64_t rbp;
@@ -202,21 +204,33 @@ eri_noreturn void eri_entry__atomic_interleave (
        _entry->_regs.rip = _entry->_start;				\
        eri_entry__leave (_entry); } while (0)
 
-eri_returns_twice uint8_t _eri_entry__test_access (struct eri_entry *entry);
-#define eri_entry__test_access(entry, mem, size) \
+eri_returns_twice uint8_t _eri_entry__test_access (
+		struct eri_entry *entry, uint64_t mem, uint64_t *done);
+#define eri_entry__test_access(entry, mem, size, done) \
   ({ struct eri_entry *_entry = entry;					\
-     uint64_t _mem = (uint64_t) mem;					\
-     eri_cross (_entry->_map_range, _mem, size)				\
-     /* otherwise will be protected the guard page */			\
-     && _mem >= _entry->_map_range->start				\
-	? 0 : _eri_entry__test_access (_entry); })
+     uint64_t _mem = (uint64_t) (mem);					\
+     uint64_t *_done = done;						\
+     uint8_t _res;							\
+     if (eri_cross (_entry->_map_range, _mem, size)			\
+	 /* otherwise will be protected the guard page */		\
+	&& _mem >= _entry->_map_range->start)				\
+       {								\
+	 if (_done) *_done = 0;						\
+	 _res = 0;							\
+       }								\
+     else _res = _eri_entry__test_access (_entry, _mem, _done);		\
+     _res; })
 #define eri_entry__reset_test_access(entry) \
   do { eri_barrier (); (entry)->_test_access = 0; } while (0)
 
-uint8_t eri_entry__copy_from (struct eri_entry *entry,
-			      void *dst, const void *src, uint64_t size);
-uint8_t eri_entry__copy_to (struct eri_entry *entry,
-			    void *dst, const void *src, uint64_t size);
+uint64_t eri_entry__copy_from (struct eri_entry *entry,
+			       void *dst, const void *src, uint64_t size);
+uint64_t eri_entry__copy_to (struct eri_entry *entry,
+			     void *dst, const void *src, uint64_t size);
+#define eri_entry__copy_from_obj(entry, dst, src) \
+  (eri_entry__copy_from (entry, dst, src, sizeof *(dst)) == sizeof *(dst))
+#define eri_entry__copy_to_obj(entry, dst, src) \
+  (eri_entry__copy_to (entry, dst, src, sizeof *(dst)) == sizeof *(dst))
 
 #define eri_entry__syscall(entry) \
   ({ struct eri_sys_syscall_args _args;					\
@@ -274,26 +288,31 @@ void _eri_entry__sig_op_ret (struct eri_entry *entry,
        if (_entry->_op.ret)						\
 	 _eri_entry__sig_op_ret (_entry, _frame); } while (0)
 
-#define eri_entry__sig_is_access_fault(entry, sig_info) \
-  ({ struct eri_entry *_entry = entry;					\
-     struct eri_siginfo *_sig_info = sig_info;				\
-     eri_si_access_fault (_sig_info) && _entry->_test_access		\
-	&& ! eri_within (_entry->_map_range, _sig_info->fault.addr); })
-#define eri_entry__sig_access_fault(entry, mctx) \
-  do {									\
-    struct eri_entry *_entry = entry;					\
-    struct eri_mcontext *_mctx = mctx;					\
-    _mctx->rax = 0;							\
-    _mctx->rbx = _entry->_access.rbx;					\
-    _mctx->rsp = _entry->_access.rsp;					\
-    _mctx->rbp = _entry->_access.rbp;					\
-    _mctx->r12 = _entry->_access.r12;					\
-    _mctx->r13 = _entry->_access.r13;					\
-    _mctx->r14 = _entry->_access.r14;					\
-    _mctx->r15 = _entry->_access.r15;					\
-    _mctx->rip = _entry->_access.rip;					\
-    _entry->_test_access = 0;						\
-  } while (0)
+static eri_unused uint8_t
+eri_entry__sig_is_access_fault (struct eri_entry *entry,
+				struct eri_siginfo *info)
+{
+  return eri_si_access_fault (info) && entry->_test_access
+	 && ! eri_within (entry->_map_range, info->fault.addr);
+}
+
+static eri_unused void
+eri_entry__sig_access_fault (struct eri_entry *entry,
+			     struct eri_mcontext *mctx, uint64_t fault_addr)
+{
+  mctx->rax = 0;
+  mctx->rbx = entry->_access.rbx;
+  mctx->rsp = entry->_access.rsp;
+  mctx->rbp = entry->_access.rbp;
+  mctx->r12 = entry->_access.r12;
+  mctx->r13 = entry->_access.r13;
+  mctx->r14 = entry->_access.r14;
+  mctx->r15 = entry->_access.r15;
+  mctx->rip = entry->_access.rip;
+  if (entry->_access.done)
+    *(uint64_t *) entry->_access.done = fault_addr - entry->_access.mem;
+  entry->_test_access = 0;
+}
 
 void eri_entry__sig_test_syscall_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx);

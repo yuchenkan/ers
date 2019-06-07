@@ -19,6 +19,8 @@ declare (void)
   EN_OFFSET (_ENTRY, _entry);
   EN_OFFSET (_SIG_ACTION, _sig_action);
 
+  EN_OFFSET (_ACCESS_MEM, _access.mem);
+  EN_OFFSET (_ACCESS_DONE, _access.done);
   EN_OFFSET (_ACCESS_RBX, _access.rbx);
   EN_OFFSET (_ACCESS_RSP, _access.rsp);
   EN_OFFSET (_ACCESS_RBP, _access.rbp);

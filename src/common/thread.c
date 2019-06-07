@@ -140,30 +140,42 @@ eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
   eri_entry__do_leave (entry);
 }
 
-uint8_t
+uint64_t
 eri_entry__copy_from (struct eri_entry *entry,
 		      void *dst, const void *src, uint64_t size)
 {
-  if (! eri_entry__test_access (entry, src, size)) return 0;
+  uint64_t done;
+  if (! eri_entry__test_access (entry, src, size, &done))
+    {
+      eri_assert (done != size);
+      return done;
+    }
   eri_memcpy (dst, src, size);
   eri_entry__reset_test_access (entry);
-  return 1;
+  return size;
 }
 
-uint8_t
+uint64_t
 eri_entry__copy_to (struct eri_entry *entry,
 		    void *dst, const void *src, uint64_t size)
 {
-  if (! eri_entry__test_access (entry, dst, size)) return 0;
+  uint64_t done;
+  if (! eri_entry__test_access (entry, dst, size, &done))
+    {
+      eri_assert (done != size);
+      return done;
+    }
   eri_memcpy (dst, src, size);
   eri_entry__reset_test_access (entry);
-  return 1;
+  return size;
 }
 
 #define copy_from_size(entry, dst, src, size) \
-  eri_entry__copy_from (entry, dst, src, size)
+  ({ uint64_t _size = size;						\
+     eri_entry__copy_from (entry, dst, src, _size) == _size; })
 #define copy_to_size(entry, dst, src, size) \
-  eri_entry__copy_to (entry, dst, src, size)
+  ({ uint64_t _size = size;						\
+     eri_entry__copy_to (entry, dst, src, _size) == _size; })
 
 #define copy_from(entry, dst, src) \
   ({ typeof (dst) _dst = dst;						\
@@ -366,7 +378,7 @@ eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
   uint64_t iov_size = sizeof **iov * *iov_cnt;
   *iov = eri_assert_mtmalloc (pool, iov_size);
 
-  if (! eri_entry__copy_from (entry, *iov, user_iov, iov_size))
+  if (eri_entry__copy_from (entry, *iov, user_iov, iov_size) != iov_size)
     {
       eri_assert_mtfree (pool, *iov);
       return ERI_EFAULT;
