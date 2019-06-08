@@ -6,14 +6,20 @@
 void
 eri_serialize_uint8 (eri_file_t file, uint8_t v)
 {
-  eri_assert_fwrite (file, &v, 1, 0);
+  eri_assert_fwrite (file, &v, sizeof v, 0);
+}
+
+uint8_t
+eri_try_unserialize_uint8 (eri_file_t file, uint8_t *v)
+{
+  return ! eri_fread (file, v, sizeof *v, 0);
 }
 
 uint8_t
 eri_unserialize_uint8 (eri_file_t file)
 {
   uint8_t v;
-  eri_assert_fread (file, &v, 1, 0);
+  eri_assert (eri_try_unserialize_uint8 (file, &v));
   return v;
 }
 
@@ -21,7 +27,7 @@ uint8_t
 eri_unserialize_uint8_or_eof (eri_file_t file, uint8_t *v)
 {
   uint64_t len;
-  eri_assert_fread (file, v, 1, &len);
+  eri_assert_fread (file, v, sizeof *v, &len);
   eri_assert (len == 1 || len == 0);
   return len != 0;
 }
@@ -32,11 +38,17 @@ eri_serialize_uint16 (eri_file_t file, uint16_t v)
   eri_assert_fwrite (file, &v, sizeof v, 0);
 }
 
+uint8_t
+eri_try_unserialize_uint16 (eri_file_t file, uint16_t *v)
+{
+  return ! eri_fread (file, v, sizeof *v, 0);
+}
+
 uint16_t
 eri_unserialize_uint16 (eri_file_t file)
 {
   uint16_t v;
-  eri_assert_fread (file, &v, sizeof v, 0);
+  eri_assert (eri_try_unserialize_uint16 (file, &v));
   return v;
 }
 
@@ -46,11 +58,17 @@ eri_serialize_int32 (eri_file_t file, int32_t v)
   eri_assert_fwrite (file, &v, sizeof v, 0);
 }
 
+uint8_t
+eri_try_unserialize_int32 (eri_file_t file, int32_t *v)
+{
+  return ! eri_fread (file, v, sizeof *v, 0);
+}
+
 int32_t
 eri_unserialize_int32 (eri_file_t file)
 {
   int32_t v;
-  eri_assert_fread (file, &v, sizeof v, 0);
+  eri_assert (eri_try_unserialize_int32 (file, &v));
   return v;
 }
 
@@ -60,42 +78,62 @@ eri_serialize_uint64 (eri_file_t file, uint64_t v)
   eri_assert_fwrite (file, &v, sizeof v, 0);
 }
 
+uint8_t
+eri_try_unserialize_uint64 (eri_file_t file, uint64_t *v)
+{
+  return ! eri_fread (file, v, sizeof *v, 0);
+}
+
 uint64_t
 eri_unserialize_uint64 (eri_file_t file)
 {
   uint64_t v;
-  eri_assert_fread (file, &v, sizeof v, 0);
+  eri_assert (eri_try_unserialize_uint64 (file, &v));
   return v;
 }
 
 void
 eri_serialize_uint8_array (eri_file_t file, const uint8_t *a, uint64_t size)
 {
-  eri_assert_fwrite (file, a, size, 0);
+  eri_assert_fwrite (file, a, sizeof *a * size, 0);
+}
+
+uint8_t
+eri_try_unserialize_uint8_array (eri_file_t file, uint8_t *a, uint64_t size)
+{
+  return ! eri_fread (file, a, sizeof *a * size, 0);
 }
 
 void
 eri_unserialize_uint8_array (eri_file_t file, uint8_t *a, uint64_t size)
 {
-  eri_assert_fread (file, a, size, 0);
+  eri_assert (eri_try_unserialize_uint8_array (file, a, size));
 }
 
 void
 eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size)
 {
-  eri_assert_fseek (file, size, 1);
+  eri_assert_fseek (file, sizeof (uint8_t) * size, 1);
 }
 
 void
-eri_serialize_uint64_array (eri_file_t file, const uint64_t *a, uint64_t size)
+eri_serialize_uint64_array (eri_file_t file,
+			    const uint64_t *a, uint64_t size)
 {
-  eri_assert_fwrite (file, a, size * sizeof a[0], 0);
+  eri_assert_fwrite (file, a, sizeof *a * size, 0);
+}
+
+uint8_t
+eri_try_unserialize_uint64_array (eri_file_t file,
+				  uint64_t *a, uint64_t size)
+{
+  return ! eri_fread (file, a, sizeof *a * size, 0);
 }
 
 void
 eri_unserialize_uint64_array (eri_file_t file, uint64_t *a, uint64_t size)
 {
-  eri_assert_fread (file, a, size * sizeof a[0], 0);
+  eri_assert (eri_try_unserialize_uint64_array (file, a, size));
 }
 
 void
@@ -105,13 +143,18 @@ eri_serialize_pair (eri_file_t file, struct eri_pair pair)
   eri_serialize_uint64 (file, pair.second);
 }
 
+uint8_t
+eri_try_unserialize_pair (eri_file_t file, struct eri_pair *pair)
+{
+  return eri_try_unserialize_uint64 (file, &pair->first)
+	 && eri_try_unserialize_uint64 (file, &pair->second);
+}
+
 struct eri_pair
 eri_unserialize_pair (eri_file_t file)
 {
-  struct eri_pair pair = {
-    .first = eri_unserialize_uint64 (file),
-    .second = eri_unserialize_uint64 (file)
-  };
+  struct eri_pair pair;
+  eri_assert (eri_try_unserialize_pair (file, &pair));
   return pair;
 }
 
@@ -121,10 +164,16 @@ eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set)
   eri_assert_fwrite (file, set->val, ERI_SIG_SETSIZE, 0);
 }
 
+uint8_t
+eri_try_unserialize_sigset (eri_file_t file, struct eri_sigset *set)
+{
+  return ! eri_fread (file, set->val, ERI_SIG_SETSIZE, 0);
+}
+
 void
 eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set)
 {
-  eri_assert_fread (file, set->val, ERI_SIG_SETSIZE, 0);
+  eri_assert (eri_try_unserialize_sigset (file, set));
 }
 
 void
@@ -135,12 +184,18 @@ eri_serialize_stack (eri_file_t file, const struct eri_stack *stack)
   eri_serialize_uint64 (file, stack->size);
 }
 
+uint8_t
+eri_try_unserialize_stack (eri_file_t file, struct eri_stack *stack)
+{
+  return eri_try_unserialize_uint64 (file, &stack->sp)
+	 && eri_try_unserialize_int32 (file, &stack->flags)
+	 && eri_try_unserialize_uint64 (file, &stack->size);
+}
+
 void
 eri_unserialize_stack (eri_file_t file, struct eri_stack *stack)
 {
-  stack->sp = eri_unserialize_uint64 (file);
-  stack->flags = eri_unserialize_int32 (file);
-  stack->size = eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_stack (file, stack));
 }
 
 void
@@ -164,24 +219,27 @@ eri_serialize_siginfo (eri_file_t file, const struct eri_siginfo *info)
     }
 }
 
+uint8_t
+eri_try_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info)
+{
+  if (! eri_try_unserialize_int32 (file, &info->sig)) return 0;
+  if (! info->sig) return 1;
+  if (! eri_try_unserialize_int32 (file, &info->errno)
+      || ! eri_try_unserialize_int32 (file, &info->code)) return 0;
+  if (info->code == ERI_SI_TKILL || info->code == ERI_SI_USER)
+    return eri_try_unserialize_int32 (file, &info->kill.pid)
+	   && eri_try_unserialize_int32 (file, &info->kill.uid);
+  if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info))
+    return eri_try_unserialize_int32 (file, &info->chld.pid)
+	   && eri_try_unserialize_int32 (file, &info->chld.uid)
+	   && eri_try_unserialize_int32 (file, &info->chld.status);
+  return 1;
+}
+
 void
 eri_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info)
 {
-  info->sig = eri_unserialize_int32 (file);
-  if (! info->sig) return;
-  info->errno = eri_unserialize_int32 (file);
-  info->code = eri_unserialize_int32 (file);
-  if (info->code == ERI_SI_TKILL || info->code == ERI_SI_USER)
-    {
-      info->kill.pid = eri_unserialize_int32 (file);
-      info->kill.uid = eri_unserialize_int32 (file);
-    }
-  else if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info))
-    {
-      info->chld.pid = eri_unserialize_int32 (file);
-      info->chld.uid = eri_unserialize_int32 (file);
-      info->chld.status = eri_unserialize_int32 (file);
-    }
+  eri_assert (eri_try_unserialize_siginfo (file, info));
 }
 
 void
@@ -194,14 +252,20 @@ eri_serialize_sigaction (eri_file_t file, const struct eri_sigaction *act)
   eri_serialize_sigset (file, &act->mask);
 }
 
+uint8_t
+eri_try_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act)
+{
+  if (! eri_try_unserialize_uint64 (file, (void *) &act->act)) return 0;
+  if ((uint64_t) act->act < 16) return 1;
+  return eri_try_unserialize_int32 (file, &act->flags)
+	 && eri_try_unserialize_uint64 (file, (void *) &act->restorer)
+	 && eri_try_unserialize_sigset (file, &act->mask);
+}
+
 void
 eri_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act)
 {
-  act->act = (void *) eri_unserialize_uint64 (file);
-  if ((uint64_t) act->act < 16) return;
-  act->flags = eri_unserialize_int32 (file);
-  act->restorer = (void *) eri_unserialize_uint64 (file);
-  eri_unserialize_sigset (file, &act->mask);
+  eri_assert (eri_try_unserialize_sigaction (file, act));
 }
 
 void
@@ -212,12 +276,19 @@ eri_serialize_ver_sigaction (eri_file_t file,
   eri_serialize_uint64 (file, act->ver);
 }
 
+uint8_t
+eri_try_unserialize_ver_sigaction (eri_file_t file,
+				   struct eri_ver_sigaction *act)
+{
+  return eri_try_unserialize_sigaction (file, &act->act)
+	 && eri_try_unserialize_uint64 (file, &act->ver);
+}
+
 void
 eri_unserialize_ver_sigaction (eri_file_t file,
 			       struct eri_ver_sigaction *act)
 {
-  eri_unserialize_sigaction (file, &act->act);
-  act->ver = eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_ver_sigaction (file, act));
 }
 
 void
@@ -279,8 +350,8 @@ eri_unserialize_init_map_record (eri_file_t file,
 }
 
 void
-eri_serialize_signal_record (eri_file_t file,
-			     const struct eri_async_signal_record *rec)
+eri_serialize_async_signal_record (eri_file_t file,
+				const struct eri_async_signal_record *rec)
 {
   eri_serialize_uint64 (file, rec->in);
   eri_serialize_siginfo (file, &rec->info);
@@ -288,14 +359,21 @@ eri_serialize_signal_record (eri_file_t file,
     eri_serialize_ver_sigaction (file, &rec->act);
 }
 
-void
-eri_unserialize_signal_record (eri_file_t file,
-			       struct eri_async_signal_record *rec)
+uint8_t
+eri_try_unserialize_async_signal_record (eri_file_t file,
+				struct eri_async_signal_record *rec)
 {
-  rec->in = eri_unserialize_uint64 (file);
-  eri_unserialize_siginfo (file, &rec->info);
-  if (rec->info.sig)
-    eri_unserialize_ver_sigaction (file, &rec->act);
+  if (! eri_try_unserialize_uint64 (file, &rec->in)
+      || ! eri_try_unserialize_siginfo (file, &rec->info)) return 0;
+  if (! rec->info.sig) return 1;
+  return eri_try_unserialize_ver_sigaction (file, &rec->act);
+}
+
+void
+eri_unserialize_async_signal_record (eri_file_t file,
+				struct eri_async_signal_record *rec)
+{
+  eri_assert (eri_try_unserialize_async_signal_record (file, rec));
 }
 
 #define ATOMIC_RECORD_UPDATED	1
@@ -318,17 +396,26 @@ eri_serialize_atomic_record (eri_file_t file,
     eri_serialize_uint64 (file, rec->val);
 }
 
+uint8_t
+eri_try_unserialize_atomic_record (eri_file_t file,
+				   struct eri_atomic_record *rec)
+{
+  uint8_t flags;
+  if (! eri_try_unserialize_uint8 (file, &flags)) return 0;
+  rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
+  if (! eri_try_unserialize_uint64 (file, &rec->ver.first)) return 0;
+  if (flags & ATOMIC_RECORD_SAME_VER) rec->ver.second = rec->ver.first;
+  else if (! eri_try_unserialize_uint64 (file, &rec->ver.second)) return 0;
+  if (flags & ATOMIC_RECORD_ZERO_VAL) rec->val = 0;
+  else if (! eri_try_unserialize_uint64 (file, &rec->val)) return 0;
+  return 1;
+}
+
 void
 eri_unserialize_atomic_record (eri_file_t file,
 			       struct eri_atomic_record *rec)
 {
-  uint8_t flags = eri_unserialize_uint8 (file);
-  rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
-  rec->ver.first = eri_unserialize_uint64 (file);
-  rec->ver.second = flags & ATOMIC_RECORD_SAME_VER
-		? rec->ver.first : eri_unserialize_uint64 (file);
-  rec->val = flags & ATOMIC_RECORD_ZERO_VAL
-		? 0 : eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_atomic_record (file, rec));
 }
 
 void
@@ -339,12 +426,19 @@ eri_serialize_syscall_res_in_record (eri_file_t file,
   eri_serialize_uint64 (file, rec->in);
 }
 
+uint8_t
+eri_try_unserialize_syscall_res_in_record (eri_file_t file,
+			struct eri_syscall_res_in_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->result)
+	 && eri_try_unserialize_uint64 (file, &rec->in);
+}
+
 void
 eri_unserialize_syscall_res_in_record (eri_file_t file,
 			struct eri_syscall_res_in_record *rec)
 {
-  rec->result = eri_unserialize_uint64 (file);
-  rec->in = eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_syscall_res_in_record (file, rec));
 }
 
 void
@@ -356,13 +450,20 @@ eri_serialize_syscall_res_io_record (eri_file_t file,
   eri_serialize_uint64 (file, rec->in);
 }
 
+uint8_t
+eri_try_unserialize_syscall_res_io_record (eri_file_t file,
+			struct eri_syscall_res_io_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->out)
+	 && eri_try_unserialize_uint64 (file, &rec->result)
+	 && eri_try_unserialize_uint64 (file, &rec->in);
+}
+
 void
 eri_unserialize_syscall_res_io_record (eri_file_t file,
 			struct eri_syscall_res_io_record *rec)
 {
-  rec->out = eri_unserialize_uint64 (file);
-  rec->result = eri_unserialize_uint64 (file);
-  rec->in = eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_syscall_res_io_record (file, rec));
 }
 
 void
@@ -375,14 +476,21 @@ eri_serialize_syscall_clone_record (eri_file_t file,
   eri_serialize_uint64 (file, rec->id);
 }
 
+uint8_t
+eri_try_unserialize_syscall_clone_record (eri_file_t file,
+			struct eri_syscall_clone_record *rec)
+{
+  if (! eri_try_unserialize_uint64 (file, &rec->out)
+      || ! eri_try_unserialize_uint64 (file, &rec->result)) return 0;
+  if (eri_syscall_is_error (rec->result)) return 1;
+  return eri_try_unserialize_uint64 (file, &rec->id);
+}
+
 void
 eri_unserialize_syscall_clone_record (eri_file_t file,
 			struct eri_syscall_clone_record *rec)
 {
-  rec->out = eri_unserialize_uint64 (file);
-  rec->result = eri_unserialize_uint64 (file);
-  if (eri_syscall_is_error (rec->result)) return;
-  rec->id = eri_unserialize_uint64 (file);
+  eri_assert (eri_try_unserialize_syscall_clone_record (file, rec));
 }
 
 void
@@ -393,12 +501,19 @@ eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
   eri_serialize_atomic_record (file, &rec->clear_tid);
 }
 
+uint8_t
+eri_try_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
+			struct eri_syscall_exit_clear_tid_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->out)
+	 && eri_try_unserialize_atomic_record (file, &rec->clear_tid);
+}
+
 void
 eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
 			struct eri_syscall_exit_clear_tid_record *rec)
 {
-  rec->out = eri_unserialize_uint64 (file);
-  eri_unserialize_atomic_record (file, &rec->clear_tid);
+  eri_assert (eri_try_unserialize_syscall_exit_clear_tid_record (file, rec));
 }
 
 void
@@ -411,14 +526,21 @@ eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
   eri_serialize_sigset (file, &rec->set);
 }
 
+uint8_t
+eri_try_unserialize_syscall_rt_sigpending_record (eri_file_t file,
+			struct eri_syscall_rt_sigpending_record *rec)
+{
+  if (! eri_try_unserialize_uint64 (file, &rec->result)) return 0;
+  if (eri_syscall_is_error (rec->result)) return 1;
+  return eri_try_unserialize_uint64 (file, &rec->in)
+	 && eri_try_unserialize_sigset (file, &rec->set);
+}
+
 void
 eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 			struct eri_syscall_rt_sigpending_record *rec)
 {
-  rec->result = eri_unserialize_uint64 (file);
-  if (eri_syscall_is_error (rec->result)) return;
-  rec->in = eri_unserialize_uint64 (file);
-  eri_unserialize_sigset (file, &rec->set);
+  eri_assert (eri_try_unserialize_syscall_rt_sigpending_record (file, rec));
 }
 
 void
@@ -432,13 +554,20 @@ eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
     eri_serialize_siginfo (file, &rec->info);
 }
 
+uint8_t
+eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			struct eri_syscall_rt_sigtimedwait_record *rec)
+{
+  if (! eri_try_unserialize_uint64 (file, &rec->result)) return 0;
+  if ((! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
+      && ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
+  return eri_syscall_is_error (rec->result)
+	 || eri_try_unserialize_siginfo (file, &rec->info);
+}
+
 void
 eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec)
 {
-  rec->result = eri_unserialize_uint64 (file);
-  if (! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
-    rec->in = eri_unserialize_uint64 (file);
-  if (! eri_syscall_is_error (rec->result))
-    eri_unserialize_siginfo (file, &rec->info);
+  eri_assert (eri_try_unserialize_syscall_rt_sigtimedwait_record (file, rec));
 }

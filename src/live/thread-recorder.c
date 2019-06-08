@@ -216,7 +216,7 @@ eri_live_thread_recorder__rec_signal (
   if (async)
     {
       eri_serialize_mark (th_rec->file, ERI_ASYNC_RECORD);
-      eri_serialize_signal_record (th_rec->file, rec);
+      eri_serialize_async_signal_record (th_rec->file, rec);
     }
   else
     {

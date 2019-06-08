@@ -57,7 +57,7 @@ main (int32_t argc, const char **argv)
       {
 	printf ("%lu ERI_ASYNC_RECORD\n", i++);
 	struct eri_async_signal_record rec;
-	eri_unserialize_signal_record (file, &rec);
+	eri_unserialize_async_signal_record (file, &rec);
 	printf ("  in: %lu, info.sig: %d", rec.in, rec.info.sig);
 	if (rec.info.sig)
 	  printf (", .code: %d, act.ver: %lu\n", rec.info.code, rec.act.ver);

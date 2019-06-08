@@ -198,13 +198,11 @@ struct thread
 
   void *analyzer;
 
-  uint64_t rec;
   eri_file_t file;
   uint8_t *file_buf;
 
   int32_t tid;
   int32_t alive;
-  uint8_t error;
 
   int32_t *clear_user_tid;
   int32_t user_tid;
@@ -216,15 +214,23 @@ struct thread
   eri_aligned16 uint8_t stack[0];
 };
 
-#define assert_magic(th, magic) \
-  do {									\
-    uint16_t _magic = magic;						\
-    uint16_t _next = eri_unserialize_magic ((th)->file);		\
-    if (_next != _magic)						\
-      eri_log_info (th->log.file,					\
-	"unexpected magic: %u, expecting: %u\n", _next, _magic);	\
-    eri_assert (_next == _magic);					\
-  } while (0)
+#define try_unserialize(what, _th, ...) \
+  ({ struct thread *__th = _th;						\
+     uint8_t __res = ERI_PASTE (eri_try_unserialize_, what) (		\
+					__th->file, __VA_ARGS__);	\
+     if (! __res)							\
+       eri_log_info (__th->log.file,					\
+		     "failed to unserialize " ERI_STR (what) "\n");	\
+     __res; })
+
+#define check_magic(th, m) \
+  ({ struct thread *_th = th;						\
+     uint16_t _n, _m = m;						\
+     uint8_t _res = try_unserialize (magic, _th, &_n);			\
+     if (_res && _n != _m)						\
+       eri_log_info (_th->log.file,					\
+		"unexpected magic: %u, expecting: %u\n", _n, _m);	\
+     _res && _n == _m; })
 
 static uint8_t
 io_in (struct thread *th, uint64_t ver)
@@ -324,13 +330,6 @@ static eri_noreturn void sig_action (struct eri_entry *entry);
 
 static eri_noreturn void exit (struct thread *th);
 
-static eri_noreturn void
-error_exit (struct thread *th)
-{
-  th->error = 1;
-  exit (th);
-}
-
 static struct thread *
 create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 {
@@ -353,12 +352,11 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   if (eri_enable_analyzer)
     {
       struct eri_analyzer__create_args args = {
-	group->analyzer_group, id, th->entry, &th->tid, error_exit, th
+	group->analyzer_group, id, th->entry, &th->tid, exit, th
       };
       th->analyzer = eri_analyzer__create (&args);
     }
 
-  th->rec = 0;
   char name[eri_build_path_len (group->path, "t", id)];
   eri_build_path (group->path, "t", id, name);
 
@@ -366,7 +364,6 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   th->file = eri_assert_fopen (name, 1, th->file_buf, file_buf_size);
 
   th->alive = 1;
-  th->error = 0;
   th->clear_user_tid = clear_user_tid;
 
   *(void **) th->sig_stack = th;
@@ -376,13 +373,6 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 static void
 destroy (struct thread *th)
 {
-  uint8_t err;
-  if (! th->error && eri_unserialize_uint8_or_eof (th->file, &err))
-    {
-      eri_log_info (th->log.file, "not eof %u\n", err);
-      eri_assert_unreachable ();
-    }
-
   struct eri_mtpool *pool = th->group->pool;
   eri_close_log (pool, &th->log);
   eri_assert_fclose (th->file);
@@ -393,10 +383,20 @@ destroy (struct thread *th)
   eri_assert_mtfree (pool, th);
 }
 
-#define next_record(th) \
-  ({ struct thread *_th = th;						\
-     eri_log (th->log.file, "%u\n", _th->rec++);			\
-     eri_unserialize_mark (_th->file); })
+static eri_noreturn void
+diverged (struct thread *th)
+{
+  if (eri_enable_analyzer) eri_analyzer__exit_group (th->analyzer);
+  else eri_assert_unreachable ();
+}
+
+static uint8_t
+fetch_mark (struct thread *th)
+{
+  uint8_t mark;
+  if (! try_unserialize (mark, th, &mark)) diverged (th);
+  return mark;
+}
 
 static void
 set_async_signal (struct thread *th)
@@ -418,14 +418,15 @@ start (struct thread *th, uint8_t next)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 
-  if (next == ERI_ASYNC_RECORD) set_async_signal (th);
+  if ((next != (uint8_t) -1 ? next : fetch_mark (th)) == ERI_ASYNC_RECORD)
+    set_async_signal (th);
   eri_entry__leave (th->entry);
 }
 
 static eri_noreturn void
 start_main (struct thread *th)
 {
-  eri_assert (next_record (th) == ERI_INIT_RECORD);
+  eri_assert (eri_unserialize_mark (th->file) == ERI_INIT_RECORD);
   struct eri_init_record rec;
   eri_unserialize_init_record (th->file, &rec);
   eri_assert (rec.ver == 0);
@@ -454,7 +455,7 @@ start_main (struct thread *th)
   group->user_pid = rec.user_pid;
 
   uint8_t next;
-  while ((next = next_record (th)) == ERI_INIT_MAP_RECORD)
+  while ((next = eri_unserialize_mark (th->file)) == ERI_INIT_MAP_RECORD)
     {
       struct eri_init_map_record rec;
       eri_unserialize_init_map_record (th->file, &rec);
@@ -503,17 +504,10 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   eri_jump (eri_entry__get_stack (entry) - 8, start_main, th, 0, 0);
 }
 
-#define diverged(th) \
-  do {									\
-    struct thread *_th = th;						\
-    if (eri_enable_analyzer) eri_analyzer__exit_group (_th->analyzer);	\
-    else eri_assert_unreachable ();					\
-  } while (0)
-
 static void
-test_set_async_signal (struct thread *th)
+fetch_test_async_signal (struct thread *th)
 {
-  if (next_record (th) == ERI_ASYNC_RECORD) set_async_signal (th);
+  if (fetch_mark (th) == ERI_ASYNC_RECORD) set_async_signal (th);
 }
 
 #define do_access(mem, read_only) \
@@ -600,7 +594,7 @@ static eri_noreturn void
 syscall_leave (struct thread *th, uint8_t next, uint64_t res)
 {
   eri_log (th->log.file, "\n");
-  if (next) test_set_async_signal (th);
+  if (next) fetch_test_async_signal (th);
   eri_entry__syscall_leave (th->entry, res);
 }
 
@@ -616,42 +610,48 @@ DEFINE_SYSCALL (name) { syscall_leave (th, 0, ERI_ENOSYS); }
 static uint64_t
 syscall_fetch_result (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_RESULT_MAGIC);
-  return eri_unserialize_uint64 (th->file);
+  uint64_t res;
+  if (check_magic (th, ERI_SYSCALL_RESULT_MAGIC)
+      && try_unserialize (uint64, th, &res)) return res;
+  diverged (th);
 }
 
 static void
 syscall_fetch_in (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_IN_MAGIC);
-  if (! io_in (th, eri_unserialize_uint64 (th->file))) diverged (th);
+  uint64_t in;
+  if (check_magic (th, ERI_SYSCALL_IN_MAGIC)
+      && try_unserialize (uint64, th, &in) && io_in (th, in)) return;
+  diverged (th);
 }
 
 static void
 syscall_fetch_out (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_OUT_MAGIC);
-  if (! io_out (th, eri_unserialize_uint64 (th->file))) diverged (th);
+  uint64_t out;
+  if (check_magic (th, ERI_SYSCALL_OUT_MAGIC)
+      && try_unserialize (uint64, th, &out) && io_out (th, out)) return;
+  diverged (th);
 }
 
 static uint64_t
 syscall_fetch_res_in (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_RES_IN_MAGIC);
   struct eri_syscall_res_in_record rec;
-  eri_unserialize_syscall_res_in_record (th->file, &rec);
-  if (! io_in (th, rec.in)) diverged (th);
-  return rec.result;
+  if (check_magic (th, ERI_SYSCALL_RES_IN_MAGIC)
+      && try_unserialize (syscall_res_in_record, th, &rec)
+      && io_in (th, rec.in)) return rec.result;
+  diverged (th);
 }
 
 static uint64_t
 syscall_fetch_res_io (struct thread *th)
 {
-  assert_magic (th, ERI_SYSCALL_RES_IO_MAGIC);
   struct eri_syscall_res_io_record rec;
-  eri_unserialize_syscall_res_io_record (th->file, &rec);
-  if (! io_out (th, rec.out) || ! io_in (th, rec.in)) diverged (th);
-  return rec.result;
+  if (check_magic (th, ERI_SYSCALL_RES_IO_MAGIC)
+      && try_unserialize (syscall_res_io_record, th, &rec)
+      && io_out (th, rec.out) && io_in (th, rec.in)) return rec.result;
+  diverged (th);
 }
 
 static eri_noreturn void
@@ -662,9 +662,10 @@ syscall_do_res_io (struct thread *th)
 
 DEFINE_SYSCALL (clone)
 {
-  assert_magic (th, ERI_SYSCALL_CLONE_MAGIC);
   struct eri_syscall_clone_record rec;
-  eri_unserialize_syscall_clone_record (th->file, &rec);
+  if (! check_magic (th, ERI_SYSCALL_CLONE_MAGIC)
+      || ! try_unserialize (syscall_clone_record, th, &rec))
+    diverged (th);
 
   if (! io_out (th, rec.out)) diverged (th);
 
@@ -708,7 +709,7 @@ DEFINE_SYSCALL (clone)
     | (new_tls ? ERI_CLONE_SETTLS : 0),
 
     eri_entry__get_stack (centry) - 8,
-    &cth->tid, &cth->alive, new_tls, start, cth, eri_itop (next_record (cth))
+    &cth->tid, &cth->alive, new_tls, start, cth, eri_itop (-1)
   };
 
   eri_assert_sys_clone (&args);
@@ -768,15 +769,28 @@ exit (struct thread *th)
 }
 
 static eri_noreturn void
+check_exit (struct thread *th)
+{
+  uint8_t err;
+  if (eri_unserialize_uint8_or_eof (th->file, &err))
+    {
+      eri_log_info (th->log.file, "not eof %u\n", err);
+      diverged (th);
+    }
+  exit (th);
+}
+
+static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
   int32_t *user_tid = th->clear_user_tid;
   if (user_tid
       && atomic_access (entry, user_tid, sizeof *user_tid, 0))
     {
-      assert_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC);
       struct eri_syscall_exit_clear_tid_record rec;
-      eri_unserialize_syscall_exit_clear_tid_record (th->file, &rec);
+      if (! check_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
+	  || ! try_unserialize (syscall_exit_clear_tid_record, th, &rec))
+	diverged (th);
 
       if (! atomic_wait (th->group, (uint64_t) user_tid,
 			 sizeof *user_tid, rec.clear_tid.ver))
@@ -791,7 +805,7 @@ syscall_do_exit (SYSCALL_PARAMS)
       if (! io_out (th, rec.out)) diverged (th);
     }
   else syscall_fetch_out (th);
-  exit (th);
+  check_exit (th);
 }
 
 DEFINE_SYSCALL (exit) { syscall_do_exit (SYSCALL_ARGS); }
@@ -938,19 +952,18 @@ DEFINE_SYSCALL (rt_sigaction)
   uint64_t act_ver;
   if (user_old_act)
     {
-      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC);
       struct eri_ver_sigaction act;
-      eri_unserialize_ver_sigaction (th->file, &act);
-      act_ver = act.ver;
+      if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC)
+	  || ! try_unserialize (ver_sigaction, th, &act))
+	diverged (th);
 
+      act_ver = act.ver;
       res = eri_entry__copy_to_obj (entry, user_old_act, &act.act)
 		? 0 : ERI_EFAULT;
     }
-  else
-    {
-      assert_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC);
-      act_ver = eri_unserialize_uint64 (th->file);
-    }
+  else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
+	   || ! try_unserialize (uint64, th, &act_ver))
+    diverged (th);
 
   struct thread_group *group = th->group;
   struct version_activity *ver_act = &group->ver_act;
@@ -973,7 +986,7 @@ DEFINE_SYSCALL (rt_sigreturn)
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
   if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask))
-    exit (th);
+    check_exit (th);
   th->sig_alt_stack = st;
   eri_log (th->log.file, "%lx\n", regs->rsi);
   eri_entry__leave (entry);
@@ -988,9 +1001,10 @@ DEFINE_SYSCALL (rt_sigpending)
   if (! access (entry, user_set, sizeof *user_set, 0))
     syscall_leave (th, 0, ERI_EFAULT);
 
-  assert_magic (th, ERI_SYSCALL_RT_SIGPENDING_MAGIC);
   struct eri_syscall_rt_sigpending_record rec;
-  eri_unserialize_syscall_rt_sigpending_record (th->file, &rec);
+  if (! check_magic (th, ERI_SYSCALL_RT_SIGPENDING_MAGIC)
+      || ! try_unserialize (syscall_rt_sigpending_record, th, &rec))
+    diverged (th);
 
   if (! eri_syscall_is_error (rec.result))
     {
@@ -1037,8 +1051,9 @@ DEFINE_SYSCALL (rt_sigtimedwait)
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_rt_sigtimedwait_record rec;
-  assert_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC);
-  eri_unserialize_syscall_rt_sigtimedwait_record (th->file, &rec);
+  if (! check_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
+      || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec))
+    diverged (th);
 
   if ((! eri_syscall_is_error (rec.result) || rec.result == ERI_EINTR)
        && ! io_in (th, rec.in))
@@ -1168,11 +1183,9 @@ syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
 
   uint8_t div;
   struct eri_syscall_res_in_record rec;
-
-  assert_magic (th, ERI_SYSCALL_READ_MAGIC);
-
-  eri_unserialize_syscall_res_in_record (th->file, &rec);
-  if (! io_in (th, rec.in)) { div = 1; goto out; };
+  if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
+      || ! try_unserialize (syscall_res_in_record, th, &rec)
+      || ! io_in (th, rec.in)) { div = 1; goto out; };
 
   if (eri_syscall_is_error (rec.result) || rec.result == 0)
     return rec.result;
@@ -1184,15 +1197,20 @@ syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
   uint64_t off = 0, iov_off = 0, size;
   struct eri_iovec *iov = dst;
   if (readv) while (iov->len == 0) ++iov;
-  while ((size = eri_unserialize_uint64 (th->file)))
+  while (1)
     {
+      if (! try_unserialize (uint64, th, &size)) { div = 1; goto buf_out; }
+      if (! size) break;
+
       if (off + size > rec.result) { div = 1; goto buf_out; }
 
       uint64_t ser_off = 0;
       while (ser_off < size)
 	{
 	  uint64_t ser_size = eri_min (buf_size, size - ser_off);
-	  eri_unserialize_uint8_array (th->file, buf, ser_size);
+	  if (! try_unserialize (uint8_array, th, buf, ser_size))
+	    { div = 1; goto buf_out; }
+
 	  if (! readv)
 	    {
 	      uint8_t *user = (uint8_t *) dst + off + ser_off;
@@ -1492,13 +1510,14 @@ syscall (struct thread *th)
 static eri_noreturn void
 sync_async (struct thread *th)
 {
-  eri_assert (eri_unserialize_magic (th->file) == ERI_SYNC_ASYNC_MAGIC);
-  uint64_t steps = eri_unserialize_uint64 (th->file);
+  uint64_t steps;
+  if (! check_magic (th, ERI_SYNC_ASYNC_MAGIC)
+      || ! try_unserialize (uint64, th, &steps)) diverged (th);
 
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  if (next_record (th) == ERI_ASYNC_RECORD)
+  if (fetch_mark (th) == ERI_ASYNC_RECORD)
     {
       if (regs->rflags & ERI_RFLAGS_TF) set_async_signal (th);
       else
@@ -1545,11 +1564,12 @@ atomic (struct thread *th)
   if (! atomic_access (entry, (void *) mem, size, code == ERI_OP_ATOMIC_LOAD))
     eri_entry__restart (entry);
 
-  assert_magic (th, ERI_ATOMIC_MAGIC);
   struct eri_atomic_record rec;
-  eri_unserialize_atomic_record (th->file, &rec);
+  if (! check_magic (th, ERI_ATOMIC_MAGIC)
+      || ! try_unserialize (atomic_record, th, &rec)
+      || ! atomic_wait (th->group, mem, size, rec.ver))
+    diverged (th);
 
-  if (! atomic_wait (th->group, mem, size, rec.ver)) diverged (th);
   uint64_t val = eri_entry__get_atomic_val (entry);
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
@@ -1565,7 +1585,7 @@ atomic (struct thread *th)
       atomic_updated (th->group, mem, size);
     }
 
-  test_set_async_signal (th);
+  fetch_test_async_signal (th);
 
   if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
     eri_entry__atomic_interleave (entry, rec.val);
@@ -1610,10 +1630,11 @@ main_entry (struct eri_entry *entry)
 static int32_t
 fetch_async_sig_info (struct thread *th, struct eri_siginfo *info)
 {
-  if (! io_in (th, eri_unserialize_uint64 (th->file))) diverged (th);
-  eri_unserialize_siginfo (th->file, info);
-  if (eri_si_sync (info)) diverged (th);
-  return info->sig;
+  uint64_t in;
+  if (try_unserialize (uint64, th, &in) && io_in (th, in)
+      && try_unserialize (siginfo, th, info) && ! eri_si_sync (info))
+    return info->sig;
+  diverged (th);
 }
 
 static eri_noreturn void
@@ -1625,31 +1646,32 @@ sig_action (struct eri_entry *entry)
   int32_t sig = info->sig;
 
   if (sig == SIG_FETCH_ASYNC) sig = fetch_async_sig_info (th, info);
-  if (eri_si_sync (info)) assert_magic (th, ERI_SIGNAL_MAGIC);
-
-  if (sig == 0) exit (th);
-
-  if (eri_si_sync (info) && eri_sig_set_set (&th->sig_mask, sig))
-    exit (th);
-
-  struct eri_ver_sigaction act;
-  eri_unserialize_ver_sigaction (th->file, &act);
-  if (! version_wait (&th->group->ver_act,
-		      th->group->sig_acts + sig - 1, act.ver))
+  if (eri_si_sync (info) && ! check_magic (th, ERI_SIGNAL_MAGIC))
     diverged (th);
 
-  if (eri_sig_act_internal_act (act.act.act)) exit (th);
+  if (sig == 0) check_exit (th);
+
+  if (eri_si_sync (info) && eri_sig_set_set (&th->sig_mask, sig))
+    check_exit (th);
+
+  struct eri_ver_sigaction act;
+  if (! try_unserialize (ver_sigaction, th, &act)
+      || ! version_wait (&th->group->ver_act,
+			 th->group->sig_acts + sig - 1, act.ver))
+    diverged (th);
+
+  if (eri_sig_act_internal_act (act.act.act)) check_exit (th);
 
   eri_log (th->log.file, "%u\n", sig);
 
   if (! eri_entry__setup_user_frame (entry, &act.act,
 				     &th->sig_alt_stack, &th->sig_mask))
-    exit (th);
+    check_exit (th);
 
   eri_entry__clear_signal (entry);
   eri_set_sig_mask (&th->sig_mask, &act.act.mask);
 
-  test_set_async_signal (th);
+  fetch_test_async_signal (th);
   eri_entry__leave (entry);
 }
 

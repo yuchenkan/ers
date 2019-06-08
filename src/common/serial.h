@@ -9,45 +9,62 @@
 #include <lib/printf.h>
 
 void eri_serialize_uint8 (eri_file_t file, uint8_t v);
+uint8_t eri_try_unserialize_uint8 (eri_file_t file, uint8_t *v);
 uint8_t eri_unserialize_uint8 (eri_file_t file);
 uint8_t eri_unserialize_uint8_or_eof (eri_file_t file, uint8_t *v);
 
 void eri_serialize_uint16 (eri_file_t file, uint16_t v);
+uint8_t eri_try_unserialize_uint16 (eri_file_t file, uint16_t *v);
 uint16_t eri_unserialize_uint16 (eri_file_t file);
 void eri_serialize_int32 (eri_file_t file, int32_t v);
+uint8_t eri_try_unserialize_int32 (eri_file_t file, int32_t *v);
 int32_t eri_unserialize_int32 (eri_file_t file);
 void eri_serialize_uint64 (eri_file_t file, uint64_t v);
+uint8_t eri_try_unserialize_uint64 (eri_file_t file, uint64_t *v);
 uint64_t eri_unserialize_uint64 (eri_file_t file);
 
 void eri_serialize_uint8_array (eri_file_t file,
 				const uint8_t *a, uint64_t size);
+uint8_t eri_try_unserialize_uint8_array (eri_file_t file,
+					 uint8_t *a, uint64_t size);
 void eri_unserialize_uint8_array (eri_file_t file,
 				  uint8_t *a, uint64_t size);
 void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size);
 
 void eri_serialize_uint64_array (eri_file_t file,
 				 const uint64_t *a, uint64_t size);
+uint8_t eri_try_unserialize_uint64_array (eri_file_t file,
+					  uint64_t *a, uint64_t size);
 void eri_unserialize_uint64_array (eri_file_t file,
 				   uint64_t *a, uint64_t size);
 
 void eri_serialize_pair (eri_file_t file, struct eri_pair pair);
+uint8_t eri_try_unserialize_pair (eri_file_t file, struct eri_pair *pair);
 struct eri_pair eri_unserialize_pair (eri_file_t file);
 
 void eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set);
+uint8_t eri_try_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
 void eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
 
 void eri_serialize_stack (eri_file_t file, const struct eri_stack *set);
+uint8_t eri_try_unserialize_stack (eri_file_t file, struct eri_stack *set);
 void eri_unserialize_stack (eri_file_t file, struct eri_stack *set);
 
 void eri_serialize_siginfo (eri_file_t file, const struct eri_siginfo *info);
+uint8_t eri_try_unserialize_siginfo (eri_file_t file,
+				     struct eri_siginfo *info);
 void eri_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info);
 
 void eri_serialize_sigaction (eri_file_t file,
 			      const struct eri_sigaction *act);
+uint8_t eri_try_unserialize_sigaction (eri_file_t file,
+				       struct eri_sigaction *act);
 void eri_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act);
 
 void eri_serialize_ver_sigaction (eri_file_t file,
 				  const struct eri_ver_sigaction *act);
+uint8_t eri_try_unserialize_ver_sigaction (eri_file_t file,
+					   struct eri_ver_sigaction *act);
 void eri_unserialize_ver_sigaction (eri_file_t file,
 				    struct eri_ver_sigaction *act);
 
@@ -61,8 +78,11 @@ enum
 
 #define eri_serialize_mark(file, mark) \
   eri_serialize_uint8 (file, mark)
+#define eri_try_unserialize_mark(file, mark) \
+  eri_try_unserialize_uint8 (file, mark)
 #define eri_unserialize_mark(file) \
-  eri_unserialize_uint8 (file)
+  ({ uint8_t _mark;							\
+     eri_assert (eri_try_unserialize_mark (file, &_mark)); _mark; })
 
 struct eri_init_record
 {
@@ -107,10 +127,12 @@ struct eri_async_signal_record
   struct eri_ver_sigaction act;
 };
 
-void eri_serialize_signal_record (eri_file_t file,
-				  const struct eri_async_signal_record *rec);
-void eri_unserialize_signal_record (eri_file_t file,
-				    struct eri_async_signal_record *rec);
+void eri_serialize_async_signal_record (eri_file_t file,
+			const struct eri_async_signal_record *rec);
+uint8_t eri_try_unserialize_async_signal_record (eri_file_t file,
+			struct eri_async_signal_record *rec);
+void eri_unserialize_async_signal_record (eri_file_t file,
+			struct eri_async_signal_record *rec);
 
 enum
 {
@@ -133,8 +155,11 @@ enum
 
 #define eri_serialize_magic(file, magic) \
   eri_serialize_uint16 (file, magic)
+#define eri_try_unserialize_magic(file, magic) \
+  eri_try_unserialize_uint16 (file, magic)
 #define eri_unserialize_magic(file) \
-  eri_unserialize_uint16 (file)
+  ({ uint16_t _magic;							\
+     eri_assert (eri_try_unserialize_magic (file, &_magic)); _magic; })
 
 struct eri_atomic_record
 {
@@ -145,6 +170,8 @@ struct eri_atomic_record
 
 void eri_serialize_atomic_record (eri_file_t file,
 				  const struct eri_atomic_record *rec);
+uint8_t eri_try_unserialize_atomic_record (eri_file_t file,
+					   struct eri_atomic_record *rec);
 void eri_unserialize_atomic_record (eri_file_t file,
 				    struct eri_atomic_record *rec);
 
@@ -156,6 +183,8 @@ struct eri_syscall_res_in_record
 
 void eri_serialize_syscall_res_in_record (eri_file_t file,
 			const struct eri_syscall_res_in_record *rec);
+uint8_t eri_try_unserialize_syscall_res_in_record (eri_file_t file,
+			struct eri_syscall_res_in_record *rec);
 void eri_unserialize_syscall_res_in_record (eri_file_t file,
 			struct eri_syscall_res_in_record *rec);
 
@@ -168,6 +197,8 @@ struct eri_syscall_res_io_record
 
 void eri_serialize_syscall_res_io_record (eri_file_t file,
 			const struct eri_syscall_res_io_record *rec);
+uint8_t eri_try_unserialize_syscall_res_io_record (eri_file_t file,
+			struct eri_syscall_res_io_record *rec);
 void eri_unserialize_syscall_res_io_record (eri_file_t file,
 			struct eri_syscall_res_io_record *rec);
 
@@ -184,6 +215,8 @@ struct eri_syscall_clone_record
 
 void eri_serialize_syscall_clone_record (eri_file_t file,
 			const struct eri_syscall_clone_record *rec);
+uint8_t eri_try_unserialize_syscall_clone_record (eri_file_t file,
+			struct eri_syscall_clone_record *rec);
 void eri_unserialize_syscall_clone_record (eri_file_t file,
 			struct eri_syscall_clone_record *rec);
 
@@ -195,6 +228,8 @@ struct eri_syscall_exit_clear_tid_record
 
 void eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
 			const struct eri_syscall_exit_clear_tid_record *rec);
+uint8_t eri_try_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
+			struct eri_syscall_exit_clear_tid_record *rec);
 void eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
 			struct eri_syscall_exit_clear_tid_record *rec);
 
@@ -207,6 +242,8 @@ struct eri_syscall_rt_sigpending_record
 
 void eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
 			const struct eri_syscall_rt_sigpending_record *rec);
+uint8_t eri_try_unserialize_syscall_rt_sigpending_record (eri_file_t file,
+			struct eri_syscall_rt_sigpending_record *rec);
 void eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 			struct eri_syscall_rt_sigpending_record *rec);
 
@@ -219,6 +256,8 @@ struct eri_syscall_rt_sigtimedwait_record
 
 void eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec);
+uint8_t eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
+			struct eri_syscall_rt_sigtimedwait_record *rec);
 void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
 
