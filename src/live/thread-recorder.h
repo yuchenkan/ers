@@ -9,6 +9,7 @@ struct eri_mtpool;
 struct eri_init_record;
 struct eri_atomic_record;
 
+struct eri_entry;
 struct eri_live_thread_recorder;
 
 void eri_live_thread_recorder__init_group (const char *path);
@@ -27,6 +28,21 @@ void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t async, void *rec);
 
+struct eri_live_thread_recorder__rec_read_args
+{
+  struct eri_mtpool *pool;
+  uint64_t buf_size;
+
+  struct eri_entry *entry;
+
+  uint8_t readv;
+  struct eri_syscall_res_in_record rec;
+  void *dst;
+};
+
+void eri_live_thread_recorder__rec_read (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__rec_read_args *args);
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

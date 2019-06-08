@@ -1,10 +1,12 @@
 #include <lib/malloc.h>
 #include <lib/buf.h>
 #include <lib/printf.h>
+#include <lib/syscall-common.h>
 
 #include <common/debug.h>
 #include <common/common.h>
 #include <common/serial.h>
+#include <common/thread.h>
 
 #include <live/thread-recorder.h>
 
@@ -145,6 +147,10 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
       uint64_t data_start = stack ? rsp : start;
       eri_serialize_uint64 (file, data_start);
       eri_serialize_uint64 (file, end);
+      /*
+       * XXX: this should be the only place we read from user without
+       * protection.
+       */
       eri_serialize_uint8_array (file, (void *) data_start, end - data_start);
     }
 }
@@ -220,15 +226,78 @@ eri_live_thread_recorder__rec_signal (
     }
 }
 
-void
-eri_live_thread_recorder__rec_syscall (
-		struct eri_live_thread_recorder *th_rec,
-		uint16_t magic, void *rec)
+static void
+syscall_start_record (struct eri_live_thread_recorder *th_rec,
+		      uint16_t magic)
 {
   submit_sync_async (th_rec);
 
   eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
   eri_serialize_magic (th_rec->file, magic);
+}
+
+void
+eri_live_thread_recorder__rec_read (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__rec_read_args *args)
+{
+  syscall_start_record (th_rec, ERI_SYSCALL_READ_MAGIC);
+  eri_serialize_syscall_res_in_record (th_rec->file, &args->rec);
+  struct eri_entry *entry = args->entry;
+  uint64_t res = args->rec.result;
+  if (eri_syscall_is_error (res) || res == 0) return;
+
+  uint64_t buf_size = eri_min (res, args->buf_size);
+  uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
+		: eri_assert_mtmalloc (args->pool, buf_size);
+  uint64_t off = 0, iov_off = 0;
+  struct eri_iovec *iov = args->dst;
+  if (args->readv) while (iov->len == 0) ++iov;
+  while (off < res)
+    {
+      uint64_t size = eri_min (buf_size, res - off);
+      if (! args->readv)
+	{
+	  uint8_t *user = (uint8_t *) args->dst + off;
+	  if (eri_entry__copy_from (entry, buf, user, size) != size)
+	    goto out;
+	}
+      else
+	{
+	  uint64_t o = 0;
+	  while (o < size)
+	    {
+	      uint8_t *user = (uint8_t *) iov->base + iov_off;
+	      uint64_t s = eri_min (iov->len - iov_off, size - o);
+	      if (eri_entry__copy_from (entry, buf + o, user, s) != s)
+		goto out;
+
+	      o += s;
+	      if ((iov_off += s) == iov->len)
+		{
+		  iov_off = 0;
+		  do ++iov; while (iov->len == 0);
+		}
+	    }
+	}
+
+      eri_serialize_uint64 (th_rec->file, size);
+      eri_serialize_uint8_array (th_rec->file, buf, size);
+      off += size;
+    }
+
+out:
+  eri_serialize_uint64 (th_rec->file, 0);
+  if (buf_size > 1024) eri_assert_mtfree (args->pool, buf);
+}
+
+void
+eri_live_thread_recorder__rec_syscall (
+		struct eri_live_thread_recorder *th_rec,
+		uint16_t magic, void *rec)
+{
+  syscall_start_record (th_rec, magic);
+
   if (magic == ERI_SYSCALL_RESULT_MAGIC
       || magic == ERI_SYSCALL_IN_MAGIC || magic == ERI_SYSCALL_OUT_MAGIC
       || magic == ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
@@ -247,10 +316,6 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
     eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_READ_MAGIC)
-    eri_serialize_syscall_read_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_READV_MAGIC)
-    eri_serialize_syscall_readv_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 

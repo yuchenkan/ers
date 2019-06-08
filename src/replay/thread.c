@@ -507,7 +507,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
   do {									\
     struct thread *_th = th;						\
     if (eri_enable_analyzer) eri_analyzer__exit_group (_th->analyzer);	\
-    else eri_assert (0);						\
+    else eri_assert_unreachable ();					\
   } while (0)
 
 static void
@@ -1161,34 +1161,95 @@ SYSCALL_TO_IMPL (epoll_wait)
 SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
+static uint64_t
+syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
+{
+  struct thread_group *group = th->group;
+
+  uint8_t div;
+  struct eri_syscall_res_in_record rec;
+
+  assert_magic (th, ERI_SYSCALL_READ_MAGIC);
+
+  eri_unserialize_syscall_res_in_record (th->file, &rec);
+  if (! io_in (th, rec.in)) { div = 1; goto out; };
+
+  if (eri_syscall_is_error (rec.result) || rec.result == 0)
+    return rec.result;
+
+  uint64_t buf_size = eri_min (rec.result, 2 * group->file_buf_size);
+  uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
+		: eri_assert_mtmalloc (group->pool, buf_size);
+
+  uint64_t off = 0, iov_off = 0, size;
+  struct eri_iovec *iov = dst;
+  if (readv) while (iov->len == 0) ++iov;
+  while ((size = eri_unserialize_uint64 (th->file)))
+    {
+      if (off + size > rec.result) { div = 1; goto buf_out; }
+
+      uint64_t ser_off = 0;
+      while (ser_off < size)
+	{
+	  uint64_t ser_size = eri_min (buf_size, size - ser_off);
+	  eri_unserialize_uint8_array (th->file, buf, ser_size);
+	  if (! readv)
+	    {
+	      uint8_t *user = (uint8_t *) dst + off + ser_off;
+	      if (eri_entry__copy_to (th->entry,
+				      user, buf, ser_size) != ser_size)
+		{ div = 1; goto buf_out; }
+	    }
+	  else
+	    {
+	      uint64_t o = 0;
+	      while (o < ser_size)
+		{
+		  uint8_t *user = (uint8_t *) iov->base + iov_off;
+		  uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
+		  if (eri_entry__copy_to (th->entry, user, buf + o, s) != s)
+		    { div = 1; goto buf_out; }
+
+		  o += s;
+		  if ((iov_off += s) == iov->len)
+		    {
+		      iov_off = 0;
+		      do ++iov; while (iov->len == 0);
+		    }
+		}
+	    }
+	  ser_off += ser_size;
+	}
+
+      off += size;
+    }
+  div = off != rec.result;
+
+buf_out:
+  if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
+out:
+  if (readv) eri_assert_mtfree (group->pool, dst);
+  if (div) diverged (th);
+  return rec.result;
+}
+
 static eri_noreturn void
 syscall_do_read (SYSCALL_PARAMS)
 {
+
   int32_t nr = regs->rax;
   /* XXX: detect memory corruption in analysis */
   if (nr == __NR_read || nr == __NR_pread64)
-    {
-      assert_magic (th, ERI_SYSCALL_READ_MAGIC);
-      struct eri_syscall_read_record rec = { .buf = (void *) regs->rsi };
-      eri_unserialize_syscall_read_record (th->file, &rec);
-      if (! io_in (th, rec.in)) diverged (th);
-      syscall_leave (th, 1, rec.result);
-    }
+    syscall_leave (th, 1, syscall_fetch_read (th, (void *) regs->rsi, 0));
   else
     {
       struct eri_mtpool *pool = th->group->pool;
 
       struct eri_iovec *iov;
-      int32_t iov_cnt;
       syscall_leave_if_error (th, 0,
-	eri_entry__syscall_get_rw_iov (entry, pool, &iov, &iov_cnt));
+		eri_entry__syscall_get_rw_iov (entry, pool, &iov, 0));
 
-      assert_magic (th, ERI_SYSCALL_READV_MAGIC);
-      struct eri_syscall_readv_record rec = { .iov = iov };
-      eri_unserialize_syscall_readv_record (th->file, &rec);
-      eri_assert_mtfree (pool, iov);
-      if (! io_in (th, rec.in)) diverged (th);
-      syscall_leave (th, 1, rec.result);
+      syscall_leave (th, 1, syscall_fetch_read (th, iov, 1));
     }
 }
 

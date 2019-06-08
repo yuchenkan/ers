@@ -97,7 +97,7 @@ ifwrite (int32_t nr, int32_t fd,
       if (eri_syscall_is_error (res) && res != ERI_EINTR)
 	{
 	  if (len) *len = wrote;
-	  return res;
+	  return 1;
 	}
 
       if (res == ERI_EINTR) continue;

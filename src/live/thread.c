@@ -1382,16 +1382,16 @@ syscall_read_write (struct eri_entry *entry, int32_t flags,
   return res;
 }
 
-#define syscall_read_record(th, rec, magic) \
-  do {									\
-    struct eri_live_thread *_th = th;					\
-    typeof (rec) _rec = rec;						\
-    if (_rec->result == ERI_EINTR)					\
-      eri_entry__sig_wait_pending (_th->entry, 0);			\
-    /* XXX: remove unnecessary io_in */					\
-    _rec->in = io_in (_th);						\
-    syscall_record (_th, magic, _rec);					\
-  } while (0)
+static void
+syscall_record_read (struct eri_live_thread *th, uint64_t res,
+		     void *dst, uint8_t readv)
+{
+  struct eri_live_thread_recorder__rec_read_args args = {
+    th->group->pool, th->group->file_buf_size * 2, th->entry,
+    readv, { res, io_in (th) }, dst
+  };
+  eri_live_thread_recorder__rec_read (th->rec, &args);
+}
 
 static eri_noreturn void
 syscall_do_read (SYSCALL_PARAMS)
@@ -1404,14 +1404,10 @@ syscall_do_read (SYSCALL_PARAMS)
 
   syscall_rw_remove_internal (&group->map_range, &buf, count);
 
-  struct eri_syscall_read_record rec = {
-    .copy = eri_entry__copy_from, .args = entry
-  };
+  uint64_t res;
 
   struct fdf *fdf = fdf_try_lock (group, fd);
-  if (! fdf) { rec.result = ERI_EBADF; goto record; }
-
-  rec.buf = (void *) buf;
+  if (! fdf) { res = ERI_EBADF; goto record; }
 
   int32_t flags = fdf->flags;
   struct eri_sys_syscall_args args = { nr, { fd, buf, count, regs->r10 } };
@@ -1421,16 +1417,17 @@ syscall_do_read (SYSCALL_PARAMS)
       if (! syscall_read_sig_fd (th, &args, flags, fdf->sig_mask))
 	syscall_restart (entry);
 
-      rec.result = args.result;
+      res = args.result;
       goto record;
     }
 
   eri_assert_unlock (&group->fdf_lock);
-  rec.result = syscall_read_write (entry, flags, &args, 1);
+  res = syscall_read_write (entry, flags, &args, 1);
 
 record:
-  syscall_read_record (th, &rec, ERI_SYSCALL_READ_MAGIC);
-  eri_entry__syscall_leave (entry, rec.result);
+  if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  syscall_record_read (th, res, (void *) buf, 0);
+  eri_entry__syscall_leave (entry, res);
 }
 
 static uint64_t
@@ -1462,12 +1459,10 @@ syscall_do_readv (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 				syscall_get_rw_iov (th, &iov, &iov_cnt));
 
-  struct eri_syscall_readv_record rec = {
-    .iov = iov, .copy = eri_entry__copy_from, .args = entry
-  };
+  uint64_t res;
 
   struct fdf *fdf = fdf_try_lock (group, fd);
-  if (! fdf) { rec.result = ERI_EBADF; goto record; }
+  if (! fdf) { res = ERI_EBADF; goto record; }
 
   int flags = fdf->flags;
   struct eri_sys_syscall_args args = {
@@ -1482,17 +1477,18 @@ syscall_do_readv (SYSCALL_PARAMS)
 	  syscall_restart (entry);
 	}
 
-      rec.result = args.result;
+      res = args.result;
       goto record;
     }
 
   eri_assert_unlock (&group->fdf_lock);
-  rec.result = syscall_read_write (entry, flags, &args, 1);
+  res = syscall_read_write (entry, flags, &args, 1);
 
 record:
-  syscall_read_record (th, &rec, ERI_SYSCALL_READV_MAGIC);
+  if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  syscall_record_read (th, res, iov, 1);
   eri_assert_mtfree (group->pool, iov);
-  eri_entry__syscall_leave (entry, rec.result);
+  eri_entry__syscall_leave (entry, res);
 }
 
 DEFINE_SYSCALL (read) { syscall_do_read (SYSCALL_ARGS); }

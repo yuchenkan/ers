@@ -127,7 +127,6 @@ enum
   ERI_SYSCALL_RT_SIGPENDING_MAGIC,
   ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC,
   ERI_SYSCALL_READ_MAGIC,
-  ERI_SYSCALL_READV_MAGIC,
   ERI_SYNC_ASYNC_MAGIC,
   ERI_ATOMIC_MAGIC,
 };
@@ -222,36 +221,6 @@ void eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec);
 void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
-
-struct eri_syscall_read_record
-{
-  uint64_t result;
-  uint64_t in;
-  uint8_t *buf;
-
-  void *copy;
-  void *args;
-};
-
-void eri_serialize_syscall_read_record (eri_file_t file,
-			const struct eri_syscall_read_record *rec);
-void eri_unserialize_syscall_read_record (eri_file_t file,
-			struct eri_syscall_read_record *rec);
-
-struct eri_syscall_readv_record
-{
-  uint64_t result;
-  uint64_t in;
-  struct eri_iovec *iov;
-
-  void *copy;
-  void *args;
-};
-
-void eri_serialize_syscall_readv_record (eri_file_t file,
-			const struct eri_syscall_readv_record *rec);
-void eri_unserialize_syscall_readv_record (eri_file_t file,
-			struct eri_syscall_readv_record *rec);
 
 #define eri_dump_maps() \
   do {									\

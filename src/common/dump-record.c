@@ -4,12 +4,6 @@
 #include <lib/printf.h>
 #include <common/serial.h>
 
-static uint8_t
-copy_skip (void *args, void *dst, const void *src, uint64_t size)
-{
-  return 0;
-}
-
 int32_t
 main (int32_t argc, const char **argv)
 {
@@ -147,15 +141,22 @@ main (int32_t argc, const char **argv)
 	      printf (", ..code: %d\n", rec.info.code);
 	    else printf ("\n");
 	  }
-	else if (magic == ERI_SYSCALL_READ_MAGIC
-		 /* identical byte array in the file */
-		 || magic == ERI_SYSCALL_READV_MAGIC)
+	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
-	    struct eri_syscall_read_record rec = { .copy = copy_skip };
-	    eri_unserialize_syscall_read_record (file, &rec);
-	    printf ("  syscall.%s.result: %ld, ..in: %lu\n",
-		    magic == ERI_SYSCALL_READ_MAGIC ? "read" : "readv",
-		    rec.result, rec.in);
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    uint64_t off = 0;
+	    if (! eri_syscall_is_error (rec.result) || rec.result == 0)
+	      {
+		uint64_t size;
+		while ((size = eri_unserialize_uint64 (file)))
+		  {
+		    eri_unserialize_skip_uint8_array (file, size);
+		    off += size;
+		  }
+	      }
+	    printf ("  syscall.read.result: %ld, ..in: %lu, ..off: %lu\n",
+		    rec.result, rec.in, off);
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
