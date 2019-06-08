@@ -543,10 +543,10 @@ ir_reg_idx_from_xed_opt (xed_reg_enum_t reg)
 }
 
 static uint8_t
-ir_reg_idx_from_xed (xed_reg_enum_t reg)
+ir_reg_idx_from_xed (eri_file_t log, xed_reg_enum_t reg)
 {
   uint8_t reg_idx = ir_reg_idx_from_xed_opt (reg);
-  eri_lassert (reg_idx != TRANS_REG_NUM);
+  eri_lassert (log, reg_idx != TRANS_REG_NUM);
   return reg_idx;
 }
 
@@ -583,10 +583,10 @@ ir_xed_reg_from_idx_opt (uint8_t reg_idx, uint8_t size)
 }
 
 static xed_reg_enum_t
-ir_xed_reg_from_idx (uint8_t reg_idx, uint8_t size)
+ir_xed_reg_from_idx (eri_file_t log, uint8_t reg_idx, uint8_t size)
 {
   xed_reg_enum_t reg = ir_xed_reg_from_idx_opt (reg_idx, size);
-  eri_lassert (reg != XED_REG_INVALID);
+  eri_lassert (log, reg != XED_REG_INVALID);
   return reg;
 }
 
@@ -641,7 +641,7 @@ ir_get_sym (struct ir_dag *dag, uint64_t id)
 static struct ir_def *
 ir_get_xsym (struct ir_dag *dag, xed_reg_enum_t reg)
 {
-  return ir_get_sym (dag, ir_reg_idx_from_xed (reg));
+  return ir_get_sym (dag, ir_reg_idx_from_xed (dag->log, reg));
 }
 
 static struct ir_def *
@@ -659,7 +659,7 @@ ir_set_sym (struct ir_dag *dag, uint64_t id, struct ir_def *def)
 static void
 ir_set_xsym (struct ir_dag *dag, xed_reg_enum_t reg, struct ir_def *def)
 {
-  ir_set_sym (dag, ir_reg_idx_from_xed (reg), def);
+  ir_set_sym (dag, ir_reg_idx_from_xed (dag->log, reg), def);
 }
 
 static void
@@ -1510,10 +1510,10 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
       const xed_operand_t *op = xed_inst_operand (inst, i);
       xed_operand_enum_t op_name = xed_operand_name (op);
 
-      eri_lassert (op_name != XED_OPERAND_SEG0);
-      eri_lassert (op_name != XED_OPERAND_SEG1);
-      eri_lassert (op_name != XED_OPERAND_INDEX);
-      eri_lassert (op_name != XED_OPERAND_OUTREG);
+      eri_lassert (dag->log, op_name != XED_OPERAND_SEG0);
+      eri_lassert (dag->log, op_name != XED_OPERAND_SEG1);
+      eri_lassert (dag->log, op_name != XED_OPERAND_INDEX);
+      eri_lassert (dag->log, op_name != XED_OPERAND_OUTREG);
 
       eri_log8 (dag->log, "%s\n", xed_operand_enum_t2str (op_name));
 
@@ -1546,22 +1546,23 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
       else if (op_name == XED_OPERAND_RELBR)
 	node->inst.relbr = 1;
       else
-	eri_lassert (op_name == XED_OPERAND_IMM0
-		     || op_name == XED_OPERAND_IMM1);
+	eri_lassert (dag->log, op_name == XED_OPERAND_IMM0
+			       || op_name == XED_OPERAND_IMM1);
     }
 
   node->deps = eri_max (node->deps, deps);
 }
 
 static uint8_t
-ir_reg_idx_from_dec_op (xed_decoded_inst_t *dec, const xed_operand_t *op)
+ir_reg_idx_from_dec_op (eri_file_t log,
+			xed_decoded_inst_t *dec, const xed_operand_t *op)
 {
-  return ir_reg_idx_from_xed (
+  return ir_reg_idx_from_xed (log,
 		xed_decoded_inst_get_reg (dec, xed_operand_name (op)));
 }
 
 static void
-ir_init_mem_args_from_inst_mem (struct ir_mem_args *args,
+ir_init_mem_args_from_inst_mem (eri_file_t log, struct ir_mem_args *args,
 				struct ir_node *inst, uint8_t i)
 {
   xed_decoded_inst_t *dec = &inst->inst.dec;
@@ -1569,8 +1570,8 @@ ir_init_mem_args_from_inst_mem (struct ir_mem_args *args,
   args->base = mem->base.def;
   args->index = mem->index.def;
   args->seg = xed_decoded_inst_get_seg_reg (dec, i);
-  eri_lassert (args->seg == XED_REG_INVALID || args->seg == XED_REG_FS
-	       || args->seg == XED_REG_GS);
+  eri_lassert (log, args->seg == XED_REG_INVALID || args->seg == XED_REG_FS
+		    || args->seg == XED_REG_GS);
   args->scale = xed_decoded_inst_get_scale (dec, i);
   args->disp = xed_decoded_inst_get_memory_displacement (dec, i);
   args->size = xed_decoded_inst_get_memory_operand_length (dec, i);
@@ -1584,7 +1585,7 @@ ir_inst_mem_access (struct ir_dag *dag, struct ir_node *node,
   struct ir_inst_mem *mem = node->inst.mems + i;
 
   struct ir_mem_args args;
-  ir_init_mem_args_from_inst_mem (&args, node, i);
+  ir_init_mem_args_from_inst_mem (dag->log, &args, node, i);
 
   xed_decoded_inst_t *dec = &node->inst.dec;
   xed_attribute_enum_t push = XED_ATTRIBUTE_STACKPUSH0 + i;
@@ -1610,7 +1611,7 @@ ir_inst_mem_check (struct ir_dag *dag,
   const xed_operand_t *op = mem->op;
   if (! push && ! pop && ! op) return;
 
-  eri_lassert (! op || xed_operand_name (op) != XED_OPERAND_AGEN);
+  eri_lassert (dag->log, ! op || xed_operand_name (op) != XED_OPERAND_AGEN);
 
   if (pop || (op && xed_operand_read (op)))
     ir_inst_mem_access (dag, node, i, 1);
@@ -1642,7 +1643,7 @@ ir_create_load_from_inst_mem (struct ir_dag *dag, struct ir_node *inst,
 			      uint8_t i, struct ir_def *prim)
 {
   struct ir_mem_args src;
-  ir_init_mem_args_from_inst_mem (&src, inst, i);
+  ir_init_mem_args_from_inst_mem (dag->log, &src, inst, i);
   return ir_create_load (dag, &src, prim);
 }
 
@@ -1691,8 +1692,8 @@ ir_build_pop (struct ir_dag *dag, xed_reg_enum_t dst)
   struct ir_def_pair pair = ir_create_pop (dag,
 		ir_get_sym (dag, TRANS_RSP), prim);
 
-  eri_log8 (dag->log, "%s %u %lx\n",
-	    xed_reg_enum_t2str (dst), ir_reg_idx_from_xed (dst), pair.first);
+  eri_log8 (dag->log, "%s %u %lx\n", xed_reg_enum_t2str (dst),
+	    ir_reg_idx_from_xed (dag->log, dst), pair.first);
 
   ir_set_xsym (dag, dst, pair.first);
   ir_set_sym (dag, TRANS_RSP, pair.second);
@@ -1940,18 +1941,16 @@ struct ir_enc_mem_args
   uint8_t addr_size;
 };
 
-static uint8_t
-ir_encode (uint8_t *bytes, xed_encoder_request_t *enc)
-{
-  uint32_t res;
-  eri_lassert (xed_encode (enc, bytes, INST_BYTES, &res) == XED_ERROR_NONE);
-  return res;
-}
+#define ir_encode(log, bytes, enc) \
+  ({ uint32_t _res;							\
+     eri_lassert (log, xed_encode (enc, bytes,				\
+				INST_BYTES, &_res) == XED_ERROR_NONE);	\
+     _res; })
 
 static xed_reg_enum_t
-ir_xreg (uint8_t idx)
+ir_xreg (eri_file_t log, uint8_t idx)
 {
-  return ir_xed_reg_from_idx (idx, 8);
+  return ir_xed_reg_from_idx (log, idx, 8);
 }
 
 static void
@@ -1967,56 +1966,57 @@ ir_init_encode (xed_encoder_request_t *enc,
 }
 
 static uint8_t
-ir_encode_bin (uint8_t *bytes, xed_iclass_enum_t iclass,
+ir_encode_bin (eri_file_t log, uint8_t *bytes, xed_iclass_enum_t iclass,
 	       uint8_t dst, uint8_t src)
 {
   xed_encoder_request_t enc;
   ir_init_encode (&enc, iclass, 8, 8);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (dst));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, dst));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG1, ir_xreg (src));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG1, ir_xreg (log, src));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_REG1);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
-ir_encode_bin_imm (uint8_t *bytes, xed_iclass_enum_t iclass,
+ir_encode_bin_imm (eri_file_t log, uint8_t *bytes, xed_iclass_enum_t iclass,
 		   uint8_t dst, uint64_t src)
 {
   xed_encoder_request_t enc;
   ir_init_encode (&enc, iclass, 8, 8);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (dst));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, dst));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
   xed_encoder_request_set_uimm0 (&enc, src, 4);
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_IMM0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
 ir_encode_mov (eri_file_t log, uint8_t *bytes, uint8_t dst, uint8_t src)
 {
   eri_log8 (log, "\n");
-  return ir_encode_bin (bytes, XED_ICLASS_MOV, dst, src);
+  return ir_encode_bin (log, bytes, XED_ICLASS_MOV, dst, src);
 }
 
 static eri_unused uint8_t
-ir_min_width_unsigned (uint64_t x, uint8_t mask)
+ir_min_width_unsigned (eri_file_t log, uint64_t x, uint8_t mask)
 {
   uint8_t res = xed_shortest_width_unsigned (x, mask & 0x7);
-  eri_lassert (res != 8 || mask & 0x8);
+  eri_lassert (log, res != 8 || mask & 0x8);
   return res;
 }
 
 static uint8_t
-ir_min_width_signed (int64_t x, uint8_t mask)
+ir_min_width_signed (eri_file_t log, int64_t x, uint8_t mask)
 {
   uint8_t res = xed_shortest_width_signed (x, mask & 0x7);
-  eri_lassert (res != 8 || mask & 0x8);
+  eri_lassert (log, res != 8 || mask & 0x8);
   return res;
 }
 
 static void
-ir_encode_set_mem0 (xed_encoder_request_t *enc, struct ir_enc_mem_args *mem)
+ir_encode_set_mem0 (eri_file_t log,
+		    xed_encoder_request_t *enc, struct ir_enc_mem_args *mem)
 {
   xed_encoder_request_set_base0 (enc,
 			ir_xed_reg_from_idx_opt (mem->base, mem->addr_size));
@@ -2025,7 +2025,7 @@ ir_encode_set_mem0 (xed_encoder_request_t *enc, struct ir_enc_mem_args *mem)
   xed_encoder_request_set_seg0 (enc, mem->seg);
   xed_encoder_request_set_scale (enc, mem->scale);
   xed_encoder_request_set_memory_displacement (enc, mem->disp,
-				ir_min_width_signed (mem->disp, 0x4));
+				ir_min_width_signed (log, mem->disp, 0x4));
   xed_encoder_request_set_memory_operand_length (enc, mem->size);
 }
 
@@ -2038,27 +2038,28 @@ ir_encode_load (eri_file_t log, uint8_t *bytes,
   ir_init_encode (&enc, XED_ICLASS_MOV, src->size, src->addr_size);
 
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
-			       ir_xed_reg_from_idx (dst, src->size));
+			       ir_xed_reg_from_idx (log, dst, src->size));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
   xed_encoder_request_set_mem0 (&enc);
-  ir_encode_set_mem0 (&enc, src);
+  ir_encode_set_mem0 (log, &enc, src);
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_MEM0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
-ir_encode_load_imm (eri_file_t log, uint8_t *bytes, uint8_t dst, int64_t src)
+ir_encode_load_imm (eri_file_t log,
+		    uint8_t *bytes, uint8_t dst, int64_t src)
 {
   eri_log8 (log, "%s %lx\n", trans_reg_str (dst), src);
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_MOV, 8, 8);
 
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (dst));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, dst));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
   xed_encoder_request_set_uimm0 (&enc, src,
-				 ir_min_width_signed (src, 0xc));
+				 ir_min_width_signed (log, src, 0xc));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_IMM0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2070,12 +2071,12 @@ ir_encode_store (eri_file_t log, uint8_t *bytes,
   ir_init_encode (&enc, XED_ICLASS_MOV, dst->size, dst->addr_size);
 
   xed_encoder_request_set_mem0 (&enc);
-  ir_encode_set_mem0 (&enc, dst);
+  ir_encode_set_mem0 (log, &enc, dst);
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_MEM0);
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
-			       ir_xed_reg_from_idx (src, dst->size));
+			       ir_xed_reg_from_idx (log, src, dst->size));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_REG0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2087,11 +2088,11 @@ ir_encode_store_imm (eri_file_t log, uint8_t *bytes,
   ir_init_encode (&enc, XED_ICLASS_MOV, dst->size, dst->addr_size);
 
   xed_encoder_request_set_mem0 (&enc);
-  ir_encode_set_mem0 (&enc, dst);
+  ir_encode_set_mem0 (log, &enc, dst);
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_MEM0);
   xed_encoder_request_set_uimm0 (&enc, src, eri_min (dst->size, 4));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_IMM0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2103,12 +2104,12 @@ ir_encode_lea (eri_file_t log, uint8_t *bytes,
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_LEA, 8, src->addr_size);
 
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (dst));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, dst));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
   xed_encoder_request_set_agen (&enc);
-  ir_encode_set_mem0 (&enc, src);
+  ir_encode_set_mem0 (log, &enc, src);
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_AGEN);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2117,7 +2118,7 @@ ir_encode_pushf (eri_file_t log, uint8_t *bytes)
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_PUSHFQ, 8, 8);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2126,7 +2127,7 @@ ir_encode_popf (eri_file_t log, uint8_t *bytes)
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_POPFQ, 8, 8);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2134,21 +2135,21 @@ ir_encode_cmov (eri_file_t log, uint8_t *bytes,
 		xed_iclass_enum_t iclass, uint8_t dst, uint8_t src)
 {
   eri_log8 (log, "\n");
-  return ir_encode_bin (bytes, iclass, dst, src);
+  return ir_encode_bin (log, bytes, iclass, dst, src);
 }
 
 static uint8_t
 ir_encode_add (eri_file_t log, uint8_t *bytes, uint8_t dst, uint8_t src)
 {
   eri_log8 (log, "\n");
-  return ir_encode_bin (bytes, XED_ICLASS_ADD, dst, src);
+  return ir_encode_bin (log, bytes, XED_ICLASS_ADD, dst, src);
 }
 
 static uint8_t
 ir_encode_add_imm (eri_file_t log, uint8_t *bytes, uint8_t dst, uint64_t src)
 {
   eri_log8 (log, "\n");
-  return ir_encode_bin_imm (bytes, XED_ICLASS_ADD, dst, src);
+  return ir_encode_bin_imm (log, bytes, XED_ICLASS_ADD, dst, src);
 }
 
 static uint8_t
@@ -2158,7 +2159,7 @@ ir_encode_str_op (eri_file_t log, uint8_t *bytes,
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
   ir_init_encode (&enc, iclass, ir_str_op_size (iclass), addr_size);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2167,11 +2168,11 @@ ir_encode_cmp (eri_file_t log, uint8_t *bytes, uint8_t a, uint8_t b)
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_CMP, 8, 8);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (a));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, a));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG1, ir_xreg (b));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG1, ir_xreg (log, b));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_REG1);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2180,9 +2181,9 @@ ir_encode_jmp (eri_file_t log, uint8_t *bytes, uint8_t dst)
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
   ir_init_encode (&enc, XED_ICLASS_JMP, 8, 8);
-  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (dst));
+  xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0, ir_xreg (log, dst));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2191,12 +2192,12 @@ ir_encode_jmp_mem (eri_file_t log, uint8_t *bytes,
 {
   eri_log8 (log, "\n");
   xed_encoder_request_t enc;
-  eri_lassert (dst->size == 8);
+  eri_lassert (log, dst->size == 8);
   ir_init_encode (&enc, XED_ICLASS_JMP, dst->size, dst->addr_size);
   xed_encoder_request_set_mem0 (&enc);
-  ir_encode_set_mem0 (&enc, dst);
+  ir_encode_set_mem0 (log, &enc, dst);
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_MEM0);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 static uint8_t
@@ -2208,9 +2209,10 @@ ir_encode_cjmp_relbr (eri_file_t log, uint8_t *bytes,
   ir_init_encode (&enc, iclass, 8, addr_size);
   xed_encoder_request_set_relbr (&enc);
   xed_encoder_request_set_branch_displacement (&enc, rel,
-	ir_min_width_signed (rel, ir_cond_branch_loop (iclass) ? 0x1 : 0x7));
+	ir_min_width_signed (log, rel,
+			     ir_cond_branch_loop (iclass) ? 0x1 : 0x7));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_RELBR);
-  return ir_encode (bytes, &enc);
+  return ir_encode (log, bytes, &enc);
 }
 
 #define IR_FOREACH_LOCKABLE_ICLASS(p, ...) \
@@ -2255,7 +2257,7 @@ ir_encode_inst (eri_file_t log, uint8_t *bytes, xed_decoded_inst_t *dec)
   xed_encoder_request_init_from_decode (dec);
   xed_encoder_request_t *enc = dec;
   xed_encoder_request_set_iclass (enc, ir_remove_lock (iclass));
-  return ir_encode (bytes, enc);
+  return ir_encode (log, bytes, enc);
 }
 
 static void
@@ -2521,7 +2523,7 @@ ir_assign_dep_pick (struct ir_flattened *flat, struct ir_assign *assigns,
       }
 
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
-  eri_lassert (min != TRANS_REG_NUM);
+  eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
   ir_assign_set_dep (assigns, min, ra, order);
 }
 
@@ -2558,7 +2560,7 @@ ir_assign_def_pick (struct ir_flattened *flat, struct ir_assign *assigns,
       }
 
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
-  eri_lassert (min != TRANS_REG_NUM);
+  eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
   ra->host_idx = min;
   assigns[i].order = order;
   assigns[i].def = ra->def;
@@ -2790,9 +2792,9 @@ ir_assign_save_to_local (struct ir_flattened *flat, struct ir_trans *tr,
     }
   else
     {
-      eri_lassert (! def->node);
+      eri_lassert (flat->dag->log, ! def->node);
       trans_set_loc (&src, TRANS_LOC_IMM, def->imm);
-      if (ir_min_width_signed (src.val, 0xc) == 8)
+      if (ir_min_width_signed (flat->dag->log, src.val, 0xc) == 8)
 	{
 	  struct trans_loc tmp = { TRANS_LOC_REG, tmp_idx };
 	  ir_assign_move (flat, tr, tmp, src);
@@ -2989,7 +2991,8 @@ ir_try_trace_access (struct ir_trans *tr, struct ir_def *def, uint8_t len)
 }
 
 static void
-ir_assign_gen_inst_ras (struct ir_node *node, struct eri_buf *ras)
+ir_assign_gen_inst_ras (eri_file_t log,
+			struct ir_node *node, struct eri_buf *ras)
 {
   xed_decoded_inst_t *dec = &node->inst.dec;
 
@@ -2998,7 +3001,8 @@ ir_assign_gen_inst_ras (struct ir_node *node, struct eri_buf *ras)
     {
       const xed_operand_t *op = inst_reg->op;
       ir_append_ra (ras, ir_inst_designated_reg (dec, op)
-			? ir_reg_idx_from_dec_op (dec, op) : TRANS_REG_NUM,
+			? ir_reg_idx_from_dec_op (log, dec, op)
+			: TRANS_REG_NUM,
 		    ir_inst_op_read (dec, op) ? inst_reg->src.def : 0,
 		    xed_operand_written (op) ? &inst_reg->dst : 0);
     }
@@ -3015,8 +3019,8 @@ ir_assign_gen_inst_ras (struct ir_node *node, struct eri_buf *ras)
 }
 
 static void
-ir_assign_emit_inst (struct ir_trans *tr, struct ir_node *node,
-		     struct ir_ra *a)
+ir_assign_emit_inst (eri_file_t log, struct ir_trans *tr,
+		     struct ir_node *node, struct ir_ra *a)
 {
   xed_decoded_inst_t *dec = &node->inst.dec;
   xed_operand_values_t *ops = xed_decoded_inst_operands (dec);
@@ -3028,7 +3032,7 @@ ir_assign_emit_inst (struct ir_trans *tr, struct ir_node *node,
       xed_reg_enum_t reg = xed_decoded_inst_get_reg (dec, op_name);
       uint8_t size = xed_get_register_width_bits64 (reg) >> 3;
       xed_operand_values_set_operand_reg (ops, op_name,
-				ir_xed_reg_from_idx ((a++)->host_idx, size));
+			ir_xed_reg_from_idx (log, (a++)->host_idx, size));
     }
 
   struct ir_def *mems[] = {
@@ -3045,7 +3049,7 @@ ir_assign_emit_inst (struct ir_trans *tr, struct ir_node *node,
   for (i = 0; i < eri_length_of (mem_op_names); ++i)
     if (mems[i])
       xed_operand_values_set_operand_reg (ops, mem_op_names[i],
-				ir_xed_reg_from_idx ((a++)->host_idx, 8));
+			ir_xed_reg_from_idx (log, (a++)->host_idx, 8));
 
   uint8_t len = ir_emit (inst, tr, &node->inst.dec);
 
@@ -3169,28 +3173,29 @@ ir_assign_emit_rec_mem (struct ir_flattened *flat, struct ir_trans *tr,
 }
 
 static uint8_t
-ir_assign_def_fits_imml (struct ir_def *def)
+ir_assign_def_fits_imml (eri_file_t log, struct ir_def *def)
 {
-  return ! def->node && ir_min_width_signed (def->imm, 0xc) == 4;
+  return ! def->node && ir_min_width_signed (log, def->imm, 0xc) == 4;
 }
 
 static void
-ir_assign_gen_store_ras (struct ir_node *node, struct eri_buf *ras)
+ir_assign_gen_store_ras (eri_file_t log,
+			 struct ir_node *node, struct eri_buf *ras)
 {
   ir_append_mem_ras (ras, &node->store.dst);
   struct ir_def *src = node->store.src.def;
-  if (! ir_assign_def_fits_imml (src))
+  if (! ir_assign_def_fits_imml (log, src))
     ir_append_ra (ras, TRANS_REG_NUM, src, 0);
 }
 
 static void
-ir_assign_emit_store (struct ir_trans *tr,
+ir_assign_emit_store (eri_file_t log, struct ir_trans *tr,
 		      struct ir_node *node, struct ir_ra *a)
 {
   struct ir_enc_mem_args dst;
   a = ir_init_emit_mem_args (&dst, &node->store.dst, a);
   struct ir_def *src = node->store.src.def;
-  uint8_t len = ! ir_assign_def_fits_imml (src)
+  uint8_t len = ! ir_assign_def_fits_imml (log, src)
 			? ir_emit (store, tr, &dst, a->host_idx)
 			: ir_emit (store_imm, tr, &dst, src->imm);
   ir_trace_access (tr, node->store.dst.regs.write.def->node, len);
@@ -3220,17 +3225,17 @@ ir_assign_gen_add_ras (struct ir_flattened *flat,
 {
   ir_append_ra (ras, TRANS_REG_NUM,
 		node->bin.srcs[0].def, &node->bin.dst);
-  if (! ir_assign_def_fits_imml (node->bin.srcs[1].def))
+  if (! ir_assign_def_fits_imml (flat->dag->log, node->bin.srcs[1].def))
     ir_append_ra (ras, TRANS_REG_NUM, node->bin.srcs[1].def, 0);
   ir_append_ra (ras, TRANS_RFLAGS, 0, &flat->dummy);
 }
 
 static void
-ir_assign_emit_add (struct ir_trans *tr,
+ir_assign_emit_add (eri_file_t log, struct ir_trans *tr,
 		    struct ir_node *node, struct ir_ra *a)
 {
   struct ir_def *sec = node->bin.srcs[1].def;
-  if (! ir_assign_def_fits_imml (sec))
+  if (! ir_assign_def_fits_imml (log, sec))
     ir_emit (add, tr, a[0].host_idx, a[1].host_idx);
   else
     ir_emit (add_imm, tr, a[0].host_idx, sec->imm);
@@ -3475,14 +3480,15 @@ static void
 ir_assign_gen_ras (struct ir_flattened *flat, struct ir_node *node,
 		   struct eri_buf *ras)
 {
+  eri_file_t log = flat->dag->log;
   switch (node->tag)
     {
-    case IR_INST: ir_assign_gen_inst_ras (node, ras); break;
+    case IR_INST: ir_assign_gen_inst_ras (log, node, ras); break;
     case IR_END:
     case IR_ERR_END:
       ir_assign_gen_end_ras (flat, node, ras); break;
     case IR_REC_MEM: ir_assign_gen_rec_mem_ras (flat, node, ras); break;
-    case IR_STORE: ir_assign_gen_store_ras (node, ras); break;
+    case IR_STORE: ir_assign_gen_store_ras (log, node, ras); break;
     case IR_LOAD: ir_assign_gen_load_ras (node, ras); break;
     case IR_ADD: ir_assign_gen_add_ras (flat, node, ras); break;
     case IR_COND_STR_OP:
@@ -3496,9 +3502,10 @@ static void
 ir_assign_emit (struct ir_flattened *flat, struct ir_trans *tr,
 		struct ir_node *node, struct ir_ra *ras, uint32_t n)
 {
+  eri_file_t log = flat->dag->log;
   switch (node->tag)
     {
-    case IR_INST: ir_assign_emit_inst (tr, node, ras); break;
+    case IR_INST: ir_assign_emit_inst (log, tr, node, ras); break;
     case IR_END:
     case IR_ERR_END:
       ir_assign_emit_end (flat, tr, node);
@@ -3506,9 +3513,9 @@ ir_assign_emit (struct ir_flattened *flat, struct ir_trans *tr,
 	tr->sig_info = node->end.sig_info;
       break;
     case IR_REC_MEM: ir_assign_emit_rec_mem (flat, tr, node, ras); break;
-    case IR_STORE: ir_assign_emit_store (tr, node, ras); break;
+    case IR_STORE: ir_assign_emit_store (log, tr, node, ras); break;
     case IR_LOAD: ir_assign_emit_load (tr, node, ras); break;
-    case IR_ADD: ir_assign_emit_add (tr, node, ras); break;
+    case IR_ADD: ir_assign_emit_add (log, tr, node, ras); break;
     case IR_COND_STR_OP:
       ir_assign_emit_cond_str_op (flat, tr, node, ras + n); break;
     case IR_COND_BRANCH:
@@ -3714,8 +3721,8 @@ ir_generate (struct ir_dag *dag, void *analysis)
     else
       ir_assign_hosts (&flat, &tr, node);
 
-  eri_lassert (tr.trace_reads.i == flat.read_num);
-  eri_lassert (tr.trace_writes.i == flat.write_num);
+  eri_lassert (dag->log, tr.trace_reads.i == flat.read_num);
+  eri_lassert (dag->log, tr.trace_writes.i == flat.write_num);
 
   tr.local_num = flat.local_num;
   struct eri_trans *res = ir_output (dag, &tr);
@@ -3801,16 +3808,16 @@ eri_translate (struct eri_translate_args *args)
       xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (dec);
 
 #if 0
-      eri_lassert (iclass != XED_ICLASS_BOUND);
-      eri_lassert (iclass != XED_ICLASS_INT);
-      eri_lassert (iclass != XED_ICLASS_INT1);
-      eri_lassert (iclass != XED_ICLASS_JMP_FAR);
-      eri_lassert (iclass != XED_ICLASS_CALL_FAR);
-      eri_lassert (iclass != XED_ICLASS_RET_FAR);
+      eri_lassert (log, iclass != XED_ICLASS_BOUND);
+      eri_lassert (log, iclass != XED_ICLASS_INT);
+      eri_lassert (log, iclass != XED_ICLASS_INT1);
+      eri_lassert (log, iclass != XED_ICLASS_JMP_FAR);
+      eri_lassert (log, iclass != XED_ICLASS_CALL_FAR);
+      eri_lassert (log, iclass != XED_ICLASS_RET_FAR);
 #endif
-      eri_lassert (iclass != XED_ICLASS_IRET); /* XXX: ??? */
-      eri_lassert (iclass != XED_ICLASS_IRETD);
-      eri_lassert (iclass != XED_ICLASS_IRETQ);
+      eri_lassert (log, iclass != XED_ICLASS_IRET); /* XXX: ??? */
+      eri_lassert (log, iclass != XED_ICLASS_IRETD);
+      eri_lassert (log, iclass != XED_ICLASS_IRETQ);
 
       /* TODO: warn lock */
 
@@ -3839,7 +3846,7 @@ eri_translate (struct eri_translate_args *args)
 
       if (node->tag == IR_END) break;
 
-      eri_lassert (node->tag == IR_INST);
+      eri_lassert (log, node->tag == IR_INST);
       ir_finish_inst (&dag, node);
       if (++i == max_inst_count)
 	{
@@ -4042,6 +4049,6 @@ strcmp (const char *s1, const char *s2)
   return eri_strcmp (s1, s2);
 }
 
-void abort (void) { eri_lassert (0); }
+void abort (void) { eri_xassert (0, eri_info); }
 int32_t fprintf (void *a1, void *a2, ...) { return 0; }
 void *stderr;

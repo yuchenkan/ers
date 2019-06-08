@@ -62,10 +62,10 @@ func:
 
 #include <stdint.h>
 
-#define eri_xassert(exp, log) \
+#define eri_xassert(exp, log, ...) \
   do { if (! (exp))							\
 	 {								\
-	   log ("%s\n", #exp);						\
+	   log (ERI_STR (exp), ##__VA_ARGS__);				\
 	   asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15");	\
 	 } } while (0)
 

@@ -107,7 +107,7 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
   ERI_RBT_FOREACH_SAFE (trans, group, t, nt)
     {
       trans_rbt_remove (group, t);
-      eri_lassert (t->ref_count == 0);
+      eri_xassert (t->ref_count == 0, eri_info);
       if (t->trans) eri_trans_destroy (group->pool, t->trans);
       eri_assert_mtfree (group->pool, t);
     }
@@ -314,7 +314,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 	  return;
 	}
 
-      eri_lassert (! al->act && ! al->act_sig_info.sig);
+      eri_lassert (al->log.file, ! al->act && ! al->act_sig_info.sig);
     }
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == *al->group->pid

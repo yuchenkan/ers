@@ -150,6 +150,10 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
 
-#define eri_lassert(exp)	eri_xassert (exp, eri_info)
+#define eri_log_assert(expr, log) \
+  eri_log_info (log, "assert failed: " expr "\n")
+#define eri_lassert(log, exp) \
+  do { eri_file_t _log = log;						\
+       eri_xassert (exp, eri_log_assert, _log); } while (0)
 
 #endif
