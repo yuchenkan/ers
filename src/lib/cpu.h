@@ -122,6 +122,35 @@ struct eri_registers
   ERI_FOREACH_REG (_ERI_DECLARE_REG)
 };
 
+#define eri_init_sys_syscall_args_from_registers(args, regs) \
+  do {									\
+    struct eri_sys_syscall_args *__args = args;				\
+    struct eri_registers *_regs = regs;					\
+    __args->nr = _regs->rax;						\
+    __args->a[0] = _regs->rdi;						\
+    __args->a[1] = _regs->rsi;						\
+    __args->a[2] = _regs->rdx;						\
+    __args->a[3] = _regs->r10;						\
+    __args->a[4] = _regs->r8;						\
+    __args->a[5] = _regs->r9;						\
+  } while (0)
+
+#define _ERI_SET_MCTX_FROM_REGS(creg, reg)	_mctx->reg = _regs->reg;
+#define eri_mcontext_from_registers(mctx, regs) \
+  do {									\
+    struct eri_mcontext *_mctx = mctx;					\
+    struct eri_registers *_regs = regs;					\
+    ERI_FOREACH_REG (_ERI_SET_MCTX_FROM_REGS)				\
+  } while (0);
+
+#define _ERI_SET_REGS_FROM_MCTX(creg, reg)	_regs->reg = _mctx->reg;
+#define eri_registers_from_mcontext(regs, mctx) \
+  do {									\
+    struct eri_registers *_regs = regs;					\
+    struct eri_mcontext *_mctx = mctx;					\
+    ERI_FOREACH_REG (_ERI_SET_REGS_FROM_MCTX)				\
+  } while (0);
+
 #endif
 
 #endif

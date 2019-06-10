@@ -492,7 +492,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size);
   if (eri_global_enable_debug && ! rtld_args->log)
     rtld_args->log = eri_enable_analyzer
-				? "ers-analysis-log" : "ers-replay-log";
+				? "eri-analysis-log" : "eri-replay-log";
   struct thread_group *group = create_group (rtld_args);
   struct thread *th = create (group, 0, 0);
   struct eri_entry *entry = th->entry;
@@ -1594,11 +1594,9 @@ atomic (struct thread *th)
 }
 
 static uint64_t
-hash_regs (eri_file_t log, struct eri_entry *entry)
+hash_regs (eri_file_t log, struct eri_registers *regs)
 {
-  struct eri_registers *regs = eri_entry__get_regs (entry);
-
-  if (eri_global_enable_debug >= 9)
+  if (eri_global_enable_debug >= 9 || eri_global_enable_debug == 7)
     {
 #define LOG_GPREG(creg, reg) \
   eri_log (log, ERI_STR (reg) " %lx\n", regs->reg);
@@ -1618,7 +1616,8 @@ main_entry (struct eri_entry *entry)
 {
   struct thread *th = eri_entry__get_th (entry);
   uint16_t code = eri_entry__get_op_code (entry);
-  eri_log (th->log.file, "%u %lx\n", code, hash_regs (th->log.file, entry));
+  eri_log (th->log.file, "%u %lx\n", code,
+	   hash_regs (th->log.file, eri_entry__get_regs (entry)));
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
   else if (eri_op_is_atomic (code)) atomic (th);
@@ -1662,7 +1661,8 @@ sig_action (struct eri_entry *entry)
 
   if (eri_sig_act_internal_act (act.act.act)) check_exit (th);
 
-  eri_log (th->log.file, "%u\n", sig);
+  eri_log (th->log.file, "%u %lx\n", sig,
+	   hash_regs (th->log.file, eri_entry__get_regs (entry)));
 
   if (! eri_entry__setup_user_frame (entry, &act.act,
 				     &th->sig_alt_stack, &th->sig_mask))

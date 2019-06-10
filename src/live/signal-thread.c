@@ -182,7 +182,7 @@ create_group (struct eri_live_rtld_args *rtld_args)
 	|| eri_get_arg_str (*p, "ERI_LOG=", (void *) &log)
 	|| eri_get_arg_int (*p, "ERI_DEBUG=", &eri_global_enable_debug, 10));
 
-      if (eri_global_enable_debug && ! log) log = "ers-live-log";
+      if (eri_global_enable_debug && ! log) log = "eri-live-log";
     }
 
   struct eri_mtpool *pool = eri_init_mtpool_from_buf (
