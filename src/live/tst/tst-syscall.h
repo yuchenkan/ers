@@ -12,45 +12,30 @@
 
 #ifndef __ASSEMBLER__
 
-struct tst_sys_clone_raise_args
+struct tst_live_clone_args
 {
-  int32_t sig;
   uint8_t *top;
   uint32_t delay;
-  int32_t pid, tid;
-  uint32_t count;
+
+  void (*fn) (void *);
+  void *args;
+
   int32_t alive;
 };
 
-#define tst_sys_clone_raise_init_args(args, rsig, stack, rdelay, rcount) \
-  do {									\
-    struct tst_sys_clone_raise_args *_args = args;			\
-    _args->sig = rsig;							\
-    _args->top = tst_stack_top (stack);					\
-    _args->delay = rdelay;						\
-    _args->pid = tst_assert_syscall (getpid);				\
-    _args->tid = tst_assert_syscall (gettid);				\
-    _args->count = rcount;						\
-    _args->alive = 1;							\
-  } while (0)
+void tst_assert_live_clone (struct tst_live_clone_args *args);
 
-void tst_assert_sys_clone_raise (struct tst_sys_clone_raise_args *args);
-
-struct tst_sys_clone_exit_group_args
+struct tst_live_clone_raise_args
 {
-  uint8_t *top;
-  uint32_t delay;
+  struct tst_live_clone_args args;
+
+  int32_t sig;
+  int32_t pid, tid;
+  uint32_t count;
 };
 
-#define tst_sys_clone_exit_group_init_args(args, stack, edelay) \
-  do {									\
-    struct tst_sys_clone_exit_group_args *_args = args;			\
-    _args->top = tst_stack_top (stack);					\
-    _args->delay = edelay;						\
-  } while (0)
-
-void tst_assert_sys_clone_exit_group (
-			struct tst_sys_clone_exit_group_args *args);
+void tst_assert_live_clone_raise (struct tst_live_clone_raise_args *args);
+void tst_assert_live_clone_exit_group (struct tst_live_clone_args *args);
 
 #endif
 

@@ -31,6 +31,8 @@ struct init_map_args
   uint64_t stack_size;
   uint64_t file_buf_size;
 
+  uint64_t diverge;
+
   uint64_t map_start;
   uint64_t map_end;
   uint64_t map_entry_offset;
@@ -145,7 +147,7 @@ eri_init_map (struct init_map_args *args)
   eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
     { map_start, map_end }, page_size, args->debug, path, conf, log,
-    args->stack_size, args->file_buf_size,
+    args->stack_size, args->file_buf_size, args->diverge,
     map_start + segs_map_end, map_end - map_start - segs_map_end
   };
   ((void (*) (void *)) map_start + entry) (&rtld_args);
@@ -164,6 +166,7 @@ rtld (void **args)
   const char *log = 0;
   uint64_t stack_size = 2 * 1024 * 1024;
   uint64_t file_buf_size = 64 * 1024;
+  uint64_t diverge = 0;
   char **envp;
   for (envp = eri_get_envp_from_args (args); *envp; ++envp)
     (void) (eri_get_arg_str (*envp, "ERS_DATA=", (void *) &path)
@@ -171,6 +174,7 @@ rtld (void **args)
     || eri_get_arg_int (*envp, "ERS_STACK_SIZE=", &stack_size, 10)
     || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
     || eri_get_arg_str (*envp, "ERI_LOG=", (void *) &log)
+    || eri_get_arg_int (*envp, "ERI_DIVERGE=", &diverge, 10)
     || eri_get_arg_int (*envp, "ERI_DEBUG=", &eri_global_enable_debug, 10));
 
   struct eri_elf64_phdr *phdrs = 0;
@@ -219,6 +223,7 @@ rtld (void **args)
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size,
     .stack_size = stack_size, .file_buf_size = file_buf_size,
+    .diverge = diverge,
     .map_start = rec.map_range.start, .map_end = rec.map_range.end,
     .map_entry_offset
 	/* main replay entry: eri_replay_start */

@@ -1,6 +1,8 @@
 #ifndef TST_LIVE_TST_TST_SIG_RACE_H
 #define TST_LIVE_TST_TST_SIG_RACE_H
 
+#include <stdint.h>
+
 #include <lib/compiler.h>
 #include <common/debug.h>
 
@@ -11,7 +13,7 @@
 
 #define TST_LIVE_SIG_RACE_DEFINE_TST(init, what, seed, debug) \
 static eri_aligned16 uint8_t _stack[1024 * 1024];			\
-static struct tst_sys_clone_raise_args _raise_args;			\
+static struct tst_live_clone_raise_args _raise_args;			\
 									\
 static void								\
 _sig_handler (int32_t sig) { eri_debug ("\n"); }			\
@@ -31,8 +33,8 @@ tst_live_start (void)							\
 									\
   init;									\
 									\
-  tst_sys_clone_raise_init_args (&_raise_args, 0, _stack, 0, 0);	\
-  tst_assert_sys_clone_raise (&_raise_args);				\
+  _raise_args.args.top = tst_stack_top (_stack);			\
+  tst_assert_live_clone_raise (&_raise_args);				\
   tst_yield (tst_rand (&_rand, 0, 6));					\
 									\
   what;									\

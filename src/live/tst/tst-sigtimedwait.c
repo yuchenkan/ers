@@ -10,7 +10,7 @@
 #include <live/tst/tst-syscall.h>
 
 static eri_aligned16 uint8_t stack[1024 * 1024];
-static struct tst_sys_clone_raise_args raise_args;
+static struct tst_live_clone_raise_args raise_args;
 
 eri_noreturn void
 tst_live_start (void)
@@ -19,14 +19,15 @@ tst_live_start (void)
   tst_rand_init (&rand, 0);
 
   uint32_t delay = tst_rand (&rand, 0, 64);
-  tst_sys_clone_raise_init_args (&raise_args, ERI_SIGINT, stack,
-				 tst_rand (&rand, 0, 64), 1);
+  raise_args.args.top = tst_stack_top (stack);
+  raise_args.args.delay = tst_rand (&rand, 0, 64);
+  raise_args.count = 1;
 
   struct eri_sigset mask;
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
-  tst_assert_sys_clone_raise (&raise_args);
+  tst_assert_live_clone_raise (&raise_args);
 
   tst_yield (delay);
   struct eri_siginfo info;

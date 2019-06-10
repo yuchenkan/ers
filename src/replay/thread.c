@@ -386,6 +386,7 @@ destroy (struct thread *th)
 static eri_noreturn void
 diverged (struct thread *th)
 {
+  eri_log_info (th->log.file, "diverged\n");
   if (eri_enable_analyzer) eri_analyzer__exit_group (th->analyzer);
   else eri_assert_unreachable ();
 }
@@ -499,6 +500,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
   eri_memset (regs, 0, sizeof *regs);
+  regs->rdi = rtld_args->diverge;
 
   th->tid = group->pid;
   eri_jump (eri_entry__get_stack (entry) - 8, start_main, th, 0, 0);

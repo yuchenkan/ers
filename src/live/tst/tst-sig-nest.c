@@ -23,12 +23,11 @@ sig_handler (int32_t sig)
   tst_assert_unlock (sig == ERI_SIGINT ? &int_lock : &term_lock);
 }
 
-static eri_noreturn void
-raise (void)
+static void
+raise (void *args)
 {
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGTERM);
-  tst_assert_sys_exit (0);
 }
 
 eri_noreturn void
@@ -47,10 +46,10 @@ tst_live_start (void)
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
   tst_assert_sys_sigaction (ERI_SIGTERM, &act, 0);
 
-  struct eri_sys_clone_args args = {
-    ERI_CLONE_SUPPORTED_FLAGS, tst_stack_top (stack), 0, 0, 0, raise
+  struct tst_live_clone_args args = {
+    .top = tst_stack_top (stack), .fn = raise
   };
-  tst_assert_sys_clone (&args);
+  tst_assert_live_clone (&args);
 
   tst_yield (64);
   eri_sig_empty_set (&mask);

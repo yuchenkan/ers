@@ -12,7 +12,7 @@
 #include <live/tst/tst-syscall.h>
 
 static uint8_t stack[1024 * 1024];
-static struct tst_sys_clone_raise_args raise_args;
+static struct tst_live_clone_raise_args raise_args;
 
 #define sync_async_loop(c) \
   do {									\
@@ -45,13 +45,12 @@ sig_int (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_debug ("sig int: %lx\n", ctx->mctx.rip);
   eri_assert (sig == ERI_SIGINT && info->code == ERI_SI_TKILL);
 
-  tst_assert_sys_futex_wait (&raise_args.alive, 1, 0);
+  tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
 
   if (pass++ == 0)
     {
-      raise_args.alive = 1;
-      raise_args.delay = 0;
-      tst_assert_sys_clone_raise (&raise_args);
+      raise_args.args.delay = 0;
+      tst_assert_live_clone_raise (&raise_args);
 
       while (1) sync_async_loop (64 * 1024);
     }
@@ -72,10 +71,11 @@ tst_live_start (void)
   act.act = sig_int;
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
-  tst_sys_clone_raise_init_args (&raise_args, ERI_SIGINT, stack,
-				 tst_rand (&rand, 0, 64), 1);
+  raise_args.args.top = tst_stack_top (stack);
+  raise_args.args.delay = tst_rand (&rand, 0, 64);
+  raise_args.count = 1;
 
-  tst_assert_sys_clone_raise (&raise_args);
+  tst_assert_live_clone_raise (&raise_args);
   tst_enable_trace ();
   sync_async_loop (-1);
   eri_assert_unreachable ();

@@ -11,8 +11,10 @@ if (base === 'all') {
 }
 
 const out = /^tst-live-([^.]*)\.out$/;
-if (base.match (out))
-  return await this.invoke (live, { name: base.match (out)[1], src: 'analysis/analysis' });
+if (base.match (out)) {
+  let environ = base.match (/^tst-live-diverge-([^.]*).out$/) ? 'ERI_DIVERGE=1' : '';
+  return await this.invoke (live, { environ, name: base.match (out)[1], src: 'analysis/analysis' });
+}
 
 const diff = /^tst-live-([^.]*)\.diff$/;
 if (base.match (diff)) {

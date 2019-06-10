@@ -11,13 +11,13 @@
 
 static eri_aligned16 uint8_t stack[1024 * 1024];
 static eri_aligned16 uint8_t stack2[1024 * 1024];
-static struct tst_sys_clone_raise_args raise_args;
+static struct tst_live_clone_raise_args raise_args;
 
 static void
 assert_raise_read (uint32_t delay, int32_t sig, int32_t fd)
 {
   raise_args.sig = sig;
-  tst_assert_sys_clone_raise (&raise_args);
+  tst_assert_live_clone_raise (&raise_args);
   tst_yield (delay);
 
   struct eri_signalfd_siginfo siginfo;
@@ -26,8 +26,7 @@ assert_raise_read (uint32_t delay, int32_t sig, int32_t fd)
   eri_assert (siginfo.sig == sig);
   eri_assert (siginfo.code == ERI_SI_TKILL);
   eri_assert (siginfo.pid == raise_args.pid);
-  tst_assert_sys_futex_wait (&raise_args.alive, 1, 0);
-  raise_args.alive = 1;
+  tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
 }
 
 static uint8_t handled;
@@ -46,9 +45,10 @@ tst_live_start (void)
   tst_rand_init (&rand, 0);
 
   uint32_t delay = tst_rand (&rand, 0, 64);
-  tst_sys_clone_raise_init_args (&raise_args, 0, stack,
-				 tst_rand (&rand, 0, 64), 1);
-  eri_info ("%u %u\n", delay, raise_args.delay);
+  raise_args.args.top = tst_stack_top (stack);
+  raise_args.args.delay = tst_rand (&rand, 0, 64);
+  raise_args.count = 1;
+  eri_info ("%u %u\n", delay, raise_args.args.delay);
 
   struct eri_sigset mask;
   eri_sig_fill_set (&mask);
@@ -108,7 +108,7 @@ tst_live_start (void)
 
   raise_args.sig = ERI_SIGINT;
   raise_args.count = 0;
-  tst_assert_sys_clone_raise (&raise_args);
+  tst_assert_live_clone_raise (&raise_args);
   tst_yield (delay);
 
   struct eri_signalfd_siginfo siginfo;
@@ -119,9 +119,10 @@ tst_live_start (void)
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
-  struct tst_sys_clone_exit_group_args exit_args;
-  tst_sys_clone_exit_group_init_args (&exit_args, stack2, raise_args.delay);
-  tst_assert_sys_clone_exit_group (&exit_args);
+  struct tst_live_clone_args exit_args = {
+    tst_stack_top (stack2), raise_args.args.delay
+  };
+  tst_assert_live_clone_exit_group (&exit_args);
 
   tst_yield (delay);
   tst_assert_syscall (read, fd2, &siginfo, sizeof siginfo);
