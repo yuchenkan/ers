@@ -68,13 +68,31 @@ uint8_t eri_try_unserialize_ver_sigaction (eri_file_t file,
 void eri_unserialize_ver_sigaction (eri_file_t file,
 				    struct eri_ver_sigaction *act);
 
+#define ERI_FOREACH_RECORD_MARK(p, ...) \
+  p (INIT, ##__VA_ARGS__)						\
+  p (INIT_MAP, ##__VA_ARGS__)						\
+  p (ASYNC, ##__VA_ARGS__)						\
+  p (SYNC, ##__VA_ARGS__)
+
 enum
 {
-  ERI_INIT_RECORD,
-  ERI_INIT_MAP_RECORD,
-  ERI_ASYNC_RECORD,
-  ERI_SYNC_RECORD
+#define _ERI_RECORD_MARK(m)	ERI_PASTE2 (ERI_, m, _RECORD),
+  ERI_FOREACH_RECORD_MARK (_ERI_RECORD_MARK)
+  ERI_RECORD_MARK_NUM
 };
+
+static eri_unused const char *
+eri_record_mark_str (uint8_t mark)
+{
+  switch (mark)
+    {
+#define _ERI_CASE_RECORD_MARK_STR(m) \
+  case ERI_PASTE2 (ERI_, m, _RECORD):					\
+    return ERI_STR (ERI_PASTE2 (ERI_, m, _RECORD));
+    ERI_FOREACH_RECORD_MARK (_ERI_CASE_RECORD_MARK_STR)
+    default: eri_assert_unreachable ();
+    }
+}
 
 #define eri_serialize_mark(file, mark) \
   eri_serialize_uint8 (file, mark)
@@ -134,24 +152,41 @@ uint8_t eri_try_unserialize_async_signal_record (eri_file_t file,
 void eri_unserialize_async_signal_record (eri_file_t file,
 			struct eri_async_signal_record *rec);
 
+#define ERI_FOREACH_RECORD_MAGIC(p, ...) \
+  p (SIGNAL, ##__VA_ARGS__)						\
+  p (SYSCALL_RESULT, ##__VA_ARGS__)					\
+  p (SYSCALL_IN, ##__VA_ARGS__)						\
+  p (SYSCALL_OUT, ##__VA_ARGS__)					\
+  p (SYSCALL_RES_IN, ##__VA_ARGS__)					\
+  p (SYSCALL_RES_IO, ##__VA_ARGS__)					\
+  p (SYSCALL_CLONE, ##__VA_ARGS__)					\
+  p (SYSCALL_EXIT_CLEAR_TID, ##__VA_ARGS__)				\
+  p (SYSCALL_RT_SIGACTION_SET, ##__VA_ARGS__)				\
+  p (SYSCALL_RT_SIGACTION, ##__VA_ARGS__)				\
+  p (SYSCALL_RT_SIGPENDING, ##__VA_ARGS__)				\
+  p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
+  p (SYSCALL_READ, ##__VA_ARGS__)					\
+  p (SYNC_ASYNC, ##__VA_ARGS__)						\
+  p (ATOMIC, ##__VA_ARGS__)
+
 enum
 {
-  ERI_SIGNAL_MAGIC,
-  ERI_SYSCALL_RESULT_MAGIC,
-  ERI_SYSCALL_IN_MAGIC,
-  ERI_SYSCALL_OUT_MAGIC,
-  ERI_SYSCALL_RES_IN_MAGIC,
-  ERI_SYSCALL_RES_IO_MAGIC,
-  ERI_SYSCALL_CLONE_MAGIC,
-  ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC,
-  ERI_SYSCALL_RT_SIGACTION_SET_MAGIC,
-  ERI_SYSCALL_RT_SIGACTION_MAGIC,
-  ERI_SYSCALL_RT_SIGPENDING_MAGIC,
-  ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC,
-  ERI_SYSCALL_READ_MAGIC,
-  ERI_SYNC_ASYNC_MAGIC,
-  ERI_ATOMIC_MAGIC,
+#define _ERI_RECORD_MAGIC(m)	ERI_PASTE2 (ERI_, m, _MAGIC),
+  ERI_FOREACH_RECORD_MAGIC (_ERI_RECORD_MAGIC)
 };
+
+static eri_unused const char *
+eri_record_magic_str (uint16_t magic)
+{
+  switch (magic)
+    {
+#define _ERI_CASE_RECORD_MAGIC_STR(m) \
+  case ERI_PASTE2 (ERI_, m, _MAGIC):					\
+    return ERI_STR (ERI_PASTE2 (ERI_, m, _MAGIC));
+    ERI_FOREACH_RECORD_MAGIC (_ERI_CASE_RECORD_MAGIC_STR)
+    default: eri_assert_unreachable ();
+    }
+}
 
 #define eri_serialize_magic(file, magic) \
   eri_serialize_uint16 (file, magic)

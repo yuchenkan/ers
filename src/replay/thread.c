@@ -204,6 +204,7 @@ struct thread
 
   eri_file_t file;
   uint8_t *file_buf;
+  uint64_t marks;
 
   int32_t tid;
   int32_t alive;
@@ -233,7 +234,11 @@ struct thread
      uint8_t _res = try_unserialize (magic, _th, &_n);			\
      if (_res && _n != _m)						\
        eri_log_info (_th->log.file,					\
-		"unexpected magic: %u, expecting: %u\n", _n, _m);	\
+		"unexpected magic detected: %s, expecting: %s\n",	\
+		eri_record_magic_str (_n), eri_record_magic_str (_m));	\
+     else if (_res)							\
+       eri_log (_th->log.file, "magic: %s\n",				\
+		eri_record_magic_str (_n));				\
      _res && _n == _m; })
 
 static uint8_t
@@ -347,7 +352,8 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
   uint64_t file_buf_size = group->file_buf_size;
 
   th->group = group;
-  eri_open_log (group->pool, &th->log, group->log, "l", id, file_buf_size);
+  eri_open_log (group->pool, &th->log, group->log, "l", id,
+		eri_enabled_debug () ? 0 : file_buf_size);
 
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, stack,
@@ -369,6 +375,7 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 
   th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
   th->file = eri_assert_fopen (name, 1, th->file_buf, file_buf_size);
+  th->marks = 0;
 
   th->alive = 1;
   th->clear_user_tid = clear_user_tid;
@@ -401,10 +408,28 @@ destroy (struct thread *th)
   } while (0)
 
 static uint8_t
+try_unserialize_mark (struct thread *th, uint8_t *mark)
+{
+  if (! try_unserialize (mark, th, mark)
+      || *mark >= ERI_RECORD_MARK_NUM) return 0;
+  eri_log (th->log.file, "%lu %s\n",
+	   th->marks++, eri_record_mark_str (*mark));
+  return 1;
+}
+
+static uint8_t
+unserialize_mark (struct thread *th)
+{
+  uint8_t mark;
+  eri_lassert (th->log.file, try_unserialize_mark (th, &mark));
+  return mark;
+}
+
+static uint8_t
 fetch_mark (struct thread *th)
 {
   uint8_t mark;
-  if (! try_unserialize (mark, th, &mark)) diverged (th);
+  if (! try_unserialize_mark (th, &mark)) diverged (th);
   return mark;
 }
 
@@ -436,7 +461,7 @@ start (struct thread *th, uint8_t next)
 static eri_noreturn void
 start_main (struct thread *th)
 {
-  eri_assert (eri_unserialize_mark (th->file) == ERI_INIT_RECORD);
+  eri_assert (unserialize_mark (th) == ERI_INIT_RECORD);
   struct eri_init_record rec;
   eri_unserialize_init_record (th->file, &rec);
   eri_assert (rec.ver == 0);
@@ -465,7 +490,7 @@ start_main (struct thread *th)
   group->user_pid = rec.user_pid;
 
   uint8_t next;
-  while ((next = eri_unserialize_mark (th->file)) == ERI_INIT_MAP_RECORD)
+  while ((next = unserialize_mark (th)) == ERI_INIT_MAP_RECORD)
     {
       struct eri_init_map_record rec;
       eri_unserialize_init_map_record (th->file, &rec);
@@ -606,7 +631,6 @@ ERI_PASTE (syscall_, name) (SYSCALL_PARAMS)
 static eri_noreturn void
 syscall_leave (struct thread *th, uint8_t next, uint64_t res)
 {
-  eri_log (th->log.file, "\n");
   if (next) fetch_test_async_signal (th);
   eri_entry__syscall_leave (th->entry, res);
 }
@@ -1002,7 +1026,6 @@ DEFINE_SYSCALL (rt_sigreturn)
   if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask))
     check_exit (th);
   th->sig_alt_stack = st;
-  eri_log (th->log.file, "%lx\n", regs->rsi);
   eri_entry__leave (entry);
 }
 
@@ -1508,7 +1531,7 @@ syscall (struct thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  eri_log (th->log.file, "%lu %lx %lx\n", regs->rax, regs->rip, regs->rsi);
+  eri_log (th->log.file, "%lu %lx\n", regs->rax, regs->rip);
 
   switch (regs->rax)
     {

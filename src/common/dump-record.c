@@ -22,7 +22,7 @@ main (int32_t argc, const char **argv)
   while (eri_unserialize_uint8_or_eof (file, &mark))
     if (mark == ERI_INIT_RECORD)
       {
-	printf ("%lu ERI_INIT_RECORD\n", i++);
+	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
 	struct eri_init_record rec;
 	eri_unserialize_init_record (file, &rec);
 	printf ("  ver: %lu", rec.ver);
@@ -39,7 +39,7 @@ main (int32_t argc, const char **argv)
       }
     else if (mark == ERI_INIT_MAP_RECORD)
       {
-	printf ("%lu ERI_INIT_MAP_RECORD\n", i++);
+	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
 	struct eri_init_map_record rec;
 	eri_unserialize_init_map_record (file, &rec);
 	printf ("  start: 0x%lx, end: 0x%lx, prot: %u, grows_down %u\n",
@@ -55,7 +55,7 @@ main (int32_t argc, const char **argv)
       }
     else if (mark == ERI_ASYNC_RECORD)
       {
-	printf ("%lu ERI_ASYNC_RECORD\n", i++);
+	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
 	struct eri_async_signal_record rec;
 	eri_unserialize_async_signal_record (file, &rec);
 	printf ("  in: %lu, info.sig: %d", rec.in, rec.info.sig);
@@ -65,8 +65,9 @@ main (int32_t argc, const char **argv)
       }
     else if (mark == ERI_SYNC_RECORD)
       {
-	printf ("%lu ERI_SYNC_RECORD\n", i++);
+	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
 	uint16_t magic = eri_unserialize_magic (file);
+	printf ("magic: %s\n", eri_record_magic_str (magic));
 	if (magic == ERI_SIGNAL_MAGIC)
 	  {
 	    struct eri_ver_sigaction act;

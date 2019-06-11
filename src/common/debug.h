@@ -137,8 +137,7 @@ eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,
 {
   if (! log) { file->file = 0; return; }
 
-  eri_malloc_open_path (pool, file, log, name, id,
-			eri_enabled_debug () ? 0 : buf_size);
+  eri_malloc_open_path (pool, file, log, name, id, buf_size);
 }
 
 static eri_unused void

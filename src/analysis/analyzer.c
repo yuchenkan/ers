@@ -120,8 +120,8 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   struct eri_analyzer_group *group = args->group;
   struct eri_analyzer *al = eri_assert_mtmalloc (group->pool, sizeof *al);
   al->group = group;
-  eri_open_log (group->pool, &al->log, group->log, "a",
-		args->id, group->file_buf_size);
+  eri_open_log (group->pool, &al->log, group->log, "a", args->id,
+		eri_enabled_debug () ? 0 : group->file_buf_size);
   al->entry = args->entry;
   al->tid = args->tid;
   al->exit = args->exit;

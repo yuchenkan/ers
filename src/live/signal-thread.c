@@ -265,8 +265,8 @@ create (struct signal_thread_group *group)
   struct eri_live_signal_thread *sig_th
 	= eri_assert_mtmalloc (group->pool, sizeof *sig_th);
   sig_th->id = eri_atomic_fetch_inc (&group->th_id, 0);
-  eri_open_log (group->pool, &sig_th->log, group->log, "l",
-		sig_th->id, group->file_buf_size);
+  eri_open_log (group->pool, &sig_th->log, group->log, "l", sig_th->id,
+		eri_enabled_debug () ? 0 : group->file_buf_size);
   sig_th->group = group;
   sig_th->alive = 1;
   return sig_th;
