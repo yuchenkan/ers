@@ -2058,6 +2058,7 @@ static void
 sig_prepare (struct eri_live_thread *th, struct eri_siginfo *info)
 {
   struct eri_live_signal_thread *sig_th = th->sig_th;
+  uint8_t single_step = eri_si_single_step (info);
   eri_live_signal_thread__sig_prepare (sig_th, info, &th->sig_act);
 
   if (eri_si_sync (info))
@@ -2066,6 +2067,12 @@ sig_prepare (struct eri_live_thread *th, struct eri_siginfo *info)
       /* Sync signals are not ignorable.  */
       eri_assert (eri_live_thread__sig_digest_act (th, info, &th->sig_act,
 						   &th->sig_force_masked));
+    }
+  else if (single_step)
+    {
+      eri_log_info (th->log, "lost SIGTRAP\n");
+      struct eri_ver_sigaction act = { .act.act = ERI_SIG_ACT_LOST };
+      eri_live_thread_recorder__rec_signal (th->rec, 0, &act);
     }
 }
 

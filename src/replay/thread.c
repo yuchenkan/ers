@@ -1693,10 +1693,20 @@ sig_action (struct eri_entry *entry)
     check_exit (th);
 
   struct eri_ver_sigaction act;
-  if (! try_unserialize (ver_sigaction, th, &act)
-      || ! version_wait (th->log.file, &th->group->ver_act,
-			 th->group->sig_acts + sig - 1, act.ver))
+  if (! try_unserialize (ver_sigaction, th, &act)) diverged (th);
+
+  if (act.act.act == ERI_SIG_ACT_LOST)
+    {
+      eri_log_info (th->log.file, "lost SIGTRAP\n");
+      eri_entry__clear_signal (entry);
+      fetch_test_async_signal (th);
+      eri_entry__leave (entry);
+    }
+
+  if (! version_wait (th->log.file, &th->group->ver_act,
+		      th->group->sig_acts + sig - 1, act.ver))
     diverged (th);
+
 
   if (eri_sig_act_internal_act (act.act.act)) check_exit (th);
 

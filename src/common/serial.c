@@ -1,6 +1,7 @@
 #include <lib/util.h>
 #include <lib/syscall.h>
 
+#include <common/common.h>
 #include <common/serial.h>
 
 void
@@ -246,7 +247,7 @@ void
 eri_serialize_sigaction (eri_file_t file, const struct eri_sigaction *act)
 {
   eri_serialize_uint64 (file, (uint64_t) act->act);
-  if ((uint64_t) act->act < 16) return;
+  if (eri_sig_act_internal_act (act->act)) return;
   eri_serialize_int32 (file, act->flags);
   eri_serialize_uint64 (file, (uint64_t) act->restorer);
   eri_serialize_sigset (file, &act->mask);
@@ -255,11 +256,11 @@ eri_serialize_sigaction (eri_file_t file, const struct eri_sigaction *act)
 uint8_t
 eri_try_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act)
 {
-  if (! eri_try_unserialize_uint64 (file, (void *) &act->act)) return 0;
-  if ((uint64_t) act->act < 16) return 1;
-  return eri_try_unserialize_int32 (file, &act->flags)
-	 && eri_try_unserialize_uint64 (file, (void *) &act->restorer)
-	 && eri_try_unserialize_sigset (file, &act->mask);
+  return eri_try_unserialize_uint64 (file, (void *) &act->act)
+	 && (eri_sig_act_internal_act (act->act)
+	     || (eri_try_unserialize_int32 (file, &act->flags)
+		 && eri_try_unserialize_uint64 (file, (void *) &act->restorer)
+		 && eri_try_unserialize_sigset (file, &act->mask)));
 }
 
 void
@@ -273,6 +274,7 @@ eri_serialize_ver_sigaction (eri_file_t file,
 			     const struct eri_ver_sigaction *act)
 {
   eri_serialize_sigaction (file, &act->act);
+  if (act->act.act == ERI_SIG_ACT_LOST) return;
   eri_serialize_uint64 (file, act->ver);
 }
 
@@ -281,7 +283,8 @@ eri_try_unserialize_ver_sigaction (eri_file_t file,
 				   struct eri_ver_sigaction *act)
 {
   return eri_try_unserialize_sigaction (file, &act->act)
-	 && eri_try_unserialize_uint64 (file, &act->ver);
+         && (act->act.act == ERI_SIG_ACT_LOST
+	     || eri_try_unserialize_uint64 (file, &act->ver));
 }
 
 void

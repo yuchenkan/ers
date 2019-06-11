@@ -72,11 +72,12 @@ void eri_mkdir (const char *path);
 #define ERI_SIG_ACT_TERM	((void *) 1)
 #define ERI_SIG_ACT_CORE	((void *) 2)
 #define ERI_SIG_ACT_STOP	((void *) 3)
+#define ERI_SIG_ACT_LOST	((void *) 4) /* lost SIGTRAP */
 
 #define eri_sig_act_internal_act(act) \
   ({ void *_act = act;							\
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
-     || _act == ERI_SIG_ACT_STOP; })
+     || _act == ERI_SIG_ACT_STOP || _act == ERI_SIG_ACT_LOST; })
 
 eri_noreturn void eri_jump (void *rsp, void *rip,
 			    void *rdi, void *rsi, void *rdx);

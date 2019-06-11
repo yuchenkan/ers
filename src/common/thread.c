@@ -21,18 +21,6 @@
 #define th_copy_text(entry) \
   eri_memcpy ((void *) th_get_text (entry, th_text), th_text, th_text_size)
 
-#define set_mctx(creg, reg, mctx, regs)	mctx->reg = regs->reg;
-#define set_mctx_from_regs(mctx, regs) \
-  do { struct eri_mcontext *_mctx = mctx;				\
-       struct eri_registers *_regs = regs;				\
-       ERI_FOREACH_REG (set_mctx, _mctx, _regs) } while (0)
-
-#define set_regs(creg, reg, regs, mctx)	regs->reg = mctx->reg;
-#define set_regs_from_mctx(regs, mctx) \
-  do { struct eri_registers *_regs = regs;				\
-       struct eri_mcontext *_mctx = mctx;				\
-       ERI_FOREACH_REG (set_regs, _regs, _mctx) } while (0)
-
 struct eri_entry *
 eri_entry__create (struct eri_entry__create_args *args)
 {
@@ -328,7 +316,7 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
   set_sig_alt_stack (stack, rsp, &ctx->stack);
   ctx->stack = st;
 
-  set_regs_from_mctx (&entry->_regs, &ctx->mctx);
+  eri_registers_from_mcontext (&entry->_regs, &ctx->mctx);
 
   frame.restorer = eri_assert_sys_sigreturn;
 
@@ -402,7 +390,7 @@ eri_entry__setup_user_frame (
   frame.restorer = act->flags & ERI_SA_RESTORER ? act->restorer : 0;
   frame.ctx = entry->_ctx;
   frame.ctx.stack = *stack;
-  set_mctx_from_regs (&frame.ctx.mctx, regs);
+  eri_mcontext_from_registers (&frame.ctx.mctx, regs);
   frame.ctx.sig_mask = *mask;
   frame.info = entry->_sig_info;
 
@@ -480,7 +468,7 @@ _eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
       if (entry->_op.code == ERI_OP_SYNC_ASYNC
 	  && mctx->rip == entry->_regs.rip)
 	mctx->rip = entry->_start;
-      set_regs_from_mctx (&entry->_regs, mctx);
+      eri_registers_from_mcontext (&entry->_regs, mctx);
     }
   else if (entry->_op.code == ERI_OP_SYNC_ASYNC)
     entry->_regs.rip = entry->_start;
