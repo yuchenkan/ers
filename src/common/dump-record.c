@@ -1,13 +1,14 @@
-#include <assert.h>
 #include <stdio.h>
 
+#include <lib/util.h>
 #include <lib/printf.h>
+#include <common/debug.h>
 #include <common/serial.h>
 
 int32_t
 main (int32_t argc, const char **argv)
 {
-  assert (argc <= 2);
+  eri_xassert (argc <= 2, eri_info);
   const char *name = argc == 2 ? argv[1] : "ers-data/t000";
   uint8_t buf[16 * 1024];
   eri_file_t file;

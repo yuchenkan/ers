@@ -65,14 +65,13 @@ func:
 #define eri_xassert(exp, log, ...) \
   do { if (! (exp))							\
 	 {								\
-	   log (ERI_STR (exp), ##__VA_ARGS__);				\
-	   asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15");	\
+	   log (ERI_STR (exp) "\n", ##__VA_ARGS__);			\
+	   asm ("ud2");							\
 	 } } while (0)
 
 #ifndef eri_assert
 # define eri_assert(exp) \
-  do { if (! (exp))							\
-	 asm ("movq $0, %%r15; movl $0, (%%r15);" : : : "r15");	} while (0)
+  do { if (! (exp)) asm ("ud2"); } while (0)
 
 #endif
 
