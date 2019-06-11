@@ -97,7 +97,7 @@ struct eri_trans
   uint64_t insts_len;
 
   struct trace_guest *traces;
-  uint64_t ntraces;
+  uint64_t traces_num;
 
   struct trans_loc final_locs[TRANS_REG_NUM];
 
@@ -709,8 +709,11 @@ ir_err_end (struct ir_dag *dag, struct ir_node *node,
 
   if (info) node->end.sig_info = *info;
   else node->end.sig_info.sig = 0;
-  node->end.len = len;
-  if (bytes) eri_memcpy (node->end.bytes, bytes, len);
+  if (bytes)
+    {
+      node->end.len = len;
+      eri_memcpy (node->end.bytes, bytes, len);
+    }
 }
 
 #define ir_eval(dag, type, t, args) \
@@ -1300,7 +1303,7 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
   struct eri_siginfo info;
   if (! args->copy (bytes, (void *) rip, len, &info, args->copy_args))
     {
-      ir_err_end (dag, node, &info, len, 0);
+      ir_err_end (dag, node, &info, 0, 0);
       return 1;
     }
 
@@ -1720,7 +1723,7 @@ ir_build_cond_str_op (struct ir_dag *dag, struct ir_node *inst)
       || iclass == XED_ICLASS_REP_OUTSW || iclass == XED_ICLASS_REP_OUTSD)
     {
       struct eri_siginfo info = { .sig = ERI_SIGSEGV, .code = ERI_SI_KERNEL };
-      ir_err_end (dag, inst, &info, length, 0);
+      ir_err_end (dag, inst, &info, 0, 0);
       return;
     }
 
@@ -3638,7 +3641,7 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
 
   res->traces = (void *) (res->buf + ilen);
   eri_memcpy (res->traces, tr->traces.buf, tr->traces.off);
-  res->ntraces = tr->traces.off / sizeof (struct trace_guest);
+  res->traces_num = tr->traces.off / sizeof (struct trace_guest);
 
   eri_memcpy (res->final_locs, tr->final_locs, sizeof res->final_locs);
 
@@ -3979,7 +3982,7 @@ eri_trans_trace_regs (eri_file_t log, struct eri_trans_active *act,
   uint64_t rip_off = rip - range.start;
   struct trace_guest *traces = tr->traces;
 
-  for (i = 0; i < tr->ntraces && traces[i].rip_off <= rip_off; ++i)
+  for (i = 0; i < tr->traces_num && traces[i].rip_off <= rip_off; ++i)
     locs[traces[i].reg_idx] = traces[i].loc;
 
 #define GET_REG(creg, reg) \
