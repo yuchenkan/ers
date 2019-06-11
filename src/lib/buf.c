@@ -7,7 +7,7 @@ eri_buf_init (struct eri_buf *buf, eri_buf_alloc_t alloc, eri_buf_free_t free,
   buf->alloc = alloc;
   buf->free = free;
   buf->data = data;
-  buf->size = size;
+  buf->size = size ? : 16;
   buf->buf = 0;
   buf->off = 0;
 

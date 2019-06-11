@@ -61,6 +61,12 @@ trans_set_loc (struct trans_loc *loc, uint8_t tag, uint64_t val)
   loc->val = val;
 }
 
+struct inst_len
+{
+  uint64_t rip;
+  uint64_t len;
+};
+
 struct trace_guest
 {
   uint64_t rip_off;
@@ -93,8 +99,13 @@ struct eri_trans
   uint64_t rip;
   uint8_t tf;
 
+  uint64_t len;
+
   uint8_t *insts;
   uint64_t insts_len;
+
+  struct inst_len *guest_insts;
+  uint64_t guest_insts_num;
 
   struct trace_guest *traces;
   uint64_t traces_num;
@@ -447,14 +458,16 @@ struct ir_dag
   struct eri_mtpool *pool;
   eri_file_t log;
 
+  ERI_LST_LIST_FIELDS (ir_alloc)
+  ERI_RBT_TREE_FIELDS (ir_redun, struct ir_redun)
+
+  uint64_t len;
+  struct eri_buf guest_insts;
+
   struct ir_def *map_start;
   struct ir_def *map_end;
 
   struct ir_def *syms[TRANS_REG_NUM];
-
-  ERI_LST_LIST_FIELDS (ir_alloc)
-
-  ERI_RBT_TREE_FIELDS (ir_redun, struct ir_redun)
 
   struct ir_def *init;
   struct ir_def *memory;
@@ -1293,32 +1306,58 @@ ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
   eri_rlog2 (log, " %s\n", dis);
 }
 
+static xed_error_enum_t
+ir_do_decode (xed_decoded_inst_t *dec, uint8_t *bytes, uint8_t len)
+{
+  xed_decoded_inst_zero (dec);
+  xed_decoded_inst_set_mode (dec, XED_MACHINE_MODE_LONG_64,
+			     XED_ADDRESS_WIDTH_64b);
+  return xed_decode (dec, bytes, len);
+}
+
 static uint8_t
 ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 	   struct ir_node *node, uint8_t len)
 {
   uint64_t rip = ir_get_rip (dag);
 
+  /*
+   * When failed to copy from user, a less accurate length is ok
+   * since memory permission is manipulated on the page level,
+   * and the page size is considered when calculate the length.
+   */
+  uint8_t inst_len = len;
+
   uint8_t bytes[INST_BYTES];
   struct eri_siginfo info;
   if (! args->copy (bytes, (void *) rip, len, &info, args->copy_args))
     {
       ir_err_end (dag, node, &info, 0, 0);
-      return 1;
+      goto done;
     }
 
   xed_decoded_inst_t *dec = &node->inst.dec;
-  xed_decoded_inst_zero (dec);
-  xed_decoded_inst_set_mode (dec, XED_MACHINE_MODE_LONG_64,
-			     XED_ADDRESS_WIDTH_64b);
-  xed_error_enum_t err = xed_decode (dec, bytes, len);
+  xed_error_enum_t err = ir_do_decode (dec, bytes, len);
   if (err == XED_ERROR_BUFFER_TOO_SHORT) return 0;
 
   if (err == XED_ERROR_NONE)
     ir_dump_dis_dec (dag->log, rip, dec);
 
   if (err != XED_ERROR_NONE)
-    ir_err_end (dag, node, 0, len, bytes);
+    {
+      for (inst_len = 1; inst_len < len; ++inst_len)
+	if (ir_do_decode (dec, bytes, inst_len) != XED_ERROR_BUFFER_TOO_SHORT)
+	  break;
+
+      eri_lassert (dag->log, inst_len != len);
+      ir_err_end (dag, node, 0, len, bytes);
+    }
+  else inst_len = xed_decoded_inst_get_length (dec);
+
+done:
+  dag->len += inst_len;
+  struct inst_len inst = { rip, inst_len };
+  eri_assert_buf_append (&dag->guest_insts, &inst, sizeof inst);
   return 1;
 }
 
@@ -3627,17 +3666,30 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
   struct ir_accesses *r = &dag->reads;
   struct ir_accesses *w = &dag->writes;
 
+  /*
+   * The last inst length is not necessary if the signal is explicitly
+   * specified.
+   */
+  uint64_t guest_insts_off = dag->guest_insts.off
+			- tr->sig_info.sig ? sizeof (struct inst_len) : 0;
   struct eri_trans *res = eri_assert_mtmalloc_struct (dag->pool,
-	typeof (*res), (insts, tr->insts.off), (traces, tr->traces.off),
+	typeof (*res), (insts, tr->insts.off),
+	(guest_insts, guest_insts_off), (traces, tr->traces.off),
 	(reads.sizes, r->sizes.off), (reads.conds, r->conds.off),
 	(writes.sizes, w->sizes.off), (writes.conds, w->conds.off));
 
   eri_log8 (dag->log, "res->buf: %lx\n", res->buf);
+
+  res->len = dag->len;
+
+  eri_memcpy (res->guest_insts, dag->guest_insts.buf, guest_insts_off);
+  res->guest_insts_num = guest_insts_off / sizeof *res->guest_insts;
+
   eri_memcpy (res->insts, tr->insts.buf, tr->insts.off);
   res->insts_len = tr->insts.off;
 
   eri_memcpy (res->traces, tr->traces.buf, tr->traces.off);
-  res->traces_num = tr->traces.off / sizeof (struct trace_guest);
+  res->traces_num = tr->traces.off / sizeof *res->traces;
 
   eri_memcpy (res->final_locs, tr->final_locs, sizeof res->final_locs);
 
@@ -3758,10 +3810,13 @@ eri_translate (struct eri_translate_args *args)
   struct ir_dag dag = { args->pool, log };
   ERI_LST_INIT_LIST (ir_alloc, &dag);
 
+  uint32_t max_inst_count = args->tf ? 1 : args->max_inst_count;
+  eri_assert_buf_mtpool_init (&dag.guest_insts, dag.pool,
+	eri_round_up (max_inst_count * sizeof (struct inst_len) / 4, 16));
+
   dag.map_start = ir_get_load_imm (&dag, args->map_range->start);
   dag.map_end = ir_get_load_imm (&dag, args->map_range->end);
 
-  uint32_t max_inst_count = args->tf ? 1 : args->max_inst_count;
   ir_init_accesses (&dag.reads, dag.pool, max_inst_count);
   ir_init_accesses (&dag.writes, dag.pool, max_inst_count);
 
@@ -3856,6 +3911,7 @@ out:
   ir_free_all (&dag);
   ir_fini_accesses (&dag.reads);
   ir_fini_accesses (&dag.writes);
+  eri_assert_buf_fini (&dag.guest_insts);
   return res;
 }
 
