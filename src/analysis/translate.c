@@ -3624,22 +3624,18 @@ ir_accesses_static_num (struct ir_accesses *acc, uint64_t *n, uint64_t *cn)
 static struct eri_trans *
 ir_output (struct ir_dag *dag, struct ir_trans *tr)
 {
-  uint64_t ilen = eri_round_up (tr->insts.off, 16);
-  uint64_t tlen = eri_round_up (tr->traces.off, 16);
-
-  uint64_t size = sizeof (struct eri_trans) + ilen + tlen;
   struct ir_accesses *r = &dag->reads;
   struct ir_accesses *w = &dag->writes;
-  size += r->sizes.off + r->conds.off + w->sizes.off + w->conds.off;
 
-  struct eri_trans *res = eri_assert_mtmalloc (dag->pool, size);
+  struct eri_trans *res = eri_assert_mtmalloc_struct (dag->pool,
+	typeof (*res), (insts, tr->insts.off), (traces, tr->traces.off),
+	(reads.sizes, r->sizes.off), (reads.conds, r->conds.off),
+	(writes.sizes, w->sizes.off), (writes.conds, w->conds.off));
 
   eri_log8 (dag->log, "res->buf: %lx\n", res->buf);
-  res->insts = res->buf;
   eri_memcpy (res->insts, tr->insts.buf, tr->insts.off);
   res->insts_len = tr->insts.off;
 
-  res->traces = (void *) (res->buf + ilen);
   eri_memcpy (res->traces, tr->traces.buf, tr->traces.off);
   res->traces_num = tr->traces.off / sizeof (struct trace_guest);
 
@@ -3651,18 +3647,9 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
 		+ ir_accesses_static_num (r, &res->reads.num, 0)
 		+ ir_accesses_static_num (w, &res->writes.num, 0);
 
-  uint8_t *acc = res->buf + ilen + tlen;
-
-  res->reads.sizes = (void *) acc;
   eri_memcpy (res->reads.sizes, r->sizes.buf, r->sizes.off);
-
-  res->writes.sizes = (void *) (acc += r->sizes.off);
   eri_memcpy (res->writes.sizes, w->sizes.buf, w->sizes.off);
-
-  res->reads.conds = acc += w->sizes.off;
   eri_memcpy (res->reads.conds, r->conds.buf, r->conds.off);
-
-  res->writes.conds = acc + r->conds.off;
   eri_memcpy (res->writes.conds, w->conds.buf, w->conds.off);
 
   res->reads.cond_count = r->cond_count;

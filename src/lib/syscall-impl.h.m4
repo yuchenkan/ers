@@ -23,12 +23,10 @@ m4_include(`m4/util.m4')
 
 #define m4_ns(syscall)(name, ...) \
   m4_ns(syscall_nr, _) (__NR_##name,					\
-			eri_syscall_nargs (0, ##__VA_ARGS__), 		\
-			##__VA_ARGS__)
+			ERI_PP_NARGS (__VA_ARGS__), ##__VA_ARGS__)
 
 #define m4_ns(syscall_nr)(nr, ...) \
-  m4_ns(syscall_nr, _) (nr, eri_syscall_nargs (0, ##__VA_ARGS__),	\
-			##__VA_ARGS__)
+  m4_ns(syscall_nr, _) (nr, ERI_PP_NARGS (__VA_ARGS__), ##__VA_ARGS__)
 
 #define m4_ns(assert_syscall)(...) \
   ({									\

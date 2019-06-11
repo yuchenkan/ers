@@ -224,8 +224,10 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path));
     }
 
-  struct eri_live_thread_group *group
-			= eri_assert_mtmalloc (pool, sizeof *group);
+  struct eri_live_thread_group *group = eri_assert_mtmalloc_struct (
+	pool, typeof (*group),
+	(atomic_table, atomic_table_size * sizeof *group->atomic_table),
+	(path, eri_strlen (path) + 1));
   group->pool = pool;
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
@@ -235,13 +237,9 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   ERI_RBT_INIT_TREE (fdf, group);
   init_fdf (group);
 
-  group->atomic_table = eri_assert_mtmalloc (pool,
-		atomic_table_size * sizeof *group->atomic_table);
   group->atomic_table_size = atomic_table_size;
-
   group->stack_size = stack_size;
 
-  group->path = eri_assert_mtmalloc (pool, eri_strlen (path) + 1);
   eri_strcpy ((void *) group->path, path);
   eri_live_thread_recorder__init_group (group->path);
 
@@ -258,8 +256,6 @@ eri_live_thread__destroy_group (struct eri_live_thread_group *group)
   ERI_RBT_FOREACH_SAFE (fdf, group, fd, nfd)
     fdf_remove_free (group, fd);
 
-  eri_assert_mtfree (group->pool, (void *) group->path);
-  eri_assert_mtfree (group->pool, group->atomic_table);
   eri_assert_mtfree (group->pool, group);
 }
 

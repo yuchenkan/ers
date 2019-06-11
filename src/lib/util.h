@@ -7,9 +7,9 @@
 #define ERI_PASTE(x, y)		_ERS_PASTE (x, y)
 #define ERI_PASTE2(x, y, z)	ERI_PASTE (ERI_PASTE (x, y), z)
 
-#define ERI_PP_IF(t, ...)	_ERS_PP_IF (t, ##__VA_ARGS__)
-
 #define ERI_EMPTY
+#define ERI_OMIT(...)
+
 #define ERI_EVAL(...)		__VA_ARGS__
 
 #define ERI_MOV_LM(label, dst, reg) \
@@ -24,12 +24,18 @@
   leaq	src, reg;							\
   movq	reg, dst
 
+#define ERI_PP_IF(t, ...)	_ERS_PP_IF (t, ##__VA_ARGS__)
+
 #define _ERI_PP_IIF_0(t, ...)		__VA_ARGS__
 #define _ERI_PP_IIF_1(t, ...)		t
 #define ERI_PP_IIF(c, t, ...) \
   ERI_PASTE (_ERI_PP_IIF_, c) (t, ##__VA_ARGS__)
 
-#define ERI_OMIT(...)
+#define _ERI_PP_NARGS_X(a, b, c, d, e, f, g, h, i, j, k, \
+			l, m, n, o, p, q, r, s, ...) s
+#define ERI_PP_NARGS(...) \
+  _ERI_PP_NARGS_X (0, ##__VA_ARGS__, 17, 16, 15, 14, 13, 12, 11, 10, 9,	\
+		   8, 7, 6, 5, 4, 3, 2, 1, 0)
 
 #define ERI_SYMBOL(symbol) \
   .global symbol;							\

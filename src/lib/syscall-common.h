@@ -412,13 +412,8 @@
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 
-#define _eri_syscall_nargs_x(a, b, c, d, e, f, g, h, i, ...)	i
-#define eri_syscall_nargs(...) \
-  _eri_syscall_nargs_x (__VA_ARGS__, 7, 6, 5, 4, 3, 2, 1, 0)
-
 #define _ERI_LOAD_ARGS_0()
 #define _ERI_LOAD_ARGS_1(a1) \
-  _ERI_LOAD_ARGS_0 ()							\
   uint64_t _arg1 = (uint64_t) (a1);
 #define _ERI_LOAD_ARGS_2(a1, a2) \
   _ERI_LOAD_ARGS_1 (a1)							\
@@ -438,7 +433,6 @@
 
 #define _ERI_LOAD_REGS_0
 #define _ERI_LOAD_REGS_1 \
-  _ERI_LOAD_REGS_0							\
   register uint64_t _a1 asm ("rdi") = _arg1;
 #define _ERI_LOAD_REGS_2 \
   _ERI_LOAD_REGS_1							\
