@@ -1,6 +1,6 @@
 #include <lib/util.h>
 #include <lib/offset.h>
-#include <common/thread.h>
+#include <common/entry.h>
 
 #define EN_OFFSET(name, member) \
   ERI_DECLARE_OFFSET (EN_, name, struct eri_entry, member)

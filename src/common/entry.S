@@ -5,7 +5,7 @@
 #include <lib/syscall-common.h>
 #include <lib/syscall-offsets.h>
 
-#include <common/thread-local-offsets.h>
+#include <common/entry-local-offsets.h>
 
   .section .rodata
 

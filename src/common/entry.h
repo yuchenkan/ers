@@ -1,5 +1,5 @@
-#ifndef ERI_COMMON_THREAD_H
-#define ERI_COMMON_THREAD_H
+#ifndef ERI_COMMON_ENTRY_H
+#define ERI_COMMON_ENTRY_H
 
 #include <stdint.h>
 

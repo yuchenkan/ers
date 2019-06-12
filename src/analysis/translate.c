@@ -4001,8 +4001,9 @@ get_reg_from_mctx_by_idx (struct eri_mcontext *mctx, uint8_t idx)
 }
 
 uint8_t
-eri_trans_trace_regs (eri_file_t log, struct eri_trans_active *act,
-		      struct eri_mcontext *mctx, struct eri_registers *regs)
+eri_trans_sig_test_leave_active (
+		eri_file_t log, struct eri_trans_active *act,
+		struct eri_mcontext *mctx, struct eri_registers *regs)
 {
   struct eri_trans *tr = act->trans;
   uint64_t rip = mctx->rip;

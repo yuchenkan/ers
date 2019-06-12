@@ -8,7 +8,7 @@
 
 #include <common/debug.h>
 #include <common/common.h>
-#include <common/thread.h>
+#include <common/entry.h>
 
 #include <analysis/analyzer.h>
 #include <analysis/translate.h>
@@ -271,7 +271,7 @@ static eri_noreturn void
 analysis (struct eri_trans_active *act)
 {
   struct eri_analyzer *al = eri_trans_active_get_data (act);
-  // TODO check e.g. memory
+  // TODO memory
 
   struct eri_registers regs;
   struct eri_siginfo info;
@@ -303,6 +303,8 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
   struct eri_siginfo *info = args->info;
   struct eri_mcontext *mctx = &args->ctx->mctx;
 
+  eri_file_t log = al->log.file;
+
   if (eri_entry__sig_is_access_fault (al->entry, info))
     {
       if (al->sig_info)
@@ -314,7 +316,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 	  return;
 	}
 
-      eri_lassert (al->log.file, ! al->act && ! al->act_sig_info.sig);
+      eri_lassert (log, ! al->act && ! al->act_sig_info.sig);
     }
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == *al->group->pid
@@ -332,9 +334,10 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
       return;
     }
 
+  // TODO memory
   struct eri_registers regs;
   if (! al->act
-      || ! eri_trans_trace_regs (al->log.file, al->act, mctx, &regs))
+      || ! eri_trans_sig_test_leave_active (log, al->act, mctx, &regs))
     {
       args->handler (info, args->ctx, args->args);
       return;

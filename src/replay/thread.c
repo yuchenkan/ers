@@ -10,7 +10,7 @@
 #include <lib/syscall.h>
 
 #include <common/debug.h>
-#include <common/thread.h>
+#include <common/entry.h>
 #include <common/common.h>
 #include <common/serial.h>
 #include <common/helper.h>

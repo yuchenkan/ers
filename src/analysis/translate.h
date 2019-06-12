@@ -59,9 +59,11 @@ void eri_trans_destroy_active (struct eri_mtpool *pool,
 			       struct eri_trans_active *act);
 
 eri_noreturn void eri_trans_enter_active (struct eri_trans_active *act);
+
 uint8_t eri_trans_leave_active (struct eri_trans_active *act,
 		struct eri_registers *regs, struct eri_siginfo *info);
-uint8_t eri_trans_trace_regs (eri_file_t log, struct eri_trans_active *act,
+uint8_t eri_trans_sig_test_leave_active (
+		eri_file_t log, struct eri_trans_active *act,
 		struct eri_mcontext *mctx, struct eri_registers *regs);
 
 #endif

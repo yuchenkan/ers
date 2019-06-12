@@ -1,5 +1,5 @@
-#ifndef ERI_COMMON_THREAD_LOCAL_H
-#define ERI_COMMON_THREAD_LOCAL_H
+#ifndef ERI_COMMON_ENTRY_LOCAL_H
+#define ERI_COMMON_ENTRY_LOCAL_H
 
 #include <stdint.h>
 

@@ -8,8 +8,8 @@
 #include <lib/malloc.h>
 
 #include <common/debug.h>
-#include <common/thread.h>
-#include <common/thread-local.h>
+#include <common/entry.h>
+#include <common/entry-local.h>
 
 #define th_text_size	(th_text_end - th_text)
 

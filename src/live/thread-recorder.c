@@ -6,7 +6,7 @@
 #include <common/debug.h>
 #include <common/common.h>
 #include <common/serial.h>
-#include <common/thread.h>
+#include <common/entry.h>
 
 #include <live/thread-recorder.h>
 
