@@ -2,6 +2,7 @@
 m4_include(`m4/util.m4')
 
 #include <lib/compiler.h>
+#include <lib/util.h>
 #include <lib/syscall-common.h>
 
 #ifndef __ASSEMBLER__
@@ -10,12 +11,12 @@ m4_include(`m4/util.m4')
 #define m4_ns(syscall_nr, _)(nr, nargs, ...) \
   ({									\
     uint64_t __res;							\
-    ERI_PASTE (_ERI_LOAD_ARGS_, nargs) (__VA_ARGS__)			\
-    ERI_PASTE (_ERI_LOAD_REGS_, nargs)					\
+    ERI_PP_FOREACH (_ERI_LOAD_ARG, (_), ##__VA_ARGS__)			\
+    ERI_PP_FOREACH (_ERI_LOAD_REG, (_), ##__VA_ARGS__)			\
     asm volatile (							\
       ERI_STR (m4_syscall(1))						\
       : "=a" (__res)							\
-      : "0" (nr) ERI_PASTE (_ERI_SYSCALL_ARGS_, nargs)			\
+      : "0" (nr) ERI_PP_FOREACH (_ERI_SYSCALL_ARG, (_), ##__VA_ARGS__)	\
       : "memory", "r11", "cx"						\
     );									\
     __res;								\

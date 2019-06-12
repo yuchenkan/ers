@@ -3,6 +3,7 @@
 #include <lib/compiler.h>
 #include <lib/cpu.h>
 #include <lib/util.h>
+#include <lib/syscall-common.h>
 #include <lib/atomic.h>
 #include <lib/buf.h>
 #include <lib/list.h>
@@ -3723,6 +3724,22 @@ ir_init_trace_accesses (struct ir_trace_accesses *traces,
   traces->i = 0;
 }
 
+#if 0
+struct _eri_memory_size
+{
+  uint64_t size;
+  void **p;
+};
+
+#define eri_memory_layout(base, ...) \
+  ({
+    struct _eri_memory_size _sizes[] = {
+      ERI_PASTE (_ERI_MEMORY_SIZES_,					\
+		 ERI_PP_NARGS (__VA_ARGS__)) (t, __VA_ARGS__)		\
+    };
+  })
+#endif
+
 static struct eri_trans *
 ir_generate (struct ir_dag *dag, void *analysis)
 {
@@ -3968,28 +3985,37 @@ eri_trans_enter_active (struct eri_trans_active *act)
 }
 
 uint8_t
-eri_trans_leave_active (struct eri_trans_active *act,
-			struct eri_registers *regs, struct eri_siginfo *info)
+eri_trans_leave_active (struct eri_trans_leave_active_args *args,
+			struct eri_siginfo *info)
 {
+  struct eri_trans_active *act = args->act;
+
   struct eri_trans *tr = act->trans;
   struct trans_loc *finals = tr->final_locs;
   uint64_t *local = act->local;
 
+  struct eri_registers *regs = args->regs;
 #define GET_FINAL_REG(creg, reg) \
   do {									\
     struct trans_loc *_l = finals + ERI_PASTE (TRANS_, creg);		\
     regs->reg = _l->tag == TRANS_LOC_IMM ? _l->val : local[_l->val];	\
   } while (0);
-
   ERI_FOREACH_REG (GET_FINAL_REG)
   if (! tr->new_tf && tr->tf) regs->rflags |= ERI_RFLAGS_TF;
+
+#if 0
+  collect_access (args->reads, local + LOCAL_PREDEFINED_NUM, tr->reads);
+  collect_access (args->writes, local + LOCAL_PREDEFINED_NUM		\
+	+ tr->reads.num + eri_div_ceil (tr->reads.cond_count), tr->reads);
+  // TODO
+#endif
 
   *info = tr->sig_info;
   return tr->tf;
 }
 
 static uint64_t
-get_reg_from_mctx_by_idx (struct eri_mcontext *mctx, uint8_t idx)
+get_reg_from_mctx_by_idx (const struct eri_mcontext *mctx, uint8_t idx)
 {
   switch (idx)
    {
@@ -4001,10 +4027,12 @@ get_reg_from_mctx_by_idx (struct eri_mcontext *mctx, uint8_t idx)
 }
 
 uint8_t
-eri_trans_sig_test_leave_active (
-		eri_file_t log, struct eri_trans_active *act,
-		struct eri_mcontext *mctx, struct eri_registers *regs)
+eri_trans_sig_test_leave_active (struct eri_trans_leave_active_args *args,
+				 const struct eri_mcontext *mctx)
 {
+  struct eri_trans_active *act = args->act;
+  eri_file_t log = args->log;
+
   struct eri_trans *tr = act->trans;
   uint64_t rip = mctx->rip;
 
@@ -4029,6 +4057,7 @@ eri_trans_sig_test_leave_active (
   for (i = 0; i < tr->traces_num && traces[i].rip_off <= rip_off; ++i)
     locs[traces[i].reg_idx] = traces[i].loc;
 
+  struct eri_registers *regs = args->regs;
 #define GET_REG(creg, reg) \
   do {									\
     struct trans_loc *_loc = locs + ERI_PASTE (TRANS_, creg);		\

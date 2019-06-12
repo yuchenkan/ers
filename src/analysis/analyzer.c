@@ -275,7 +275,8 @@ analysis (struct eri_trans_active *act)
 
   struct eri_registers regs;
   struct eri_siginfo info;
-  uint8_t tf = eri_trans_leave_active (act, &regs, &info);
+  struct eri_trans_leave_active_args args = { act, al->log.file, &regs };
+  uint8_t tf = eri_trans_leave_active (&args, &info);
   release_active (al);
 
   if (eri_atomic_load (&al->group->exit, 0)) exit (al);
@@ -336,8 +337,9 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 
   // TODO memory
   struct eri_registers regs;
+  struct eri_trans_leave_active_args leave_args = { al->act, log, &regs };
   if (! al->act
-      || ! eri_trans_sig_test_leave_active (log, al->act, mctx, &regs))
+      || ! eri_trans_sig_test_leave_active (&leave_args, mctx))
     {
       args->handler (info, args->ctx, args->args);
       return;

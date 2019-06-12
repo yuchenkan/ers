@@ -97,35 +97,10 @@ struct _eri_field_size
 };
 
 #define __ERI_MALLOC_FIELD_SIZE(t, f, s) \
-  { __builtin_offsetof (t, f), s }
+  { __builtin_offsetof (t, f), s },
 
-#define _ERI_MALLOC_FIELD_SIZE(t, fs) \
-  ERI_EVAL (__ERI_MALLOC_FIELD_SIZE ERI_EMPTY (t, ERI_EVAL fs))
-
-#define _ERI_MALLOC_FIELD_SIZES_0(t)
-#define _ERI_MALLOC_FIELD_SIZES_1(t, a) \
-  _ERI_MALLOC_FIELD_SIZE (t, a)
-#define _ERI_MALLOC_FIELD_SIZES_2(t, a, b) \
-  _ERI_MALLOC_FIELD_SIZES_1 (t, a),					\
-  _ERI_MALLOC_FIELD_SIZE (t, b)
-#define _ERI_MALLOC_FIELD_SIZES_3(t, a, b, c) \
-  _ERI_MALLOC_FIELD_SIZES_2 (t, a, b),					\
-  _ERI_MALLOC_FIELD_SIZE (t, c)
-#define _ERI_MALLOC_FIELD_SIZES_4(t, a, b, c, d) \
-  _ERI_MALLOC_FIELD_SIZES_3 (t, a, b, c),				\
-  _ERI_MALLOC_FIELD_SIZE (t, d)
-#define _ERI_MALLOC_FIELD_SIZES_5(t, a, b, c, d, e) \
-  _ERI_MALLOC_FIELD_SIZES_4 (t, a, b, c, d),				\
-  _ERI_MALLOC_FIELD_SIZE (t, e)
-#define _ERI_MALLOC_FIELD_SIZES_6(t, a, b, c, d, e, f) \
-  _ERI_MALLOC_FIELD_SIZES_5 (t, a, b, c, d, e),				\
-  _ERI_MALLOC_FIELD_SIZE (t, f)
-#define _ERI_MALLOC_FIELD_SIZES_7(t, a, b, c, d, e, f, g) \
-  _ERI_MALLOC_FIELD_SIZES_6 (t, a, b, c, d, e, f),			\
-  _ERI_MALLOC_FIELD_SIZE (t, g)
-#define _ERI_MALLOC_FIELD_SIZES_8(t, a, b, c, d, e, f, g, h) \
-  _ERI_MALLOC_FIELD_SIZES_7 (t, a, b, c, d, e, f, g),			\
-  _ERI_MALLOC_FIELD_SIZE (t, h)
+#define _ERI_MALLOC_FIELD_SIZE(i, fs, t) \
+  ERI_EVAL1 (__ERI_MALLOC_FIELD_SIZE ERI_PP_CONCAT1 ((t), fs))
 
 static eri_unused void *
 _eri_assert_mtmalloc_struct (struct eri_mtpool *pool, uint64_t type_size,
@@ -147,8 +122,7 @@ _eri_assert_mtmalloc_struct (struct eri_mtpool *pool, uint64_t type_size,
 #define eri_assert_mtmalloc_struct(mtp, t, ...) \
   ({									\
     struct _eri_field_size _sizes[] = {					\
-      ERI_PASTE (_ERI_MALLOC_FIELD_SIZES_,				\
-		 ERI_PP_NARGS (__VA_ARGS__)) (t, __VA_ARGS__)		\
+      ERI_PP_FOREACH (_ERI_MALLOC_FIELD_SIZE, (t), ##__VA_ARGS__)	\
     };									\
     (t *) _eri_assert_mtmalloc_struct (mtp, sizeof (t), _sizes,		\
 				       eri_length_of (_sizes));		\

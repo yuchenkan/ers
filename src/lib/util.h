@@ -11,6 +11,7 @@
 #define ERI_OMIT(...)
 
 #define ERI_EVAL(...)		__VA_ARGS__
+#define ERI_EVAL1(...)		__VA_ARGS__
 
 #define ERI_MOV_LM(label, dst, reg) \
   leaq	label(%rip), reg;						\
@@ -36,6 +37,71 @@
 #define ERI_PP_NARGS(...) \
   _ERI_PP_NARGS_X (0, ##__VA_ARGS__, 17, 16, 15, 14, 13, 12, 11, 10, 9,	\
 		   8, 7, 6, 5, 4, 3, 2, 1, 0)
+
+#define ERI_PP_CONCAT(x, y)	(ERI_EVAL x, ERI_EVAL y)
+#define ERI_PP_CONCAT1(x, y)	(ERI_EVAL1 x, ERI_EVAL1 y)
+
+#define _ERI_PP_FOREACH_0(proc, args)
+#define _ERI_PP_FOREACH_1(proc, args, a) \
+  _ERI_PP_FOREACH_0 (proc, args)					\
+  ERI_EVAL (proc ERI_PP_CONCAT ((0, a), args))
+#define _ERI_PP_FOREACH_2(proc, args, a, b) \
+  _ERI_PP_FOREACH_1 (proc, args, a)					\
+  ERI_EVAL (proc ERI_PP_CONCAT ((1, b), args))
+#define _ERI_PP_FOREACH_3(proc, args, a, b, c) \
+  _ERI_PP_FOREACH_2 (proc, args, a, b)					\
+  ERI_EVAL (proc ERI_PP_CONCAT ((2, c), args))
+#define _ERI_PP_FOREACH_4(proc, args, a, b, c, d) \
+  _ERI_PP_FOREACH_3 (proc, args, a, b, c)				\
+  ERI_EVAL (proc ERI_PP_CONCAT ((3, d), args))
+#define _ERI_PP_FOREACH_5(proc, args, a, b, c, d, e) \
+  _ERI_PP_FOREACH_4 (proc, args, a, b, c, d)				\
+  ERI_EVAL (proc ERI_PP_CONCAT ((4, e), args))
+#define _ERI_PP_FOREACH_6(proc, args, a, b, c, d, e, f) \
+  _ERI_PP_FOREACH_5 (proc, args, a, b, c, d, e)				\
+  ERI_EVAL (proc ERI_PP_CONCAT ((5, f), args))
+#define _ERI_PP_FOREACH_7(proc, args, a, b, c, d, e, f, g) \
+  _ERI_PP_FOREACH_6 (proc, args, a, b, c, d, e, f)			\
+  ERI_EVAL (proc ERI_PP_CONCAT ((6, g), args))
+#define _ERI_PP_FOREACH_8(proc, args, a, b, c, d, e, f, g, h) \
+  _ERI_PP_FOREACH_7 (proc, args, a, b, c, d, e, f, g)			\
+  ERI_EVAL (proc ERI_PP_CONCAT ((7, h), args))
+#define _ERI_PP_FOREACH_9(proc, args, a, b, c, d, e, f, g, h, i) \
+  _ERI_PP_FOREACH_8 (proc, args, a, b, c, d, e, f, g, h)		\
+  ERI_EVAL (proc ERI_PP_CONCAT ((8, i), args))
+#define _ERI_PP_FOREACH_10(proc, args, a, b, c, d, e, f, g, h, i, j) \
+  _ERI_PP_FOREACH_9 (proc, args, a, b, c, d, e, f, g, h, i)		\
+  ERI_EVAL (proc ERI_PP_CONCAT ((9, j), args))
+#define _ERI_PP_FOREACH_11(proc, args, a, b, c, d, e, f, g, h, i, j, k) \
+  _ERI_PP_FOREACH_10 (proc, args, a, b, c, d, e, f, g, h, i, j)		\
+  ERI_EVAL (proc ERI_PP_CONCAT ((10, k), args))
+#define _ERI_PP_FOREACH_12(proc, args, a, b, c, d, e, f, g, h, i, j, k, \
+			   l) \
+  _ERI_PP_FOREACH_11 (proc, args, a, b, c, d, e, f, g, h, i, j, k)	\
+  ERI_EVAL (proc ERI_PP_CONCAT ((11, l), args))
+#define _ERI_PP_FOREACH_13(proc, args, a, b, c, d, e, f, g, h, i, j, k, \
+			   l, m) \
+  _ERI_PP_FOREACH_12 (proc, args, a, b, c, d, e, f, g, h, i, j, k, l)	\
+  ERI_EVAL (proc ERI_PP_CONCAT ((12, m), args))
+#define _ERI_PP_FOREACH_14(proc, args, a, b, c, d, e, f, g, h, i, j, k, \
+			   l, m, n) \
+  _ERI_PP_FOREACH_13 (proc, args, a, b, c, d, e, f, g, h, i, j, k, l,	\
+		      m)						\
+  ERI_EVAL (proc ERI_PP_CONCAT ((13, n), args))
+#define _ERI_PP_FOREACH_15(proc, args, a, b, c, d, e, f, g, h, i, j, k, \
+			   l, m, n, o) \
+  _ERI_PP_FOREACH_14 (proc, args, a, b, c, d, e, f, g, h, i, j, k, l,	\
+		      m, n)						\
+  ERI_EVAL (proc ERI_PP_CONCAT ((14, o), args))
+#define _ERI_PP_FOREACH_16(proc, args, a, b, c, d, e, f, g, h, i, j, k, \
+			  l, m, n, o, p) \
+  _ERI_PP_FOREACH_15 (proc, args, a, b, c, d, e, f, g, h, i, j, k, l,	\
+		      m, n, o)						\
+  ERI_EVAL (proc ERI_PP_CONCAT ((15, p), args))
+
+#define ERI_PP_FOREACH(proc, args, ...) \
+  ERI_PASTE (_ERI_PP_FOREACH_, ERI_PP_NARGS (__VA_ARGS__)) (		\
+					proc, args, ##__VA_ARGS__)
 
 #define ERI_SYMBOL(symbol) \
   .global symbol;							\

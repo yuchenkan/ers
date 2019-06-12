@@ -412,51 +412,20 @@
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 
-#define _ERI_LOAD_ARGS_0()
-#define _ERI_LOAD_ARGS_1(a1) \
-  uint64_t _arg1 = (uint64_t) (a1);
-#define _ERI_LOAD_ARGS_2(a1, a2) \
-  _ERI_LOAD_ARGS_1 (a1)							\
-  uint64_t _arg2 = (uint64_t) (a2);
-#define _ERI_LOAD_ARGS_3(a1, a2, a3) \
-  _ERI_LOAD_ARGS_2 (a1, a2)						\
-  uint64_t _arg3 = (uint64_t) (a3);
-#define _ERI_LOAD_ARGS_4(a1, a2, a3, a4) \
-  _ERI_LOAD_ARGS_3 (a1, a2, a3)						\
-  uint64_t _arg4 = (uint64_t) (a4);
-#define _ERI_LOAD_ARGS_5(a1, a2, a3, a4, a5) \
-  _ERI_LOAD_ARGS_4 (a1, a2, a3, a4)					\
-  uint64_t _arg5 = (uint64_t) (a5);
-#define _ERI_LOAD_ARGS_6(a1, a2, a3, a4, a5, a6) \
-  _ERI_LOAD_ARGS_5 (a1, a2, a3, a4, a5)					\
-  uint64_t _arg6 = (uint64_t) (a6);
+#define _ERI_LOAD_ARG(i, v, a) \
+  uint64_t ERI_PASTE (_arg, i) = (uint64_t) (v);
 
-#define _ERI_LOAD_REGS_0
-#define _ERI_LOAD_REGS_1 \
-  register uint64_t _a1 asm ("rdi") = _arg1;
-#define _ERI_LOAD_REGS_2 \
-  _ERI_LOAD_REGS_1							\
-  register uint64_t _a2 asm ("rsi") = _arg2;
-#define _ERI_LOAD_REGS_3 \
-  _ERI_LOAD_REGS_2							\
-  register uint64_t _a3 asm ("rdx") = _arg3;
-#define _ERI_LOAD_REGS_4 \
-  _ERI_LOAD_REGS_3							\
-  register uint64_t _a4 asm ("r10") = _arg4;
-#define _ERI_LOAD_REGS_5 \
-  _ERI_LOAD_REGS_4							\
-  register uint64_t _a5 asm ("r8") = _arg5;
-#define _ERI_LOAD_REGS_6 \
-  _ERI_LOAD_REGS_5							\
-  register uint64_t _a6 asm ("r9") = _arg6;
+#define _ERI_LOAD_REG_0	"rdi"
+#define _ERI_LOAD_REG_1	"rsi"
+#define _ERI_LOAD_REG_2	"rdx"
+#define _ERI_LOAD_REG_3	"r10"
+#define _ERI_LOAD_REG_4	"r8"
+#define _ERI_LOAD_REG_5	"r9"
+#define _ERI_LOAD_REG(i, v, a) \
+  register uint64_t ERI_PASTE (_a, i)					\
+	asm (ERI_PASTE (_ERI_LOAD_REG_, i)) = ERI_PASTE (_arg, i);
 
-#define _ERI_SYSCALL_ARGS_0
-#define _ERI_SYSCALL_ARGS_1		_ERI_SYSCALL_ARGS_0, "r" (_a1)
-#define _ERI_SYSCALL_ARGS_2		_ERI_SYSCALL_ARGS_1, "r" (_a2)
-#define _ERI_SYSCALL_ARGS_3		_ERI_SYSCALL_ARGS_2, "r" (_a3)
-#define _ERI_SYSCALL_ARGS_4		_ERI_SYSCALL_ARGS_3, "r" (_a4)
-#define _ERI_SYSCALL_ARGS_5		_ERI_SYSCALL_ARGS_4, "r" (_a5)
-#define _ERI_SYSCALL_ARGS_6		_ERI_SYSCALL_ARGS_5, "r" (_a6)
+#define _ERI_SYSCALL_ARG(i, v, a)	, "r" (ERI_PASTE (_a, i))
 
 #define eri_syscall_is_error(val)	((uint64_t) (val) >= (uint64_t) -4095L)
 

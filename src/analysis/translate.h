@@ -4,13 +4,14 @@
 #include <stdint.h>
 
 #include <lib/compiler.h>
-#include <lib/util.h>
-#include <lib/cpu.h>
-#include <lib/rbtree.h>
-#include <lib/syscall-common.h>
 #include <lib/printf.h>
 
+struct eri_range;
+struct eri_registers;
 struct eri_mtpool;
+struct eri_buf;
+struct eri_siginfo;
+struct eri_mcontext;
 
 struct eri_trans;
 struct eri_trans_active;
@@ -60,10 +61,21 @@ void eri_trans_destroy_active (struct eri_mtpool *pool,
 
 eri_noreturn void eri_trans_enter_active (struct eri_trans_active *act);
 
-uint8_t eri_trans_leave_active (struct eri_trans_active *act,
-		struct eri_registers *regs, struct eri_siginfo *info);
+struct eri_trans_leave_active_args
+{
+  struct eri_trans_active *act;
+  eri_file_t log;
+
+  struct eri_registers *regs;
+
+  struct eri_buf *reads;
+  struct eri_buf *writes;
+};
+
+uint8_t eri_trans_leave_active (struct eri_trans_leave_active_args *args,
+				struct eri_siginfo *info);
 uint8_t eri_trans_sig_test_leave_active (
-		eri_file_t log, struct eri_trans_active *act,
-		struct eri_mcontext *mctx, struct eri_registers *regs);
+				struct eri_trans_leave_active_args *args,
+				const struct eri_mcontext *mctx);
 
 #endif
