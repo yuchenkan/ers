@@ -3,6 +3,8 @@
 
 #include <public/util.h>
 
+#include <lib/compiler.h>
+
 #define ERI_STR(...)		_ERS_STR (__VA_ARGS__)
 #define ERI_PASTE(x, y)		_ERS_PASTE (x, y)
 #define ERI_PASTE2(x, y, z)	ERI_PASTE (ERI_PASTE (x, y), z)
@@ -202,14 +204,6 @@ const char *eri_strnstr (const char *s, const char *d, uint64_t n);
 #define eri_round_up(x, u) eri_round_up_mask (x, (u) - 1)
 #define eri_round_down(x, u) ((x) & ~((u) - 1))
 
-#define eri_div_ceil(a, b) \
-  ({									\
-    typeof (a) _a = a;							\
-    typeof (b) _b = b;							\
-    eri_assert (_b == 2 || _b == 4 || _b == 8 || _b == 16);		\
-    eri_round_up (_a, _b) / _b;						\
-  })
-
 #define eri_length_of(x) (sizeof (x) / sizeof (x)[0])
 #define eri_size_of(x, r) (eri_round_up (sizeof (x), r))
 
@@ -276,6 +270,36 @@ struct eri_pair
   })
 
 #define eri_hashs(...)	eri_hashs1 (eri_hash (0), ##__VA_ARGS__)
+
+struct _eri_memory_size
+{
+  uint64_t size;
+  void **p;
+};
+
+static eri_unused void *
+_eri_memory_layout (void *base, struct _eri_memory_size *sizes, uint64_t n)
+{
+  uint8_t *p = base;
+  uint64_t i;
+  for (i = 0; i < n; ++i)
+    {
+      if (sizes[i].p) *sizes[i].p = p;
+      p += sizes[i].size;
+    }
+  return p;
+}
+
+#define __ERI_MEMORY_SIZE(s, p)		{ s, (void **) (p) },
+#define _ERI_MEMORY_SIZE(i, sp, a)	__ERI_MEMORY_SIZE sp
+
+#define eri_memory_layout(base, ...) \
+  ({									\
+    struct _eri_memory_size _sizes[] = {				\
+      ERI_PP_FOREACH (_ERI_MEMORY_SIZE, (_), ##__VA_ARGS__)		\
+    };									\
+    _eri_memory_layout (base, _sizes, eri_length_of (_sizes));		\
+  })
 
 #endif
 

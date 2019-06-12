@@ -96,12 +96,6 @@ struct _eri_field_size
   uint64_t size;
 };
 
-#define __ERI_MALLOC_FIELD_SIZE(t, f, s) \
-  { __builtin_offsetof (t, f), s },
-
-#define _ERI_MALLOC_FIELD_SIZE(i, fs, t) \
-  ERI_EVAL1 (__ERI_MALLOC_FIELD_SIZE ERI_PP_CONCAT1 ((t), fs))
-
 static eri_unused void *
 _eri_assert_mtmalloc_struct (struct eri_mtpool *pool, uint64_t type_size,
 			     struct _eri_field_size *sizes, uint64_t n)
@@ -118,6 +112,12 @@ _eri_assert_mtmalloc_struct (struct eri_mtpool *pool, uint64_t type_size,
     }
   return p;
 }
+
+#define __ERI_MALLOC_FIELD_SIZE(t, f, s) \
+  { __builtin_offsetof (t, f), s },
+
+#define _ERI_MALLOC_FIELD_SIZE(i, fs, t) \
+  ERI_EVAL1 (__ERI_MALLOC_FIELD_SIZE ERI_PP_CONCAT1 ((t), fs))
 
 #define eri_assert_mtmalloc_struct(mtp, t, ...) \
   ({									\
