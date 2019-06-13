@@ -69,15 +69,75 @@ void eri_mkdir (const char *path);
 
 #define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
 
-#define ERI_SIG_ACT_TERM	((void *) 1)
-#define ERI_SIG_ACT_CORE	((void *) 2)
-#define ERI_SIG_ACT_STOP	((void *) 3)
-#define ERI_SIG_ACT_LOST	((void *) 4) /* lost SIGTRAP */
+#define ERI_FOREACH_SIG_ACT_TYPE(p, ...) \
+  p (IGNORE, ##__VA_ARGS__)						\
+  p (TERM, ##__VA_ARGS__)						\
+  p (CORE, ##__VA_ARGS__)						\
+  p (STOP, ##__VA_ARGS__)						\
+  p (LOST, ##__VA_ARGS__) /* e.g. lost SIGTRAP */			\
+  p (USER, ##__VA_ARGS__)
+
+enum
+{
+#define _ERI_SIG_ACT_TYPE(a)	ERI_PASTE (ERI_SIG_ACT_, a),
+  ERI_FOREACH_SIG_ACT_TYPE (_ERI_SIG_ACT_TYPE)
+  ERI_SIG_ACT_NUM
+};
 
 #define eri_sig_act_internal_act(act) \
-  ({ void *_act = act;							\
+  ({ uint8_t _act = (act)->type;					\
      _act == ERI_SIG_ACT_TERM || _act == ERI_SIG_ACT_CORE		\
      || _act == ERI_SIG_ACT_STOP || _act == ERI_SIG_ACT_LOST; })
+
+struct eri_sig_act
+{
+  uint8_t type;
+  struct eri_sigaction act;
+  uint64_t ver;
+};
+
+static eri_unused uint8_t
+eri_sig_digest_act (const struct eri_siginfo *info,
+		    const struct eri_sigaction *act)
+{
+  int32_t sig = info->sig;
+  void *action = act->act;
+
+  /*
+   * 1. the linux kernel implementation is like this.
+   * 2. we depend on this to keep all sync signals recorded (ignored signal
+   *    is not recorded currently).
+   */
+  if (eri_si_sync (info) && action == ERI_SIG_IGN) action = ERI_SIG_DFL;
+
+  if (action == ERI_SIG_IGN)
+    return ERI_SIG_ACT_IGNORE;
+
+  if (action == ERI_SIG_DFL)
+    {
+      if (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
+	  || sig == ERI_SIGURG || sig == ERI_SIGWINCH)
+	return ERI_SIG_ACT_IGNORE;
+      if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
+	  || sig == ERI_SIGPIPE || sig == ERI_SIGALRM
+	  || sig == ERI_SIGTERM || sig == ERI_SIGUSR1
+	  || sig == ERI_SIGUSR2 || sig == ERI_SIGIO
+	  || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
+	  || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
+	  || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
+	return ERI_SIG_ACT_TERM;
+      if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
+	  || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
+	  || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
+	  || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
+	return ERI_SIG_ACT_CORE;
+      if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
+	return ERI_SIG_ACT_STOP;
+
+      eri_assert_unreachable ();
+    }
+  return ERI_SIG_ACT_USER;
+}
 
 eri_noreturn void eri_jump (void *rsp, void *rip,
 			    void *rdi, void *rsi, void *rdx);

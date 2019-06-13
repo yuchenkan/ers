@@ -27,7 +27,8 @@ struct watch
 struct sig_act
 {
   struct eri_lock lock;
-  struct eri_ver_sigaction act;
+  struct eri_sigaction act;
+  uint64_t ver;
 };
 
 struct signal_thread_group
@@ -110,11 +111,12 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
 
 static void
 sig_get_act (struct signal_thread_group *group, int32_t sig,
-	     struct eri_ver_sigaction *act)
+	     struct eri_sig_act *act)
 {
   struct sig_act *sig_act = group->sig_acts + sig - 1;
   eri_assert_lock (&sig_act->lock);
-  *act = sig_act->act;
+  act->act = sig_act->act;
+  act->ver = sig_act->ver;
   eri_assert_unlock (&sig_act->lock);
 }
 
@@ -226,9 +228,9 @@ init_group_signal (struct signal_thread_group *group)
 	eri_assert_sys_sigreturn
       };
       eri_sig_fill_set (&act.mask);
-      eri_assert_sys_sigaction (sig, &act, &sig_act->act.act);
+      eri_assert_sys_sigaction (sig, &act, &sig_act->act);
 
-      sig_act->act.ver = 0;
+      sig_act->ver = 0;
     }
 
   group->sig_sync_info.sig = 0;
@@ -919,9 +921,9 @@ sig_action (struct eri_live_signal_thread *sig_th,
   struct sig_act *sig_act = sig_th->group->sig_acts + args->sig - 1;
   eri_assert_lock (&sig_act->lock);
 
-  if (args->old_act) *args->old_act = sig_act->act.act;
-  sig_act->act.act = *args->act;
-  args->ver = sig_act->act.ver++;
+  if (args->old_act) *args->old_act = sig_act->act;
+  sig_act->act = *args->act;
+  args->ver = sig_act->ver++;
 
   eri_assert_unlock (&sig_act->lock);
 
@@ -935,7 +937,7 @@ eri_live_signal_thread__sig_action (struct eri_live_signal_thread *sig_th,
 {
   if (! args->act)
     {
-      struct eri_ver_sigaction act;
+      struct eri_sig_act act;
       sig_get_act (sig_th->group, args->sig, &act);
       *args->old_act = act.act;
       args->ver = act.ver;
@@ -991,7 +993,7 @@ eri_live_signal_thread__sig_reset (
 void
 eri_live_signal_thread__sig_prepare (
 			struct eri_live_signal_thread *sig_th,
-			struct eri_siginfo *info, struct eri_ver_sigaction *act)
+			struct eri_siginfo *info, struct eri_sig_act *act)
 {
   if (eri_live_signal_thread__sig_mask_all (sig_th))
     {

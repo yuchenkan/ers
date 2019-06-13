@@ -55,7 +55,7 @@ struct eri_live_thread
   struct eri_live_thread_recorder *rec;
 
   struct eri_entry *entry;
-  struct eri_ver_sigaction sig_act;
+  struct eri_sig_act sig_act;
   uint8_t sig_force_masked;
   struct eri_sigset *sig_force_deliver;
 
@@ -870,7 +870,7 @@ DEFINE_SYSCALL (rt_sigaction)
   if (user_act && ! eri_entry__copy_from_obj (entry, &act, user_act))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
-  struct eri_ver_sigaction old_act;
+  struct eri_sig_act old_act;
   struct eri_live_signal_thread__sig_action_args args = {
     sig, user_act ? &act : 0, user_old_act ? &old_act.act : 0
   };
@@ -1905,7 +1905,7 @@ main_entry (struct eri_entry *entry)
 
 static void
 record_signal (struct eri_live_thread *th,
-	       struct eri_siginfo *info, struct eri_ver_sigaction *act)
+	       struct eri_siginfo *info, struct eri_sig_act *act)
 {
   if (info && eri_si_sync (info))
     {
@@ -1943,7 +1943,7 @@ core (struct eri_live_thread *th, uint8_t term)
 
   if (eri_live_signal_thread__exit (sig_th, 1, term ? 130 : 139))
     {
-      if (eri_sig_act_internal_act (th->sig_act.act.act)
+      if (eri_sig_act_internal_act (&th->sig_act)
 	  && ! (eri_si_sync (info) && th->sig_force_masked))
 	record_signal (th, info, &th->sig_act);
 
@@ -1963,22 +1963,23 @@ sig_action (struct eri_entry *entry)
 
   if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) die (th);
 
-  struct eri_sigaction *act = &th->sig_act.act;
-  eri_assert (act->act);
+  struct eri_sig_act *act = &th->sig_act;
+  eri_assert (act->type != ERI_SIG_ACT_IGNORE);
 
-  if (! eri_sig_act_internal_act (act->act))
+  if (! eri_sig_act_internal_act (act))
     {
-      record_signal (th, info, &th->sig_act);
-      if (! eri_entry__setup_user_frame (entry, act, &th->sig_alt_stack,
+      record_signal (th, info, act);
+      if (! eri_entry__setup_user_frame (entry, &act->act,
+			&th->sig_alt_stack,
 			eri_live_signal_thread__get_sig_mask (sig_th)))
 	core (th, 0);
 
       eri_entry__clear_signal (entry);
-      eri_live_signal_thread__sig_reset (sig_th, &act->mask);
+      eri_live_signal_thread__sig_reset (sig_th, &act->act.mask);
       eri_entry__leave (entry);
     }
 
-  if (act->act == ERI_SIG_ACT_STOP)
+  if (act->type == ERI_SIG_ACT_STOP)
     {
       /* TODO: stop */
 
@@ -1987,51 +1988,19 @@ sig_action (struct eri_entry *entry)
       eri_entry__leave (entry);
     }
 
-  core (th, act->act == ERI_SIG_ACT_TERM);
+  core (th, act->type == ERI_SIG_ACT_TERM);
 }
 
 static void
-sig_digest_act (const struct eri_siginfo *info, struct eri_sigaction *act)
+sig_digest_act (const struct eri_siginfo *info, struct eri_sig_act *act)
 {
-  int32_t sig = info->sig;
-
-  /*
-   * 1. the linux kernel implementation is like this.
-   * 2. we depend on this to keep all sync signals recorded (ignored signal
-   *    is not recorded currently).
-   */
-  if (eri_si_sync (info) && act->act == ERI_SIG_IGN) act->act = ERI_SIG_DFL;
-
-  if (act->act == ERI_SIG_IGN)
-    act->act = 0;
-  else if (act->act == ERI_SIG_DFL)
-    {
-      if (sig == ERI_SIGCHLD || sig == ERI_SIGCONT
-	  || sig == ERI_SIGURG || sig == ERI_SIGWINCH)
-	act->act = 0;
-      else if (sig == ERI_SIGHUP || sig == ERI_SIGINT || sig == ERI_SIGKILL
-	       || sig == ERI_SIGPIPE || sig == ERI_SIGALRM
-	       || sig == ERI_SIGTERM || sig == ERI_SIGUSR1
-	       || sig == ERI_SIGUSR2 || sig == ERI_SIGIO
-	       || sig == ERI_SIGPROF || sig == ERI_SIGVTALRM
-	       || sig == ERI_SIGSTKFLT || sig == ERI_SIGPWR
-	       || (sig >= ERI_SIGRTMIN && sig <= ERI_SIGRTMAX))
-	act->act = ERI_SIG_ACT_TERM;
-      else if (sig == ERI_SIGQUIT || sig == ERI_SIGILL || sig == ERI_SIGABRT
-	       || sig == ERI_SIGFPE || sig == ERI_SIGSEGV || sig == ERI_SIGBUS
-	       || sig == ERI_SIGSYS || sig == ERI_SIGTRAP
-	       || sig == ERI_SIGXCPU || sig == ERI_SIGXFSZ)
-	act->act = ERI_SIG_ACT_CORE;
-      else if (sig == ERI_SIGTSTP || sig == ERI_SIGTTIN || sig == ERI_SIGTTOU)
-	act->act = ERI_SIG_ACT_STOP;
-      else eri_assert_unreachable ();
-    }
+  act->type = eri_sig_digest_act (info, &act->act);
 }
 
 uint8_t
 eri_live_thread__sig_digest_act (
 		struct eri_live_thread *th, const struct eri_siginfo *info,
-		struct eri_ver_sigaction *act, uint8_t *force_masked)
+		struct eri_sig_act *act, uint8_t *force_masked)
 {
   /*
    * Though this function can be called in different async contexts,
@@ -2044,10 +2013,11 @@ eri_live_thread__sig_digest_act (
       *force_masked = 1;
     }
 
-  sig_digest_act (info, &act->act);
+  sig_digest_act (info, act);
 
   struct eri_sigset *force = th->sig_force_deliver;
-  return act->act.act || (force && eri_sig_set_set (force, info->sig));
+  return act->type != ERI_SIG_ACT_IGNORE
+	 || (force && eri_sig_set_set (force, info->sig));
 }
 
 static void
@@ -2067,7 +2037,7 @@ sig_prepare (struct eri_live_thread *th, struct eri_siginfo *info)
   else if (single_step)
     {
       eri_log_info (th->log, "lost SIGTRAP\n");
-      struct eri_ver_sigaction act = { .act.act = ERI_SIG_ACT_LOST };
+      struct eri_sig_act act = { .type = ERI_SIG_ACT_LOST };
       eri_live_thread_recorder__rec_signal (th->rec, 0, &act);
     }
 }
@@ -2075,7 +2045,7 @@ sig_prepare (struct eri_live_thread *th, struct eri_siginfo *info)
 void
 eri_live_thread__sig_handler (
 		struct eri_live_thread *th, struct eri_sigframe *frame,
-		struct eri_ver_sigaction *act)
+		struct eri_sig_act *act)
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
@@ -2098,7 +2068,7 @@ eri_live_thread__sig_handler (
 	  && eri_entry__get_regs (entry)->rax == __NR_rt_sigreturn)
 	{
 	  th->sig_force_masked = 1;
-	  th->sig_act.act.act = ERI_SIG_ACT_CORE;
+	  th->sig_act.type = ERI_SIG_ACT_CORE;
 	  eri_entry__set_signal (entry, info, ctx);
 	}
       else if (eri_op_is_atomic (code)

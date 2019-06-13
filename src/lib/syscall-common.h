@@ -697,12 +697,6 @@ struct eri_sigaction
   struct eri_sigset mask;
 };
 
-struct eri_ver_sigaction
-{
-  struct eri_sigaction act;
-  uint64_t ver;
-};
-
 struct eri_siginfo
 {
   int32_t sig;

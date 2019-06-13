@@ -989,13 +989,13 @@ DEFINE_SYSCALL (rt_sigaction)
   uint64_t act_ver;
   if (user_old_act)
     {
-      struct eri_ver_sigaction act;
+      struct eri_sigaction act;
       if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC)
-	  || ! try_unserialize (ver_sigaction, th, &act))
+	  || ! try_unserialize (sigaction, th, &act)
+	  || ! try_unserialize (uint64, th, &act_ver))
 	diverged (th);
 
-      act_ver = act.ver;
-      res = eri_entry__copy_to_obj (entry, user_old_act, &act.act)
+      res = eri_entry__copy_to_obj (entry, user_old_act, &act)
 		? 0 : ERI_EFAULT;
     }
   else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
@@ -1692,10 +1692,10 @@ sig_action (struct eri_entry *entry)
   if (eri_si_sync (info) && eri_sig_set_set (&th->sig_mask, sig))
     check_exit (th);
 
-  struct eri_ver_sigaction act;
-  if (! try_unserialize (ver_sigaction, th, &act)) diverged (th);
+  struct eri_sig_act act;
+  if (! try_unserialize (sig_act, th, &act)) diverged (th);
 
-  if (act.act.act == ERI_SIG_ACT_LOST)
+  if (act.type == ERI_SIG_ACT_LOST)
     {
       eri_log_info (th->log.file, "lost SIGTRAP\n");
       eri_entry__clear_signal (entry);
@@ -1703,12 +1703,18 @@ sig_action (struct eri_entry *entry)
       eri_entry__leave (entry);
     }
 
+  if (act.type == ERI_SIG_ACT_IGNORE || act.type > ERI_SIG_ACT_NUM
+      || act.type != eri_sig_digest_act (info, &act.act))
+    {
+      eri_log_info (th->log.file, "inconsistent sig_act detected\n");
+      diverged (th);
+    }
+
   if (! version_wait (th->log.file, &th->group->ver_act,
 		      th->group->sig_acts + sig - 1, act.ver))
     diverged (th);
 
-
-  if (eri_sig_act_internal_act (act.act.act)) check_exit (th);
+  if (eri_sig_act_internal_act (&act)) check_exit (th);
 
   eri_log (th->log.file, "%u %lx\n", sig,
 	   hash_regs (th->log.file, eri_entry__get_regs (entry)));

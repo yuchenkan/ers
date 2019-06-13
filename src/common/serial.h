@@ -8,6 +8,8 @@
 #include <lib/syscall.h>
 #include <lib/printf.h>
 
+#include <common/common.h>
+
 void eri_serialize_uint8 (eri_file_t file, uint8_t v);
 uint8_t eri_try_unserialize_uint8 (eri_file_t file, uint8_t *v);
 uint8_t eri_unserialize_uint8 (eri_file_t file);
@@ -61,12 +63,10 @@ uint8_t eri_try_unserialize_sigaction (eri_file_t file,
 				       struct eri_sigaction *act);
 void eri_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act);
 
-void eri_serialize_ver_sigaction (eri_file_t file,
-				  const struct eri_ver_sigaction *act);
-uint8_t eri_try_unserialize_ver_sigaction (eri_file_t file,
-					   struct eri_ver_sigaction *act);
-void eri_unserialize_ver_sigaction (eri_file_t file,
-				    struct eri_ver_sigaction *act);
+void eri_serialize_sig_act (eri_file_t file, const struct eri_sig_act *act);
+uint8_t eri_try_unserialize_sig_act (eri_file_t file,
+				     struct eri_sig_act *act);
+void eri_unserialize_sig_act (eri_file_t file, struct eri_sig_act *act);
 
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
@@ -142,7 +142,7 @@ struct eri_async_signal_record
 {
   uint64_t in;
   struct eri_siginfo info;
-  struct eri_ver_sigaction act;
+  struct eri_sig_act act;
 };
 
 void eri_serialize_async_signal_record (eri_file_t file,

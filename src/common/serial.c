@@ -255,7 +255,7 @@ void
 eri_serialize_sigaction (eri_file_t file, const struct eri_sigaction *act)
 {
   eri_serialize_uint64 (file, (uint64_t) act->act);
-  if (eri_sig_act_internal_act (act->act)) return;
+  if (act->act == ERI_SIG_DFL || act->act == ERI_SIG_IGN) return;
   eri_serialize_int32 (file, act->flags);
   eri_serialize_uint64 (file, (uint64_t) act->restorer);
   eri_serialize_sigset (file, &act->mask);
@@ -265,7 +265,7 @@ uint8_t
 eri_try_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act)
 {
   return eri_try_unserialize_uint64 (file, (void *) &act->act)
-	 && (eri_sig_act_internal_act (act->act)
+	 && (act->act == ERI_SIG_DFL || act->act == ERI_SIG_IGN
 	     || (eri_try_unserialize_int32 (file, &act->flags)
 		 && eri_try_unserialize_uint64 (file, (void *) &act->restorer)
 		 && eri_try_unserialize_sigset (file, &act->mask)));
@@ -278,28 +278,27 @@ eri_unserialize_sigaction (eri_file_t file, struct eri_sigaction *act)
 }
 
 void
-eri_serialize_ver_sigaction (eri_file_t file,
-			     const struct eri_ver_sigaction *act)
+eri_serialize_sig_act (eri_file_t file, const struct eri_sig_act *act)
 {
+  eri_serialize_uint8 (file, act->type);
+  if (act->type == ERI_SIG_ACT_LOST) return;
   eri_serialize_sigaction (file, &act->act);
-  if (act->act.act == ERI_SIG_ACT_LOST) return;
   eri_serialize_uint64 (file, act->ver);
 }
 
 uint8_t
-eri_try_unserialize_ver_sigaction (eri_file_t file,
-				   struct eri_ver_sigaction *act)
+eri_try_unserialize_sig_act (eri_file_t file, struct eri_sig_act *act)
 {
-  return eri_try_unserialize_sigaction (file, &act->act)
-         && (act->act.act == ERI_SIG_ACT_LOST
-	     || eri_try_unserialize_uint64 (file, &act->ver));
+  return eri_try_unserialize_uint8 (file, &act->type)
+         && (act->type == ERI_SIG_ACT_LOST
+	     || (eri_try_unserialize_sigaction (file, &act->act)
+		 && eri_try_unserialize_uint64 (file, &act->ver)));
 }
 
 void
-eri_unserialize_ver_sigaction (eri_file_t file,
-			       struct eri_ver_sigaction *act)
+eri_unserialize_sig_act (eri_file_t file, struct eri_sig_act *act)
 {
-  eri_assert (eri_try_unserialize_ver_sigaction (file, act));
+  eri_assert (eri_try_unserialize_sig_act (file, act));
 }
 
 void
@@ -366,8 +365,7 @@ eri_serialize_async_signal_record (eri_file_t file,
 {
   eri_serialize_uint64 (file, rec->in);
   eri_serialize_siginfo (file, &rec->info);
-  if (rec->info.sig)
-    eri_serialize_ver_sigaction (file, &rec->act);
+  if (rec->info.sig) eri_serialize_sig_act (file, &rec->act);
 }
 
 uint8_t
@@ -377,7 +375,7 @@ eri_try_unserialize_async_signal_record (eri_file_t file,
   if (! eri_try_unserialize_uint64 (file, &rec->in)
       || ! eri_try_unserialize_siginfo (file, &rec->info)) return 0;
   if (! rec->info.sig) return 1;
-  return eri_try_unserialize_ver_sigaction (file, &rec->act);
+  return eri_try_unserialize_sig_act (file, &rec->act);
 }
 
 void

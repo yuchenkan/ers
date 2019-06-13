@@ -71,8 +71,8 @@ main (int32_t argc, const char **argv)
 	printf ("magic: %s\n", eri_record_magic_str (magic));
 	if (magic == ERI_SIGNAL_MAGIC)
 	  {
-	    struct eri_ver_sigaction act;
-	    eri_unserialize_ver_sigaction (file, &act);
+	    struct eri_sig_act act;
+	    eri_unserialize_sig_act (file, &act);
 	    printf ("  signal.act.ver: %lu\n", act.ver);
 	  }
 	else if (magic == ERI_SYSCALL_RESULT_MAGIC)
@@ -119,9 +119,10 @@ main (int32_t argc, const char **argv)
 		  eri_unserialize_uint64 (file));
 	else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
 	  {
-	    struct eri_ver_sigaction act;
-	    eri_unserialize_ver_sigaction (file, &act);
-	    printf ("  syscall.rt_sigaction_get: %lu\n", act.ver);
+	    struct eri_sigaction act;
+	    eri_unserialize_sigaction (file, &act);
+	    uint64_t ver = eri_unserialize_uint64 (file);
+	    printf ("  syscall.rt_sigaction_get: %lu\n", ver);
 	  }
 	else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
 	  {

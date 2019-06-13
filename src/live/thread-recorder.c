@@ -222,7 +222,7 @@ eri_live_thread_recorder__rec_signal (
     {
       eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
       eri_serialize_magic (th_rec->file, ERI_SIGNAL_MAGIC);
-      eri_serialize_ver_sigaction (th_rec->file, rec);
+      eri_serialize_sig_act (th_rec->file, rec);
     }
 }
 
@@ -311,7 +311,11 @@ eri_live_thread_recorder__rec_syscall (
   else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
     eri_serialize_syscall_exit_clear_tid_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
-    eri_serialize_ver_sigaction (th_rec->file, rec);
+    {
+      struct eri_sig_act *act = rec;
+      eri_serialize_sigaction (th_rec->file, &act->act);
+      eri_serialize_uint64 (th_rec->file, act->ver);
+    }
   else if (magic == ERI_SYSCALL_RT_SIGPENDING_MAGIC)
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)

@@ -145,7 +145,13 @@ func:
 
 #ifndef eri_assert
 # define eri_assert(exp) \
-  do { if (! (exp)) asm ("ud2"); } while (0)
+  do {									\
+    if (! (exp)) {							\
+      register const char *_file asm ("r14") = __FILE__;		\
+      register uint64_t _line asm ("r15") = __LINE__;			\
+      asm ("ud2" : : "r" (_file), "r" (_line) : "memory");		\
+    }									\
+  } while (0)
 
 #endif
 
