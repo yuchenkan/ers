@@ -608,6 +608,9 @@
 
 #define ERI_MINSIGSTKSZ		2048
 
+#define ERI_SEGV_MAPERR		1
+#define ERI_SEGV_ACCERR		2
+
 #define ERI_TRAP_TRACE		2
 
 #define ERI_PR_SET_PDEATHSIG	1
@@ -622,6 +625,8 @@
 #define ERI_SIG_IGN		1
 
 #else
+
+#include <lib/compiler.h>
 
 struct eri_timespec
 {
@@ -753,22 +758,28 @@ struct eri_signalfd_siginfo {
 
 #define eri_si_from_kernel(info)	((info)->code > 0)
 
-#define eri_si_sync(info) \
-  ({ const struct eri_siginfo *_info = info;				\
-     (_info->sig == ERI_SIGSEGV || _info->sig == ERI_SIGBUS		\
-      || _info->sig == ERI_SIGILL || _info->sig == ERI_SIGTRAP		\
-      || _info->sig == ERI_SIGFPE || _info->sig == ERI_SIGSYS)		\
-     && eri_si_from_kernel (_info); })
+static eri_unused uint8_t
+eri_si_sync (const struct eri_siginfo *info)
+{
+  return (info->sig == ERI_SIGSEGV || info->sig == ERI_SIGBUS
+	  || info->sig == ERI_SIGILL || info->sig == ERI_SIGTRAP
+	  || info->sig == ERI_SIGFPE || info->sig == ERI_SIGSYS)
+	 && eri_si_from_kernel (info);
+}
 #define eri_si_async(info)		(! eri_si_sync (info))
 
-#define eri_si_single_step(info) \
-  ({ const struct eri_siginfo *_info = info;				\
-     _info->sig == ERI_SIGTRAP && _info->code == ERI_TRAP_TRACE; })
+static eri_unused uint8_t
+eri_si_single_step (const struct eri_siginfo *info)
+{
+  return info->sig == ERI_SIGTRAP && info->code == ERI_TRAP_TRACE;
+}
 
-#define eri_si_access_fault(info) \
-  ({ const struct eri_siginfo *_info = info;				\
-     eri_si_from_kernel (_info)						\
-     && (_info->sig == ERI_SIGSEGV || _info->sig == ERI_SIGBUS); })
+static eri_unused uint8_t
+eri_si_access_fault (const struct eri_siginfo *info)
+{
+  return (info->sig == ERI_SIGSEGV || info->sig == ERI_SIGBUS)
+	 && eri_si_from_kernel (info);
+}
 
 struct eri_fpstate_base
 {

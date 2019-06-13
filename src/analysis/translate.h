@@ -61,6 +61,25 @@ void eri_trans_destroy_active (struct eri_mtpool *pool,
 
 eri_noreturn void eri_trans_enter_active (struct eri_trans_active *act);
 
+enum
+{
+  ERI_ACCESS_READ,
+  ERI_ACCESS_READ_MAP_ERR,
+  ERI_ACCESS_WRITE,
+  ERI_ACCESS_WRITE_MAP_ERR
+#if 0
+  ERI_ACCESS_EXEC,
+  ERI_ACCESS_EXEC_MAP_ERR
+#endif
+};
+
+struct eri_access
+{
+  uint64_t addr;
+  uint64_t size;
+  uint8_t type;
+};
+
 struct eri_trans_leave_active_args
 {
   struct eri_trans_active *act;
@@ -68,14 +87,14 @@ struct eri_trans_leave_active_args
 
   struct eri_registers *regs;
 
-  struct eri_buf *reads;
-  struct eri_buf *writes;
+  struct eri_buf *accesses;
 };
 
 uint8_t eri_trans_leave_active (struct eri_trans_leave_active_args *args,
 				struct eri_siginfo *info);
-uint8_t eri_trans_sig_test_leave_active (
-				struct eri_trans_leave_active_args *args,
-				const struct eri_mcontext *mctx);
+uint8_t eri_trans_sig_within_active (struct eri_trans_active *act,
+				     uint64_t rip);
+void eri_trans_sig_leave_active (struct eri_trans_leave_active_args *args,
+	const struct eri_siginfo *info, const struct eri_mcontext *mctx);
 
 #endif

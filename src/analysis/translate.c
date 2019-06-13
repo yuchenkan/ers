@@ -78,7 +78,7 @@ struct trace_guest
 struct trace_access
 {
   uint64_t rip_off;
-  uint8_t len;
+  uint8_t inst_len;
   uint64_t idx;
   uint64_t cond_idx;
 };
@@ -1316,17 +1316,14 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 {
   uint64_t rip = ir_get_rip (dag);
 
-  /*
-   * When failed to copy from user, a less accurate length is ok
-   * since memory permission is manipulated on the page level,
-   * and the page size is considered when calculate the length.
-   */
-  uint8_t inst_len = len;
+  uint8_t inst_len = 0;
 
   uint8_t bytes[INST_BYTES];
   struct eri_siginfo info;
   if (! args->copy (bytes, (void *) rip, len, &info, args->copy_args))
     {
+      /* inst_len = 0 is ok as fault addr can be got from siginfo */
+      /* XXX: check ! si_map_err, e.g. hardware memory error */
       ir_err_end (dag, node, &info, 0, 0);
       goto done;
     }
@@ -3008,7 +3005,7 @@ ir_add_trace_access (struct ir_trace_accesses *traces,
 {
   struct trace_access *trace = traces->traces + traces->i++;
   trace->rip_off = rip_off;
-  trace->len = len;
+  trace->inst_len = len;
   trace->idx = idx;
   trace->cond_idx = cond_idx;
 }
@@ -3713,7 +3710,7 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
 
   /*
    * The last inst length is not necessary if the signal is explicitly
-   * specified.
+   * specified, because the last inst is not executed.
    */
   uint64_t guest_insts_off = dag->guest_insts.off
 			- tr->sig_info.sig ? sizeof (struct inst_len) : 0;
@@ -3741,8 +3738,8 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
   res->sig_info = tr->sig_info;
 
   eri_memcpy (res->reads.sizes, r->sizes.buf, r->sizes.off);
-  eri_memcpy (res->writes.sizes, w->sizes.buf, w->sizes.off);
   eri_memcpy (res->reads.conds, r->conds.buf, r->conds.off);
+  eri_memcpy (res->writes.sizes, w->sizes.buf, w->sizes.off);
   eri_memcpy (res->writes.conds, w->conds.buf, w->conds.off);
 
   struct active_local_layout_args layout;
@@ -4008,11 +4005,39 @@ eri_trans_enter_active (struct eri_trans_active *act)
   eri_jump (0, act->trans->insts, act->local, 0, 0);
 }
 
+static void
+append_access (struct eri_buf *buf, uint64_t addr,
+	       uint64_t size, uint8_t type)
+{
+  struct eri_access acc = { addr, size, type };
+  eri_assert_buf_append (buf, &acc, sizeof acc);
+}
+
+static void
+collect_accesses (eri_file_t log, struct eri_buf *buf, uint8_t read,
+		  struct accesses *acc, uint64_t *addrs, uint8_t *conds)
+{
+  uint64_t i, c = 0;
+  for (i = 0; i < acc->num; ++i)
+    if (! acc->conds[i] || conds[c++])
+      append_access (buf, addrs[i], acc->sizes[i],
+		     read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE);
+  eri_lassert (log, c == acc->conds_count);
+}
+
+static uint8_t
+si_map_err (const struct eri_siginfo *info)
+{
+  return info->sig == ERI_SIGSEGV
+	  && (info->code == ERI_SEGV_MAPERR || info->code == ERI_SEGV_ACCERR);
+}
+
 uint8_t
 eri_trans_leave_active (struct eri_trans_leave_active_args *args,
 			struct eri_siginfo *info)
 {
   struct eri_trans_active *act = args->act;
+  eri_file_t log = args->log;
 
   struct eri_trans *tr = act->trans;
   struct trans_loc *finals = tr->final_locs;
@@ -4027,12 +4052,18 @@ eri_trans_leave_active (struct eri_trans_leave_active_args *args,
   ERI_FOREACH_REG (GET_FINAL_REG)
   if (! tr->new_tf && tr->tf) regs->rflags |= ERI_RFLAGS_TF;
 
-#if 0
-  collect_access (args->reads, local + LOCAL_PREDEFINED_NUM, tr->reads);
-  collect_access (args->writes, local + LOCAL_PREDEFINED_NUM		\
-	+ tr->reads.num + eri_div_ceil (tr->reads.cond_count), tr->reads);
-  // TODO
-#endif
+  struct active_local_layout_args layout;
+  trans_active_local_layout (&layout, act);
+
+  collect_accesses (log, args->accesses, 1, &tr->reads,
+		    layout.reads, layout.read_conds);
+  append_access (args->accesses, tr->rip, tr->len, ERI_ACCESS_READ);
+  if (si_map_err (&tr->sig_info))
+    append_access (args->accesses, tr->sig_info.fault.addr, 1,
+		   ERI_ACCESS_READ_MAP_ERR);
+
+  collect_accesses (log, args->accesses, 0, &tr->writes,
+		    layout.writes, layout.write_conds);
 
   *info = tr->sig_info;
   return tr->tf;
@@ -4051,19 +4082,44 @@ get_reg_from_mctx_by_idx (const struct eri_mcontext *mctx, uint8_t idx)
 }
 
 uint8_t
-eri_trans_sig_test_leave_active (struct eri_trans_leave_active_args *args,
-				 const struct eri_mcontext *mctx)
+eri_trans_sig_within_active (struct eri_trans_active *act, uint64_t rip)
+{
+  struct eri_trans *tr = act->trans;
+  struct eri_range range = {
+    (uint64_t) tr->insts, (uint64_t) tr->insts + tr->insts_len
+  };
+  return eri_within (&range, rip);
+}
+
+static void
+sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
+		const struct eri_siginfo *info, uint8_t read,
+		struct accesses *acc, uint64_t *addrs, uint8_t *conds)
+{
+  uint64_t i;
+  for (i = 0; i < acc->num; ++i)
+    {
+      struct trace_access *t = acc->traces + i;
+      if (t->rip_off <= rip_off
+	  && (! acc->conds[t->idx] || conds[t->cond_idx]))
+	append_access (buf, addrs[t->idx], acc->sizes[t->idx],
+		       read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE);
+      if (t->rip_off - t->inst_len == rip_off && si_map_err (info))
+	append_access (buf, info->fault.addr, 1,
+		       read ? ERI_ACCESS_READ_MAP_ERR
+			    : ERI_ACCESS_WRITE_MAP_ERR);
+    }
+}
+
+void
+eri_trans_sig_leave_active (struct eri_trans_leave_active_args *args,
+	const struct eri_siginfo *info, const struct eri_mcontext *mctx)
 {
   struct eri_trans_active *act = args->act;
   eri_file_t log = args->log;
 
   struct eri_trans *tr = act->trans;
   uint64_t rip = mctx->rip;
-
-  struct eri_range range = {
-    (uint64_t) tr->insts, (uint64_t) tr->insts + tr->insts_len
-  };
-  if (! eri_within (&range, rip)) return 0;
   eri_log2 (log, "%lx\n", rip - (uint64_t) tr->insts);
 
   struct active_local_layout_args layout;
@@ -4080,7 +4136,7 @@ eri_trans_sig_test_leave_active (struct eri_trans_leave_active_args *args,
     else
       trans_set_loc (locs + i, TRANS_LOC_IMM, tr->rip);
 
-  uint64_t rip_off = rip - range.start;
+  uint64_t rip_off = rip - (uint64_t) tr->insts;
   struct trace_guest *traces = tr->traces;
 
   for (i = 0; i < tr->traces_num && traces[i].rip_off <= rip_off; ++i)
@@ -4098,7 +4154,20 @@ eri_trans_sig_test_leave_active (struct eri_trans_leave_active_args *args,
       regs->reg = _loc->val;						\
   } while (0);
   ERI_FOREACH_REG (GET_REG)
-  return 1;
+
+  sig_collect_accesses (args->accesses, rip_off, info, 1, &tr->reads,
+			layout.reads, layout.read_conds);
+  uint64_t len = regs->rip - tr->rip;
+  for (i = 0; i < tr->guest_insts_num; ++i)
+    if (tr->guest_insts[i].rip == regs->rip)
+      {
+	len += tr->guest_insts[i].len;
+	break;
+      }
+  append_access (args->accesses, tr->rip, len, ERI_ACCESS_READ);
+
+  sig_collect_accesses (args->accesses, rip_off, info, 0, &tr->writes,
+			layout.writes, layout.write_conds);
 }
 
 void *

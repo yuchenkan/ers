@@ -3,6 +3,7 @@
 #include <lib/util.h>
 #include <lib/lock.h>
 #include <lib/atomic.h>
+#include <lib/buf.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
 
@@ -156,9 +157,10 @@ eri_analyzer__exit_group (struct eri_analyzer *al)
 }
 
 static uint8_t
-copy_user (void *dst, const void *src, uint64_t size,
-	   struct eri_siginfo *info, void *args)
+exec_copy_user (void *dst, const void *src, uint64_t size,
+	        struct eri_siginfo *info, void *args)
 {
+  /* XXX: PROT_EXEC */
   struct eri_analyzer *al = args;
   eri_atomic_store (&al->sig_info, info, 1);
   if (eri_entry__copy_from (al->entry, dst, src, size) != size) return 0;
@@ -192,7 +194,8 @@ analysis_enter (struct eri_analyzer *al,
 
       struct eri_translate_args args = {
 	group->pool, al->log.file, group->map_range, group->page_size,
-	group->max_inst_count, key.rip, key.tf, trans, copy_user, al, analysis
+	group->max_inst_count, key.rip, key.tf, trans, exec_copy_user,
+	al, analysis
       };
 
       trans->trans = eri_translate (&args);
@@ -267,17 +270,35 @@ release_active (struct eri_analyzer *al)
   eri_trans_destroy_active (al->group->pool, act);
 }
 
+static void
+dump_accesses (eri_file_t log, const char *head, struct eri_buf *acc)
+{
+  uint64_t i;
+  struct eri_access *a = (void *) acc->buf;
+  eri_rlog3 (log, "%s\n  ", head);
+  for (i = 0; i < acc->off / sizeof (struct eri_range); ++i)
+    if (i) eri_rlog3 (log, ", %lx %lu %u", a[i].addr, a[i].size, a[i].type);
+    else eri_rlog3 (log, "%lx %lu %u", a[i].addr, a[i].size, a[i].type);
+  eri_rlog3 (log, "\n");
+}
+
 static eri_noreturn void
 analysis (struct eri_trans_active *act)
 {
   struct eri_analyzer *al = eri_trans_active_get_data (act);
-  // TODO memory
+  eri_file_t log = al->log.file;
 
   struct eri_registers regs;
   struct eri_siginfo info;
-  struct eri_trans_leave_active_args args = { act, al->log.file, &regs };
+  struct eri_buf accesses;
+  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16);
+  struct eri_trans_leave_active_args args = { act, log, &regs, &accesses };
   uint8_t tf = eri_trans_leave_active (&args, &info);
   release_active (al);
+
+  // TODO
+  dump_accesses (log, "accesses", &accesses);
+  eri_assert_buf_fini (&accesses);
 
   if (eri_atomic_load (&al->group->exit, 0)) exit (al);
 
@@ -335,15 +356,23 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
       return;
     }
 
-  // TODO memory
-  struct eri_registers regs;
-  struct eri_trans_leave_active_args leave_args = { al->act, log, &regs };
   if (! al->act
-      || ! eri_trans_sig_test_leave_active (&leave_args, mctx))
+      || ! eri_trans_sig_within_active (al->act, mctx->rip))
     {
       args->handler (info, args->ctx, args->args);
       return;
     }
+
+  struct eri_registers regs;
+  struct eri_buf accesses;
+  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16);
+  struct eri_trans_leave_active_args leave_args
+			= { al->act, log, &regs, &accesses };
+  eri_trans_sig_leave_active (&leave_args, info, mctx);
+
+  // TODO
+  dump_accesses (log, "sig leave accesses\n", &accesses);
+  eri_assert_buf_fini (&accesses);
 
   struct eri_mcontext saved = *mctx;
   eri_mcontext_from_registers (mctx, &regs);
