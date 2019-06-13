@@ -218,6 +218,10 @@ eri_serialize_siginfo (eri_file_t file, const struct eri_siginfo *info)
       eri_serialize_int32 (file, info->chld.uid);
       eri_serialize_int32 (file, info->chld.status);
     }
+  else if ((info->sig == ERI_SIGILL || info->sig == ERI_SIGFPE
+	    || info->sig == ERI_SIGSEGV || info->sig == ERI_SIGBUS)
+	   && eri_si_from_kernel (info) && info->code != ERI_SI_KERNEL)
+    eri_serialize_uint64 (file, info->fault.addr);
 }
 
 uint8_t
@@ -234,6 +238,10 @@ eri_try_unserialize_siginfo (eri_file_t file, struct eri_siginfo *info)
     return eri_try_unserialize_int32 (file, &info->chld.pid)
 	   && eri_try_unserialize_int32 (file, &info->chld.uid)
 	   && eri_try_unserialize_int32 (file, &info->chld.status);
+  if ((info->sig == ERI_SIGILL || info->sig == ERI_SIGFPE
+       || info->sig == ERI_SIGSEGV || info->sig == ERI_SIGBUS)
+      && eri_si_from_kernel (info) && info->code != ERI_SI_KERNEL)
+    return eri_try_unserialize_uint64 (file, &info->fault.addr);
   return 1;
 }
 
