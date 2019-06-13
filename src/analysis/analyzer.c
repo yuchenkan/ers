@@ -275,11 +275,10 @@ dump_accesses (eri_file_t log, const char *head, struct eri_buf *acc)
 {
   uint64_t i;
   struct eri_access *a = (void *) acc->buf;
-  eri_rlog3 (log, "%s\n  ", head);
-  for (i = 0; i < acc->off / sizeof (struct eri_range); ++i)
-    if (i) eri_rlog3 (log, ", %lx %lu %u", a[i].addr, a[i].size, a[i].type);
-    else eri_rlog3 (log, "%lx %lu %u", a[i].addr, a[i].size, a[i].type);
-  eri_rlog3 (log, "\n");
+  eri_rlog (log, "%s\n", head);
+  for (i = 0; i < acc->off / sizeof *a; ++i)
+    eri_rlog (log, "  %lx %lu %s\n",
+	      a[i].addr, a[i].size, eri_access_type_str (a[i].type));
 }
 
 static eri_noreturn void
