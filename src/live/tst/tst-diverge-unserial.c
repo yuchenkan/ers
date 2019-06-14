@@ -1,5 +1,6 @@
 /* vim: set ft=cpp: */
 
+#include <public/public.h>
 #define ERI_APPLY_ERS
 
 #include <lib/util.h>
