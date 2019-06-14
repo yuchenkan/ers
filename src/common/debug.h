@@ -67,7 +67,7 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 	{
 	  va_list tee;
 	  va_copy (tee, arg);
-	  _eri_cvflog (enabled, ERI_STDOUT, fmt_ctx, tee);
+	  _eri_cvflog (1, ERI_STDOUT, fmt_ctx, tee);
 	  va_end (tee);
 	}
       _eri_cvflog (enabled, file, fmt_ctx, arg);
@@ -81,7 +81,7 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 	{
 	  va_list tee;
 	  va_copy (tee, arg);
-	  _eri_cvflog (enabled, ERI_STDOUT, fmt, arg);
+	  _eri_cvflog (1, ERI_STDOUT, fmt, arg);
 	  va_end (tee);
 	}
       _eri_cvflog (enabled, file, fmt, arg);
@@ -152,12 +152,9 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 #define _eri_llog(fn, log, fmt, ...) \
   do {									\
     struct eri_buf_file *_blog = log;					\
-    if (_blog)								\
-      {									\
-	eri_assert_lock (&_blog->lock);					\
-	fn (_blog->file, fmt, ##__VA_ARGS__);				\
-	eri_assert_unlock (&_blog->lock);				\
-      }									\
+    if (_blog) eri_assert_lock (&_blog->lock);				\
+    fn (_blog ? _blog->file : 0, fmt, ##__VA_ARGS__);			\
+    if (_blog) eri_assert_unlock (&_blog->lock);			\
   } while (0)
 
 #define eri_llog(log, fmt, ...) \

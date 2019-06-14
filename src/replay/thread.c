@@ -1534,7 +1534,7 @@ DEFINE_SYSCALL (mmap)
 
       char name[eri_build_path_len (th->group->path, "m", id)];
       eri_build_path (th->group->path, "m", id, name);
-      if (eri_syscall_is_error (eri_sys_open (name, 1))) diverged (th);
+      if (eri_syscall_is_error (fd = eri_sys_open (name, 1))) diverged (th);
     }
 
   /* XXX: flags */

@@ -1713,11 +1713,11 @@ DEFINE_SYSCALL (mprotect)
 {
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
-
   int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
   struct eri_syscall_res_in_record rec = {
     eri_syscall (mprotect, regs->rdi, regs->rsi, prot), group->mm++
   };
+  eri_assert_unlock (&group->mm_lock);
   syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.result);
 }
