@@ -55,24 +55,6 @@ int32_t m4_ns(printf) (const char *fmt, ...);
 #define m4_ns(assert_printf)(fmt, ...) \
   eri_assert (m4_ns(printf) (fmt, ##__VA_ARGS__) == 0)
 
-int32_t m4_ns(lvfprintf) (struct eri_lock *lock, eri_file_t file,
-		       const char *fmt, va_list arg);
-int32_t m4_ns(lfprintf) (struct eri_lock *lock, eri_file_t file,
-		      const char *fmt, ...);
-
-int32_t m4_ns(lvprintf) (struct eri_lock *lock,
-			 const char *fmt, va_list arg);
-int32_t m4_ns(lprintf) (struct eri_lock *lock, const char *fmt, ...);
-
-#define m4_ns(assert_lvfprintf)(l, f, fmt, arg) \
-  eri_assert (m4_ns(lvfprintf) (l, f, fmt, arg) == 0)
-#define m4_ns(assert_lfprintf)(l, f, fmt, ...) \
-  eri_assert (m4_ns(lfprintf) (l, f, fmt, ##__VA_ARGS__) == 0)
-#define m4_ns(assert_lvprintf)(l, fmt, arg) \
-  eri_assert (m4_ns(lvprintf) (l, fmt, arg) == 0)
-#define m4_ns(assert_lprintf)(l, fmt, ...) \
-  eri_assert (m4_ns(lprintf) (l, fmt, ##__VA_ARGS__) == 0)
-
 int32_t m4_ns(file_foreach_line) (const char *path, struct eri_buf *buf,
 		void (*proc) (const char *, uint64_t, void *), void *data);
 

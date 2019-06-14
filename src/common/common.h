@@ -6,6 +6,7 @@
 #include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/printf.h>
+#include <lib/lock.h>
 #include <lib/syscall.h>
 
 struct eri_mtpool;
@@ -20,6 +21,7 @@ eri_file_t eri_open_path (const char *path, const char *name,
 
 struct eri_buf_file
 {
+  struct eri_lock lock;
   eri_file_t file;
   void *buf;
 };

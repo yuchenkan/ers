@@ -3,7 +3,6 @@ m4_include(`m4/util.m4')
 
 #include <lib/util.h>
 #include <lib/buf.h>
-#include <m4_lock_h>
 #include <m4_printf_h>
 #include <m4_syscall_h>
 
@@ -451,43 +450,6 @@ m4_ns(printf) (const char *fmt, ...)
   va_list arg;
   va_start (arg, fmt);
   int32_t res = m4_ns(vprintf) (fmt, arg);
-  va_end (arg);
-  return res;
-}
-
-int32_t
-m4_ns(lvfprintf) (struct eri_lock *lock,
-		  eri_file_t file, const char *fmt, va_list arg)
-{
-  if (lock) m4_ns(assert_lock) (lock);
-  int32_t res = m4_ns(vfprintf) (file, fmt, arg);
-  if (lock) m4_ns(assert_unlock) (lock);
-  return res;
-}
-
-int32_t
-m4_ns(lfprintf) (struct eri_lock *lock,
-		 eri_file_t file, const char *fmt, ...)
-{
-  va_list arg;
-  va_start (arg, fmt);
-  int32_t res = m4_ns(lvfprintf) (lock, file, fmt, arg);
-  va_end (arg);
-  return res;
-}
-
-int32_t
-m4_ns(lvprintf) (struct eri_lock *lock, const char *fmt, va_list arg)
-{
-  return m4_ns(lvfprintf) (lock, ERI_STDOUT, fmt, arg);
-}
-
-int32_t
-m4_ns(lprintf) (struct eri_lock *lock, const char *fmt, ...)
-{
-  va_list arg;
-  va_start (arg, fmt);
-  int32_t res = m4_ns(lvprintf) (lock, fmt, arg);
   va_end (arg);
   return res;
 }

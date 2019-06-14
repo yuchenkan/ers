@@ -6,6 +6,7 @@
 #include <lib/util.h>
 #include <lib/syscall.h>
 #include <lib/printf.h>
+#include <lib/lock.h>
 
 #include <common/common.h>
 
@@ -127,14 +128,16 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 #define eri_rlogn(n, log, fmt, ...) \
   eri_rlog (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
 
-#define eri_rlog2(log, fmt, ...)	eri_rlogn (2, log, fmt, ##__VA_ARGS__)
-#define eri_rlog3(log, fmt, ...)	eri_rlogn (3, log, fmt, ##__VA_ARGS__)
-
+#define eri_rlog2(log, fmt, ...) \
+  eri_rlogn (2, log, fmt, ##__VA_ARGS__)
+#define eri_rlog3(log, fmt, ...) \
+  eri_rlogn (3, log, fmt, ##__VA_ARGS__)
 
 static eri_unused void
 eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,
 	const char *log, const char *name, uint64_t id, uint64_t buf_size)
 {
+  eri_init_lock (&file->lock, 0);
   if (! log) { file->file = 0; return; }
 
   eri_malloc_open_path (pool, file, log, name, id, buf_size);
@@ -145,6 +148,22 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 {
   if (file->file) eri_free_close (pool, file);
 }
+
+#define _eri_llog(fn, log, fmt, ...) \
+  do {									\
+    struct eri_buf_file *_blog = log;					\
+    if (_blog)								\
+      {									\
+	eri_assert_lock (&_blog->lock);					\
+	fn (_blog->file, fmt, ##__VA_ARGS__);				\
+	eri_assert_unlock (&_blog->lock);				\
+      }									\
+  } while (0)
+
+#define eri_llog(log, fmt, ...) \
+  _eri_llog (eri_log, log, fmt, ##__VA_ARGS__)
+#define eri_llog_info(log, fmt, ...) \
+  _eri_llog (eri_log_info, log, fmt, ##__VA_ARGS__)
 
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
