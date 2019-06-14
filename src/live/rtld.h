@@ -13,6 +13,8 @@ struct eri_live_rtld_args
   uint64_t rsp;
   uint64_t rip;
 
+  uint64_t page_size;
+
   struct eri_sigset sig_mask;
 
   char **envp;

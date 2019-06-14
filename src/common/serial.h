@@ -110,6 +110,7 @@ struct eri_init_record
   uint64_t rsp;
   uint64_t rip;
 
+  uint64_t page_size;
   uint64_t brk;
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;

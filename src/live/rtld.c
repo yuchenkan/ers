@@ -58,6 +58,7 @@ rtld (void **args, uint64_t rdx)
   for (auxv = (struct eri_auxv *)(envp + 1);
        auxv->type != ERI_AT_NULL; ++auxv)
     if (auxv->type == ERI_AT_PAGESZ) page_size = auxv->val;
+  rtld_args.page_size = page_size;
   rtld_args.auxv = auxv;
 
   uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);

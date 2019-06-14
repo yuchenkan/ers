@@ -141,6 +141,15 @@ eri_sig_digest_act (const struct eri_siginfo *info,
   return ERI_SIG_ACT_USER;
 }
 
+static eri_unused int32_t
+eri_common_syscall_get_mem_prot (int32_t prot)
+{
+  /* XXX: prot */
+  if (prot & ERI_PROT_WRITE) prot |= ERI_PROT_READ;
+  if (prot & ERI_PROT_READ) prot |= ERI_PROT_EXEC;
+  return prot;
+}
+
 eri_noreturn void eri_jump (void *rsp, void *rip,
 			    void *rdi, void *rsi, void *rdx);
 

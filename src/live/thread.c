@@ -87,6 +87,7 @@ struct eri_live_thread_group
 {
   struct eri_mtpool *pool;
 
+  uint64_t page_size;
   struct eri_range map_range;
 
   int32_t pid;
@@ -230,6 +231,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 	pool, typeof (*group),
 	(atomic_table, atomic_table_size * sizeof *group->atomic_table));
   group->pool = pool;
+  group->page_size = rtld_args->page_size;
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
   group->pid = 0;
@@ -345,7 +347,8 @@ start_main (struct eri_live_thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
   struct eri_init_record rec = {
-    0, regs->rdx, regs->rsp, regs->rip, eri_assert_syscall (brk, 0),
+    0, regs->rdx, regs->rsp, regs->rip,
+    group->page_size, eri_assert_syscall (brk, 0),
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
     eri_live_signal_thread__get_pid (th->sig_th),
     group->map_range, group->atomic_table_size
@@ -1666,12 +1669,10 @@ DEFINE_SYSCALL (mmap)
 {
   uint64_t len = regs->rsi;
   int32_t flags = regs->r10;
+
   /* XXX: handle more */
   if (flags & ERI_MAP_GROWSDOWN)
-    {
-      eri_llog_info (th->log, "map grows down\n");
-      flags &= ~ERI_MAP_GROWSDOWN;
-    }
+    eri_llog_info (th->log, "map grows down\n");
 
   if ((flags & ERI_MAP_TYPE) == ERI_MAP_SHARED
       && (flags & ERI_MAP_TYPE) == ERI_MAP_SHARED_VALIDATE)
@@ -1679,10 +1680,13 @@ DEFINE_SYSCALL (mmap)
 
   if (! len) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
+  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
   struct eri_syscall_res_in_record rec = {
-    eri_entry__syscall (entry), group->mm++
+    eri_syscall (mmap, regs->rdi, len, prot, flags, regs->r8, regs->r9),
+    group->mm++
   };
   eri_assert_unlock (&group->mm_lock);
 
@@ -1693,7 +1697,7 @@ DEFINE_SYSCALL (mmap)
 }
 
 static eri_noreturn void
-syscall_do_mprotect (SYSCALL_PARAMS)
+syscall_do_munmap (SYSCALL_PARAMS)
 {
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
@@ -1705,13 +1709,25 @@ syscall_do_mprotect (SYSCALL_PARAMS)
   eri_entry__syscall_leave (entry, rec.result);
 }
 
-DEFINE_SYSCALL (mprotect) { syscall_do_mprotect (SYSCALL_ARGS); }
-DEFINE_SYSCALL (munmap) { syscall_do_mprotect (SYSCALL_ARGS); }
+DEFINE_SYSCALL (mprotect)
+{
+  struct eri_live_thread_group *group = th->group;
+  eri_assert_lock (&group->mm_lock);
+
+  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+  struct eri_syscall_res_in_record rec = {
+    eri_syscall (mprotect, regs->rdi, regs->rsi, prot), group->mm++
+  };
+  syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+DEFINE_SYSCALL (munmap) { syscall_do_munmap (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (mremap)
 SYSCALL_TO_IMPL (madvise)
 
-DEFINE_SYSCALL (brk) { syscall_do_mprotect (SYSCALL_ARGS); }
+DEFINE_SYSCALL (brk) { syscall_do_munmap (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (msync)
 SYSCALL_TO_IMPL (mincore)

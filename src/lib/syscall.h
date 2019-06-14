@@ -10,6 +10,7 @@
 #define eri_syscall	tst_syscall
 #define eri_syscall_nr	tst_syscall_nr
 #define eri_assert_syscall	tst_assert_syscall
+#define eri_xassert_syscall	tst_xassert_syscall
 #define eri_assert_syscall_nr	tst_assert_syscall_nr
 #define eri_sys_syscall	tst_sys_syscall
 #define eri_sys_clone	tst_sys_clone

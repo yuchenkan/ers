@@ -171,7 +171,9 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 #define eri_log_assert(expr, log) \
   eri_log_info (log, "assert failed: " expr)
 #define eri_lassert(log, exp) \
-  do { eri_file_t _log = log;						\
-       eri_xassert (exp, eri_log_assert, _log); } while (0)
+  eri_xassert (exp, eri_log_assert, log)
+
+#define eri_lassert_syscall(log, name, ...) \
+  eri_xassert_syscall (eri_log_assert, (log), name, ##__VA_ARGS__)
 
 #endif

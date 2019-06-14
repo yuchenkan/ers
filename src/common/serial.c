@@ -309,6 +309,7 @@ eri_serialize_init_record (eri_file_t file, const struct eri_init_record *rec)
   eri_serialize_uint64 (file, rec->rsp);
   eri_serialize_uint64 (file, rec->rip);
 
+  eri_serialize_uint64 (file, rec->page_size);
   eri_serialize_uint64 (file, rec->brk);
   eri_serialize_sigset (file, &rec->sig_mask);
   eri_serialize_stack (file, &rec->sig_alt_stack);
@@ -328,6 +329,7 @@ eri_unserialize_init_record (eri_file_t file, struct eri_init_record *rec)
   rec->rsp = eri_unserialize_uint64 (file);
   rec->rip = eri_unserialize_uint64 (file);
 
+  rec->page_size = eri_unserialize_uint64 (file);
   rec->brk = eri_unserialize_uint64 (file);
   eri_unserialize_sigset (file, &rec->sig_mask);
   eri_unserialize_stack (file, &rec->sig_alt_stack);

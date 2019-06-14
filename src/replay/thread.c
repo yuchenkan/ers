@@ -159,6 +159,7 @@ struct thread_group
 {
   struct eri_mtpool *pool;
 
+  uint64_t page_size;
   struct eri_range map_range;
 
   const char *path;
@@ -189,6 +190,7 @@ struct thread_group
   uint64_t brk;
   struct version mm;
 
+  struct version freeze;
   struct version_activity ver_act;
 };
 
@@ -270,6 +272,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
 
+  group->page_size = rtld_args->page_size;
   group->map_range = rtld_args->map_range;
   group->path = eri_assert_malloc (&pool->pool,
 				   eri_strlen (rtld_args->path) + 1);
@@ -288,7 +291,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   if (eri_enable_analyzer)
     {
       struct eri_analyzer_group__create_args args = {
-        group->pool, &group->map_range, group->log, rtld_args->page_size,
+        group->pool, &group->map_range, group->log, group->page_size,
 	group->file_buf_size, 64 /* XXX parameterize */, &group->pid
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
@@ -317,6 +320,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 
   version_init (&group->io);
   version_init (&group->mm);
+  version_init (&group->freeze);
   version_activity_init (&group->ver_act);
   return group;
 }
@@ -349,11 +353,22 @@ static eri_noreturn void exit (struct thread *th);
 static struct thread *
 create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
 {
+  char name[eri_build_path_len (group->path, "t", id)];
+  eri_build_path (group->path, "t", id, name);
+
+  uint64_t file_buf_size = group->file_buf_size;
+  eri_file_t file;
+  void *file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
+  if (eri_fopen (name, 1, &file, file_buf, file_buf_size) != 0)
+    {
+      eri_assert_mtfree (group->pool, file_buf);
+      return 0;
+    }
+
   struct thread *th = eri_assert_mtmalloc (group->pool,
 				sizeof *th + group->stack_size);
 
   uint8_t *stack = th->stack + group->stack_size;
-  uint64_t file_buf_size = group->file_buf_size;
 
   th->group = group;
   eri_open_log (group->pool, &th->log, group->log, "l", id,
@@ -374,11 +389,8 @@ create (struct thread_group *group, uint64_t id, int32_t *clear_user_tid)
       th->analyzer = eri_analyzer__create (&args);
     }
 
-  char name[eri_build_path_len (group->path, "t", id)];
-  eri_build_path (group->path, "t", id, name);
-
-  th->file_buf = eri_assert_mtmalloc (group->pool, file_buf_size);
-  th->file = eri_assert_fopen (name, 1, th->file_buf, file_buf_size);
+  th->file_buf = file_buf;
+  th->file = file;
   th->marks = 0;
 
   th->alive = 1;
@@ -409,6 +421,16 @@ destroy (struct thread *th)
 									\
     if (eri_enable_analyzer) eri_analyzer__exit_group (_th->analyzer);	\
     else eri_assert_unreachable ();					\
+  } while (0)
+
+#define freeze(th) \
+  do {									\
+    struct thread *_th = th;						\
+    struct thread_group *_group = _th->group;				\
+    eri_file_t _log = _th->log.file;					\
+    eri_log_info (_log, "freeze\n");					\
+    eri_lassert (_log, ! version_wait (_log, &_group->ver_act,		\
+				       &_group->freeze, 1));		\
   } while (0)
 
 static uint8_t
@@ -468,7 +490,10 @@ start_main (struct thread *th)
   eri_assert (unserialize_mark (th) == ERI_INIT_RECORD);
   struct eri_init_record rec;
   eri_unserialize_init_record (th->file, &rec);
-  eri_assert (rec.ver == 0);
+  eri_xassert (rec.ver == 0, eri_info);
+
+  struct thread_group *group = th->group;
+  eri_xassert (rec.page_size == group->page_size, eri_info);
 
   eri_log (th->log.file, "rec.rip: %lx, rec.rsp: %lx\n", rec.rip, rec.rsp);
 
@@ -479,8 +504,6 @@ start_main (struct thread *th)
 
   th->sig_mask = rec.sig_mask;
   th->sig_alt_stack = rec.sig_alt_stack;
-
-  struct thread_group *group = th->group;
 
   uint64_t atomic_table_size = rec.atomic_table_size;
   group->atomic_table = eri_assert_malloc (&group->pool->pool,
@@ -535,6 +558,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 				? "eri-analysis-log" : "eri-replay-log";
   struct thread_group *group = create_group (rtld_args);
   struct thread *th = create (group, 0, 0);
+  eri_xassert (th, eri_info);
   struct eri_entry *entry = th->entry;
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
@@ -677,13 +701,20 @@ syscall_fetch_out (struct thread *th)
 }
 
 static uint64_t
-syscall_fetch_res_in (struct thread *th)
+syscall_do_fetch_res_in (struct thread *th, uint16_t magic,
+			 uint8_t (*wait) (struct thread *, uint64_t))
 {
   struct eri_syscall_res_in_record rec;
-  if (check_magic (th, ERI_SYSCALL_RES_IN_MAGIC)
+  if (check_magic (th, magic)
       && try_unserialize (syscall_res_in_record, th, &rec)
-      && io_in (th, rec.in)) return rec.result;
+      && wait (th, rec.in)) return rec.result;
   diverged (th);
+}
+
+static uint64_t
+syscall_fetch_res_in (struct thread *th)
+{
+  return syscall_do_fetch_res_in (th, ERI_SYSCALL_RES_IN_MAGIC, io_in);
 }
 
 static uint64_t
@@ -714,19 +745,22 @@ DEFINE_SYSCALL (clone)
   uint64_t res = rec.result;
   if (eri_syscall_is_error (res)) syscall_leave (th, 1, res);
 
-  eri_atomic_inc (&th->group->thread_count, 1);
-  version_activity_inc (&th->group->ver_act);
-
   int32_t flags = regs->rdi;
   int32_t *user_ptid = (void *) regs->rdx;
   int32_t *user_ctid = (void *) regs->r10;
+
+  int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
+  struct thread *cth = create (th->group, rec.id, clear_user_tid);
+  if (! cth) diverged (th);
+
+  eri_atomic_inc (&th->group->thread_count, 1);
+  version_activity_inc (&th->group->ver_act);
+
   if (flags & ERI_CLONE_PARENT_SETTID)
     (void) eri_entry__copy_to_obj (entry, user_ptid, &res);
   if (flags & ERI_CLONE_CHILD_SETTID)
     (void) eri_entry__copy_to_obj (entry, user_ctid, &res);
 
-  int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
-  struct thread *cth = create (th->group, rec.id, clear_user_tid);
   struct eri_entry *centry = cth->entry;
   struct eri_registers *cregs = eri_entry__get_regs (centry);
   *cregs = *regs;
@@ -1276,7 +1310,8 @@ syscall_get_read_data (struct thread *th, void *dst,
 
       off += size;
     }
-  res = off == total;
+  /* Live failed to record all data, must have something wrong.  */
+  if (! (res = off == total)) freeze (th);
 
 buf_out:
   if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
@@ -1462,41 +1497,106 @@ mm_update (struct thread *th)
   version_update (&th->group->ver_act, &th->group->mm);
 }
 
-DEFINE_SYSCALL (mmap)
+static uint64_t
+syscall_fetch_mm_res_in (struct thread *th, uint16_t magic)
 {
-  // TODO
-  uint64_t len = regs->rsi;
-  // int32_t prot = regs->rdx;
-  // int32_t flags = regs->r10;
-  if (! len) syscall_leave (th, 0, ERI_EINVAL);
-
-  struct eri_syscall_res_in_record rec;
-  if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
-      || ! try_unserialize (syscall_res_in_record, th, &rec)
-      || ! mm_wait (th, rec.in)) diverged (th);
-
-  if (eri_syscall_is_error (rec.result)) goto out;
-
-#if 0
-  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
-  eri_lassert (th->log.file, ! eri_syscall_is_error (eri_syscall (mmap,
-	rec.result, len, prot | (anony ? 0 : ERI_PROT_WRITE), ))) // TODO
-  // map ...
-
-  if (! anony && ! syscall_get_read_data (th, (void *) rec.result, len, 0))
-    diverged (th);
-#endif
-
-out:
-  mm_update (th);
-  syscall_leave (th, 1, rec.result);
+  return syscall_do_fetch_res_in (th, magic, mm_wait);
 }
 
-SYSCALL_TO_IMPL (mprotect)
-SYSCALL_TO_IMPL (munmap)
+static eri_noreturn void
+syscall_mm_leave (struct thread *th, uint64_t res)
+{
+  mm_update (th);
+  syscall_leave (th, 1, res);
+}
+
+DEFINE_SYSCALL (mmap)
+{
+  uint64_t len = regs->rsi;
+  if (! len) syscall_leave (th, 0, ERI_EINVAL);
+
+  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_MMAP_MAGIC);
+  if (eri_syscall_is_error (res)) goto out;
+
+  int32_t prot = regs->rdx;
+  int32_t flags = regs->r10;
+  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
+
+  uint64_t id;
+  if (! try_unserialize (uint64, th, &id) || (anony && id)) diverged (th);
+
+  int32_t fd = -1;
+  if (! anony)
+    {
+      uint8_t ok;
+      if (! try_unserialize (uint8, th, &ok)) diverged (th);
+      if (! ok) { freeze (th); diverged (th); }
+
+      char name[eri_build_path_len (th->group->path, "m", id)];
+      eri_build_path (th->group->path, "m", id, name);
+      if (eri_syscall_is_error (eri_sys_open (name, 1))) diverged (th);
+    }
+
+  /* XXX: flags */
+  flags = (flags & ~(ERI_MAP_TYPE | ERI_MAP_GROWSDOWN))
+	  | ERI_MAP_PRIVATE | ERI_MAP_FIXED;
+  uint8_t err = eri_syscall_is_error (
+			eri_syscall (mmap, res, len, prot, flags, fd, 0));
+  if (! anony) eri_assert_syscall (close, fd);
+
+  if (err) diverged (th);
+
+out:
+  syscall_mm_leave (th, res);
+}
+
+DEFINE_SYSCALL (mprotect)
+{
+  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+  if (eri_syscall_is_error (res)) goto out;
+
+  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+  if (eri_syscall_is_error (
+	eri_syscall (mprotect, regs->rdi, regs->rsi, prot))) diverged (th);
+
+out:
+  syscall_mm_leave (th, res);
+}
+
+DEFINE_SYSCALL (munmap)
+{
+  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+  if (eri_syscall_is_error (res)) goto out;
+
+  if (eri_syscall_is_error (eri_entry__syscall (entry))) diverged (th);
+
+out:
+  syscall_mm_leave (th, res);
+}
+
 SYSCALL_TO_IMPL (mremap)
 SYSCALL_TO_IMPL (madvise)
-SYSCALL_TO_IMPL (brk)
+
+DEFINE_SYSCALL (brk)
+{
+  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+
+  struct thread_group *group = th->group;
+  uint64_t old = eri_round_up (group->brk, group->page_size);
+  uint64_t now = eri_round_up (res, group->page_size);
+
+  if (old < now && eri_syscall_is_error (
+	eri_syscall (mmap, old, now - old,
+		ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
+		ERI_MAP_PRIVATE | ERI_MAP_FIXED | ERI_MAP_ANONYMOUS, -1, 0)))
+    diverged (th);
+  if (old > now && eri_syscall_is_error (
+				eri_syscall (munmap, now, old - now)))
+    diverged (th);
+
+  group->brk = res;
+  syscall_mm_leave (th, res);
+}
 
 SYSCALL_TO_IMPL (msync)
 SYSCALL_TO_IMPL (mincore)
