@@ -1,6 +1,5 @@
 #include <lib/elf.h>
 #include <lib/util.c>
-#include <lib/syscall.h>
 #include <lib/syscall.c>
 #include <lib/printf.c>
 

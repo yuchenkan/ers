@@ -186,6 +186,9 @@ struct thread_group
 
   struct version io;
 
+  uint64_t brk;
+  struct version mm;
+
   struct version_activity ver_act;
 };
 
@@ -313,6 +316,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->thread_count = 1;
 
   version_init (&group->io);
+  version_init (&group->mm);
   version_activity_init (&group->ver_act);
   return group;
 }
@@ -488,6 +492,7 @@ start_main (struct thread *th)
 
   th->user_tid = rec.user_pid;
   group->user_pid = rec.user_pid;
+  group->brk = rec.brk;
 
   uint8_t next;
   while ((next = unserialize_mark (th)) == ERI_INIT_MAP_RECORD)
@@ -499,7 +504,7 @@ start_main (struct thread *th)
       uint64_t size = rec.end - rec.start;
       uint8_t prot = rec.prot;
       uint8_t init_prot = prot | (rec.data_count ? ERI_PROT_WRITE : 0);
-      /* XXX: grows_down */
+      /* XXX: mimic grows_down */
       eri_assert_syscall (mmap, rec.start, size, init_prot,
 		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
       for (i = 0; i < rec.data_count; ++i)
@@ -1213,47 +1218,40 @@ SYSCALL_TO_IMPL (epoll_wait)
 SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
-static uint64_t
-syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
+static uint8_t
+syscall_get_read_data (struct thread *th, void *dst,
+		       uint64_t total, uint8_t readv)
 {
   struct thread_group *group = th->group;
 
-  uint8_t div;
-  struct eri_syscall_res_in_record rec;
-  if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
-      || ! try_unserialize (syscall_res_in_record, th, &rec)
-      || ! io_in (th, rec.in)) { div = 1; goto out; };
-
-  if (eri_syscall_is_error (rec.result) || rec.result == 0)
-    return rec.result;
-
-  uint64_t buf_size = eri_min (rec.result, 2 * group->file_buf_size);
+  uint64_t buf_size = eri_min (total, 2 * group->file_buf_size);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
 		: eri_assert_mtmalloc (group->pool, buf_size);
 
+  uint8_t res = 0;
   uint64_t off = 0, iov_off = 0, size;
   struct eri_iovec *iov = dst;
   if (readv) while (iov->len == 0) ++iov;
   while (1)
     {
-      if (! try_unserialize (uint64, th, &size)) { div = 1; goto buf_out; }
+      if (! try_unserialize (uint64, th, &size)) goto buf_out;
       if (! size) break;
 
-      if (off + size > rec.result) { div = 1; goto buf_out; }
+      if (off + size > total) goto buf_out;
 
       uint64_t ser_off = 0;
       while (ser_off < size)
 	{
 	  uint64_t ser_size = eri_min (buf_size, size - ser_off);
 	  if (! try_unserialize (uint8_array, th, buf, ser_size))
-	    { div = 1; goto buf_out; }
+	    goto buf_out;
 
 	  if (! readv)
 	    {
 	      uint8_t *user = (uint8_t *) dst + off + ser_off;
 	      if (eri_entry__copy_to (th->entry,
 				      user, buf, ser_size) != ser_size)
-		{ div = 1; goto buf_out; }
+		goto buf_out;
 	    }
 	  else
 	    {
@@ -1263,7 +1261,7 @@ syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
 		  uint8_t *user = (uint8_t *) iov->base + iov_off;
 		  uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
 		  if (eri_entry__copy_to (th->entry, user, buf + o, s) != s)
-		    { div = 1; goto buf_out; }
+		    goto buf_out;
 
 		  o += s;
 		  if ((iov_off += s) == iov->len)
@@ -1278,12 +1276,28 @@ syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
 
       off += size;
     }
-  div = off != rec.result;
+  res = off == total;
 
 buf_out:
   if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
+  return res;
+}
+
+static uint64_t
+syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
+{
+  uint8_t div = 0;
+  struct eri_syscall_res_in_record rec;
+  if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
+      || ! try_unserialize (syscall_res_in_record, th, &rec)
+      || ! io_in (th, rec.in)) { div = 1; goto out; };
+
+  if (eri_syscall_is_error (rec.result) || rec.result == 0) goto out;
+
+  div = ! syscall_get_read_data (th, dst, rec.result, readv);
+
 out:
-  if (readv) eri_assert_mtfree (group->pool, dst);
+  if (readv) eri_assert_mtfree (th->group->pool, dst);
   if (div) diverged (th);
   return rec.result;
 }
@@ -1435,7 +1449,49 @@ SYSCALL_TO_IMPL (umount2)
 SYSCALL_TO_IMPL (chroot)
 SYSCALL_TO_IMPL (pivot_root)
 
-SYSCALL_TO_IMPL (mmap)
+static uint8_t
+mm_wait (struct thread *th, uint64_t exp)
+{
+  return version_wait (th->log.file, &th->group->ver_act,
+		       &th->group->mm, exp);
+}
+
+static void
+mm_update (struct thread *th)
+{
+  version_update (&th->group->ver_act, &th->group->mm);
+}
+
+DEFINE_SYSCALL (mmap)
+{
+  // TODO
+  uint64_t len = regs->rsi;
+  // int32_t prot = regs->rdx;
+  // int32_t flags = regs->r10;
+  if (! len) syscall_leave (th, 0, ERI_EINVAL);
+
+  struct eri_syscall_res_in_record rec;
+  if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
+      || ! try_unserialize (syscall_res_in_record, th, &rec)
+      || ! mm_wait (th, rec.in)) diverged (th);
+
+  if (eri_syscall_is_error (rec.result)) goto out;
+
+#if 0
+  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
+  eri_lassert (th->log.file, ! eri_syscall_is_error (eri_syscall (mmap,
+	rec.result, len, prot | (anony ? 0 : ERI_PROT_WRITE), ))) // TODO
+  // map ...
+
+  if (! anony && ! syscall_get_read_data (th, (void *) rec.result, len, 0))
+    diverged (th);
+#endif
+
+out:
+  mm_update (th);
+  syscall_leave (th, 1, rec.result);
+}
+
 SYSCALL_TO_IMPL (mprotect)
 SYSCALL_TO_IMPL (munmap)
 SYSCALL_TO_IMPL (mremap)

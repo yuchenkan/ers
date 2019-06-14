@@ -23,6 +23,8 @@
 #define eri_assert_sys_exit	tst_assert_sys_exit
 #define eri_assert_sys_exit_group	tst_assert_sys_exit_group
 #define eri_assert_sys_exit_nr	tst_assert_sys_exit_nr
+#define eri_sys_open	tst_sys_open
+#define eri_assert_sys_open	tst_assert_sys_open
 #define eri_assert_sys_read	tst_assert_sys_read
 #define eri_assert_sys_write	tst_assert_sys_write
 #define eri_assert_sys_mkdir	tst_assert_sys_mkdir

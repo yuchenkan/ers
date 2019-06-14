@@ -29,6 +29,7 @@ main (int32_t argc, const char **argv)
 	printf ("  ver: %lu", rec.ver);
 	printf ("  rdx: 0x%lx, rsp: 0x%lx, rip: 0x%lx\n",
 		rec.rdx, rec.rsp, rec.rip);
+	printf ("  brk: 0x%lx\n", rec.brk);
 	printf ("  sig_mask: 0x%lx\n", rec.sig_mask.val[0]);
 	printf ("  sig_alt_stack.sp: 0x%lx, .flags: 0x%x, .size: %lu\n",
 		rec.sig_alt_stack.sp, rec.sig_alt_stack.flags,
@@ -149,7 +150,7 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_res_in_record rec;
 	    eri_unserialize_syscall_res_in_record (file, &rec);
 	    uint64_t off = 0;
-	    if (! eri_syscall_is_error (rec.result) || rec.result == 0)
+	    if (! eri_syscall_is_error (rec.result) && rec.result)
 	      {
 		uint64_t size;
 		while ((size = eri_unserialize_uint64 (file)))
@@ -160,6 +161,20 @@ main (int32_t argc, const char **argv)
 	      }
 	    printf ("  syscall.read.result: %ld, ..in: %lu, ..off: %lu\n",
 		    rec.result, rec.in, off);
+	  }
+	else if (magic == ERI_SYSCALL_MMAP_MAGIC)
+	  {
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    printf ("  syscall.mmap.result: %ld, ..in: %lu",
+		    rec.result, rec.in);
+	    if (! eri_syscall_is_error (rec.result))
+	      {
+		uint64_t id = eri_unserialize_uint64 (file);
+		uint8_t ok = eri_unserialize_uint8 (file);
+		printf (",..id: %lx, ..ok: %d\n", id, ok);
+	      }
+	    else printf ("\n");
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));

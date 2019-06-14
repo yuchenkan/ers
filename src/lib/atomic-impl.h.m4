@@ -1,6 +1,9 @@
 /* vim: set ft=cpp: */
 m4_include(`m4/util.m4')
 
+#ifndef m4_NS(LIB_ATOMIC_IMPL_H)
+#define m4_NS(LIB_ATOMIC_IMPL_H)
+
 #include <stdint.h>
 
 #include <lib/util.h>
@@ -145,3 +148,5 @@ m4_include(`m4/util.m4')
     _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg_x, _),		\
 			     _a, _s, _f, b);				\
   } while (0)
+
+#endif

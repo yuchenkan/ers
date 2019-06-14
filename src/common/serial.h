@@ -110,6 +110,7 @@ struct eri_init_record
   uint64_t rsp;
   uint64_t rip;
 
+  uint64_t brk;
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
   int32_t user_pid;
@@ -166,6 +167,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGPENDING, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
+  p (SYSCALL_MMAP, ##__VA_ARGS__)					\
   p (SYNC_ASYNC, ##__VA_ARGS__)						\
   p (ATOMIC, ##__VA_ARGS__)
 

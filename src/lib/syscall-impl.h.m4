@@ -1,6 +1,9 @@
 /* vim: set ft=cpp: */
 m4_include(`m4/util.m4')
 
+#ifndef m4_NS(LIB_SYSCALL_IMPL_H)
+#define m4_NS(LIB_SYSCALL_IMPL_H)
+
 #include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/syscall-common.h>
@@ -43,10 +46,12 @@ m4_include(`m4/util.m4')
     _res;								\
   })
 
-#define m4_ns(sys_syscall)(args) \
-  ({ struct eri_sys_syscall_args *_a = args;				\
-     _a->result = m4_ns(syscall_nr) (_a->nr, _a->a[0], _a->a[1],	\
-			_a->a[2], _a->a[3], _a->a[4], _a->a[5]); })
+static eri_unused uint64_t
+m4_ns(sys_syscall) (struct eri_sys_syscall_args *a)
+{
+  return a->result = m4_ns(syscall_nr) (a->nr, a->a[0], a->a[1], a->a[2],
+					a->a[3], a->a[4], a->a[5]);
+}
 
 uint64_t m4_ns(sys_clone) (struct eri_sys_clone_args *args);
 
@@ -80,6 +85,17 @@ eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
 #define m4_ns(assert_sys_exit_nr)(nr, status) \
   do { m4_ns(assert_syscall_nr (nr, status));				\
        eri_assert_unreachable (); } while (0)
+
+static eri_unused uint64_t
+m4_ns(sys_open) (const char *path, uint8_t read)
+{
+  return m4_ns(syscall) (open, path,
+	read ? ERI_O_RDONLY : ERI_O_WRONLY | ERI_O_TRUNC | ERI_O_CREAT,
+	ERI_S_IRUSR | ERI_S_IWUSR);
+}
+#define m4_ns(assert_sys_open)(path, read) \
+  ({ uint64_t _res = m4_ns(sys_open) (path, read);			\
+     eri_assert (! eri_syscall_is_error (_res)); _res; })
 
 #define m4_ns(assert_sys_read)(fd, buf, size) \
   do {									\
@@ -115,5 +131,7 @@ eri_noreturn void m4_ns(assert_sys_thread_die) (int32_t *alive);
   do { uint64_t _res = m4_ns(syscall) (mkdir, path, mode);		\
        eri_assert (_res == ERI_EEXIST					\
 		   || ! eri_syscall_is_error (_res)); } while (0)
+
+#endif
 
 #endif

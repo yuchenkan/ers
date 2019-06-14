@@ -1,6 +1,9 @@
 /* vim: set ft=cpp: */
 m4_include(`m4/util.m4')
 
+#ifndef m4_NS(LIB_PRINTF_IMPL_H)
+#define m4_NS(LIB_PRINTF_IMPL_H)
+
 #include <lib/printf-common.h>
 
 int32_t m4_ns(fopen) (const char *path, uint8_t r, eri_file_t *file,
@@ -75,3 +78,5 @@ int32_t m4_ns(file_foreach_line) (const char *path, struct eri_buf *buf,
 
 #define m4_ns(assert_file_foreach_line)(path, buf, proc, data) \
   eri_assert (m4_ns(file_foreach_line) (path, buf, proc, data) == 0)
+
+#endif

@@ -52,9 +52,9 @@ struct eri_live_thread
   struct eri_lock start_lock;
   int32_t *clear_user_tid;
 
+  struct eri_entry *entry;
   struct eri_live_thread_recorder *rec;
 
-  struct eri_entry *entry;
   struct eri_sig_act sig_act;
   uint8_t sig_force_masked;
   struct eri_sigset *sig_force_deliver;
@@ -99,10 +99,12 @@ struct eri_live_thread_group
 
   uint64_t stack_size;
 
-  const char *path;
-  uint64_t file_buf_size;
+  struct eri_live_thread_recorder_group *rec_group;
 
   uint64_t *io;
+
+  struct eri_lock mm_lock;
+  uint64_t mm;
 };
 
 ERI_DEFINE_RBTREE (static, fdf, struct eri_live_thread_group,
@@ -226,8 +228,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 
   struct eri_live_thread_group *group = eri_assert_mtmalloc_struct (
 	pool, typeof (*group),
-	(atomic_table, atomic_table_size * sizeof *group->atomic_table),
-	(path, eri_strlen (path) + 1));
+	(atomic_table, atomic_table_size * sizeof *group->atomic_table));
   group->pool = pool;
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
@@ -240,12 +241,13 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->atomic_table_size = atomic_table_size;
   group->stack_size = stack_size;
 
-  eri_strcpy ((void *) group->path, path);
-  eri_live_thread_recorder__init_group (group->path);
-
-  group->file_buf_size = args->file_buf_size;
+  group->rec_group = eri_live_thread_recorder__create_group (
+				pool, path, args->file_buf_size);
 
   group->io = args->io;
+
+  eri_init_lock (&group->mm_lock, 0);
+  group->mm = 0;
   return group;
 }
 
@@ -256,6 +258,7 @@ eri_live_thread__destroy_group (struct eri_live_thread_group *group)
   ERI_RBT_FOREACH_SAFE (fdf, group, fd, nfd)
     fdf_remove_free (group, fd);
 
+  eri_live_thread_recorder__destroy_group (group->rec_group);
   eri_assert_mtfree (group->pool, group);
 }
 
@@ -276,16 +279,17 @@ create (struct eri_live_thread_group *group,
   th->alive = 1;
   eri_init_lock (&th->start_lock, 1);
   th->clear_user_tid = clear_user_tid;
-  th->rec = eri_live_thread_recorder__create (
-	group->pool, group->path, th->id, th->log, group->file_buf_size);
 
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, th->stack + group->stack_size,
     main_entry, sig_action
   };
   th->entry = eri_entry__create (&args);
-  th->sig_force_deliver = 0;
 
+  th->rec = eri_live_thread_recorder__create (
+			group->rec_group, th->entry, th->id, th->log);
+
+  th->sig_force_deliver = 0;
   return th;
 }
 
@@ -341,7 +345,7 @@ start_main (struct eri_live_thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
   struct eri_init_record rec = {
-    0, regs->rdx, regs->rsp, regs->rip,
+    0, regs->rdx, regs->rsp, regs->rip, eri_assert_syscall (brk, 0),
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
     eri_live_signal_thread__get_pid (th->sig_th),
     group->map_range, group->atomic_table_size
@@ -434,8 +438,8 @@ eri_live_thread__clone (struct eri_live_thread *th)
 void
 eri_live_thread__destroy (struct eri_live_thread *th)
 {
-  eri_entry__destroy (th->entry);
   eri_live_thread_recorder__destroy (th->rec);
+  eri_entry__destroy (th->entry);
   eri_assert_mtfree (th->group->pool, th);
 }
 
@@ -1383,8 +1387,7 @@ syscall_record_read (struct eri_live_thread *th, uint64_t res,
 		     void *dst, uint8_t readv)
 {
   struct eri_live_thread_recorder__rec_read_args args = {
-    th->group->pool, th->group->file_buf_size * 2, th->entry,
-    readv, { res, io_in (th) }, dst
+    { res, io_in (th) }, readv, dst
   };
   eri_live_thread_recorder__rec_read (th->rec, &args);
 }
@@ -1659,12 +1662,56 @@ SYSCALL_TO_IMPL (umount2)
 SYSCALL_TO_IMPL (chroot)
 SYSCALL_TO_IMPL (pivot_root)
 
-SYSCALL_TO_IMPL (mmap)
-SYSCALL_TO_IMPL (mprotect)
-SYSCALL_TO_IMPL (munmap)
+DEFINE_SYSCALL (mmap)
+{
+  uint64_t len = regs->rsi;
+  int32_t flags = regs->r10;
+  /* XXX: handle more */
+  if (flags & ERI_MAP_GROWSDOWN)
+    {
+      eri_log_info (th->log, "map grows down\n");
+      flags &= ~ERI_MAP_GROWSDOWN;
+    }
+
+  if ((flags & ERI_MAP_TYPE) == ERI_MAP_SHARED
+      && (flags & ERI_MAP_TYPE) == ERI_MAP_SHARED_VALIDATE)
+    eri_log_info (th->log, "map shared\n");
+
+  if (! len) eri_entry__syscall_leave (entry, ERI_EINVAL);
+
+  struct eri_live_thread_group *group = th->group;
+  eri_assert_lock (&group->mm_lock);
+  struct eri_syscall_res_in_record rec = {
+    eri_entry__syscall (entry), group->mm++
+  };
+  eri_assert_unlock (&group->mm_lock);
+
+  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
+  eri_live_thread_recorder__rec_mmap (th->rec, &rec, anony ? 0 : len);
+
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+static eri_noreturn void
+syscall_do_mprotect (SYSCALL_PARAMS)
+{
+  struct eri_live_thread_group *group = th->group;
+  eri_assert_lock (&group->mm_lock);
+  struct eri_syscall_res_in_record rec = {
+    eri_entry__syscall (entry), group->mm++
+  };
+  eri_assert_unlock (&group->mm_lock);
+  syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+DEFINE_SYSCALL (mprotect) { syscall_do_mprotect (SYSCALL_ARGS); }
+DEFINE_SYSCALL (munmap) { syscall_do_mprotect (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (mremap)
 SYSCALL_TO_IMPL (madvise)
-SYSCALL_TO_IMPL (brk)
+
+DEFINE_SYSCALL (brk) { syscall_do_mprotect (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (msync)
 SYSCALL_TO_IMPL (mincore)

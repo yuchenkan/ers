@@ -1,4 +1,5 @@
 #include <lib/malloc.h>
+#include <lib/atomic.h>
 #include <lib/buf.h>
 #include <lib/printf.h>
 #include <lib/syscall-common.h>
@@ -10,15 +11,42 @@
 
 #include <live/thread-recorder.h>
 
-void
-eri_live_thread_recorder__init_group (const char *path)
+struct eri_live_thread_recorder_group
+{
+  struct eri_mtpool *pool;
+  const char *path;
+  uint64_t file_buf_size;
+
+  uint64_t mmap;
+};
+
+struct eri_live_thread_recorder_group *
+eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
+				const char *path, uint64_t file_buf_size)
 {
   eri_mkdir (path);
+  struct eri_live_thread_recorder_group *group
+	= eri_assert_mtmalloc_struct (pool, typeof (*group),
+				      (path, eri_strlen (path) + 1));
+  group->pool = pool;
+  eri_strcpy ((void *) group->path, path);
+  group->file_buf_size = file_buf_size;
+  group->mmap = 0;
+  return group;
+}
+
+void
+eri_live_thread_recorder__destroy_group (
+			struct eri_live_thread_recorder_group *group)
+{
+  eri_assert_mtfree (group->pool, group);
 }
 
 struct eri_live_thread_recorder
 {
-  struct eri_mtpool *pool;
+  struct eri_live_thread_recorder_group *group;
+
+  struct eri_entry *entry;
   eri_file_t log;
 
   uint8_t pending_sync_async;
@@ -29,19 +57,21 @@ struct eri_live_thread_recorder
 };
 
 struct eri_live_thread_recorder *
-eri_live_thread_recorder__create (struct eri_mtpool *pool,
-	const char *path, uint64_t id, eri_file_t log, uint64_t buf_size)
+eri_live_thread_recorder__create (
+		struct eri_live_thread_recorder_group *group,
+		struct eri_entry *entry, uint64_t id, eri_file_t log)
 {
+  uint64_t buf_size = group->file_buf_size;
   struct eri_live_thread_recorder *th_rec
-		= eri_assert_mtmalloc (pool, sizeof *th_rec + buf_size);
-  th_rec->pool = pool;
+		= eri_assert_mtmalloc (group->pool, sizeof *th_rec + buf_size);
+  th_rec->group = group;
+  th_rec->entry = entry;
   th_rec->log = log;
 
   th_rec->pending_sync_async = 0;
 
-  eri_mkdir (path);
-  char name[eri_build_path_len (path, "t", id)];
-  eri_build_path (path, "t", id, name);
+  char name[eri_build_path_len (group->path, "t", id)];
+  eri_build_path (group->path, "t", id, name);
   th_rec->file = eri_assert_fopen (name, 0, th_rec->buf, buf_size);
 
   return th_rec;
@@ -69,7 +99,7 @@ eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *th_rec)
 {
   submit_sync_async (th_rec);
   eri_assert_fclose (th_rec->file);
-  eri_assert_mtfree (th_rec->pool, th_rec);
+  eri_assert_mtfree (th_rec->group->pool, th_rec);
 }
 
 static void
@@ -194,11 +224,11 @@ eri_live_thread_recorder__rec_init (
   eri_serialize_init_record (th_rec->file, rec);
 
   struct eri_buf buf;
-  eri_assert_buf_mtpool_init (&buf, th_rec->pool, 256);
+  eri_assert_buf_mtpool_init (&buf, th_rec->group->pool, 256);
 
   struct proc_smaps_line_args line_args
 	= { th_rec, rec->map_range.start, rec->map_range.end, rec->rsp };
-  eri_assert_buf_mtpool_init (&line_args.buf, th_rec->pool, 1024);
+  eri_assert_buf_mtpool_init (&line_args.buf, th_rec->group->pool, 1024);
   eri_assert_file_foreach_line ("/proc/self/smaps", &buf,
 				proc_smaps_line, &line_args);
   eri_assert_buf_fini (&line_args.buf);
@@ -243,19 +273,23 @@ eri_live_thread_recorder__rec_read (
 {
   syscall_start_record (th_rec, ERI_SYSCALL_READ_MAGIC);
   eri_serialize_syscall_res_in_record (th_rec->file, &args->rec);
-  struct eri_entry *entry = args->entry;
   uint64_t res = args->rec.result;
   if (eri_syscall_is_error (res) || res == 0) return;
 
-  uint64_t buf_size = eri_min (res, args->buf_size);
+  struct eri_entry *entry = th_rec->entry;
+
+  uint64_t total = res;
+  struct eri_live_thread_recorder_group *group = th_rec->group;
+
+  uint64_t buf_size = eri_min (total, group->file_buf_size * 2);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
-		: eri_assert_mtmalloc (args->pool, buf_size);
+		: eri_assert_mtmalloc (group->pool, buf_size);
   uint64_t off = 0, iov_off = 0;
   struct eri_iovec *iov = args->dst;
   if (args->readv) while (iov->len == 0) ++iov;
-  while (off < res)
+  while (off < total)
     {
-      uint64_t size = eri_min (buf_size, res - off);
+      uint64_t size = eri_min (buf_size, total - off);
       if (! args->readv)
 	{
 	  uint8_t *user = (uint8_t *) args->dst + off;
@@ -287,8 +321,46 @@ eri_live_thread_recorder__rec_read (
     }
 
 out:
+  if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
   eri_serialize_uint64 (th_rec->file, 0);
-  if (buf_size > 1024) eri_assert_mtfree (args->pool, buf);
+}
+
+void
+eri_live_thread_recorder__rec_mmap (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_syscall_res_in_record *rec, uint64_t len)
+{
+  syscall_start_record (th_rec, ERI_SYSCALL_MMAP_MAGIC);
+  eri_serialize_syscall_res_in_record (th_rec->file, rec);
+  if (eri_syscall_is_error (rec->result)) return;
+
+  if (len == 0)
+    {
+      eri_serialize_uint64 (th_rec->file, 0);
+      return;
+    }
+
+  struct eri_live_thread_recorder_group *group = th_rec->group;
+  uint64_t id = eri_atomic_inc_fetch (&group->mmap, 0);
+  eri_serialize_uint64 (th_rec->file, id);
+
+  char name[eri_build_path_len (group->path, "m", id)];
+  eri_build_path (group->path, "m", id, name);
+  int32_t fd = eri_assert_sys_open (name, 0);
+
+  uint8_t *buf = (void *) rec->result;
+  uint64_t c = 0;
+  while (c < len)
+    {
+      uint64_t l = eri_syscall (write, fd, buf + c, len - c);
+      if (l == ERI_EINTR) continue;
+      if (l == ERI_EFAULT) break;
+      eri_assert (! eri_syscall_is_error (l));
+      c += l;
+    }
+  eri_serialize_uint8 (th_rec->file, c == len);
+
+  eri_assert_syscall (close, fd);
 }
 
 void

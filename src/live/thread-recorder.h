@@ -10,13 +10,18 @@ struct eri_init_record;
 struct eri_atomic_record;
 
 struct eri_entry;
+struct eri_live_thread_recorder_group;
 struct eri_live_thread_recorder;
 
-void eri_live_thread_recorder__init_group (const char *path);
+struct eri_live_thread_recorder_group *
+	eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
+				const char *path, uint64_t file_buf_size);
+void eri_live_thread_recorder__destroy_group (
+		struct eri_live_thread_recorder_group *group);
 
 struct eri_live_thread_recorder *eri_live_thread_recorder__create (
-		struct eri_mtpool *pool, const char *path, uint64_t id,
-		eri_file_t log, uint64_t buf_size);
+		struct eri_live_thread_recorder_group *group,
+		struct eri_entry *entry, uint64_t id, eri_file_t log);
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *th_rec);
 
@@ -30,19 +35,18 @@ void eri_live_thread_recorder__rec_signal (
 
 struct eri_live_thread_recorder__rec_read_args
 {
-  struct eri_mtpool *pool;
-  uint64_t buf_size;
-
-  struct eri_entry *entry;
+  struct eri_syscall_res_in_record rec;
 
   uint8_t readv;
-  struct eri_syscall_res_in_record rec;
   void *dst;
 };
 
 void eri_live_thread_recorder__rec_read (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__rec_read_args *args);
+void eri_live_thread_recorder__rec_mmap (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_syscall_res_in_record *rec, uint64_t len);
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

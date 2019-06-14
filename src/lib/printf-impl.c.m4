@@ -27,9 +27,7 @@ int32_t
 m4_ns(fopen) (const char *path, uint8_t r, eri_file_t *file,
 	      void *buf, uint64_t buf_size)
 {
-  uint64_t res = m4_ns(syscall) (
-    open, path, r ? ERI_O_RDONLY : ERI_O_WRONLY | ERI_O_TRUNC | ERI_O_CREAT,
-    ERI_S_IRUSR | ERI_S_IWUSR);
+  uint64_t res = m4_ns(sys_open) (path, r);
   if (eri_syscall_is_error (res)) return 1;
 
   if (! buf || ! buf_size)
