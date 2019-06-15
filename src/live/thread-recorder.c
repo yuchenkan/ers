@@ -102,6 +102,33 @@ eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *th_rec)
   eri_assert_mtfree (th_rec->group->pool, th_rec);
 }
 
+static uint8_t
+record_mmap_file (struct eri_live_thread_recorder *th_rec,
+		  uint64_t start, uint64_t len)
+{
+  struct eri_live_thread_recorder_group *group = th_rec->group;
+  uint64_t id = eri_atomic_inc_fetch (&group->mmap, 0);
+  eri_serialize_uint64 (th_rec->file, id);
+
+  char name[eri_build_path_len (group->path, "m", id)];
+  eri_build_path (group->path, "m", id, name);
+  int32_t fd = eri_assert_sys_open (name, 0);
+
+  uint8_t *buf = (void *) start;
+  uint64_t c = 0;
+  while (c < len)
+    {
+      uint64_t l = eri_syscall (write, fd, buf + c, len - c);
+      if (l == ERI_EINTR) continue;
+      if (l == ERI_EFAULT) break;
+      eri_assert (! eri_syscall_is_error (l));
+      c += l;
+    }
+
+  eri_assert_syscall (close, fd);
+  return c == len;
+}
+
 struct record_init_map_args
 {
   struct eri_live_thread_recorder *th_rec;
@@ -122,26 +149,24 @@ record_init_map (const struct eri_smaps_map *map, void *args)
 
   eri_llog (th_rec->log, "%s %lx %lx %u\n", path ? : "<>", start, end, prot);
 
-  uint8_t stack = eri_within (&map->range, a->rsp);
+  uint8_t type = eri_within (&map->range, a->rsp)
+			? ERI_INIT_MAP_STACK
+			: (path ? ERI_INIT_MAP_FILE : ERI_INIT_MAP_EMPTY);
 
   eri_file_t file = th_rec->file;
   struct eri_init_map_record rec = {
-    start, end, prot, 0, !! path
+    start, end, prot, 0, type
   };
   eri_serialize_mark (file, ERI_INIT_MAP_RECORD);
   eri_serialize_init_map_record (file, &rec);
 
-  if (path || stack)
+  if (type == ERI_INIT_MAP_STACK)
     {
-      uint64_t data_start = stack ? a->rsp : start;
-      eri_serialize_uint64 (file, data_start);
-      eri_serialize_uint64 (file, end);
-      /*
-       * XXX: this should be the only place we read from user without
-       * protection.
-       */
-      eri_serialize_uint8_array (file, (void *) data_start, end - data_start);
+      eri_serialize_uint64 (file, a->rsp);
+      eri_serialize_uint8_array (file, (void *) a->rsp, end - a->rsp);
     }
+  else if (type == ERI_INIT_MAP_FILE)
+    eri_assert (record_mmap_file (th_rec, start, end - start));
 }
 
 void
@@ -264,27 +289,8 @@ eri_live_thread_recorder__rec_mmap (
       return;
     }
 
-  struct eri_live_thread_recorder_group *group = th_rec->group;
-  uint64_t id = eri_atomic_inc_fetch (&group->mmap, 0);
-  eri_serialize_uint64 (th_rec->file, id);
-
-  char name[eri_build_path_len (group->path, "m", id)];
-  eri_build_path (group->path, "m", id, name);
-  int32_t fd = eri_assert_sys_open (name, 0);
-
-  uint8_t *buf = (void *) rec->result;
-  uint64_t c = 0;
-  while (c < len)
-    {
-      uint64_t l = eri_syscall (write, fd, buf + c, len - c);
-      if (l == ERI_EINTR) continue;
-      if (l == ERI_EFAULT) break;
-      eri_assert (! eri_syscall_is_error (l));
-      c += l;
-    }
-  eri_serialize_uint8 (th_rec->file, c == len);
-
-  eri_assert_syscall (close, fd);
+  eri_serialize_uint8 (th_rec->file,
+		       record_mmap_file (th_rec, rec->result, len));
 }
 
 void

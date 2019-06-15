@@ -491,6 +491,15 @@ init_unmap (const struct eri_smaps_map *map, void *args)
 		      map->range.end - map->range.start);
 }
 
+static int32_t
+open_mmap_file (const char *path, uint64_t id)
+{
+  char name[eri_build_path_len (path, "m", id)];
+  eri_build_path (path, "m", id, name);
+  uint64_t fd = eri_sys_open (name, 1);
+  return eri_syscall_is_error (fd) ? -1 : fd;
+}
+
 static eri_noreturn void
 start_main (struct thread *th)
 {
@@ -534,19 +543,29 @@ start_main (struct thread *th)
       eri_log (th->log.file, "rec.start: %lx, rec.end: %lx, rec.prot: %u\n",
 	       rec.start, rec.end, rec.prot);
       uint64_t size = rec.end - rec.start;
-      uint8_t prot = rec.prot;
-      uint8_t init_prot = prot | (rec.data_count ? ERI_PROT_WRITE : 0);
-      /* XXX: mimic grows_down */
-      eri_assert_syscall (mmap, rec.start, size, init_prot,
-		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
-      for (i = 0; i < rec.data_count; ++i)
+      if (rec.type == ERI_INIT_MAP_FILE)
 	{
-	  uint64_t start = eri_unserialize_uint64 (th->file);
-	  uint64_t end = eri_unserialize_uint64 (th->file);
-	  eri_unserialize_uint8_array (th->file, (void *) start, end - start);
+	  uint64_t id = eri_unserialize_uint64 (th->file);
+	  int32_t fd = open_mmap_file (th->group->path, id);
+	  eri_lassert (th->log.file, fd != -1);
+	  eri_assert_syscall (mmap, rec.start, size, rec.prot,
+			      ERI_MAP_FIXED | ERI_MAP_PRIVATE, fd, 0);
+	  eri_assert_syscall (close, fd);
 	}
-      if (init_prot != prot)
-	eri_assert_syscall (mprotect, rec.start, size, prot);
+      else
+	{
+	  eri_assert_syscall (mmap, rec.start, size, rec.prot,
+		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+	  if (rec.type == ERI_INIT_MAP_STACK)
+	    {
+	      eri_lassert (th->log.file, rec.prot & ERI_PROT_WRITE);
+	      uint64_t start = eri_unserialize_uint64 (th->file);
+	      eri_unserialize_uint8_array (th->file, (void *) start,
+					   rec.end - start);
+	    }
+	  else
+	    eri_lassert (th->log.file, rec.type == ERI_INIT_MAP_EMPTY);
+	}
     }
 
   group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE, 0);
@@ -1541,9 +1560,7 @@ DEFINE_SYSCALL (mmap)
       if (! try_unserialize (uint8, th, &ok)) diverged (th);
       if (! ok) { freeze (th); diverged (th); }
 
-      char name[eri_build_path_len (th->group->path, "m", id)];
-      eri_build_path (th->group->path, "m", id, name);
-      if (eri_syscall_is_error (fd = eri_sys_open (name, 1))) diverged (th);
+      if ((fd = open_mmap_file (th->group->path, id)) == -1) diverged (th);
     }
 
   /* XXX: flags */

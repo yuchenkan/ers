@@ -44,16 +44,19 @@ main (int32_t argc, const char **argv)
 	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
 	struct eri_init_map_record rec;
 	eri_unserialize_init_map_record (file, &rec);
-	printf ("  start: 0x%lx, end: 0x%lx, prot: %u, grows_down %u\n",
-		rec.start, rec.end, rec.prot, rec.grows_down);
-	uint8_t i;
-	for (i = 0; i < rec.data_count; ++i)
+	printf ("  start: 0x%lx, end: 0x%lx, prot: %u, "
+		"grows_down: %u, type: %u",
+		rec.start, rec.end, rec.prot, rec.grows_down, rec.type);
+	if (rec.type == ERI_INIT_MAP_EMPTY) printf ("\n");
+	else if (rec.type == ERI_INIT_MAP_FILE)
+	  printf (", file_id: %lx\n", eri_unserialize_uint64 (file));
+	else if (rec.type == ERI_INIT_MAP_STACK)
 	  {
 	    uint64_t start = eri_unserialize_uint64 (file);
-	    uint64_t end = eri_unserialize_uint64 (file);
-	    printf ("    data.start: 0x%lx, .end: 0x%lx\n", start, end);
-	    eri_unserialize_skip_uint8_array (file, end - start);
+	    printf (", data_start: %lx\n", start);
+	    eri_unserialize_skip_uint8_array (file, rec.end - start);
 	  }
+	else eri_assert_unreachable ();
       }
     else if (mark == ERI_ASYNC_RECORD)
       {

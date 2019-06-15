@@ -381,6 +381,10 @@ fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
 	eri_assert_syscall (munmap, start, end - start);
       else if (eri_within (&maps[i].range, rsp))
 	{
+	  /* XXX: mimic grows_down */
+	  eri_xassert (prot & ERI_PROT_READ, eri_info);
+	  eri_xassert (prot & ERI_PROT_WRITE, eri_info);
+
 	  struct eri_rlimit lim;
 	  eri_assert_syscall (prlimit64, 0, ERI_RLIMIT_STACK, 0, &lim);
 	  uint64_t max_size = eri_round_down (

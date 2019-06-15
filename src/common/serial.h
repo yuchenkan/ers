@@ -126,13 +126,17 @@ void eri_serialize_init_record (eri_file_t file,
 void eri_unserialize_init_record (eri_file_t file,
 				  struct eri_init_record *rec);
 
+#define ERI_INIT_MAP_EMPTY	0
+#define ERI_INIT_MAP_FILE	1
+#define ERI_INIT_MAP_STACK	2
+
 struct eri_init_map_record
 {
   uint64_t start, end;
   uint8_t prot;
   uint8_t grows_down;
 
-  uint8_t data_count;
+  uint8_t type;
 };
 
 void eri_serialize_init_map_record (eri_file_t file,

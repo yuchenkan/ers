@@ -349,7 +349,7 @@ eri_serialize_init_map_record (eri_file_t file,
   eri_serialize_uint64 (file, rec->end);
   eri_serialize_uint8 (file, rec->prot);
   eri_serialize_uint8 (file, rec->grows_down);
-  eri_serialize_uint8 (file, rec->data_count);
+  eri_serialize_uint8 (file, rec->type);
 }
 
 void
@@ -360,7 +360,7 @@ eri_unserialize_init_map_record (eri_file_t file,
   rec->end = eri_unserialize_uint64 (file);
   rec->prot = eri_unserialize_uint8 (file);
   rec->grows_down = eri_unserialize_uint8 (file);
-  rec->data_count = eri_unserialize_uint8 (file);
+  rec->type = eri_unserialize_uint8 (file);
 }
 
 void
