@@ -85,7 +85,7 @@ eri_malloc (struct eri_pool *pool, uint64_t size, void **p)
   struct eri_block k = {
     (struct eri_block *) ((uint8_t *) &k + s), 0, BLK_NOTFREE
   };
-  struct eri_block *b = eri_block_rbt_get (pool, &k, ERI_RBT_GT);
+  struct eri_block *b = eri_block_rbt_get (pool, &k, ERI_RBT_GTE);
 
   *p = 0;
   if (! b)
