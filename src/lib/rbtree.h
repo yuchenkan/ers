@@ -32,8 +32,11 @@
   node_type *pfx##_rbt_parent, *pfx##_rbt_left, *pfx##_rbt_right;
 
 #define ERI_RBT_EQ	1
-#define ERI_RBT_LT	2
-#define ERI_RBT_GT	4
+#define ERI_RBT_LT	2 /* largest element less than */
+#define ERI_RBT_GT	4 /* smallest element greater than */
+
+#define ERI_RBT_LTE	(ERI_RBT_LT | ERI_RBT_EQ)
+#define ERI_RBT_GTE	(ERI_RBT_GT | ERI_RBT_EQ)
 
 #define ERI_DECLARE_RBTREE(attr, pfx, tree_type, node_type, key_type) \
 attr eri_unused void pfx##_rbt_insert (					\
