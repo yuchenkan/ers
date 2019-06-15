@@ -1,5 +1,7 @@
+#include <lib/buf.h>
 #include <lib/syscall.h>
 #include <lib/malloc.h>
+
 #include <common/common.h>
 
 void
@@ -62,4 +64,96 @@ eri_mkdir (const char *path)
       }
     else if (*p != '/') l = 0;
   eri_assert_sys_mkdir (b, 0755);
+}
+
+static void
+proc_smap_map (char *buf,
+	void (*proc) (const struct eri_smaps_map *, void *), void *args)
+{
+  struct eri_smaps_map map = { .path = 0, .grows_down = 0 };
+
+  const char *b = buf;
+  const char *d = eri_strtok (b, '-');
+  *(char *) d = '\0';
+  map.range.start = eri_assert_atoi (b, 16);
+
+  d = eri_strtok (b = d + 1, ' ');
+  *(char *) d = '\0';
+  map.range.end = eri_assert_atoi (b, 16);
+
+  eri_assert (d[1] && d[2] && d[3] && d[4] && d[5] && d[6]);
+  map.prot = (d[1] != '-' ? ERI_PROT_READ : 0)
+	      | (d[2] != '-' ? ERI_PROT_WRITE : 0)
+	      | (d[3] != '-' ? ERI_PROT_EXEC : 0);
+  eri_assert (d[4] == 'p'); /* XXX: handle error */
+
+  eri_assert (d = eri_strtok (d + 6, ' '));
+  eri_assert (d = eri_strtok (d + 1, ' '));
+  eri_assert (d = eri_strtok (d + 1, ' '));
+  while (*d && *d == ' ') ++d;
+
+  eri_assert (*d);
+  if (*d != '\n')
+    {
+      map.path = d;
+      d = eri_strtok (d, '\n');
+    }
+  *(char *) d = '\0';
+
+  d = eri_strstr (d + 1, "VmFlags: ");
+  eri_assert (d);
+  for (d = d + eri_strlen ("VmFlags: "); *d && *d != '\n'; d += 3)
+    {
+      eri_assert (d[0] && d[1] && d[2]);
+      if (d[0] == 'g' && d[1] == 'd')
+	{
+	  map.grows_down = 1;
+	  break;
+	}
+    }
+
+  proc (&map, args);
+}
+
+struct proc_smaps_line_args
+{
+  void (*proc) (const struct eri_smaps_map *, void *);
+  void *args;
+
+  uint32_t line_count;
+  struct eri_buf buf;
+};
+
+static void
+proc_smaps_line (const char *line, uint64_t len, void *args)
+{
+  struct proc_smaps_line_args *a = args;
+  eri_assert_buf_append (&a->buf, line, len);
+  if (++a->line_count % 20)
+    {
+      char nl = '\n';
+      eri_assert_buf_append (&a->buf, &nl, 1);
+    }
+  else
+    {
+      char e = '\0';
+      eri_assert_buf_append (&a->buf, &e, 1);
+      proc_smap_map (eri_buf_release (&a->buf), a->proc, a->args);
+    }
+}
+
+void
+eri_smaps_foreach_map (const char *smaps, struct eri_mtpool *pool,
+	void (*proc) (const struct eri_smaps_map *, void *), void *args)
+{
+  struct eri_buf buf;
+  eri_assert_buf_mtpool_init (&buf, pool, 256);
+
+  struct proc_smaps_line_args line_args = { proc, args };
+  eri_assert_buf_mtpool_init (&line_args.buf, pool, 1024);
+
+  eri_assert_file_foreach_line (smaps, &buf, proc_smaps_line, &line_args);
+
+  eri_assert_buf_fini (&line_args.buf);
+  eri_assert_buf_fini (&buf);
 }

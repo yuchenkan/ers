@@ -173,4 +173,17 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 #define eri_lassert_syscall(log, name, ...) \
   eri_xassert_syscall (eri_log_assert, (log), name, ##__VA_ARGS__)
 
+#define eri_dump_maps() \
+  do {									\
+    uint8_t _buf[1024];							\
+    eri_file_t _file = eri_assert_fopen ("/proc/self/maps", 1, 0, 0);	\
+    uint64_t _len;							\
+    do									\
+      {									\
+        eri_assert_fread (_file, _buf, sizeof _buf, &_len);		\
+        eri_assert_fwrite (ERI_STDOUT, _buf, _len, 0);			\
+      }									\
+    while (_len == sizeof _buf);					\
+  } while (0)
+
 #endif

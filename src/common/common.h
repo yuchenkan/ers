@@ -153,4 +153,15 @@ eri_common_syscall_get_mem_prot (int32_t prot)
 eri_noreturn void eri_jump (void *rsp, void *rip,
 			    void *rdi, void *rsi, void *rdx);
 
+struct eri_smaps_map
+{
+  struct eri_range range;
+  int32_t prot;
+  const char *path;
+  uint8_t grows_down;
+};
+
+void eri_smaps_foreach_map (const char *smaps, struct eri_mtpool *pool,
+	void (*proc) (const struct eri_smaps_map *, void *), void *args);
+
 #endif

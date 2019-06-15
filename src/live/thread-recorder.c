@@ -9,6 +9,7 @@
 #include <common/serial.h>
 #include <common/entry.h>
 
+#include <live/common.h>
 #include <live/thread-recorder.h>
 
 struct eri_live_thread_recorder_group
@@ -102,79 +103,39 @@ eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *th_rec)
   eri_assert_mtfree (th_rec->group->pool, th_rec);
 }
 
-static void
-record_smaps_entry (struct eri_live_thread_recorder *th_rec,
-		    uint64_t map_start, uint64_t map_end, uint64_t rsp,
-		    char *buf)
+struct record_init_map_args
 {
-  const char *b = buf;
-  const char *d = eri_strtok (b, '-');
-  *(char *) d = '\0';
-  uint64_t start = eri_assert_atoi (b, 16);
+  struct eri_live_thread_recorder *th_rec;
+  uint64_t rsp;
+};
 
-  d = eri_strtok (b = d + 1, ' ');
-  *(char *) d = '\0';
-  uint64_t end = eri_assert_atoi (b, 16);
-  if (! (end <= map_start || start >= map_end))
-    {
-      eri_assert (start >= map_start && end <= map_end);
-      return;
-    }
+static void
+record_init_map (const struct eri_smaps_map *map, void *args)
+{
+  struct record_init_map_args *a = args;
+  struct eri_live_thread_recorder *th_rec = a->th_rec;
 
-  eri_assert (d[1] && d[2] && d[3] && d[4] && d[5] && d[6]);
-  uint8_t prot = (d[1] != '-' ? ERI_PROT_READ : 0)
-		  | (d[2] != '-' ? ERI_PROT_WRITE : 0)
-		  | (d[3] != '-' ? ERI_PROT_EXEC : 0);
-  eri_assert (d[4] == 'p'); /* XXX: handle error */
-
-  eri_assert (d = eri_strtok (d + 6, ' '));
-  eri_assert (d = eri_strtok (d + 1, ' '));
-  eri_assert (d = eri_strtok (d + 1, ' '));
-  while (*d && *d == ' ') ++d;
-
-  const char *path = 0;
-  eri_assert (*d);
-  if (*d != '\n')
-    {
-      path = d;
-      d = eri_strtok (d, '\n');
-    }
-  *(char *) d = '\0';
-
-  if (path && (eri_strcmp (path, "[vvar]") == 0
-	       || eri_strcmp (path, "[vdso]") == 0
-	       || eri_strcmp (path, "[vsyscall]") == 0))
-    return;
-
-  uint8_t grows_done = 0;
-  d = eri_strstr (d + 1, "VmFlags: ");
-  eri_assert (d);
-  for (d = d + eri_strlen ("VmFlags: "); *d && *d != '\n'; d += 3)
-    {
-      eri_assert (d[0] && d[1] && d[2]);
-      if (d[0] == 'g' && d[1] == 'd')
-	{
-	  grows_done = 1;
-	  break;
-	}
-    }
+  uint64_t start = map->range.start;
+  uint64_t end = map->range.end;
+  int32_t prot = map->prot;
+  const char *path = map->path;
+  uint8_t grows_down = map->grows_down; // TODO
 
   eri_llog (th_rec->log, "%s %lx %lx %u %u\n",
-	    path ? : "<>", start, end, prot, grows_done);
+	    path ? : "<>", start, end, prot, grows_down);
 
-  uint8_t stack = path && eri_strcmp (path, "[stack]") == 0;
-  eri_assert (! path || ! stack || (rsp >= start && rsp <= end));
+  uint8_t stack = a->rsp >= start && a->rsp <= end;
 
   eri_file_t file = th_rec->file;
   struct eri_init_map_record rec = {
-    start, end, prot, grows_done, !! path
+    start, end, prot, grows_down, !! path
   };
   eri_serialize_mark (file, ERI_INIT_MAP_RECORD);
   eri_serialize_init_map_record (file, &rec);
 
-  if (path)
+  if (path || stack)
     {
-      uint64_t data_start = stack ? rsp : start;
+      uint64_t data_start = stack ? a->rsp : start;
       eri_serialize_uint64 (file, data_start);
       eri_serialize_uint64 (file, end);
       /*
@@ -182,34 +143,6 @@ record_smaps_entry (struct eri_live_thread_recorder *th_rec,
        * protection.
        */
       eri_serialize_uint8_array (file, (void *) data_start, end - data_start);
-    }
-}
-
-struct proc_smaps_line_args
-{
-  struct eri_live_thread_recorder *th_rec;
-  uint64_t start, end, rsp;
-
-  uint32_t line_count;
-  struct eri_buf buf;
-};
-
-static void
-proc_smaps_line (const char *line, uint64_t len, void *args)
-{
-  struct proc_smaps_line_args *a = args;
-  eri_assert_buf_append (&a->buf, line, len);
-  if (++a->line_count % 20)
-    {
-      char nl = '\n';
-      eri_assert_buf_append (&a->buf, &nl, 1);
-    }
-  else
-    {
-      char e = '\0';
-      eri_assert_buf_append (&a->buf, &e, 1);
-      record_smaps_entry (a->th_rec, a->start, a->end, a->rsp,
-			  eri_buf_release (&a->buf));
     }
 }
 
@@ -223,16 +156,9 @@ eri_live_thread_recorder__rec_init (
   eri_serialize_mark (th_rec->file, ERI_INIT_RECORD);
   eri_serialize_init_record (th_rec->file, rec);
 
-  struct eri_buf buf;
-  eri_assert_buf_mtpool_init (&buf, th_rec->group->pool, 256);
-
-  struct proc_smaps_line_args line_args
-	= { th_rec, rec->map_range.start, rec->map_range.end, rec->rsp };
-  eri_assert_buf_mtpool_init (&line_args.buf, th_rec->group->pool, 1024);
-  eri_assert_file_foreach_line ("/proc/self/smaps", &buf,
-				proc_smaps_line, &line_args);
-  eri_assert_buf_fini (&line_args.buf);
-  eri_assert_buf_fini (&buf);
+  struct record_init_map_args args = { th_rec, rec->rsp };
+  eri_live_init_foreach_map (th_rec->group->pool, &rec->map_range,
+			     record_init_map, &args);
   eri_llog (th_rec->log, "leave rec_init\n");
 }
 

@@ -299,17 +299,4 @@ uint8_t eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
 
-#define eri_dump_maps() \
-  do {									\
-    uint8_t _buf[1024];							\
-    eri_file_t _file = eri_assert_fopen ("/proc/self/maps", 1, 0, 0);	\
-    uint64_t _len;							\
-    do									\
-      {									\
-        eri_assert_fread (_file, _buf, sizeof _buf, &_len);		\
-        eri_assert_fwrite (ERI_STDOUT, _buf, _len, 0);			\
-      }									\
-    while (_len == sizeof _buf);					\
-  } while (0)
-
 #endif
