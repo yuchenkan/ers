@@ -366,7 +366,7 @@ function main () {
 
     try {
       await update.call (context (env, null), goals);
-      note ('every up-to-date');
+      note ('all up-to-date');
       process.removeListener ('beforeExit', circular);
     } finally { await exec ('rm .goal-lock'); }
   };
