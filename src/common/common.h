@@ -164,4 +164,8 @@ struct eri_smaps_map
 void eri_smaps_foreach_map (const char *smaps, struct eri_mtpool *pool,
 	void (*proc) (const struct eri_smaps_map *, void *), void *args);
 
+void eri_init_foreach_map (
+	struct eri_mtpool *pool, const struct eri_range *map,
+	void (*proc) (const struct eri_smaps_map *, void *), void *args);
+
 #endif

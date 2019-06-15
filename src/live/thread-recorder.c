@@ -9,7 +9,6 @@
 #include <common/serial.h>
 #include <common/entry.h>
 
-#include <live/common.h>
 #include <live/thread-recorder.h>
 
 struct eri_live_thread_recorder_group
@@ -156,7 +155,7 @@ eri_live_thread_recorder__rec_init (
   eri_serialize_init_record (th_rec->file, rec);
 
   struct record_init_map_args args = { th_rec, rec->rsp };
-  eri_live_init_foreach_map (th_rec->group->pool, &rec->map_range,
+  eri_init_foreach_map (th_rec->group->pool, &rec->map_range,
 			     record_init_map, &args);
   eri_llog (th_rec->log, "leave rec_init\n");
 }

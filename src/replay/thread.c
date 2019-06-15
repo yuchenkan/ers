@@ -484,6 +484,13 @@ start (struct thread *th, uint8_t next)
   eri_entry__leave (th->entry);
 }
 
+static void
+init_unmap (const struct eri_smaps_map *map, void *args)
+{
+  eri_assert_syscall (munmap, map->range.start,
+		      map->range.end - map->range.start);
+}
+
 static eri_noreturn void
 start_main (struct thread *th)
 {
@@ -516,6 +523,8 @@ start_main (struct thread *th)
   th->user_tid = rec.user_pid;
   group->user_pid = rec.user_pid;
   group->brk = rec.brk;
+
+  eri_init_foreach_map (group->pool, &group->map_range, init_unmap, 0);
 
   uint8_t next;
   while ((next = unserialize_mark (th)) == ERI_INIT_MAP_RECORD)

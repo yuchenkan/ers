@@ -2,6 +2,7 @@
 #include <lib/syscall.h>
 #include <lib/malloc.h>
 
+#include <common/debug.h>
 #include <common/common.h>
 
 void
@@ -156,4 +157,43 @@ eri_smaps_foreach_map (const char *smaps, struct eri_mtpool *pool,
 
   eri_assert_buf_fini (&line_args.buf);
   eri_assert_buf_fini (&buf);
+}
+
+struct init_proc_map_args
+{
+  const struct eri_range *map;
+
+  void (*proc) (const struct eri_smaps_map *, void *);
+  void *args;
+};
+
+static void
+init_proc_map (const struct eri_smaps_map *map, void *args)
+{
+  struct init_proc_map_args *a = args;
+
+  uint64_t start = map->range.start;
+  uint64_t end = map->range.end;
+  uint64_t map_start = a->map->start;
+  uint64_t map_end = a->map->end;
+
+  if (! (end <= map_start || start >= map_end))
+    {
+      eri_xassert (start >= map_start && end <= map_end, eri_info);
+      return;
+    }
+
+  const char *path = map->path;
+  if (path && eri_strcmp (path, "[vsyscall]") == 0) return;
+
+  a->proc (map, a->args);
+}
+
+void
+eri_init_foreach_map (struct eri_mtpool *pool, const struct eri_range *map,
+	void (*proc) (const struct eri_smaps_map *, void *), void *args)
+{
+  struct init_proc_map_args map_args = { map, proc, args };
+  eri_smaps_foreach_map ("/proc/self/smaps", pool,
+			 init_proc_map, &map_args);
 }
