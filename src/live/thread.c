@@ -348,8 +348,6 @@ static void
 fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
 {
   struct eri_buf buf;
-  eri_assert_buf_mtpool_init (&buf, group->pool,
-			      sizeof (struct eri_smaps_map) * 8);
   eri_live_init_get_maps (group->pool, &group->map_range, &buf);
   struct eri_smaps_map *maps = buf.buf;
   uint64_t n = buf.off / sizeof *maps;
@@ -374,16 +372,20 @@ fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
 
   for (i = 0; i < n; ++i)
     {
+      uint64_t start = maps[i].range.start;
+      uint64_t end = maps[i].range.end;
+      const char *path = maps[i].path;
       int32_t prot = eri_common_get_mem_prot (maps[i].prot);
-      if (eri_within (&maps[i].range, rsp))
+      if (path && (eri_strcmp (path, "[vvar]") == 0
+		   || eri_strcmp (path, "[vdso]") == 0))
+	eri_assert_syscall (munmap, start, end - start);
+      else if (eri_within (&maps[i].range, rsp))
 	{
-	  uint64_t stack_start = maps[i].range.start;
-
 	  struct eri_rlimit lim;
 	  eri_assert_syscall (prlimit64, 0, ERI_RLIMIT_STACK, 0, &lim);
 	  uint64_t max_size = eri_round_down (
 			eri_min (lim.max, group->init_user_stack_size),
-			group->page_size) ? : stack_end - stack_start;
+			group->page_size) ? : stack_end - start;
 
 	  uint64_t size = eri_min (stack_end - min_stack_start, max_size);
 	  uint8_t *tmp = (void *) eri_assert_syscall (mmap, 0, size,
@@ -400,11 +402,10 @@ fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
 		ERI_MAP_PRIVATE | ERI_MAP_FIXED | ERI_MAP_ANONYMOUS, -1, 0);
 	}
       else if (prot != maps[i].prot)
-	eri_assert_syscall (mprotect, maps[i].range.start,
-			    maps[i].range.end - maps[i].range.start, prot);
+	eri_assert_syscall (mprotect, start, end - start, prot);
     }
 
-  eri_assert_buf_fini (&buf);
+  eri_live_init_free_maps (group->pool, &buf);
 }
 
 static eri_noreturn void

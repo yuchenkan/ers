@@ -16,5 +16,6 @@ void eri_live_init_foreach_map (
 
 void eri_live_init_get_maps (struct eri_mtpool *pool,
 	const struct eri_range *map, struct eri_buf *buf);
+void eri_live_init_free_maps (struct eri_mtpool *pool, struct eri_buf *buf);
 
 #endif
