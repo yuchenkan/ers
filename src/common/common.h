@@ -142,7 +142,7 @@ eri_sig_digest_act (const struct eri_siginfo *info,
 }
 
 static eri_unused int32_t
-eri_common_syscall_get_mem_prot (int32_t prot)
+eri_common_get_mem_prot (int32_t prot)
 {
   /* XXX: prot */
   if (prot & ERI_PROT_WRITE) prot |= ERI_PROT_READ;

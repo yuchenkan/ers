@@ -1555,7 +1555,7 @@ DEFINE_SYSCALL (mprotect)
   uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
   if (eri_syscall_is_error (res)) goto out;
 
-  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+  int32_t prot = eri_common_get_mem_prot (regs->rdx);
   if (eri_syscall_is_error (
 	eri_syscall (mprotect, regs->rdi, regs->rsi, prot))) diverged (th);
 

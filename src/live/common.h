@@ -3,6 +3,7 @@
 
 #include <lib/atomic.h>
 
+struct eri_buf;
 struct eri_mtpool;
 struct eri_smaps_map;
 
@@ -12,5 +13,8 @@ struct eri_smaps_map;
 void eri_live_init_foreach_map (
 	struct eri_mtpool *pool, const struct eri_range *map,
 	void (*proc) (const struct eri_smaps_map *, void *), void *args);
+
+void eri_live_init_get_maps (struct eri_mtpool *pool,
+	const struct eri_range *map, struct eri_buf *buf);
 
 #endif

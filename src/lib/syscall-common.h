@@ -494,6 +494,10 @@
 #define ERI_MAP_ANONYMOUS	0x20
 #define ERI_MAP_GROWSDOWN	0x100
 #define ERI_MAP_DENYWRITE	0x0800
+#define ERI_MAP_STACK		0x20000
+
+#define ERI_MREMAP_MAYMOVE	1
+#define ERI_MREMAP_FIXED	2
 
 #define ERI_ARCH_SET_GS		0x1001
 #define ERI_ARCH_SET_FS		0x1002
@@ -622,6 +626,8 @@
 #define ERI_P_PGID		2
 #define ERI_WEXITED		4
 
+#define ERI_RLIMIT_STACK	3
+
 #ifdef __ASSEMBLER__
 
 #define ERI_SIG_DFL		0
@@ -675,6 +681,12 @@ struct eri_iovec
 {
   void *base;
   uint64_t len;
+};
+
+struct eri_rlimit
+{
+  uint64_t cur;
+  uint64_t max;
 };
 
 #define ERI_SIG_DFL		((void *) 0)

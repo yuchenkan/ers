@@ -19,6 +19,7 @@
 #include <lib/util.h>
 #include <lib/cpu.h>
 #include <lib/elf.h>
+#include <lib/buf.h>
 #include <lib/lock.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
@@ -89,6 +90,8 @@ struct eri_live_thread_group
 
   uint64_t page_size;
   struct eri_range map_range;
+
+  uint64_t init_user_stack_size;
 
   int32_t pid;
 
@@ -212,6 +215,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 {
   struct eri_live_rtld_args *rtld_args = args->rtld_args;
 
+  uint64_t init_user_stack_size = 8 * 1024 * 1024;
   uint64_t atomic_table_size =  2 * 1024 * 1024;
 
   uint64_t stack_size = 2 * 1024 * 1024;
@@ -221,8 +225,10 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
     {
       char **p;
       for (p = rtld_args->envp; *p; ++p)
-	(void) (eri_get_arg_int (*p, "ERS_ATOMIC_TABLE_SIZE=",
-				 &atomic_table_size, 10)
+	(void) (eri_get_arg_int (*p, "ERS_INIT_USER_STACK_SIZE=",
+				 &init_user_stack_size, 10)
+	|| eri_get_arg_int (*p, "ERS_ATOMIC_TABLE_SIZE=",
+			    &atomic_table_size, 10)
 	|| eri_get_arg_int (*p, "ERS_STACK_SIZE=", &stack_size, 10)
 	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path));
     }
@@ -234,6 +240,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->page_size = rtld_args->page_size;
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
+  group->init_user_stack_size = init_user_stack_size;
   group->pid = 0;
 
   eri_init_lock (&group->fdf_lock, 0);
@@ -337,6 +344,69 @@ start (struct eri_live_thread *th)
   eri_entry__leave (th->entry);
 }
 
+static void
+fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
+{
+  struct eri_buf buf;
+  eri_assert_buf_mtpool_init (&buf, group->pool,
+			      sizeof (struct eri_smaps_map) * 8);
+  eri_live_init_get_maps (group->pool, &group->map_range, &buf);
+  struct eri_smaps_map *maps = buf.buf;
+  uint64_t n = buf.off / sizeof *maps;
+
+  uint64_t i, stack_end = 0;
+  for (i = 0; i < n; ++i)
+    if (eri_within (&maps[i].range, rsp))
+      {
+	eri_xassert (! stack_end, eri_info);
+	stack_end = maps[i].range.end;
+	break;
+      }
+  eri_xassert (stack_end, eri_info);
+
+  uint64_t min_stack_start = 0;
+  for (i = 0; i < n; ++i)
+    if (! eri_within (&maps[i].range, rsp)
+	&& maps[i].range.start < stack_end)
+      min_stack_start = eri_max (min_stack_start, maps[i].range.end);
+  if (group->map_range.start < stack_end)
+    min_stack_start = eri_max (min_stack_start, group->map_range.end);
+
+  for (i = 0; i < n; ++i)
+    {
+      int32_t prot = eri_common_get_mem_prot (maps[i].prot);
+      if (eri_within (&maps[i].range, rsp))
+	{
+	  uint64_t stack_start = maps[i].range.start;
+
+	  struct eri_rlimit lim;
+	  eri_assert_syscall (prlimit64, 0, ERI_RLIMIT_STACK, 0, &lim);
+	  uint64_t max_size = eri_round_down (
+			eri_min (lim.max, group->init_user_stack_size),
+			group->page_size) ? : stack_end - stack_start;
+
+	  uint64_t size = eri_min (stack_end - min_stack_start, max_size);
+	  uint8_t *tmp = (void *) eri_assert_syscall (mmap, 0, size,
+		prot, ERI_MAP_PRIVATE | ERI_MAP_STACK | ERI_MAP_ANONYMOUS,
+		-1, 0);
+	  uint64_t data_size = stack_end - rsp;
+	  eri_memcpy (tmp + size - data_size, (void *) rsp, data_size);
+	  eri_assert_syscall (mremap, tmp, size, size,
+		ERI_MREMAP_MAYMOVE | ERI_MREMAP_FIXED, stack_end - size);
+
+	  uint64_t guard = stack_end - size - group->page_size;
+	  if (guard >= min_stack_start)
+	    eri_syscall (mmap, guard, group->page_size, 0,
+		ERI_MAP_PRIVATE | ERI_MAP_FIXED | ERI_MAP_ANONYMOUS, -1, 0);
+	}
+      else if (prot != maps[i].prot)
+	eri_assert_syscall (mprotect, maps[i].range.start,
+			    maps[i].range.end - maps[i].range.start, prot);
+    }
+
+  eri_assert_buf_fini (&buf);
+}
+
 static eri_noreturn void
 start_main (struct eri_live_thread *th)
 {
@@ -346,6 +416,9 @@ start_main (struct eri_live_thread *th)
   struct eri_live_thread_group *group = th->group;
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
+
+  fix_init_maps (group, regs->rsp);
+
   struct eri_init_record rec = {
     0, regs->rdx, regs->rsp, regs->rip,
     group->page_size, eri_assert_syscall (brk, 0),
@@ -354,6 +427,7 @@ start_main (struct eri_live_thread *th)
     group->map_range, group->atomic_table_size
   };
   eri_live_thread_recorder__rec_init (th->rec, &rec);
+
   start (th);
 }
 
@@ -1680,7 +1754,7 @@ DEFINE_SYSCALL (mmap)
 
   if (! len) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+  int32_t prot = eri_common_get_mem_prot (regs->rdx);
 
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
@@ -1713,7 +1787,7 @@ DEFINE_SYSCALL (mprotect)
 {
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
-  int32_t prot = eri_common_syscall_get_mem_prot (regs->rdx);
+  int32_t prot = eri_common_get_mem_prot (regs->rdx);
   struct eri_syscall_res_in_record rec = {
     eri_syscall (mprotect, regs->rdi, regs->rsi, prot), group->mm++
   };

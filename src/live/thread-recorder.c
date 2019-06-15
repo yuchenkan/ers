@@ -119,16 +119,15 @@ record_init_map (const struct eri_smaps_map *map, void *args)
   uint64_t end = map->range.end;
   int32_t prot = map->prot;
   const char *path = map->path;
-  uint8_t grows_down = map->grows_down; // TODO
+  eri_xassert (! map->grows_down, eri_info);
 
-  eri_llog (th_rec->log, "%s %lx %lx %u %u\n",
-	    path ? : "<>", start, end, prot, grows_down);
+  eri_llog (th_rec->log, "%s %lx %lx %u\n", path ? : "<>", start, end, prot);
 
-  uint8_t stack = a->rsp >= start && a->rsp <= end;
+  uint8_t stack = eri_within (&map->range, a->rsp);
 
   eri_file_t file = th_rec->file;
   struct eri_init_map_record rec = {
-    start, end, prot, grows_down, !! path
+    start, end, prot, 0, !! path
   };
   eri_serialize_mark (file, ERI_INIT_MAP_RECORD);
   eri_serialize_init_map_record (file, &rec);

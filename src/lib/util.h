@@ -245,10 +245,10 @@ struct eri_range
 };
 
 #define eri_within(range, val) \
-  ({ struct eri_range *_range = range; uint64_t _val = val;		\
+  ({ const struct eri_range *_range = range; uint64_t _val = val;	\
      _val >= _range->start && _val < _range->end; })
 #define eri_cross(range, val, len) \
-  ({ struct eri_range *_range = range;					\
+  ({ const struct eri_range *_range = range;				\
      uint64_t _val = val; uint64_t _len = len;				\
      _val + _len > _range->start && _val < _range->end;	})
 
