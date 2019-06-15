@@ -500,6 +500,18 @@ open_mmap_file (const char *path, uint64_t id)
   return eri_syscall_is_error (fd) ? -1 : fd;
 }
 
+static void
+update_mm_prot (struct thread *th, uint64_t start,
+		uint64_t len, int32_t prot)
+{
+  if (eri_enable_analyzer)
+    {
+      struct eri_range range = { start, start + len };
+      eri_analyzer__update_mm_prot (th->analyzer, range,
+				prot & (ERI_PROT_READ | ERI_PROT_WRITE));
+    }
+}
+
 static eri_noreturn void
 start_main (struct thread *th)
 {
@@ -542,19 +554,19 @@ start_main (struct thread *th)
       eri_unserialize_init_map_record (th->file, &rec);
       eri_log (th->log.file, "rec.start: %lx, rec.end: %lx, rec.prot: %u\n",
 	       rec.start, rec.end, rec.prot);
-      uint64_t size = rec.end - rec.start;
+      uint64_t len = rec.end - rec.start;
       if (rec.type == ERI_INIT_MAP_FILE)
 	{
 	  uint64_t id = eri_unserialize_uint64 (th->file);
 	  int32_t fd = open_mmap_file (th->group->path, id);
 	  eri_lassert (th->log.file, fd != -1);
-	  eri_assert_syscall (mmap, rec.start, size, rec.prot,
+	  eri_assert_syscall (mmap, rec.start, len, rec.prot,
 			      ERI_MAP_FIXED | ERI_MAP_PRIVATE, fd, 0);
 	  eri_assert_syscall (close, fd);
 	}
       else
 	{
-	  eri_assert_syscall (mmap, rec.start, size, rec.prot,
+	  eri_assert_syscall (mmap, rec.start, len, rec.prot,
 		ERI_MAP_FIXED | ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
 	  if (rec.type == ERI_INIT_MAP_STACK)
 	    {
@@ -566,6 +578,8 @@ start_main (struct thread *th)
 	  else
 	    eri_lassert (th->log.file, rec.type == ERI_INIT_MAP_EMPTY);
 	}
+
+      update_mm_prot (th, rec.start, len, rec.prot);
     }
 
   group->helper = eri_helper__start (group->pool, HELPER_STACK_SIZE, 0);
@@ -1572,6 +1586,8 @@ DEFINE_SYSCALL (mmap)
 
   if (err) diverged (th);
 
+  update_mm_prot (th, res, len, prot);
+
 out:
   syscall_mm_leave (th, res);
 }
@@ -1581,9 +1597,13 @@ DEFINE_SYSCALL (mprotect)
   uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
   if (eri_syscall_is_error (res)) goto out;
 
+  uint64_t addr = regs->rdi;
+  uint64_t len = regs->rsi;
   int32_t prot = eri_common_get_mem_prot (regs->rdx);
   if (eri_syscall_is_error (
-	eri_syscall (mprotect, regs->rdi, regs->rsi, prot))) diverged (th);
+		eri_syscall (mprotect, addr, len, prot))) diverged (th);
+
+  update_mm_prot (th, addr, len, prot);
 
 out:
   syscall_mm_leave (th, res);
@@ -1595,6 +1615,8 @@ DEFINE_SYSCALL (munmap)
   if (eri_syscall_is_error (res)) goto out;
 
   if (eri_syscall_is_error (eri_entry__syscall (entry))) diverged (th);
+
+  update_mm_prot (th, regs->rdi, regs->rsi, 0);
 
 out:
   syscall_mm_leave (th, res);
@@ -1918,9 +1940,9 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 {
   int32_t sig = info->sig;
   if (eri_enabled_debug ())
-    eri_log (th->log.file, "%u %lx %lx %lx %lx %lx\n", sig, info,
-	     ctx->mctx.rip, ctx->mctx.rip - th->group->map_range.start,
-	     ctx->mctx.r11, ctx->mctx.rflags);
+    eri_log_info (th->log.file, "%u %lx %lx %lx %lx %lx\n", sig, info,
+		  ctx->mctx.rip, ctx->mctx.rip - th->group->map_range.start,
+		  ctx->mctx.r11, ctx->mctx.rflags);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     info->sig = SIG_FETCH_ASYNC;

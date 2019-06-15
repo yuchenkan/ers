@@ -33,6 +33,21 @@ struct trans
   ERI_RBT_NODE_FIELDS (trans, struct trans)
 };
 
+struct mm_perm
+{
+  uint64_t start;
+  uint64_t end;
+  ERI_RBT_NODE_FIELDS (mm_perm, struct mm_perm)
+};
+
+struct mm_perms
+{
+  ERI_RBT_TREE_FIELDS (mm_perm, struct mm_perm)
+};
+
+ERI_DEFINE_RBTREE (static, mm_perm, struct mm_perms, struct mm_perm,
+		   uint64_t, eri_less_than)
+
 struct eri_analyzer_group
 {
   struct eri_mtpool *pool;
@@ -50,13 +65,17 @@ struct eri_analyzer_group
 
   struct eri_lock trans_lock;
   ERI_RBT_TREE_FIELDS (trans, struct trans)
+
+  struct eri_lock mm_prot_lock;
+  struct mm_perms read_perms;
+  struct mm_perms write_perms;
 };
 
 static uint8_t
 trans_key_less_than (struct eri_analyzer_group *g,
-		     struct trans_key *k1, struct trans_key *k2)
+		     struct trans_key *a, struct trans_key *b)
 {
-  return k1->rip == k2->rip ? k1->tf < k2->tf : k1->rip < k2->rip;
+  return a->rip == b->rip ? a->tf < b->tf : a->rip < b->rip;
 }
 
 ERI_DEFINE_RBTREE (static, trans, struct eri_analyzer_group,
@@ -101,6 +120,17 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   return group;
 }
 
+static void
+free_mm_perms (struct eri_mtpool *pool, struct mm_perms *perms)
+{
+  struct mm_perm *p, *np;
+  ERI_RBT_FOREACH_SAFE (mm_perm, perms, p, np)
+    {
+      mm_perm_rbt_remove (perms, p);
+      eri_assert_mtfree (pool, p);
+    }
+}
+
 void
 eri_analyzer_group__destroy (struct eri_analyzer_group *group)
 {
@@ -112,6 +142,8 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
       if (t->trans) eri_trans_destroy (group->pool, t->trans);
       eri_assert_mtfree (group->pool, t);
     }
+  free_mm_perms (group->pool, &group->read_perms);
+  free_mm_perms (group->pool, &group->write_perms);
   eri_assert_mtfree (group->pool, group);
 }
 
@@ -378,4 +410,76 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 
   if (args->handler (info, args->ctx, args->args)) release_active (al);
   else *mctx = saved;
+}
+
+static void
+update_mm_prot (struct eri_mtpool *pool,
+		struct mm_perms *perms, struct eri_range range, uint8_t p)
+{
+  if (p)
+    {
+      struct mm_perm *eq = mm_perm_rbt_get (perms, &range.start, ERI_RBT_EQ);
+      if (eq && eq->end == range.end) return;
+    }
+
+  struct mm_perm *lt = mm_perm_rbt_get (perms, &range.start, ERI_RBT_LT);
+  struct mm_perm *it = lt ? mm_perm_rbt_get_next (lt)
+			  : mm_perm_rbt_get_first (perms);
+
+  if (lt && lt->end > range.start)
+    {
+      if (p)
+	{
+	  mm_perm_rbt_remove (perms, lt);
+	  range.start = lt->start;
+	  eri_assert_mtfree (pool, lt);
+	}
+      else lt->end = range.start;
+    }
+
+  while (it && it->end < range.end)
+    {
+      struct mm_perm *tmp = mm_perm_rbt_get_next (it);
+      mm_perm_rbt_remove (perms, it);
+      eri_assert_mtfree (pool, it);
+      it = tmp;
+    }
+
+  if (it && it->start < range.end)
+    {
+      mm_perm_rbt_remove (perms, it);
+      if (p)
+	{
+	  range.end = it->end;
+	  eri_assert_mtfree (pool, it);
+	}
+      else
+	{
+	  it->start = range.end;
+	  mm_perm_rbt_insert (perms, it);
+	}
+    }
+
+  if (p)
+    {
+      it = eri_assert_mtmalloc (pool, sizeof *it);
+      it->start = range.start;
+      it->end = range.end;
+      mm_perm_rbt_insert (perms, it);
+    }
+}
+
+void
+eri_analyzer__update_mm_prot (struct eri_analyzer *al,
+			      struct eri_range range, int32_t prot)
+{
+  struct eri_analyzer_group *group = al->group;
+
+  /* XXX: already protected by the caller now */
+  eri_assert_lock (&group->mm_prot_lock);
+  update_mm_prot (group->pool, &group->read_perms, range,
+		  !! (prot & ERI_PROT_READ));
+  update_mm_prot (group->pool, &group->write_perms, range,
+		  !! (prot & ERI_PROT_WRITE));
+  eri_assert_unlock (&group->mm_prot_lock);
 }

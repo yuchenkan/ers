@@ -71,4 +71,7 @@ struct eri_analyzer__sig_handler_args
 void eri_analyzer__sig_handler (
 			struct eri_analyzer__sig_handler_args *args);
 
+void eri_analyzer__update_mm_prot (eri_analyzer_type *analyzer,
+				   struct eri_range range, int32_t prot);
+
 #endif
