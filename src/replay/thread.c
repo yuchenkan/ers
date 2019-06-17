@@ -799,9 +799,9 @@ DEFINE_SYSCALL (clone)
   version_activity_inc (&th->group->ver_act);
 
   if (flags & ERI_CLONE_PARENT_SETTID)
-    (void) eri_entry__copy_to_obj (entry, user_ptid, &res);
+    (void) eri_entry__copy_obj_to_user (entry, user_ptid, &res);
   if (flags & ERI_CLONE_CHILD_SETTID)
-    (void) eri_entry__copy_to_obj (entry, user_ctid, &res);
+    (void) eri_entry__copy_obj_to_user (entry, user_ctid, &res);
 
   struct eri_entry *centry = cth->entry;
   struct eri_registers *cregs = eri_entry__get_regs (centry);
@@ -1041,16 +1041,16 @@ SYSCALL_TO_IMPL (sched_getattr)
 SYSCALL_TO_IMPL (ioprio_set)
 SYSCALL_TO_IMPL (ioprio_get)
 
-DEFINE_SYSCALL (rt_sigprocmask)
+DEFINE_SYSCALL (rt_sigprocmask) // TODO
 {
   struct eri_sigset mask;
   struct eri_sigset old_mask = th->sig_mask;
   syscall_leave_if_error (th, 0,
-	eri_entry__syscall_get_rt_sigprocmask (entry, &old_mask, &mask));
+	eri_entry__syscall_get_rt_sigprocmask (entry, &old_mask, &mask, 0));
   if (eri_entry__syscall_rt_sigprocmask_mask (entry))
     eri_set_sig_mask (&th->sig_mask, &mask);
   syscall_leave (th, 0,
-	eri_entry__syscall_set_rt_sigprocmask (entry, &old_mask));
+	eri_entry__syscall_set_rt_sigprocmask (entry, &old_mask, 0));
 }
 
 DEFINE_SYSCALL (rt_sigaction)
@@ -1076,7 +1076,7 @@ DEFINE_SYSCALL (rt_sigaction)
 	  || ! try_unserialize (uint64, th, &act_ver))
 	diverged (th);
 
-      res = eri_entry__copy_to_obj (entry, user_old_act, &act)
+      res = eri_entry__copy_obj_to_user (entry, user_old_act, &act)
 		? 0 : ERI_EFAULT;
     }
   else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
@@ -1104,7 +1104,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   struct eri_stack st = {
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
-  if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask))
+  if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask, 0))
     check_exit (th);
   th->sig_alt_stack = st;
   eri_entry__leave (entry);
@@ -1325,8 +1325,8 @@ syscall_get_read_data (struct thread *th, void *dst,
 	  if (! readv)
 	    {
 	      uint8_t *user = (uint8_t *) dst + off + ser_off;
-	      if (eri_entry__copy_to (th->entry,
-				      user, buf, ser_size) != ser_size)
+	      if (eri_entry__copy_to_user (th->entry,
+					   user, buf, ser_size) != ser_size)
 		goto buf_out;
 	    }
 	  else
@@ -1336,7 +1336,8 @@ syscall_get_read_data (struct thread *th, void *dst,
 		{
 		  uint8_t *user = (uint8_t *) iov->base + iov_off;
 		  uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
-		  if (eri_entry__copy_to (th->entry, user, buf + o, s) != s)
+		  if (eri_entry__copy_to_user (th->entry,
+					       user, buf + o, s) != s)
 		    goto buf_out;
 
 		  o += s;

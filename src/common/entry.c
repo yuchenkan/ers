@@ -129,8 +129,8 @@ eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
 }
 
 uint64_t
-eri_entry__copy_from (struct eri_entry *entry,
-		      void *dst, const void *src, uint64_t size)
+eri_entry__copy_from_user (struct eri_entry *entry,
+			   void *dst, const void *src, uint64_t size)
 {
   uint64_t done;
   if (! eri_entry__test_access (entry, src, size, &done))
@@ -144,8 +144,8 @@ eri_entry__copy_from (struct eri_entry *entry,
 }
 
 uint64_t
-eri_entry__copy_to (struct eri_entry *entry,
-		    void *dst, const void *src, uint64_t size)
+eri_entry__copy_to_user (struct eri_entry *entry,
+			 void *dst, const void *src, uint64_t size)
 {
   uint64_t done;
   if (! eri_entry__test_access (entry, dst, size, &done))
@@ -158,27 +158,37 @@ eri_entry__copy_to (struct eri_entry *entry,
   return size;
 }
 
-#define copy_from_size(entry, dst, src, size) \
-  ({ uint64_t _size = size;						\
-     eri_entry__copy_from (entry, dst, src, _size) == _size; })
-#define copy_to_size(entry, dst, src, size) \
-  ({ uint64_t _size = size;						\
-     eri_entry__copy_to (entry, dst, src, _size) == _size; })
+static uint8_t
+copy_from_user (struct eri_entry *entry, void *dst, const void *src,
+		uint64_t size, uint64_t *done)
+{
+  uint64_t dummy;
+  return (*(done ? : &dummy) = eri_entry__copy_from_user (
+					entry, dst, src, size)) == size;
+}
 
-#define copy_from(entry, dst, src) \
-  ({ typeof (dst) _dst = dst;						\
-     copy_from_size (entry, _dst, src, sizeof *_dst); })
-#define copy_to(entry, dst, src) \
-  ({ typeof (dst) _dst = dst;						\
-     copy_to_size (entry, _dst, src, sizeof *_dst); })
-#define copy_from_fault(entry, dst, src) \
-  (copy_from (entry, dst, src) ? 0 : ERI_EFAULT)
-#define copy_to_fault(entry, dst, src) \
-  (copy_to (entry, dst, src) ? 0 : ERI_EFAULT)
+static uint8_t
+copy_to_user (struct eri_entry *entry, void *dst, const void *src,
+	      uint64_t size, uint64_t *done)
+{
+  uint64_t dummy;
+  return (*(done ? : &dummy) = eri_entry__copy_to_user (
+					entry, dst, src, size)) == size;
+}
+
+#define copy_obj_from_user(entry, dst, src, done) \
+  copy_from_user (entry, dst, src, sizeof *(dst), done)
+#define copy_obj_to_user(entry, dst, src, done) \
+  copy_to_user (entry, dst, src, sizeof *(dst), done)
+#define copy_obj_from_user_or_fault(entry, dst, src, done) \
+  (copy_obj_from_user (entry, dst, src, done) ? 0 : ERI_EFAULT)
+#define copy_obj_to_user_or_fault(entry, dst, src, done) \
+  (copy_obj_to_user (entry, dst, src, done) ? 0 : ERI_EFAULT)
 
 uint64_t
 eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
-			struct eri_sigset *old_mask, struct eri_sigset *mask)
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
+		uint64_t *done)
 {
   int32_t how = entry->_regs.rdi;
   const struct eri_sigset *user_mask = (void *) entry->_regs.rsi;
@@ -190,7 +200,8 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 
   if (! user_mask) return 0;
 
-  if (! copy_from (entry, mask, user_mask)) return ERI_EFAULT;
+  if (! copy_obj_from_user (entry, mask, user_mask, done))
+    return ERI_EFAULT;
 
   if (how == ERI_SIG_BLOCK) eri_sig_union_set (mask, old_mask);
   else if (how == ERI_SIG_UNBLOCK)
@@ -205,11 +216,12 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 
 uint64_t
 eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
-				       struct eri_sigset *old_mask)
+		struct eri_sigset *old_mask, uint64_t *done)
 {
   struct eri_sigset *user_old_mask = (void *) entry->_regs.rdx;
   if (! user_old_mask) return 0;
-  return copy_to_fault (entry, user_old_mask, old_mask);
+
+  return copy_obj_to_user_or_fault (entry, user_old_mask, old_mask, done);
 }
 
 static uint8_t
@@ -269,7 +281,8 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
   if (user_stack)
     {
       struct eri_stack new_stack;
-      if (! copy_from (entry, &new_stack, user_stack)) return ERI_EFAULT;
+      if (! copy_obj_from_user (entry, &new_stack, user_stack, 0))
+	return ERI_EFAULT;
 
       uint64_t res = set_sig_alt_stack (stack, rsp, &new_stack);
       if (eri_syscall_is_error (res)) return res;
@@ -277,18 +290,26 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 
   if (! user_old_stack) return 0;
 
-  return copy_to_fault (entry, user_old_stack, &old_stack);
+  return copy_obj_to_user_or_fault (entry, user_old_stack, &old_stack, 0);
 }
 
 uint8_t
 eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
-			struct eri_stack *stack, struct eri_sigset *mask)
+		struct eri_stack *stack, struct eri_sigset *mask,
+		struct eri_entry__syscall_rt_sigreturn_user_accesses *acc)
 {
   uint64_t rsp = entry->_regs.rsp;
   const struct eri_sigframe *user_frame = (void *) (rsp - 8);
 
+  struct eri_entry__syscall_rt_sigreturn_user_accesses dummy;
+  acc = acc ? : &dummy;
+
+  acc->frame = (uint64_t) user_frame;
+  acc->fpstate = 0;
+
   struct eri_sigframe frame;
-  if (! copy_from (entry, &frame, user_frame)) return 0;
+  if (! copy_obj_from_user (entry, &frame, user_frame, &acc->frame_done))
+    return 0;
 
   uint8_t buf[ERI_MINSIGSTKSZ];
   uint64_t top = (uint64_t) buf + sizeof buf;
@@ -296,15 +317,26 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
   struct eri_ucontext *ctx = &frame.ctx;
   if (ctx->mctx.fpstate)
     {
-      const struct eri_fpstate *user_fpstate = ctx->mctx.fpstate;
-      struct eri_fpstate_base fpstate_base;
-      if (! copy_from (entry, &fpstate_base, user_fpstate)) return 0;
+      const struct eri_fpstate *user_fps = ctx->mctx.fpstate;
+      acc->fpstate = (uint64_t) user_fps;
 
-      uint64_t fpstate_size = fpstate_base.size;
-      top = fpstate_size + 64 + sizeof frame + 16 + 8 >= ERI_MINSIGSTKSZ
-		? 0 : eri_round_down (top - fpstate_size, 64);
-      if (! copy_from_size (entry, (void *) top, user_fpstate, fpstate_size))
+      struct eri_fpstate_base fps_base;
+      if (! copy_obj_from_user (entry, &fps_base,
+				user_fps, &acc->fpstate_done))
 	return 0;
+
+      uint64_t fps_size = fps_base.size;
+      top = fps_size + 64 + sizeof frame + 16 + 8 >= ERI_MINSIGSTKSZ
+		? 0 : eri_round_down (top - fps_size, 64);
+
+      eri_memcpy ((void *) top, &fps_base, sizeof fps_base);
+      user_fps += sizeof fps_base;
+      fps_size -= sizeof fps_base;
+
+      uint8_t ok = copy_from_user (entry, (uint8_t *) top + sizeof fps_base,
+				   user_fps, fps_size, &acc->fpstate_done);
+      acc->fpstate_done += sizeof fps_base;
+      if (! ok) return 0;
 
       ctx->mctx.fpstate = (void *) top;
     }
@@ -338,9 +370,10 @@ eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
 
   if (size != ERI_SIG_SETSIZE) return ERI_EINVAL;
 
-  if (! copy_from (entry, set, user_set)) return ERI_EFAULT;
+  if (! copy_obj_from_user (entry, set, user_set, 0)) return ERI_EFAULT;
 
-  return user_timeout ? copy_from_fault (entry, timeout, user_timeout) : 0;
+  return user_timeout
+	? copy_obj_from_user_or_fault (entry, timeout, user_timeout, 0) : 0;
 }
 
 uint64_t
@@ -369,7 +402,7 @@ eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
   uint64_t iov_size = sizeof **iov * *iov_cnt;
   *iov = eri_assert_mtmalloc (pool, iov_size);
 
-  if (eri_entry__copy_from (entry, *iov, user_iov, iov_size) != iov_size)
+  if (! copy_from_user (entry, *iov, user_iov, iov_size, 0))
     {
       eri_assert_mtfree (pool, *iov);
       return ERI_EFAULT;
@@ -402,10 +435,10 @@ eri_entry__setup_user_frame (
 
   if (entry->_ctx.mctx.fpstate)
     {
-      uint32_t fpstate_size = entry->_fpstate.base.size;
-      rsp = eri_round_down (rsp - fpstate_size, 64);
-      if (! copy_to_size (entry, (void *) rsp,
-			  &entry->_fpstate, fpstate_size)) return 0;
+      uint32_t fps_size = entry->_fpstate.base.size;
+      rsp = eri_round_down (rsp - fps_size, 64);
+      if (! copy_to_user (entry, (void *) rsp,
+			  &entry->_fpstate, fps_size, 0)) return 0;
       frame.ctx.mctx.fpstate = (void *) rsp;
     }
 
@@ -420,7 +453,7 @@ eri_entry__setup_user_frame (
   regs->rip = (uint64_t) act->act;
   regs->rflags &= ~(ERI_RFLAGS_TF | ERI_RFLAGS_DF | ERI_RFLAGS_RF);
 
-  return copy_to (entry, user_frame, &frame) ? user_frame : 0;
+  return copy_obj_to_user (entry, user_frame, &frame, 0) ? user_frame : 0;
 }
 
 void

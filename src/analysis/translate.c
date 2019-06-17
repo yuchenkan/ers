@@ -13,10 +13,11 @@
 #include <common/debug.h>
 #include <common/common.h>
 
+#include <analysis/common.h>
+#include <analysis/translate.h>
+
 #include <xed-util.h>
 #include <xed-interface.h>
-
-#include <analysis/translate.h>
 
 void eri_trans_init_translate (void) { xed_tables_init (); }
 
@@ -1311,19 +1312,26 @@ ir_do_decode (xed_decoded_inst_t *dec, uint8_t *bytes, uint8_t len)
 }
 
 static uint8_t
+si_map_err (const struct eri_siginfo *info)
+{
+  return info->sig == ERI_SIGSEGV
+	  && (info->code == ERI_SEGV_MAPERR || info->code == ERI_SEGV_ACCERR);
+}
+
+static uint8_t
 ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 	   struct ir_node *node, uint8_t len)
 {
   uint64_t rip = ir_get_rip (dag);
 
-  uint8_t inst_len = 0;
+  uint8_t inst_len;
 
   uint8_t bytes[INST_BYTES];
   struct eri_siginfo info;
   if (! args->copy (bytes, (void *) rip, len, &info, args->copy_args))
     {
-      /* inst_len = 0 is ok as fault addr can be got from siginfo */
-      /* XXX: check ! si_map_err, e.g. hardware memory error */
+      if (! si_map_err (&info)) eri_assert_unreachable ();
+      inst_len = info.fault.addr + 1 - rip;
       ir_err_end (dag, node, &info, 0, 0);
       goto done;
     }
@@ -4025,13 +4033,6 @@ collect_accesses (eri_file_t log, struct eri_buf *buf, uint8_t read,
   eri_lassert (log, c == acc->conds_count);
 }
 
-static uint8_t
-si_map_err (const struct eri_siginfo *info)
-{
-  return info->sig == ERI_SIGSEGV
-	  && (info->code == ERI_SEGV_MAPERR || info->code == ERI_SEGV_ACCERR);
-}
-
 uint8_t
 eri_trans_leave_active (struct eri_trans_leave_active_args *args,
 			struct eri_siginfo *info)
@@ -4058,10 +4059,6 @@ eri_trans_leave_active (struct eri_trans_leave_active_args *args,
   collect_accesses (log, args->accesses, 1, &tr->reads,
 		    layout.reads, layout.read_conds);
   append_access (args->accesses, tr->rip, tr->len, ERI_ACCESS_READ);
-  if (si_map_err (&tr->sig_info))
-    append_access (args->accesses, tr->sig_info.fault.addr, 1,
-		   ERI_ACCESS_READ_MAP_ERR);
-
   collect_accesses (log, args->accesses, 0, &tr->writes,
 		    layout.writes, layout.write_conds);
 
@@ -4096,18 +4093,18 @@ sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
 		const struct eri_siginfo *info, uint8_t read,
 		struct accesses *acc, uint64_t *addrs, uint8_t *conds)
 {
+  uint8_t type = read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE;
+
   uint64_t i;
   for (i = 0; i < acc->num; ++i)
     {
       struct trace_access *t = acc->traces + i;
       if (t->rip_off <= rip_off
 	  && (! acc->conds[t->idx] || conds[t->cond_idx]))
-	append_access (buf, addrs[t->idx], acc->sizes[t->idx],
-		       read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE);
-      if (t->rip_off - t->inst_len == rip_off && si_map_err (info))
-	append_access (buf, info->fault.addr, 1,
-		       read ? ERI_ACCESS_READ_MAP_ERR
-			    : ERI_ACCESS_WRITE_MAP_ERR);
+	append_access (buf, addrs[t->idx], acc->sizes[t->idx], type);
+      if (si_map_err (info) && t->rip_off - t->inst_len == rip_off)
+	append_access (buf, addrs[t->idx],
+		       info->fault.addr + 1 - addrs[t->idx], type);
     }
 }
 

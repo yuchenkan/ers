@@ -194,14 +194,16 @@ eri_returns_twice uint8_t _eri_entry__test_access (
 #define eri_entry__reset_test_access(entry) \
   do { eri_barrier (); (entry)->_test_access = 0; } while (0)
 
-uint64_t eri_entry__copy_from (struct eri_entry *entry,
-			       void *dst, const void *src, uint64_t size);
-uint64_t eri_entry__copy_to (struct eri_entry *entry,
-			     void *dst, const void *src, uint64_t size);
-#define eri_entry__copy_from_obj(entry, dst, src) \
-  (eri_entry__copy_from (entry, dst, src, sizeof *(dst)) == sizeof *(dst))
-#define eri_entry__copy_to_obj(entry, dst, src) \
-  (eri_entry__copy_to (entry, dst, src, sizeof *(dst)) == sizeof *(dst))
+uint64_t eri_entry__copy_from_user (struct eri_entry *entry,
+			void *dst, const void *src, uint64_t size);
+uint64_t eri_entry__copy_to_user (struct eri_entry *entry,
+			void *dst, const void *src, uint64_t size);
+#define eri_entry__copy_obj_from_user(entry, dst, src) \
+  (eri_entry__copy_from_user (entry, dst, src,				\
+				sizeof *(dst)) == sizeof *(dst))
+#define eri_entry__copy_obj_to_user(entry, dst, src) \
+  (eri_entry__copy_to_user (entry, dst, src,				\
+			    sizeof *(dst)) == sizeof *(dst))
 
 #define eri_entry__syscall(entry) \
   ({ struct eri_sys_syscall_args _args;					\
@@ -217,15 +219,25 @@ uint64_t eri_entry__sys_syscall_interruptible (
      eri_entry__sys_syscall_interruptible (_entry, &_args); })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
-			struct eri_sigset *old_mask, struct eri_sigset *mask);
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
+		uint64_t *done);
 #define eri_entry__syscall_rt_sigprocmask_mask(entry) \
   (!! (entry)->_regs.rsi)
-uint64_t eri_entry__syscall_set_rt_sigprocmask (
-		struct eri_entry *entry, struct eri_sigset *old_mask);
+uint64_t eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
+		struct eri_sigset *old_mask, uint64_t *done);
 uint64_t eri_entry__syscall_sigaltstack (
 		struct eri_entry *entry, struct eri_stack *stack);
+
+struct eri_entry__syscall_rt_sigreturn_user_accesses
+{
+  uint64_t frame, frame_done;
+  uint64_t fpstate, fpstate_done;
+};
+
 uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
-			struct eri_stack *stack, struct eri_sigset *mask);
+		struct eri_stack *stack, struct eri_sigset *mask,
+		struct eri_entry__syscall_rt_sigreturn_user_accesses *acc);
+
 #define eri_entry__syscall_validate_rt_sigpending(entry) \
   ((entry)->_regs.rsi > ERI_SIG_SETSIZE ? ERI_EINVAL : 0)
 uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,

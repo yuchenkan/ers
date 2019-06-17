@@ -61,42 +61,6 @@ void eri_trans_destroy_active (struct eri_mtpool *pool,
 
 eri_noreturn void eri_trans_enter_active (struct eri_trans_active *act);
 
-#define ERI_FOREACH_ACCESS_TYPE(p, ...) \
-  p (READ, ##__VA_ARGS__)						\
-  p (READ_MAP_ERR, ##__VA_ARGS__)					\
-  p (WRITE, ##__VA_ARGS__)						\
-  p (WRITE_MAP_ERR, ##__VA_ARGS__)
-#if 0
-  p (EXEC, ##__VA_ARGS__)
-  p (EXEC_MAP_ERR, ##__VA_ARGS__)
-#endif
-
-enum
-{
-#define _ERI_ACCESS_TYPE(a)	ERI_PASTE (ERI_ACCESS_, a),
-  ERI_FOREACH_ACCESS_TYPE (_ERI_ACCESS_TYPE)
-};
-
-static eri_unused const char *
-eri_access_type_str (uint8_t type)
-{
-  switch (type)
-    {
-#define _ERI_CASE_ACCESS_TYPE_STR(a) \
-  case ERI_PASTE (ERI_ACCESS_, a):					\
-    return ERI_STR (ERI_PASTE (ERI_ACCESS_, a));
-    ERI_FOREACH_ACCESS_TYPE (_ERI_CASE_ACCESS_TYPE_STR)
-    default: eri_assert_unreachable ();
-    }
-}
-
-struct eri_access
-{
-  uint64_t addr;
-  uint64_t size;
-  uint8_t type;
-};
-
 struct eri_trans_leave_active_args
 {
   struct eri_trans_active *act;

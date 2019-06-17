@@ -11,6 +11,7 @@
 #include <common/common.h>
 #include <common/entry.h>
 
+#include <analysis/common.h>
 #include <analysis/analyzer.h>
 #include <analysis/translate.h>
 
@@ -195,7 +196,8 @@ exec_copy_user (void *dst, const void *src, uint64_t size,
   /* XXX: PROT_EXEC */
   struct eri_analyzer *al = args;
   eri_atomic_store (&al->sig_info, info, 1);
-  if (eri_entry__copy_from (al->entry, dst, src, size) != size) return 0;
+  if (eri_entry__copy_from_user (al->entry, dst, src, size) != size)
+    return 0;
   eri_atomic_store (&al->sig_info, 0, 1);
   return 1;
 }
