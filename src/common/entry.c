@@ -8,6 +8,7 @@
 #include <lib/malloc.h>
 
 #include <common/debug.h>
+#include <common/common.h>
 #include <common/entry.h>
 #include <common/entry-local.h>
 
@@ -128,6 +129,21 @@ eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
   eri_entry__do_leave (entry);
 }
 
+static void
+init_acc_opt (struct eri_access *acc, uint64_t n)
+{
+  if (! acc) return;
+
+  uint64_t i;
+  for (i = 0; i < n; ++i) acc[i].type = ERI_ACCESS_NONE;
+}
+
+static struct eri_access *
+fetch_inc_acc_opt (struct eri_access **acc)
+{
+  return *acc ? (*acc)++ : 0;
+}
+
 uint64_t
 eri_entry__copy_from_user (struct eri_entry *entry,
 			   void *dst, const void *src, uint64_t size)
@@ -160,36 +176,38 @@ eri_entry__copy_to_user (struct eri_entry *entry,
 
 static uint8_t
 copy_from_user (struct eri_entry *entry, void *dst, const void *src,
-		uint64_t size, uint64_t *done)
+		uint64_t size, struct eri_access *acc)
 {
-  uint64_t dummy;
-  return (*(done ? : &dummy) = eri_entry__copy_from_user (
-					entry, dst, src, size)) == size;
+  uint64_t done = eri_entry__copy_from_user (entry, dst, src, size);
+  if (acc) eri_set_read (acc, (uint64_t) src, eri_min (done + 1, size));
+  return done == size;
 }
 
 static uint8_t
 copy_to_user (struct eri_entry *entry, void *dst, const void *src,
-	      uint64_t size, uint64_t *done)
+	      uint64_t size, struct eri_access *acc)
 {
-  uint64_t dummy;
-  return (*(done ? : &dummy) = eri_entry__copy_to_user (
-					entry, dst, src, size)) == size;
+  uint64_t done = eri_entry__copy_to_user (entry, dst, src, size);
+  if (acc) eri_set_write (acc, (uint64_t) dst, eri_min (done + 1, size));
+  return done == size;
 }
 
-#define copy_obj_from_user(entry, dst, src, done) \
-  copy_from_user (entry, dst, src, sizeof *(dst), done)
-#define copy_obj_to_user(entry, dst, src, done) \
-  copy_to_user (entry, dst, src, sizeof *(dst), done)
-#define copy_obj_from_user_or_fault(entry, dst, src, done) \
-  (copy_obj_from_user (entry, dst, src, done) ? 0 : ERI_EFAULT)
-#define copy_obj_to_user_or_fault(entry, dst, src, done) \
-  (copy_obj_to_user (entry, dst, src, done) ? 0 : ERI_EFAULT)
+#define copy_obj_from_user(entry, dst, src, acc) \
+  copy_from_user (entry, dst, src, sizeof *(dst), acc)
+#define copy_obj_to_user(entry, dst, src, acc) \
+  copy_to_user (entry, dst, src, sizeof *(dst), acc)
+#define copy_obj_from_user_or_fault(entry, dst, src, acc) \
+  (copy_obj_from_user (entry, dst, src, acc) ? 0 : ERI_EFAULT)
+#define copy_obj_to_user_or_fault(entry, dst, src, acc) \
+  (copy_obj_to_user (entry, dst, src, acc) ? 0 : ERI_EFAULT)
 
 uint64_t
 eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 		const struct eri_sigset *old_mask, struct eri_sigset *mask,
-		uint64_t *done)
+		struct eri_access *acc)
 {
+  init_acc_opt (acc, 1);
+
   int32_t how = entry->_regs.rdi;
   const struct eri_sigset *user_mask = (void *) entry->_regs.rsi;
   uint64_t sig_set_size = entry->_regs.r10;
@@ -200,7 +218,7 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 
   if (! user_mask) return 0;
 
-  if (! copy_obj_from_user (entry, mask, user_mask, done))
+  if (! copy_obj_from_user (entry, mask, user_mask, acc))
     return ERI_EFAULT;
 
   if (how == ERI_SIG_BLOCK) eri_sig_union_set (mask, old_mask);
@@ -216,12 +234,14 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 
 uint64_t
 eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
-		struct eri_sigset *old_mask, uint64_t *done)
+		struct eri_sigset *old_mask, struct eri_access *acc)
 {
+  init_acc_opt (acc, 1);
+
   struct eri_sigset *user_old_mask = (void *) entry->_regs.rdx;
   if (! user_old_mask) return 0;
 
-  return copy_obj_to_user_or_fault (entry, user_old_mask, old_mask, done);
+  return copy_obj_to_user_or_fault (entry, user_old_mask, old_mask, acc);
 }
 
 static uint8_t
@@ -296,33 +316,29 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 uint8_t
 eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 		struct eri_stack *stack, struct eri_sigset *mask,
-		struct eri_entry__syscall_rt_sigreturn_user_accesses *acc)
+		struct eri_access *acc)
 {
+  init_acc_opt (acc, ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES);
+
   uint64_t rsp = entry->_regs.rsp;
   const struct eri_sigframe *user_frame = (void *) (rsp - 8);
 
-  struct eri_entry__syscall_rt_sigreturn_user_accesses dummy;
-  acc = acc ? : &dummy;
-
-  acc->frame = (uint64_t) user_frame;
-  acc->fpstate = 0;
-
   struct eri_sigframe frame;
-  if (! copy_obj_from_user (entry, &frame, user_frame, &acc->frame_done))
+  if (! copy_obj_from_user (entry, &frame, user_frame,
+			    fetch_inc_acc_opt (&acc)))
     return 0;
 
-  uint8_t buf[ERI_MINSIGSTKSZ];
+  uint8_t buf[ERI_MINSIGSTKSZ]; /* XXX */
   uint64_t top = (uint64_t) buf + sizeof buf;
 
   struct eri_ucontext *ctx = &frame.ctx;
   if (ctx->mctx.fpstate)
     {
-      const struct eri_fpstate *user_fps = ctx->mctx.fpstate;
-      acc->fpstate = (uint64_t) user_fps;
+      const struct eri_fpstate_base *user_fps = (void *) ctx->mctx.fpstate;
 
       struct eri_fpstate_base fps_base;
-      if (! copy_obj_from_user (entry, &fps_base,
-				user_fps, &acc->fpstate_done))
+      if (! copy_obj_from_user (entry, &fps_base, user_fps,
+				fetch_inc_acc_opt (&acc)))
 	return 0;
 
       uint64_t fps_size = fps_base.size;
@@ -330,13 +346,8 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 		? 0 : eri_round_down (top - fps_size, 64);
 
       eri_memcpy ((void *) top, &fps_base, sizeof fps_base);
-      user_fps += sizeof fps_base;
-      fps_size -= sizeof fps_base;
-
-      uint8_t ok = copy_from_user (entry, (uint8_t *) top + sizeof fps_base,
-				   user_fps, fps_size, &acc->fpstate_done);
-      acc->fpstate_done += sizeof fps_base;
-      if (! ok) return 0;
+      if (! copy_from_user (entry, (uint8_t *) top + sizeof fps_base,
+		user_fps + 1, fps_size - sizeof fps_base, acc)) return 0;
 
       ctx->mctx.fpstate = (void *) top;
     }

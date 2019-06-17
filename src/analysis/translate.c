@@ -13,7 +13,6 @@
 #include <common/debug.h>
 #include <common/common.h>
 
-#include <analysis/common.h>
 #include <analysis/translate.h>
 
 #include <xed-util.h>

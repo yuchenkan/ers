@@ -60,6 +60,8 @@
   ({ uint16_t _code = code;						\
      _code >= ERI_OP_ATOMIC_LOAD && _code <= ERI_OP_ATOMIC_CMPXCHG; })
 
+struct eri_access;
+
 struct eri_entry
 {
   uint64_t _zero; /* so that %gs:0 is always zero */
@@ -220,24 +222,17 @@ uint64_t eri_entry__sys_syscall_interruptible (
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 		const struct eri_sigset *old_mask, struct eri_sigset *mask,
-		uint64_t *done);
+		struct eri_access *acc);
 #define eri_entry__syscall_rt_sigprocmask_mask(entry) \
   (!! (entry)->_regs.rsi)
 uint64_t eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
-		struct eri_sigset *old_mask, uint64_t *done);
+		struct eri_sigset *old_mask, struct eri_access *acc);
 uint64_t eri_entry__syscall_sigaltstack (
 		struct eri_entry *entry, struct eri_stack *stack);
-
-struct eri_entry__syscall_rt_sigreturn_user_accesses
-{
-  uint64_t frame, frame_done;
-  uint64_t fpstate, fpstate_done;
-};
-
+#define ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES	3
 uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 		struct eri_stack *stack, struct eri_sigset *mask,
-		struct eri_entry__syscall_rt_sigreturn_user_accesses *acc);
-
+		struct eri_access *acc);
 #define eri_entry__syscall_validate_rt_sigpending(entry) \
   ((entry)->_regs.rsi > ERI_SIG_SETSIZE ? ERI_EINVAL : 0)
 uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,

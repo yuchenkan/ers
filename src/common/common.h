@@ -168,4 +168,58 @@ void eri_init_foreach_map (
 	struct eri_mtpool *pool, const struct eri_range *map,
 	void (*proc) (const struct eri_smaps_map *, void *), void *args);
 
+#define ERI_FOREACH_ACCESS_TYPE(p, ...) \
+  p (NONE, ##__VA_ARGS__)						\
+  p (READ, ##__VA_ARGS__)						\
+  p (WRITE, ##__VA_ARGS__)						\
+  p (PROT_READ, ##__VA_ARGS__)						\
+  p (PROT_WRITE, ##__VA_ARGS__)
+
+#if 0
+  p (EXEC, ##__VA_ARGS__)						\
+  p (READ_MAP_ERR, ##__VA_ARGS__)					\
+  p (WRITE_MAP_ERR, ##__VA_ARGS__)					\
+  p (EXEC_MAP_ERR, ##__VA_ARGS__)
+#endif
+
+enum
+{
+#define _ERI_ACCESS_TYPE(a)	ERI_PASTE (ERI_ACCESS_, a),
+  ERI_FOREACH_ACCESS_TYPE (_ERI_ACCESS_TYPE)
+};
+
+static eri_unused const char *
+eri_access_type_str (uint8_t type)
+{
+  switch (type)
+    {
+#define _ERI_CASE_ACCESS_TYPE_STR(a) \
+  case ERI_PASTE (ERI_ACCESS_, a):					\
+    return ERI_STR (ERI_PASTE (ERI_ACCESS_, a));
+    ERI_FOREACH_ACCESS_TYPE (_ERI_CASE_ACCESS_TYPE_STR)
+    default: eri_assert_unreachable ();
+    }
+}
+
+struct eri_access
+{
+  uint64_t addr;
+  uint64_t size;
+  uint8_t type;
+};
+
+static eri_unused void
+eri_set_access (struct eri_access *acc, uint64_t addr,
+		uint64_t size, uint8_t type)
+{
+  acc->addr = addr;
+  acc->size = size;
+  acc->type = type;
+}
+
+#define eri_set_read(acc, addr, size) \
+  eri_set_access (acc, addr, size, ERI_ACCESS_READ)
+#define eri_set_write(acc, addr, size) \
+  eri_set_access (acc, addr, size, ERI_ACCESS_WRITE)
+
 #endif
