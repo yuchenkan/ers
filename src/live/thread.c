@@ -711,9 +711,9 @@ DEFINE_SYSCALL (clone)
   if (! eri_syscall_is_error (res))
     {
       if (flags & ERI_CLONE_PARENT_SETTID)
-	(void) eri_entry__copy_obj_to_user (entry, user_ptid, &res);
+	(void) eri_entry__copy_obj_to_user (entry, user_ptid, &res, 0);
       if (flags & ERI_CLONE_CHILD_SETTID)
-	(void) eri_entry__copy_obj_to_user (entry, user_ctid, &res);
+	(void) eri_entry__copy_obj_to_user (entry, user_ctid, &res, 0);
       rec.id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
     }
@@ -940,7 +940,7 @@ DEFINE_SYSCALL (rt_sigprocmask)
 	eri_entry__syscall_set_rt_sigprocmask (entry, &old_mask, 0));
 }
 
-DEFINE_SYSCALL (rt_sigaction) // TODO
+DEFINE_SYSCALL (rt_sigaction)
 {
   int32_t sig = regs->rdi;
   const struct eri_sigaction *user_act = (void *) regs->rsi;
@@ -953,7 +953,7 @@ DEFINE_SYSCALL (rt_sigaction) // TODO
     eri_entry__syscall_leave (entry, 0);
 
   struct eri_sigaction act;
-  if (user_act && ! eri_entry__copy_obj_from_user (entry, &act, user_act))
+  if (user_act && ! eri_entry__copy_obj_from_user (entry, &act, user_act, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_sig_act old_act;
@@ -964,7 +964,8 @@ DEFINE_SYSCALL (rt_sigaction) // TODO
     syscall_restart (entry);
 
   uint64_t res = user_old_act
-	&& ! eri_entry__copy_obj_to_user (entry, user_old_act, &old_act.act)
+	&& ! eri_entry__copy_obj_to_user (entry, user_old_act,
+					  &old_act.act, 0)
 	? ERI_EFAULT : 0;
 
   if (user_old_act)
@@ -977,13 +978,13 @@ DEFINE_SYSCALL (rt_sigaction) // TODO
   eri_entry__syscall_leave (entry, res);
 }
 
-DEFINE_SYSCALL (sigaltstack) // TODO
+DEFINE_SYSCALL (sigaltstack)
 {
   eri_entry__syscall_leave (entry,
-	eri_entry__syscall_sigaltstack (entry, &th->sig_alt_stack));
+	eri_entry__syscall_sigaltstack (entry, &th->sig_alt_stack, 0));
 }
 
-DEFINE_SYSCALL (rt_sigreturn) // TODO
+DEFINE_SYSCALL (rt_sigreturn)
 {
   if (! eri_live_signal_thread__sig_mask_all (sig_th))
     syscall_restart (entry);
@@ -1014,8 +1015,8 @@ DEFINE_SYSCALL (rt_sigpending) // TODO
   rec.result = eri_live_signal_thread__syscall (sig_th, &args);
 
   if (! eri_syscall_is_error (rec.result)
-      && eri_entry__copy_to_user (entry, (void *) regs->rdi,
-			&rec.set, ERI_SIG_SETSIZE) != ERI_SIG_SETSIZE)
+      && ! eri_entry__copy_to_user (entry, (void *) regs->rdi,
+				    &rec.set, ERI_SIG_SETSIZE, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   if (eri_syscall_is_error (rec.result)) goto record;
@@ -1045,7 +1046,7 @@ DEFINE_SYSCALL (rt_sigsuspend) // TODO
     eri_entry__syscall_leave (entry, ERI_EINVAL);
 
   struct eri_sigset mask;
-  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask))
+  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &mask))
@@ -1106,7 +1107,7 @@ DEFINE_SYSCALL (rt_sigtimedwait) // TODO
   eri_live_signal_thread__sig_reset (sig_th, 0);
 
   if (user_info
-      && ! eri_entry__copy_obj_to_user (entry, user_info, &rec.info))
+      && ! eri_entry__copy_obj_to_user (entry, user_info, &rec.info, 0))
     rec.result = ERI_EFAULT;
 
 record:
@@ -1185,7 +1186,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
 		eri_entry__syscall_get_signalfd (entry, &flags));
 
   struct eri_sigset mask;
-  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask))
+  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
     eri_entry__syscall_leave (entry, ERI_EINVAL); /* by kernel */
 
   struct eri_syscall_res_io_record rec = { io_out (th) };

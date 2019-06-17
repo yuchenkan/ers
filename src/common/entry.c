@@ -144,54 +144,44 @@ fetch_inc_acc_opt (struct eri_access **acc)
   return *acc ? (*acc)++ : 0;
 }
 
-uint64_t
-eri_entry__copy_from_user (struct eri_entry *entry,
-			   void *dst, const void *src, uint64_t size)
+uint8_t
+eri_entry__copy_from_user (struct eri_entry *entry, void *dst,
+		const void *src, uint64_t size, struct eri_access *acc)
 {
-  uint64_t done;
+  uint64_t done = size;
   if (! eri_entry__test_access (entry, src, size, &done))
     {
       eri_assert (done != size);
-      return done;
+      goto out;
     }
   eri_memcpy (dst, src, size);
   eri_entry__reset_test_access (entry);
-  return size;
-}
 
-uint64_t
-eri_entry__copy_to_user (struct eri_entry *entry,
-			 void *dst, const void *src, uint64_t size)
-{
-  uint64_t done;
-  if (! eri_entry__test_access (entry, dst, size, &done))
-    {
-      eri_assert (done != size);
-      return done;
-    }
-  eri_memcpy (dst, src, size);
-  eri_entry__reset_test_access (entry);
-  return size;
-}
-
-static uint8_t
-copy_from_user (struct eri_entry *entry, void *dst, const void *src,
-		uint64_t size, struct eri_access *acc)
-{
-  uint64_t done = eri_entry__copy_from_user (entry, dst, src, size);
+out:
   if (acc) eri_set_read (acc, (uint64_t) src, eri_min (done + 1, size));
   return done == size;
 }
 
-static uint8_t
-copy_to_user (struct eri_entry *entry, void *dst, const void *src,
-	      uint64_t size, struct eri_access *acc)
+uint8_t
+eri_entry__copy_to_user (struct eri_entry *entry, void *dst,
+		const void *src, uint64_t size, struct eri_access *acc)
 {
-  uint64_t done = eri_entry__copy_to_user (entry, dst, src, size);
+  uint64_t done = size;
+  if (! eri_entry__test_access (entry, dst, size, &done))
+    {
+      eri_assert (done != size);
+      goto out;
+    }
+  eri_memcpy (dst, src, size);
+  eri_entry__reset_test_access (entry);
+
+out:
   if (acc) eri_set_write (acc, (uint64_t) dst, eri_min (done + 1, size));
   return done == size;
 }
 
+#define copy_from_user	eri_entry__copy_from_user
+#define copy_to_user	eri_entry__copy_to_user
 #define copy_obj_from_user(entry, dst, src, acc) \
   copy_from_user (entry, dst, src, sizeof *(dst), acc)
 #define copy_obj_to_user(entry, dst, src, acc) \
@@ -283,8 +273,10 @@ set_sig_alt_stack (struct eri_stack *stack, uint64_t rsp,
 
 uint64_t
 eri_entry__syscall_sigaltstack (struct eri_entry *entry,
-				struct eri_stack *stack)
+		struct eri_stack *stack, struct eri_access *acc)
 {
+  init_acc_opt (acc, ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK);
+
   const struct eri_stack *user_stack = (void *) entry->_regs.rdi;
   struct eri_stack *user_old_stack = (void *) entry->_regs.rsi;
   uint64_t rsp = entry->_regs.rsp;
@@ -301,7 +293,8 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
   if (user_stack)
     {
       struct eri_stack new_stack;
-      if (! copy_obj_from_user (entry, &new_stack, user_stack, 0))
+      if (! copy_obj_from_user (entry, &new_stack, user_stack,
+				fetch_inc_acc_opt (&acc)))
 	return ERI_EFAULT;
 
       uint64_t res = set_sig_alt_stack (stack, rsp, &new_stack);
@@ -310,7 +303,7 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 
   if (! user_old_stack) return 0;
 
-  return copy_obj_to_user_or_fault (entry, user_old_stack, &old_stack, 0);
+  return copy_obj_to_user_or_fault (entry, user_old_stack, &old_stack, acc);
 }
 
 uint8_t

@@ -195,7 +195,7 @@ exec_copy_user (void *dst, const void *src, uint64_t size,
   /* XXX: PROT_EXEC */
   struct eri_analyzer *al = args;
   eri_atomic_store (&al->sig_info, info, 1);
-  if (eri_entry__copy_from_user (al->entry, dst, src, size) != size)
+  if (! eri_entry__copy_from_user (al->entry, dst, src, size, 0))
     return 0;
   eri_atomic_store (&al->sig_info, 0, 1);
   return 1;

@@ -242,7 +242,7 @@ eri_live_thread_recorder__rec_read (
       if (! args->readv)
 	{
 	  uint8_t *user = (uint8_t *) args->dst + off;
-	  if (eri_entry__copy_from_user (entry, buf, user, size) != size)
+	  if (! eri_entry__copy_from_user (entry, buf, user, size, 0))
 	    goto out;
 	}
       else
@@ -252,7 +252,7 @@ eri_live_thread_recorder__rec_read (
 	    {
 	      uint8_t *user = (uint8_t *) iov->base + iov_off;
 	      uint64_t s = eri_min (iov->len - iov_off, size - o);
-	      if (eri_entry__copy_from_user (entry, buf + o, user, s) != s)
+	      if (! eri_entry__copy_from_user (entry, buf + o, user, s, 0))
 		goto out;
 
 	      o += s;

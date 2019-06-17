@@ -799,9 +799,9 @@ DEFINE_SYSCALL (clone)
   version_activity_inc (&th->group->ver_act);
 
   if (flags & ERI_CLONE_PARENT_SETTID)
-    (void) eri_entry__copy_obj_to_user (entry, user_ptid, &res);
+    (void) eri_entry__copy_obj_to_user (entry, user_ptid, &res, 0);
   if (flags & ERI_CLONE_CHILD_SETTID)
-    (void) eri_entry__copy_obj_to_user (entry, user_ctid, &res);
+    (void) eri_entry__copy_obj_to_user (entry, user_ctid, &res, 0);
 
   struct eri_entry *centry = cth->entry;
   struct eri_registers *cregs = eri_entry__get_regs (centry);
@@ -1063,7 +1063,7 @@ DEFINE_SYSCALL (rt_sigaction)
 
   if (! user_act && ! user_old_act) syscall_leave (th, 0, 0);
 
-  if (! access (entry, user_act, sizeof *user_act, 1))
+  if (! access (entry, user_act, sizeof *user_act, 1)) // TODO
     syscall_leave (th, 0, ERI_EFAULT);
 
   uint64_t res = 0;
@@ -1076,7 +1076,7 @@ DEFINE_SYSCALL (rt_sigaction)
 	  || ! try_unserialize (uint64, th, &act_ver))
 	diverged (th);
 
-      res = eri_entry__copy_obj_to_user (entry, user_old_act, &act)
+      res = eri_entry__copy_obj_to_user (entry, user_old_act, &act, 0)
 		? 0 : ERI_EFAULT;
     }
   else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
@@ -1093,10 +1093,10 @@ DEFINE_SYSCALL (rt_sigaction)
   syscall_leave (th, 1, res);
 }
 
-DEFINE_SYSCALL (sigaltstack)
+DEFINE_SYSCALL (sigaltstack) // TODO
 {
   syscall_leave (th, 0,
-	eri_entry__syscall_sigaltstack (entry, &th->sig_alt_stack));
+	eri_entry__syscall_sigaltstack (entry, &th->sig_alt_stack, 0));
 }
 
 DEFINE_SYSCALL (rt_sigreturn)
@@ -1299,6 +1299,7 @@ syscall_get_read_data (struct thread *th, void *dst,
 		       uint64_t total, uint8_t readv)
 {
   struct thread_group *group = th->group;
+  struct eri_entry *entry = th->entry;
 
   uint64_t buf_size = eri_min (total, 2 * group->file_buf_size);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
@@ -1325,8 +1326,7 @@ syscall_get_read_data (struct thread *th, void *dst,
 	  if (! readv)
 	    {
 	      uint8_t *user = (uint8_t *) dst + off + ser_off;
-	      if (eri_entry__copy_to_user (th->entry,
-					   user, buf, ser_size) != ser_size)
+	      if (! eri_entry__copy_to_user (entry, user, buf, ser_size, 0))
 		goto buf_out;
 	    }
 	  else
@@ -1336,8 +1336,7 @@ syscall_get_read_data (struct thread *th, void *dst,
 		{
 		  uint8_t *user = (uint8_t *) iov->base + iov_off;
 		  uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
-		  if (eri_entry__copy_to_user (th->entry,
-					       user, buf + o, s) != s)
+		  if (! eri_entry__copy_to_user (entry, user, buf + o, s, 0))
 		    goto buf_out;
 
 		  o += s;
