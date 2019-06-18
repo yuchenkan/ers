@@ -484,3 +484,10 @@ eri_analyzer__update_mm_prot (struct eri_analyzer *al,
 		  !! (prot & ERI_PROT_WRITE));
   eri_assert_unlock (&group->mm_prot_lock);
 }
+
+void
+eri_analyzer__update_access (eri_analyzer_type *analyzer,
+			     struct eri_access *acc)
+{
+  // TODO
+}

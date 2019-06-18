@@ -73,5 +73,7 @@ void eri_analyzer__sig_handler (
 
 void eri_analyzer__update_mm_prot (eri_analyzer_type *analyzer,
 				   struct eri_range range, int32_t prot);
+void eri_analyzer__update_access (eri_analyzer_type *analyzer,
+				  struct eri_access *acc);
 
 #endif

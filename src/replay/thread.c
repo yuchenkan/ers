@@ -620,7 +620,12 @@ fetch_test_async_signal (struct thread *th)
 static void
 update_access (struct thread *th, struct eri_access *acc, uint64_t n)
 {
-  // TODO
+  if (! eri_enable_analyzer) return;
+
+  uint64_t i;
+  for (i = 0; i < n; ++i)
+    if (acc[i].type != ERI_ACCESS_NONE)
+      eri_analyzer__update_access (th->analyzer, acc + i);
 }
 
 #define _may_access_user(proc, th, acc, n) \
