@@ -149,7 +149,7 @@ eri_entry__copy_from_user (struct eri_entry *entry, void *dst,
 		const void *src, uint64_t size, struct eri_access *acc)
 {
   uint64_t done = size;
-  if (! eri_entry__test_access (entry, src, size, &done))
+  if (! eri_entry__test_access (entry, src, &done))
     {
       eri_assert (done != size);
       goto out;
@@ -167,7 +167,7 @@ eri_entry__copy_to_user (struct eri_entry *entry, void *dst,
 		const void *src, uint64_t size, struct eri_access *acc)
 {
   uint64_t done = size;
-  if (! eri_entry__test_access (entry, dst, size, &done))
+  if (! eri_entry__test_access (entry, dst, &done))
     {
       eri_assert (done != size);
       goto out;
@@ -362,22 +362,6 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 
   sig_return_back (sig_frame);
   return 1;
-}
-
-uint64_t
-eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
-			struct eri_sigset *set, struct eri_timespec *timeout)
-{
-  const struct eri_sigset *user_set = (void *) entry->_regs.rdi;
-  const struct eri_timespec *user_timeout = (void *) entry->_regs.rdx;
-  uint64_t size = entry->_regs.r10;
-
-  if (size != ERI_SIG_SETSIZE) return ERI_EINVAL;
-
-  if (! copy_obj_from_user (entry, set, user_set, 0)) return ERI_EFAULT;
-
-  return user_timeout
-	? copy_obj_from_user_or_fault (entry, timeout, user_timeout, 0) : 0;
 }
 
 uint64_t

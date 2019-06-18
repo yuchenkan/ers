@@ -179,14 +179,14 @@ eri_noreturn void eri_entry__atomic_interleave (
 
 eri_returns_twice uint8_t _eri_entry__test_access (
 		struct eri_entry *entry, uint64_t mem, uint64_t *done);
-#define eri_entry__test_access(entry, mem, size, done) \
+#define eri_entry__test_access(entry, mem, done) \
   ({ struct eri_entry *_entry = entry;					\
      uint64_t _mem = (uint64_t) (mem);					\
      uint64_t *_done = done;						\
      uint8_t _res;							\
-     if (eri_cross (_entry->_map_range, _mem, size)			\
-	 /* otherwise will be protected the guard page */		\
-	&& _mem >= _entry->_map_range->start)				\
+     /* The guard page will protect us if preceeding map_start. */	\
+     /* XXX: df should be cleared to make the guard robust */		\
+     if (eri_within (_entry->_map_range, _mem))				\
        {								\
 	 if (_done) *_done = 0;						\
 	 _res = 0;							\
@@ -234,8 +234,6 @@ uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 		struct eri_access *acc);
 #define eri_entry__syscall_validate_rt_sigpending(entry) \
   ((entry)->_regs.rsi > ERI_SIG_SETSIZE ? ERI_EINVAL : 0)
-uint64_t eri_entry__syscall_get_rt_sigtimedwait (struct eri_entry *entry,
-			struct eri_sigset *set, struct eri_timespec *timeout);
 uint64_t eri_entry__syscall_get_signalfd (struct eri_entry *entry,
 					  int32_t *flags);
 uint64_t eri_entry__syscall_get_rw_iov (struct eri_entry *entry,

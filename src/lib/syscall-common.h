@@ -3,6 +3,7 @@
 
 #include <asm/unistd.h>
 
+#include <lib/compiler.h>
 #include <lib/util.h>
 
 #define ERI_SYSCALLS(p, ...) \
@@ -409,28 +410,6 @@
 
 #define ERI_SYSCALL_TABLE_SIZE	512
 
-#ifndef __ASSEMBLER__
-#include <stdint.h>
-
-#define _ERI_LOAD_ARG(i, v, a) \
-  uint64_t ERI_PASTE (_arg, i) = (uint64_t) (v);
-
-#define _ERI_LOAD_REG_0	"rdi"
-#define _ERI_LOAD_REG_1	"rsi"
-#define _ERI_LOAD_REG_2	"rdx"
-#define _ERI_LOAD_REG_3	"r10"
-#define _ERI_LOAD_REG_4	"r8"
-#define _ERI_LOAD_REG_5	"r9"
-#define _ERI_LOAD_REG(i, v, a) \
-  register uint64_t ERI_PASTE (_a, i)					\
-	asm (ERI_PASTE (_ERI_LOAD_REG_, i)) = ERI_PASTE (_arg, i);
-
-#define _ERI_SYSCALL_ARG(i, v, a)	, "r" (ERI_PASTE (_a, i))
-
-#define eri_syscall_is_error(val)	((uint64_t) (val) >= (uint64_t) -4095L)
-
-#endif
-
 #define ERI_EPERM	-1	/* Operation not permitted */
 #define ERI_ENOENT	-2	/* No such file or directory */
 #define ERI_ESRCH	-3	/* No such process */
@@ -466,8 +445,38 @@
 #define ERI_EDOM	-33	/* Math argument out of domain of func */
 #define ERI_ERANGE	-34	/* Math result not representable */
 
+#define	ERI_EDEADLK	-35	/* Resource deadlock would occur */
+#define	ERI_ENAMETOOLONG	-36	/* File name too long */
+#define	ERI_ENOLCK	-37	/* No record locks available */
 #define ERI_ENOSYS	-38	/* Invalid system call number */
 #define	ERI_ETIMEDOUT	-110	/* Connection timed out */
+
+#ifndef __ASSEMBLER__
+#include <stdint.h>
+
+#define _ERI_LOAD_ARG(i, v, a) \
+  uint64_t ERI_PASTE (_arg, i) = (uint64_t) (v);
+
+#define _ERI_LOAD_REG_0	"rdi"
+#define _ERI_LOAD_REG_1	"rsi"
+#define _ERI_LOAD_REG_2	"rdx"
+#define _ERI_LOAD_REG_3	"r10"
+#define _ERI_LOAD_REG_4	"r8"
+#define _ERI_LOAD_REG_5	"r9"
+#define _ERI_LOAD_REG(i, v, a) \
+  register uint64_t ERI_PASTE (_a, i)					\
+	asm (ERI_PASTE (_ERI_LOAD_REG_, i)) = ERI_PASTE (_arg, i);
+
+#define _ERI_SYSCALL_ARG(i, v, a)	, "r" (ERI_PASTE (_a, i))
+
+#define eri_syscall_is_error(val)	((uint64_t) (val) >= (uint64_t) -4095L)
+static eri_unused uint8_t
+eri_syscall_is_non_fault_error (uint64_t val)
+{
+  return eri_syscall_is_error (val) && val != ERI_EFAULT;
+}
+
+#endif
 
 #define ERI_FUTEX_WAIT			0
 #define ERI_FUTEX_WAKE			1
@@ -534,6 +543,8 @@
 #define ERI_F_DUPFD_CLOEXEC	1030
 
 #define ERI_UIO_MAXIOV		1024
+
+#define ERI_PATH_MAX		4096
 
 #define ERI_CLONE_VM			0x00000100
 #define ERI_CLONE_FS			0x00000200

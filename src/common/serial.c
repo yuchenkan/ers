@@ -534,7 +534,6 @@ eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
 			const struct eri_syscall_rt_sigpending_record *rec)
 {
   eri_serialize_uint64 (file, rec->result);
-  if (eri_syscall_is_error (rec->result)) return;
   eri_serialize_uint64 (file, rec->in);
   eri_serialize_sigset (file, &rec->set);
 }
@@ -543,9 +542,8 @@ uint8_t
 eri_try_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 			struct eri_syscall_rt_sigpending_record *rec)
 {
-  if (! eri_try_unserialize_uint64 (file, &rec->result)) return 0;
-  if (eri_syscall_is_error (rec->result)) return 1;
-  return eri_try_unserialize_uint64 (file, &rec->in)
+  return eri_try_unserialize_uint64 (file, &rec->result)
+	 && eri_try_unserialize_uint64 (file, &rec->in)
 	 && eri_try_unserialize_sigset (file, &rec->set);
 }
 
@@ -561,9 +559,8 @@ eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec)
 {
   eri_serialize_uint64 (file, rec->result);
-  if (! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
-    eri_serialize_uint64 (file, rec->in);
-  if (! eri_syscall_is_error (rec->result))
+  eri_serialize_uint64 (file, rec->in);
+  if (! eri_syscall_is_non_fault_error (rec->result))
     eri_serialize_siginfo (file, &rec->info);
 }
 
@@ -571,10 +568,9 @@ uint8_t
 eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec)
 {
-  if (! eri_try_unserialize_uint64 (file, &rec->result)) return 0;
-  if ((! eri_syscall_is_error (rec->result) || rec->result == ERI_EINTR)
-      && ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
-  return eri_syscall_is_error (rec->result)
+  if (! eri_try_unserialize_uint64 (file, &rec->result)
+      || ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
+  return (eri_syscall_is_non_fault_error (rec->result))
 	 || eri_try_unserialize_siginfo (file, &rec->info);
 }
 
