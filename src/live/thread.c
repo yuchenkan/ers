@@ -1407,18 +1407,6 @@ SYSCALL_TO_IMPL (epoll_wait)
 SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
-#define syscall_rw_remove_internal(map_range, buf, count) \
-  do {									\
-    struct eri_range *_map_range = map_range;				\
-    uint64_t *_buf = buf;						\
-    uint64_t _count = count;						\
-    if (_count && eri_cross (_map_range, *_buf, _count))		\
-      {									\
-	if (*_buf >= _map_range->start) *_buf = 0;			\
-	/* otherwise guard page will cause efault eventually */		\
-      }									\
-  } while (0)
-
 static uint8_t
 syscall_read_sig_fd (struct eri_live_thread *th,
 		     struct eri_sys_syscall_args *args, int32_t flags,
@@ -1488,7 +1476,7 @@ syscall_do_read (SYSCALL_PARAMS)
   uint64_t buf = regs->rsi;
   uint64_t count = regs->rdx;
 
-  syscall_rw_remove_internal (&group->map_range, &buf, count);
+  eri_entry__test_invalidate (entry, &buf);
 
   uint64_t res;
 
@@ -1516,23 +1504,6 @@ record:
   eri_entry__syscall_leave (entry, res);
 }
 
-static uint64_t
-syscall_get_rw_iov (struct eri_live_thread *th,
-		    struct eri_iovec **iov, int32_t *iov_cnt)
-{
-  struct eri_live_thread_group *group = th->group;
-  uint64_t res = eri_entry__syscall_get_rw_iov (th->entry,
-						group->pool, iov, iov_cnt);
-  if (! eri_syscall_is_error (res))
-    {
-      int32_t i;
-      for (i = 0; i < *iov_cnt; ++i)
-	syscall_rw_remove_internal (&group->map_range,
-				    (void *) &(*iov)[i].base, (*iov)[i].len);
-    }
-  return res;
-}
-
 static eri_noreturn void
 syscall_do_readv (SYSCALL_PARAMS)
 {
@@ -1543,7 +1514,7 @@ syscall_do_readv (SYSCALL_PARAMS)
   struct eri_iovec *iov;
   int32_t iov_cnt;
   eri_entry__syscall_leave_if_error (entry,
-				syscall_get_rw_iov (th, &iov, &iov_cnt));
+		eri_entry__syscall_get_rw_iov (entry, &iov, &iov_cnt, 0));
 
   uint64_t res;
 
@@ -1573,7 +1544,7 @@ syscall_do_readv (SYSCALL_PARAMS)
 record:
   if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_read (th, res, iov, 1);
-  eri_assert_mtfree (group->pool, iov);
+  eri_entry__syscall_free_rw_iov (entry, iov);
   eri_entry__syscall_leave (entry, res);
 }
 
@@ -1592,7 +1563,7 @@ syscall_do_write (SYSCALL_PARAMS)
   uint64_t buf = regs->rsi;
   uint64_t count = regs->rdx;
 
-  syscall_rw_remove_internal (&group->map_range, &buf, count);
+  eri_entry__test_invalidate (entry, &buf);
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
@@ -1621,7 +1592,7 @@ syscall_do_writev (SYSCALL_PARAMS)
   struct eri_iovec *iov;
   int32_t iov_cnt;
   eri_entry__syscall_leave_if_error (entry,
-				syscall_get_rw_iov (th, &iov, &iov_cnt));
+		eri_entry__syscall_get_rw_iov (entry, &iov, &iov_cnt, 0));
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
 

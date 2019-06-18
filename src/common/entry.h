@@ -177,6 +177,10 @@ eri_noreturn void eri_entry__atomic_interleave (
        _entry->_regs.rip = _entry->_start;				\
        eri_entry__leave (_entry); } while (0)
 
+#define eri_entry__test_invalidate(entry, mem) \
+  ({ uint64_t *_mem = mem;						\
+     if (eri_within ((entry)->_map_range, *_mem)) *_mem = 0; })
+
 eri_returns_twice uint8_t _eri_entry__test_access (
 		struct eri_entry *entry, uint64_t mem, uint64_t *done);
 #define eri_entry__test_access(entry, mem, done) \
@@ -225,7 +229,7 @@ uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
   (!! (entry)->_regs.rsi)
 uint64_t eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
 		struct eri_sigset *old_mask, struct eri_access *acc);
-#define ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK	2
+#define ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK_USER_ACCESSES	2
 uint64_t eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 		struct eri_stack *stack, struct eri_access *acc);
 #define ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES	3
@@ -237,7 +241,9 @@ uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
 uint64_t eri_entry__syscall_get_signalfd (struct eri_entry *entry,
 					  int32_t *flags);
 uint64_t eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
-	struct eri_mtpool *pool, struct eri_iovec **iov, int32_t *iov_cnt);
+	struct eri_iovec **iov, int32_t *iov_cnt, struct eri_access *acc);
+void eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
+				     struct eri_iovec *iov);
 
 struct eri_sigframe *eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,

@@ -148,6 +148,8 @@ uint8_t
 eri_entry__copy_from_user (struct eri_entry *entry, void *dst,
 		const void *src, uint64_t size, struct eri_access *acc)
 {
+  eri_assert (size);
+
   uint64_t done = size;
   if (! eri_entry__test_access (entry, src, &done))
     {
@@ -166,12 +168,11 @@ uint8_t
 eri_entry__copy_to_user (struct eri_entry *entry, void *dst,
 		const void *src, uint64_t size, struct eri_access *acc)
 {
+  eri_assert (size);
+
   uint64_t done = size;
-  if (! eri_entry__test_access (entry, dst, &done))
-    {
-      eri_assert (done != size);
-      goto out;
-    }
+  if (! eri_entry__test_access (entry, dst, &done)) goto out;
+
   eri_memcpy (dst, src, size);
   eri_entry__reset_test_access (entry);
 
@@ -275,7 +276,7 @@ uint64_t
 eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 		struct eri_stack *stack, struct eri_access *acc)
 {
-  init_acc_opt (acc, ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK);
+  init_acc_opt (acc, ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK_USER_ACCESSES);
 
   const struct eri_stack *user_stack = (void *) entry->_regs.rdi;
   struct eri_stack *user_old_stack = (void *) entry->_regs.rsi;
@@ -376,7 +377,7 @@ eri_entry__syscall_get_signalfd (struct eri_entry *entry, int32_t *flags)
 
 uint64_t
 eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
-	struct eri_mtpool *pool, struct eri_iovec **iov, int32_t *iov_cnt)
+	struct eri_iovec **iov, int32_t *iov_cnt, struct eri_access *acc)
 {
   int32_t dummy;
   if (! iov_cnt) iov_cnt = &dummy;
@@ -388,15 +389,26 @@ eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
 
   /* XXX: fastiov */
   uint64_t iov_size = sizeof **iov * *iov_cnt;
-  *iov = eri_assert_mtmalloc (pool, iov_size);
+  *iov = eri_assert_mtmalloc (entry->_pool, iov_size);
 
-  if (! copy_from_user (entry, *iov, user_iov, iov_size, 0))
+  if (! copy_from_user (entry, *iov, user_iov, iov_size, acc))
     {
-      eri_assert_mtfree (pool, *iov);
+      eri_assert_mtfree (entry->_pool, *iov);
       return ERI_EFAULT;
     }
 
+  int32_t i;
+  for (i = 0; i < *iov_cnt; ++i)
+    eri_entry__test_invalidate (entry, (void *) &(*iov)[i].base);
+
   return 0;
+}
+
+void
+eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
+				struct eri_iovec *iov)
+{
+  eri_assert_mtfree (entry->_pool, iov);
 }
 
 struct eri_sigframe *

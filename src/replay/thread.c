@@ -617,59 +617,99 @@ fetch_test_async_signal (struct thread *th)
   if (fetch_mark (th) == ERI_ASYNC_RECORD) set_async_signal (th);
 }
 
-#define do_access_user(mem, read_only) \
-  ({ typeof (mem) _mem = mem;						\
-     (read_only) ? *_mem : eri_atomic_add_fetch (_mem, 0, 0); })
-
-static uint8_t
-access_user (struct eri_entry *entry,
-	     const void *mem, uint64_t size, uint8_t read_only)
+static void
+update_access (struct thread *th, struct eri_access *acc, uint64_t n)
 {
-  if (! eri_entry__test_access (entry, mem, 0)) return 0;
-  uint64_t i;
-  for (i = 0; i < size; ++i) do_access_user ((uint8_t *) mem + i, read_only);
-  eri_entry__reset_test_access (entry);
-  return 1;
+  // TODO
 }
 
-#define access_obj_from_user(entry, obj, read_only) \
-  access_user (entry, obj, sizeof *(obj), read_only)
+#define _may_access_user(proc, th, acc, n) \
+  ({ typeof (proc) _res = proc;						\
+     update_access (th, acc, n); _res; })
+#define may_access_user(th, n, proc, ...) \
+  ({ uint64_t _n = n;							\
+     struct eri_access _acc[_n];					\
+     _may_access_user ((proc) (__VA_ARGS__, _acc), th, _acc, _n); })
 
 static uint8_t
-read_str_from_user (struct eri_entry *entry, const char *str,
+copy_to_user (struct thread *th, void *dst, const void *src, uint64_t size)
+{
+  return may_access_user (th, 1,
+		eri_entry__copy_to_user, th->entry, dst, src, size);
+}
+
+#define copy_obj_to_user(th, dst, src) \
+  copy_to_user (th, dst, src, sizeof *(dst))
+#define copy_obj_to_user_or_fault(th, dst, src) \
+  (copy_obj_to_user (th, dst, src) ? 0 : ERI_EFAULT)
+
+#define READ	1
+#define WRITE	2
+
+static uint8_t
+access_user (struct thread *th, void *mem, uint64_t size, uint8_t type)
+{
+  eri_assert (size);
+
+  struct eri_entry *entry = th->entry;
+  struct eri_access acc[] = {
+    { .type = ERI_ACCESS_NONE }, { .type = ERI_ACCESS_NONE }
+  };
+
+  uint64_t done = size;
+  if (! eri_entry__test_access (entry, mem, &done)) goto out;
+
+  uint8_t *c;
+  for (c = mem; c < (uint8_t *) mem + size; ++c)
+    /*
+     * Here write permission implies read (as in mmap), but this is not
+     * consistent with the analysis, where read / write is considered
+     * seperately.
+     */
+    asm ("" : : "r" (type & WRITE
+		? eri_atomic_add_fetch (c, 0, 0) : *c) : "memory");
+
+  eri_entry__reset_test_access (entry);
+out:
+  if (type & READ)
+    eri_set_read (acc, (uint64_t) mem, eri_min (done + 1, size));
+  if (type & WRITE)
+    eri_set_write (acc + 1, (uint64_t) mem, eri_min (done + 1, size));
+  update_access (th, acc, eri_length_of (acc));
+  return done == size;
+}
+
+#define read_user(th, src, size)	access_user (th, src, size, READ)
+#define write_user(th, dst, size)	access_user (th, dst, size, WRITE)
+#define read_write_user(th, mem, size) \
+  access_user (th, mem, size, READ | WRITE)
+
+#define read_obj_from_user(th, obj)	read_user (th, obj, sizeof *(obj))
+
+static uint8_t
+read_str_from_user (struct thread *th, const char *str,
 		    uint64_t max, uint64_t *len)
 {
-  if (! eri_entry__test_access (entry, str, 0)) return 0;
+  eri_assert (max);
+
+  struct eri_entry *entry = th->entry;
+  struct eri_access acc;
+  uint64_t done;
+
+  if (! eri_entry__test_access (entry, str, &done))
+    {
+      eri_set_read (&acc, (uint64_t) str, done + 1);
+      update_access (th, &acc, 1);
+      return 0;
+    }
+
   uint64_t i;
   for (i = 0; i < max && str[i]; ++i) continue;
   eri_entry__reset_test_access (entry);
+
   if (len) *len = i;
-  return 1;
-}
-
-#define DEFINE_ATOMIC_DO_ACCESS_USER(type) \
-static void ERI_PASTE (atomic_do_access_user_, type) (type *mem,	\
-						 uint8_t read_only)	\
-{									\
-  asm ("" : : "r" (do_access_user (mem, read_only)) : "memory");	\
-}
-
-DEFINE_ATOMIC_DO_ACCESS_USER (uint8_t)
-DEFINE_ATOMIC_DO_ACCESS_USER (uint16_t)
-DEFINE_ATOMIC_DO_ACCESS_USER (uint32_t)
-DEFINE_ATOMIC_DO_ACCESS_USER (uint64_t)
-
-static uint8_t
-atomic_access_user (struct eri_entry *entry,
-		    void *mem, uint64_t size, uint8_t read_only)
-{
-  if (! eri_entry__test_access (entry, mem, 0)) return 0;
-  if (size == 1) atomic_do_access_user_uint8_t (mem, read_only);
-  else if (size == 2) atomic_do_access_user_uint16_t (mem, read_only);
-  else if (size == 4) atomic_do_access_user_uint32_t (mem, read_only);
-  else if (size == 8) atomic_do_access_user_uint64_t (mem, read_only);
-  else eri_assert_unreachable ();
-  eri_entry__reset_test_access (entry);
+  eri_set_read (&acc, (uint64_t) str, eri_min (i + 1, max));
+  update_access (th, &acc, 1);
   return 1;
 }
 
@@ -814,9 +854,9 @@ DEFINE_SYSCALL (clone)
   version_activity_inc (&th->group->ver_act);
 
   if (flags & ERI_CLONE_PARENT_SETTID)
-    (void) eri_entry__copy_obj_to_user (entry, user_ptid, &res, 0);
+    (void) copy_obj_to_user (th, user_ptid, &res);
   if (flags & ERI_CLONE_CHILD_SETTID)
-    (void) eri_entry__copy_obj_to_user (entry, user_ctid, &res, 0);
+    (void) copy_obj_to_user (th, user_ctid, &res);
 
   struct eri_entry *centry = cth->entry;
   struct eri_registers *cregs = eri_entry__get_regs (centry);
@@ -917,8 +957,7 @@ static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
   int32_t *user_tid = th->clear_user_tid;
-  if (user_tid
-      && atomic_access_user (entry, user_tid, sizeof *user_tid, 0))
+  if (user_tid && write_user (th, user_tid, sizeof *user_tid))
     {
       struct eri_syscall_exit_clear_tid_record rec;
       if (! check_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
@@ -931,7 +970,9 @@ syscall_do_exit (SYSCALL_PARAMS)
 
       if (rec.clear_tid.updated)
 	{
+	  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
 	  *user_tid = 0;
+	  eri_entry__reset_test_access (entry);
 	  atomic_updated (th->group, (uint64_t) user_tid, sizeof *user_tid);
 	}
 
@@ -1056,16 +1097,16 @@ SYSCALL_TO_IMPL (sched_getattr)
 SYSCALL_TO_IMPL (ioprio_set)
 SYSCALL_TO_IMPL (ioprio_get)
 
-DEFINE_SYSCALL (rt_sigprocmask) // TODO
+DEFINE_SYSCALL (rt_sigprocmask)
 {
   struct eri_sigset mask;
   struct eri_sigset old_mask = th->sig_mask;
-  syscall_leave_if_error (th, 0,
-	eri_entry__syscall_get_rt_sigprocmask (entry, &old_mask, &mask, 0));
+  syscall_leave_if_error (th, 0, may_access_user (th, 1,
+	eri_entry__syscall_get_rt_sigprocmask, entry, &old_mask, &mask));
   if (eri_entry__syscall_rt_sigprocmask_mask (entry))
     eri_set_sig_mask (&th->sig_mask, &mask);
-  syscall_leave (th, 0,
-	eri_entry__syscall_set_rt_sigprocmask (entry, &old_mask, 0));
+  syscall_leave (th, 0, may_access_user (th, 1,
+	eri_entry__syscall_set_rt_sigprocmask, entry, &old_mask));
 }
 
 DEFINE_SYSCALL (rt_sigaction)
@@ -1078,7 +1119,7 @@ DEFINE_SYSCALL (rt_sigaction)
 
   if (! user_act && ! user_old_act) syscall_leave (th, 0, 0);
 
-  if (! access_obj_from_user (entry, user_act, 1)) // TODO
+  if (! read_obj_from_user (th, user_act))
     syscall_leave (th, 0, ERI_EFAULT);
 
   uint64_t res = 0;
@@ -1091,8 +1132,7 @@ DEFINE_SYSCALL (rt_sigaction)
 	  || ! try_unserialize (uint64, th, &act_ver))
 	diverged (th);
 
-      res = eri_entry__copy_obj_to_user (entry, user_old_act, &act, 0)
-		? 0 : ERI_EFAULT;
+      res = copy_obj_to_user_or_fault (th, user_old_act, &act);
     }
   else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
 	   || ! try_unserialize (uint64, th, &act_ver))
@@ -1108,10 +1148,11 @@ DEFINE_SYSCALL (rt_sigaction)
   syscall_leave (th, 1, res);
 }
 
-DEFINE_SYSCALL (sigaltstack) // TODO
+DEFINE_SYSCALL (sigaltstack)
 {
-  syscall_leave (th, 0,
-	eri_entry__syscall_sigaltstack (entry, &th->sig_alt_stack, 0));
+  syscall_leave (th, 0, may_access_user (th,
+	ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK_USER_ACCESSES,
+	eri_entry__syscall_sigaltstack, entry, &th->sig_alt_stack));
 }
 
 DEFINE_SYSCALL (rt_sigreturn)
@@ -1119,13 +1160,15 @@ DEFINE_SYSCALL (rt_sigreturn)
   struct eri_stack st = {
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
-  if (! eri_entry__syscall_rt_sigreturn (entry, &st, &th->sig_mask, 0))
+  if (! may_access_user (th,
+	ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES,
+	eri_entry__syscall_rt_sigreturn, entry, &st, &th->sig_mask))
     check_exit (th);
   th->sig_alt_stack = st;
   eri_entry__leave (entry);
 }
 
-DEFINE_SYSCALL (rt_sigpending) // TODO
+DEFINE_SYSCALL (rt_sigpending)
 {
   syscall_leave_if_error (th, 0,
 	eri_entry__syscall_validate_rt_sigpending (entry));
@@ -1135,8 +1178,7 @@ DEFINE_SYSCALL (rt_sigpending) // TODO
       || ! try_unserialize (syscall_rt_sigpending_record, th, &rec))
     diverged (th);
 
-  if (eri_entry__copy_to_user (entry, (void *) regs->rdi,
-			       &rec.set, ERI_SIG_SETSIZE, 0)
+  if (copy_to_user (th, (void *) regs->rdi, &rec.set, ERI_SIG_SETSIZE)
       != (rec.result != ERI_EFAULT)) freeze (th);
 
   if (! io_in (th, rec.in)) diverged (th);
@@ -1152,20 +1194,20 @@ syscall_do_pause (struct thread *th)
 
 DEFINE_SYSCALL (pause) { syscall_do_pause (th); }
 
-DEFINE_SYSCALL (rt_sigsuspend) // TODO
+DEFINE_SYSCALL (rt_sigsuspend)
 {
   struct eri_sigset *user_mask = (void *) regs->rdi;
   uint64_t size = regs->rsi;
 
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
 
-  if (! access_obj_from_user (entry, user_mask, 1))
+  if (! read_obj_from_user (th, user_mask))
     syscall_leave (th, 0, ERI_EFAULT);
 
   syscall_do_pause (th);
 }
 
-DEFINE_SYSCALL (rt_sigtimedwait) // TODO
+DEFINE_SYSCALL (rt_sigtimedwait)
 {
   struct eri_sigset *user_set = (void *) regs->rdi;
   struct eri_siginfo *user_info = (void *) regs->rsi;
@@ -1174,9 +1216,8 @@ DEFINE_SYSCALL (rt_sigtimedwait) // TODO
 
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
 
-  if (! access_obj_from_user (entry, user_set, 1)
-      || (user_timeout
-	  && ! access_obj_from_user (entry, user_timeout, 1)))
+  if (! read_obj_from_user (th, user_set)
+      || (user_timeout && ! read_obj_from_user (th, user_timeout)))
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_rt_sigtimedwait_record rec;
@@ -1188,7 +1229,7 @@ DEFINE_SYSCALL (rt_sigtimedwait) // TODO
 
   if (user_info
       && ! eri_syscall_is_non_fault_error (rec.result)
-      && (eri_entry__copy_obj_to_user (entry, user_info, &rec.info, 0)
+      && (copy_obj_to_user (th, user_info, &rec.info)
 	  != (rec.result != ERI_EFAULT))) freeze (th);
 
   syscall_leave (th, 1, rec.result);
@@ -1205,8 +1246,8 @@ syscall_do_rt_sigqueueinfo (SYSCALL_PARAMS)
 
   struct eri_siginfo *user_info = (void *) (regs->rax
 			== __NR_rt_sigqueueinfo ? regs->rdx : regs->r10);
-  if (access_obj_from_user (entry, user_info, 1) // TODO
-      != (res != ERI_EFAULT)) freeze (th);
+  if (read_obj_from_user (th, user_info) != (res != ERI_EFAULT))
+    freeze (th);
   syscall_leave (th, 1, res);
 }
 
@@ -1258,7 +1299,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   int32_t flags;
   syscall_leave_if_error (th, 0,
 		eri_entry__syscall_get_signalfd (entry, &flags));
-  if (! access_obj_from_user (entry, user_mask, 1)) // TODO
+  if (! read_obj_from_user (th, user_mask))
     syscall_leave (th, 0, ERI_EINVAL);
 
   syscall_leave (th, 1, syscall_fetch_res_io (th));
@@ -1288,7 +1329,7 @@ syscall_do_open (SYSCALL_PARAMS)
   const char *user_pathname = (void *) (regs->rax == __NR_openat
 					? regs->rsi : regs->rdi);
   uint64_t len;
-  if (read_str_from_user (entry, user_pathname, ERI_PATH_MAX, &len)
+  if (read_str_from_user (th, user_pathname, ERI_PATH_MAX, &len)
       ? (len == ERI_PATH_MAX) != (res == ERI_ENAMETOOLONG)
       : res != ERI_EFAULT) freeze (th);
   syscall_leave (th, 1, res);
@@ -1338,7 +1379,6 @@ syscall_get_read_data (struct thread *th, void *dst,
 		       uint64_t total, uint8_t readv)
 {
   struct thread_group *group = th->group;
-  struct eri_entry *entry = th->entry;
 
   uint64_t buf_size = eri_min (total, 2 * group->file_buf_size);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
@@ -1347,42 +1387,43 @@ syscall_get_read_data (struct thread *th, void *dst,
   uint8_t res = 0;
   uint64_t off = 0, iov_off = 0, size;
   struct eri_iovec *iov = dst;
-  if (readv) while (iov->len == 0) ++iov;
+
   while (1)
     {
-      if (! try_unserialize (uint64, th, &size)) goto buf_out;
+      if (! try_unserialize (uint64, th, &size)) goto out;
       if (! size) break;
 
-      if (off + size > total) goto buf_out;
+      if (off + size > total) goto out;
 
       uint64_t ser_off = 0;
       while (ser_off < size)
 	{
 	  uint64_t ser_size = eri_min (buf_size, size - ser_off);
 	  if (! try_unserialize (uint8_array, th, buf, ser_size))
-	    goto buf_out;
+	    goto out;
 
 	  if (! readv)
 	    {
 	      uint8_t *user = (uint8_t *) dst + off + ser_off;
-	      if (! eri_entry__copy_to_user (entry, user, buf, ser_size, 0))
-		goto buf_out;
+	      if (! copy_to_user (th, user, buf, ser_size))
+		goto out;
 	    }
 	  else
 	    {
 	      uint64_t o = 0;
 	      while (o < ser_size)
 		{
+		  while (iov->len == 0) ++iov;
+
 		  uint8_t *user = (uint8_t *) iov->base + iov_off;
 		  uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
-		  if (! eri_entry__copy_to_user (entry, user, buf + o, s, 0))
-		    goto buf_out;
+		  if (! copy_to_user (th, user, buf + o, s)) goto out;
 
 		  o += s;
 		  if ((iov_off += s) == iov->len)
 		    {
 		      iov_off = 0;
-		      do ++iov; while (iov->len == 0);
+		      ++iov;
 		    }
 		}
 	    }
@@ -1394,13 +1435,23 @@ syscall_get_read_data (struct thread *th, void *dst,
   /* Live failed to record all data, must have something wrong.  */
   if (! (res = off == total)) freeze (th);
 
-buf_out:
+out:
   if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
   return res;
 }
 
 static uint64_t
-syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
+sum_iovec (struct eri_iovec *iov, int32_t n)
+{
+  uint64_t sum = 0;
+  int32_t i;
+  for (i = 0; i < n; ++i) sum += iov[i].len;
+  return sum;
+}
+
+static uint64_t
+syscall_fetch_read (struct thread *th, void *dst,
+		    uint8_t readv, uint64_t limit)
 {
   uint8_t div = 0;
   struct eri_syscall_res_in_record rec;
@@ -1408,12 +1459,23 @@ syscall_fetch_read (struct thread *th, void *dst, uint8_t readv)
       || ! try_unserialize (syscall_res_in_record, th, &rec)
       || ! io_in (th, rec.in)) { div = 1; goto out; };
 
+  if (rec.result == ERI_EFAULT)
+    {
+      struct eri_access acc;
+      eri_set_write (&acc, (uint64_t) (readv
+			? ((struct eri_iovec *) dst)->base : dst), 1);
+      update_access (th, &acc, 1);
+    }
+
   if (eri_syscall_is_error (rec.result) || rec.result == 0) goto out;
+
+  if (rec.result > (readv ? sum_iovec (dst, limit) : limit))
+    { div = 1; goto out; }
 
   div = ! syscall_get_read_data (th, dst, rec.result, readv);
 
 out:
-  if (readv) eri_assert_mtfree (th->group->pool, dst);
+  if (readv) eri_entry__syscall_free_rw_iov (th->entry, dst);
   if (div) diverged (th);
   return rec.result;
 }
@@ -1425,16 +1487,20 @@ syscall_do_read (SYSCALL_PARAMS)
   int32_t nr = regs->rax;
   /* XXX: detect memory corruption in analysis */
   if (nr == __NR_read || nr == __NR_pread64)
-    syscall_leave (th, 1, syscall_fetch_read (th, (void *) regs->rsi, 0));
+    {
+      uint64_t buf = regs->rsi;
+      eri_entry__test_invalidate (entry, &buf);
+      syscall_leave (th, 1,
+		syscall_fetch_read (th, (void *) buf, 0, regs->rdx));
+    }
   else
     {
-      struct eri_mtpool *pool = th->group->pool;
-
       struct eri_iovec *iov;
-      syscall_leave_if_error (th, 0,
-		eri_entry__syscall_get_rw_iov (entry, pool, &iov, 0));
+      int32_t iov_cnt;
+      syscall_leave_if_error (th, 0, may_access_user (th, 1,
+		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
-      syscall_leave (th, 1, syscall_fetch_read (th, iov, 1));
+      syscall_leave (th, 1, syscall_fetch_read (th, iov, 1, iov_cnt));
     }
 }
 
@@ -1448,15 +1514,52 @@ static eri_noreturn void
 syscall_do_write (SYSCALL_PARAMS)
 {
   int32_t nr = regs->rax;
-  if (nr != __NR_write && nr != __NR_pwrite64)
+  uint8_t writev = nr != __NR_write && nr != __NR_pwrite64;
+
+  uint64_t buf = regs->rsi;
+  struct eri_iovec *iov;
+  int32_t iov_cnt;
+  if (! writev) eri_entry__test_invalidate (entry, &buf);
+  else syscall_leave_if_error (th, 0, may_access_user (th, 1,
+		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
+
+  uint8_t div = 0;
+  uint64_t res = syscall_fetch_res_io (th);
+  struct eri_access acc;
+  if (res == ERI_EFAULT)
     {
-      struct eri_iovec *user_iov = (void *) regs->rsi;
-      int32_t iov_cnt = regs->rdx;
-      if (iov_cnt > ERI_UIO_MAXIOV) syscall_leave (th, 0, ERI_EINVAL);
-      if (! access_user (entry, user_iov, sizeof *user_iov * iov_cnt, 0))
-	syscall_leave (th, 0, ERI_EFAULT);
+      eri_set_write (&acc, writev ? (uint64_t) iov->base : buf, 1);
+      update_access (th, &acc, 1);
+      goto out;
     }
-  syscall_leave (th, 1, syscall_fetch_res_io (th));
+
+  if (eri_syscall_is_error (res) || ! res) goto out;
+
+  if (res > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
+    { div = 1; goto out; }
+
+  if (! writev)
+    {
+      eri_set_write (&acc, buf, res);
+      update_access (th, &acc, 1);
+    }
+  else
+    {
+      uint64_t c = 0;
+      struct eri_iovec *v = iov;
+      while (c < res)
+	{
+	  uint64_t s = eri_min (v->len, res - c);
+	  eri_set_write (&acc, (uint64_t) (v++)->base, s);
+	  update_access (th, &acc, 1);
+	  c += s;
+	}
+    }
+
+out:
+  if (writev) eri_entry__syscall_free_rw_iov (th->entry, iov);
+  if (div) diverged (th);
+  syscall_leave (th, 1, res);
 }
 
 DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
@@ -1697,18 +1800,18 @@ SYSCALL_TO_IMPL (modify_ldt)
 SYSCALL_TO_IMPL (swapon)
 SYSCALL_TO_IMPL (swapoff)
 
-DEFINE_SYSCALL (futex) // TODO
+DEFINE_SYSCALL (futex)
 {
   int32_t *user_addr = (void *) regs->rdi;
   int32_t op = regs->rsi;
   int32_t cmd = op & ERI_FUTEX_CMD_MASK;
-  const struct eri_timespec *user_timeout = (void *) regs->r10;
+  struct eri_timespec *user_timeout = (void *) regs->r10;
   if (cmd == ERI_FUTEX_WAIT || cmd == ERI_FUTEX_WAKE)
     {
       uint64_t res = syscall_fetch_result (th);
-      uint8_t ok = access_obj_from_user (entry, user_addr, 1)
+      uint8_t ok = read_obj_from_user (th, user_addr)
 		   && (cmd != ERI_FUTEX_WAIT || ! user_timeout
-		       || access_obj_from_user (entry, user_timeout, 1));
+		       || read_obj_from_user (th, user_timeout));
       if (ok != (res != ERI_EFAULT)) freeze (th);
       syscall_leave (th, 1, res);
     }
@@ -1821,6 +1924,18 @@ sync_async (struct thread *th)
   eri_entry__leave (entry);
 }
 
+static uint8_t
+atomic_access_user (struct thread *th, void *mem,
+		    uint8_t size, uint16_t code)
+{
+  switch (code)
+    {
+    case ERI_OP_ATOMIC_LOAD: return read_user (th, mem, size);
+    case ERI_OP_ATOMIC_STORE: return write_user (th, mem, size);
+    default: return read_write_user (th, mem, size);
+    }
+}
+
 #define DEFINE_ATOMIC_TYPE(type) \
 static void								\
 ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
@@ -1850,8 +1965,7 @@ atomic (struct thread *th)
   uint64_t mem = eri_entry__get_atomic_mem (entry);
   uint8_t size = eri_entry__get_atomic_size (entry);
 
-  if (! atomic_access_user (entry, (void *) mem, size,
-			    code == ERI_OP_ATOMIC_LOAD))
+  if (! atomic_access_user (th, (void *) mem, size, code))
     eri_entry__restart (entry);
 
   struct eri_atomic_record rec;
@@ -1868,11 +1982,14 @@ atomic (struct thread *th)
     {
       if (code == ERI_OP_ATOMIC_LOAD) diverged (th);
 
+      eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
+
+      if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
       if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
       else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
       else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
       else if (size == 8) atomic_uint64_t (code, (void *) mem, val, regs);
-      else eri_assert_unreachable ();
+      eri_entry__reset_test_access (entry);
 
       atomic_updated (th->group, mem, size);
     }
