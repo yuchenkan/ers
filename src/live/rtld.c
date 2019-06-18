@@ -13,22 +13,20 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
 {
   uint64_t buf_size = rtld_args->buf_size;
 
-  uint64_t map_start = eri_round_down (segs[0].vaddr, page_size);
-  uint64_t alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
-  uint64_t map_end = eri_round_up (alloc_end, page_size);
+  uint64_t segs_start = eri_round_down (segs[0].vaddr, page_size);
+  uint64_t segs_alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
+  uint64_t segs_end = eri_round_up (segs_alloc_end, page_size);
 
-  /*
-   * guard page is required for read syscall to cause efault in live
-   * when reaching internal range.
-   */
-  uint64_t base = eri_assert_syscall (mmap, map_start - page_size,
-		map_end - map_start + buf_size + page_size, 0,
-		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0)
-	+ page_size - map_start;
+  rtld_args->map_start = eri_assert_syscall (mmap, segs_start - page_size,
+		segs_end - segs_start + buf_size + page_size, 0,
+		ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
 
-  rtld_args->map_start = base + map_start - page_size;
-  rtld_args->buf = base + map_end;
+  /* one guard page */
+  uint64_t base = rtld_args->map_start + page_size - segs_start;
+
+  rtld_args->buf = base + segs_end;
   rtld_args->map_end = rtld_args->buf + buf_size;
+
   return base;
 }
 

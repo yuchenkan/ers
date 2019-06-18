@@ -95,9 +95,17 @@ eri_init_map (struct init_map_args *args)
 
   struct eri_seg *segs = args->segs;
   uint16_t nsegs = args->nsegs;
-  /* Work as guard page for writes.  */
-  eri_assert (! (segs[0].prot & ERI_PROT_WRITE));
-  eri_map_bin (fd, segs, nsegs, map_start, page_size);
+
+  uint64_t segs_start = eri_round_down (segs[0].vaddr, page_size);
+  uint64_t segs_alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
+  uint64_t segs_end = eri_round_up (segs_alloc_end, page_size);
+  uint64_t segs_map_size = segs_end - segs_start;
+  eri_assert (segs_map_size <= map_end - map_start - page_size);
+
+  eri_assert_syscall (mmap, map_start, page_size, 0,
+		ERI_MAP_PRIVATE | ERI_MAP_FIXED | ERI_MAP_ANONYMOUS, -1, 0);
+  uint64_t base = map_start + page_size - segs_start;
+  eri_map_bin (fd, segs, nsegs, base, page_size);
 
   eri_assert (ehdr.shentsize == sizeof (struct eri_elf64_shdr));
   eri_assert (ehdr.shnum < 128);
@@ -126,7 +134,7 @@ eri_init_map (struct init_map_args *args)
 		rels[k].offset = relas[k].offset;
 		rels[k].addend = relas[k].addend;
 	      }
-	    eri_map_reloc (rels, n, map_start);
+	    eri_map_reloc (rels, n, base);
 	  }
 	break;
       }
@@ -140,17 +148,12 @@ eri_init_map (struct init_map_args *args)
   if (args->conf) while (*c++) continue;
   const char *log = args->log ? c : 0;
 
-  uint64_t segs_map_start = eri_round_down (segs[0].vaddr, page_size);
-  uint64_t segs_alloc_end = segs[nsegs - 1].vaddr + segs[nsegs - 1].memsz;
-  uint64_t segs_map_end = eri_round_up (segs_alloc_end, page_size);
-  uint64_t segs_map_size = segs_map_end - segs_map_start;
-  eri_assert (segs_map_size <= map_end - map_start);
   struct eri_replay_rtld_args rtld_args = {
     { map_start, map_end }, page_size, args->debug, path, conf, log,
     args->stack_size, args->file_buf_size, args->diverge,
-    map_start + segs_map_end, map_end - map_start - segs_map_end
+    base + segs_end, map_end - base - segs_end
   };
-  ((void (*) (void *)) map_start + entry) (&rtld_args);
+  ((void (*) (void *)) base + entry) (&rtld_args);
   eri_assert_unreachable ();
 }
 
