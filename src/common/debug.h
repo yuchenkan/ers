@@ -81,7 +81,7 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 	{
 	  va_list tee;
 	  va_copy (tee, arg);
-	  _eri_cvflog (1, ERI_STDOUT, fmt, arg);
+	  _eri_cvflog (1, ERI_STDOUT, fmt, tee);
 	  va_end (tee);
 	}
       _eri_cvflog (enabled, file, fmt, arg);

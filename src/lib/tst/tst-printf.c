@@ -26,9 +26,25 @@ tst_foreach_line (uint64_t size)
   eri_assert_fini_pool (&pool);
 }
 
+static void
+tee (const char *fmt, const char *fmt2, ...)
+{
+  va_list arg;
+  va_start (arg, fmt2);
+  va_list tee;
+  va_copy (tee, arg);
+  eri_assert_vprintf (fmt2, arg);
+  va_arg (tee, const char *);
+  eri_assert_vprintf (fmt, tee);
+  va_end (tee);
+  va_end (arg);
+}
+
 int32_t
 main (void)
 {
+  tee ("%s\n", "%s %s\n", "a", "b");
+
   eri_assert_printf ("");
   eri_assert_printf ("%%\n");
   eri_assert_printf ("%u%lx\n", 1, (unsigned long) 12345);
