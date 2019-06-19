@@ -423,6 +423,8 @@ update_mm_prot (struct eri_mtpool *pool,
       if (eq && eq->end == range.end) return;
     }
 
+  // TODO
+
   struct mm_perm *lt = mm_perm_rbt_get (perms, &range.start, ERI_RBT_LT);
   struct mm_perm *it = lt ? mm_perm_rbt_get_next (lt)
 			  : mm_perm_rbt_get_first (perms);
