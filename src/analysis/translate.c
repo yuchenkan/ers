@@ -62,12 +62,6 @@ trans_set_loc (struct trans_loc *loc, uint8_t tag, uint64_t val)
   loc->val = val;
 }
 
-struct inst_len
-{
-  uint64_t rip;
-  uint64_t len;
-};
-
 struct trace_guest
 {
   uint64_t rip_off;
@@ -75,19 +69,16 @@ struct trace_guest
   struct trans_loc loc;
 };
 
-struct trace_access
-{
-  uint64_t rip_off;
-  uint8_t inst_len;
-  uint64_t idx;
-  uint64_t cond_idx;
-};
-
 struct access
 {
   uint8_t type;
   uint32_t size;
   uint8_t cond;
+  uint8_t var;
+  uint64_t addr;
+
+  uint64_t rip_off;
+  uint8_t inst_len;
 };
 
 struct accesses
@@ -95,9 +86,8 @@ struct accesses
   uint64_t num;
 
   struct access *accesses;
+  uint64_t vars_count;
   uint64_t conds_count;
-
-  struct trace_access *traces;
 };
 
 struct eri_trans
@@ -111,9 +101,6 @@ struct eri_trans
 
   uint8_t *insts;
   uint64_t insts_len;
-
-  struct inst_len *guest_insts;
-  uint64_t guest_insts_num;
 
   struct trace_guest *traces;
   uint64_t traces_num;
@@ -327,7 +314,6 @@ struct ir_node
       struct
 	{
 	  struct ir_mem mem;
-	  uint64_t idx;
 	  struct ir_dep memory;
 	  struct ir_dep prev;
 	  struct ir_dep map_start, map_end;
@@ -377,11 +363,6 @@ struct ir_node
 	  struct ir_dep prev;
 	  struct ir_dep memory;
 	  struct ir_dep map_start, map_end;
-
-	  uint64_t read_idx;
-	  uint64_t cond_read_idx;
-	  uint64_t write_idx;
-	  uint64_t cond_write_idx;
 	} cond_str_op;
       struct
 	{
@@ -455,7 +436,8 @@ struct ir_alloc
 struct ir_accesses
 {
   struct eri_buf accesses;
-  uint32_t conds_count;
+  uint64_t vars_count;
+  uint64_t conds_count;
 };
 
 struct ir_dag
@@ -467,7 +449,6 @@ struct ir_dag
   ERI_RBT_TREE_FIELDS (ir_redun, struct ir_redun)
 
   uint64_t len;
-  struct eri_buf guest_insts;
 
   struct ir_def *map_start;
   struct ir_def *map_end;
@@ -520,12 +501,6 @@ ERI_DEFINE_LIST (static, ir_flat, struct ir_flattened, struct ir_node)
 ERI_DEFINE_RBTREE (static, ir_local, struct ir_flattened,
 		   struct ir_local, uint64_t, eri_less_than)
 
-struct ir_trace_accesses
-{
-  struct trace_access *traces;
-  uint64_t i;
-};
-
 struct ir_trans
 {
   eri_file_t log;
@@ -537,7 +512,9 @@ struct ir_trans
   struct trans_loc final_locs[TRANS_REG_NUM];
   struct eri_siginfo sig_info;
 
-  struct ir_trace_accesses trace_accesses;
+  uint64_t access_idx;
+  uint64_t access_cond_idx;
+  struct access *access;
 
   uint64_t local_num;
 };
@@ -847,16 +824,26 @@ ir_redun_rec_mem (struct ir_rec_mem_args *a1, struct ir_rec_mem_args *a2)
   return ir_redun_mem_args (&a1->mem, &a2->mem) && a1->read == a2->read;
 }
 
-static uint64_t
-ir_accesses_add (struct ir_accesses *acc, uint8_t read, uint32_t size,
-		 uint8_t cond, uint64_t *cond_idx)
+static void
+ir_add_const_access (struct ir_accesses *acc,
+		     uint8_t read, uint64_t addr, uint32_t size)
 {
   struct access a = {
-    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, cond
+    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, 0, 0, addr
   };
   eri_assert_buf_append (&acc->accesses, &a, sizeof a);
-  if (cond) *cond_idx = acc->conds_count++;
-  return acc->accesses.off / sizeof a - 1;
+}
+
+static void
+ir_add_access (struct ir_accesses *acc,
+	       uint8_t read, uint32_t size, uint8_t cond)
+{
+  struct access a = {
+    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, cond, 1
+  };
+  eri_assert_buf_append (&acc->accesses, &a, sizeof a);
+  if (cond) ++acc->conds_count;
+  ++acc->vars_count;
 }
 
 static struct ir_def *
@@ -867,8 +854,7 @@ ir_eval_rec_mem (struct ir_dag *dag, struct ir_rec_mem_args *args)
   struct ir_node *node = ir_alloc_node (dag, IR_REC_MEM,
 		args->read ? ir_deps (1, 0) : ir_deps (3, 1));
   node->deps += ir_init_mem (node, &node->rec_mem.mem, mem);
-  node->rec_mem.idx = ir_accesses_add (&dag->accesses,
-				       args->read, mem->size, 0, 0);
+  ir_add_access (&dag->accesses, args->read, mem->size, 0);
   ir_depand (node, &node->rec_mem.memory, dag->memory, 0);
   ir_depand (node, &node->rec_mem.prev, dag->prev, 0);
   ir_depand (node, &node->rec_mem.rec_mem, dag->rec_mem, 0);
@@ -1075,12 +1061,10 @@ ir_create_cond_str_op (struct ir_dag *dag, struct ir_cond_str_op_args *args)
 
   uint32_t size = ir_str_op_size (xed_norep_map (iclass));
   if (ir_cond_str_op_rsi (iclass))
-    node->cond_str_op.read_idx = ir_accesses_add (&dag->accesses, 1,
-				size, 1, &node->cond_str_op.cond_read_idx);
+    ir_add_access (&dag->accesses, 1, size, 1);
   if (ir_cond_str_op_rdi (iclass))
     {
-      node->cond_str_op.write_idx = ir_accesses_add (&dag->accesses, 0,
-				size, 1, &node->cond_str_op.cond_write_idx);
+      ir_add_access (&dag->accesses, 0, size, 1);
       ir_depand (node, &node->cond_str_op.map_start, dag->map_start, 1);
       ir_depand (node, &node->cond_str_op.map_end, dag->map_end, 1);
     }
@@ -1349,8 +1333,7 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 
 done:
   dag->len += inst_len;
-  struct inst_len inst = { rip, inst_len };
-  eri_assert_buf_append (&dag->guest_insts, &inst, sizeof inst);
+  ir_add_const_access (&dag->accesses, 1, inst_len, rip);
   return 1;
 }
 
@@ -2338,8 +2321,34 @@ ir_emit_raw (struct ir_trans *tr, uint8_t *bytes, uint64_t len)
   })
 
 static void
-ir_init_guest_loc (struct ir_guest_loc *guest_loc)
+ir_trace_inc_access (struct ir_trans *tr, uint64_t rip_off, uint8_t len)
 {
+  tr->access->rip_off = rip_off;
+  tr->access->inst_len = len;
+  if (tr->access->var) ++tr->access_idx;
+  if (tr->access->cond) ++tr->access_cond_idx;
+  ++tr->access;
+}
+
+static void
+ir_add_trace_guest (eri_file_t log, struct ir_trans *tr, uint8_t idx,
+		    struct trans_loc loc)
+{
+  if (idx == TRANS_RIP)
+    {
+      eri_log3 (log, "%lx\n", tr->insts.off);
+      ir_trace_inc_access (tr, tr->insts.off, 0);
+    }
+  struct trace_guest t = { tr->insts.off, idx, loc };
+  eri_assert_buf_append (&tr->traces, &t, sizeof t);
+}
+
+static void
+ir_set_guest_loc (struct ir_flattened *flat,
+		   struct ir_trans *tr, uint8_t idx)
+{
+  struct ir_guest_loc *guest_loc = flat->guest_locs + idx;
+
   struct ir_def *guest = guest_loc->def;
   struct ir_host_locs *locs = &guest->locs;
   struct trans_loc *trace = &guest_loc->loc;
@@ -2354,20 +2363,16 @@ ir_init_guest_loc (struct ir_guest_loc *guest_loc)
       else
 	trans_set_loc (trace, TRANS_LOC_LOCAL, locs->local->idx);
     }
+
+  ir_add_trace_guest (flat->dag->log, tr, idx, *trace);
 }
 
 static void
-ir_update_trace_guest (struct ir_trans *tr, uint8_t idx,
-		       struct trans_loc loc)
+ir_try_fix_guest_loc (struct ir_flattened *flat,
+		      struct ir_trans *tr, uint8_t idx)
 {
-  struct trace_guest t = { tr->insts.off, idx, loc };
-  eri_assert_buf_append (&tr->traces, &t, sizeof t);
-}
+  struct ir_guest_loc *guest_loc = flat->guest_locs + idx;
 
-static void
-ir_try_fix_guest_loc (struct ir_trans *tr, uint8_t idx,
-		      struct ir_guest_loc *guest_loc)
-{
   struct ir_def *guest = guest_loc->def;
   struct ir_host_locs *locs = &guest->locs;
   struct trans_loc *trace = &guest_loc->loc;
@@ -2381,10 +2386,7 @@ ir_try_fix_guest_loc (struct ir_trans *tr, uint8_t idx,
 	  && (! locs->local || locs->local->idx != trace->val))
       || (trace->tag == TRANS_LOC_IMM
 	  && (guest->node || guest->imm != trace->val)))
-    {
-      ir_init_guest_loc (guest_loc);
-      ir_update_trace_guest (tr, idx, *trace);
-    }
+    ir_set_guest_loc (flat, tr, idx);
 }
 
 static void
@@ -2393,8 +2395,7 @@ ir_try_update_guest_loc (struct ir_flattened *flat, struct ir_trans *tr,
 {
   uint8_t i;
   for (i = 0; i < TRANS_REG_NUM; ++i)
-    if (flat->guest_locs[i].def == def)
-      ir_try_fix_guest_loc (tr, i, flat->guest_locs + i);
+    if (flat->guest_locs[i].def == def) ir_try_fix_guest_loc (flat, tr, i);
 }
 
 static uint8_t
@@ -2953,8 +2954,20 @@ ir_assign_update_free_deps (struct ir_flattened *flat,
 	--flat->guest_locs[i].def->range.guest_count;
 	flat->guest_locs[i].def->range.dec_guest_count = 0;
 	ir_assign_may_free_local (flat, flat->guest_locs[i].def);
-	flat->guest_locs[i].def = node->next_guests[i];
-	ir_try_fix_guest_loc (tr, i, flat->guest_locs + i);
+	struct ir_def *next = node->next_guests[i];
+	if (node->tag == IR_END || node->tag == IR_ERR_END)
+	  {
+	    if (! next->node)
+	      trans_set_loc (tr->final_locs + i, TRANS_LOC_IMM, next->imm);
+	    else
+	      trans_set_loc (tr->final_locs + i, TRANS_LOC_LOCAL,
+			     next->locs.local->idx);
+	  }
+	else
+	  {
+	    flat->guest_locs[i].def = next;
+	    ir_try_fix_guest_loc (flat, tr, i);
+	  }
       }
 
   struct ir_dep *dep;
@@ -3001,27 +3014,15 @@ ir_init_emit_mem_args (struct ir_enc_mem_args *args,
 }
 
 static void
-ir_add_trace_access (struct ir_trace_accesses *traces,
-	uint64_t rip_off, uint8_t len, uint64_t idx, uint64_t cond_idx)
+ir_trace_access (struct ir_trans *tr, uint8_t len)
 {
-  struct trace_access *trace = traces->traces + traces->i++;
-  trace->rip_off = rip_off;
-  trace->inst_len = len;
-  trace->idx = idx;
-  trace->cond_idx = cond_idx;
-}
-
-static void
-ir_trace_access (struct ir_trans *tr, struct ir_node *node, uint8_t len)
-{
-  ir_add_trace_access (&tr->trace_accesses,
-		       tr->insts.off, len, node->rec_mem.idx, -1);
+  ir_trace_inc_access (tr, tr->insts.off, len);
 }
 
 static void
 ir_try_trace_access (struct ir_trans *tr, struct ir_def *def, uint8_t len)
 {
-  if (def) ir_trace_access (tr, def->node, len);
+  if (def) ir_trace_access (tr, len);
 }
 
 static void
@@ -3122,31 +3123,16 @@ ir_assign_emit_end (struct ir_flattened *flat, struct ir_trans *tr,
   ir_emit (load_imm, tr, TRANS_RSI, (uint64_t) tr->analysis);
   ir_emit (load_imm, tr, TRANS_RCX, (uint64_t) eri_jump);
   ir_emit (jmp, tr, TRANS_RCX);
-
-  struct ir_dep *regs = node->end.regs;
-  uint8_t i;
-  for (i = 0; i < TRANS_REG_NUM; ++i)
-    if (! regs[i].def->node)
-      trans_set_loc (tr->final_locs + i, TRANS_LOC_IMM, regs[i].def->imm);
-    else
-      trans_set_loc (tr->final_locs + i, TRANS_LOC_LOCAL,
-		     regs[i].def->locs.local->idx);
-}
-
-static uint8_t
-ir_access_is_read (struct ir_accesses *acc, uint64_t idx)
-{
-  return ((struct access *) acc->accesses.buf)[idx].type == ERI_ACCESS_READ;
 }
 
 static void
-ir_assign_gen_rec_mem_ras (struct ir_flattened *flat,
+ir_assign_gen_rec_mem_ras (struct ir_flattened *flat, struct ir_trans *tr,
 			   struct ir_node *node, struct eri_buf *ras)
 {
   if (node->rec_mem.mem.seg != XED_REG_INVALID) return; // TODO fs gs
 
   ir_append_mem_ras (ras, &node->rec_mem.mem);
-  if (ir_access_is_read (&flat->dag->accesses, node->rec_mem.idx))
+  if (tr->access->type == ERI_ACCESS_READ)
     ir_append_ra (ras, TRANS_REG_NUM, 0, &flat->dummy);
   else
     {
@@ -3191,7 +3177,7 @@ ir_assign_encode_rec_check_write (struct ir_flattened *flat,
 
 struct active_local_layout_args
 {
-  uint64_t accesses_num;
+  uint64_t access_vars_count;
   uint64_t access_conds_count;
 
   void *local;
@@ -3207,7 +3193,7 @@ active_local_layout (struct active_local_layout_args *args)
 {
   args->dynamics = eri_memory_layout (args->local,
 	(LOCAL_PREDEFINED_NUM * 8, 0),
-	(args->accesses_num * 8, &args->accesses),
+	(args->access_vars_count * 8, &args->accesses),
 	(eri_round_up (args->access_conds_count, 8), &args->access_conds));
 }
 
@@ -3215,7 +3201,7 @@ static void
 ir_active_local_layout (struct active_local_layout_args *args,
 			struct ir_dag *dag)
 {
-  args->accesses_num = dag->accesses.accesses.off / sizeof (struct access);
+  args->access_vars_count = dag->accesses.vars_count;
   args->access_conds_count = dag->accesses.conds_count;
   args->local = 0;
 
@@ -3227,7 +3213,7 @@ trans_active_local_layout (struct active_local_layout_args *args,
 			   struct eri_trans_active *act)
 {
   struct eri_trans *tr = act->trans;
-  args->accesses_num = tr->accesses.num;
+  args->access_vars_count = tr->accesses.vars_count;
   args->access_conds_count = tr->accesses.conds_count;
   args->local = act->local;
 
@@ -3247,11 +3233,11 @@ ir_assign_emit_rec_mem (struct ir_flattened *flat, struct ir_trans *tr,
 
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, flat->dag);
-  uint64_t idx = ((uint64_t) layout.accesses >> 3) + node->rec_mem.idx;
+  uint64_t idx = ((uint64_t) layout.accesses >> 3) + tr->access_idx;
 
   ir_assign_init_local_enc_mem_args (flat, idx, &rec);
   ir_emit (store, tr, &rec, a->host_idx);
-  if (! ir_access_is_read (&flat->dag->accesses, node->rec_mem.idx))
+  if (tr->access->type == ERI_ACCESS_WRITE)
     {
       uint8_t check[INST_BYTES * IR_ASSIGN_ENCODE_REC_CHECK_WRITE_INST_NUM];
       uint32_t len = ir_assign_encode_rec_check_write (flat, check,
@@ -3286,7 +3272,7 @@ ir_assign_emit_store (eri_file_t log, struct ir_trans *tr,
   uint8_t len = ! ir_assign_def_fits_imml (log, src)
 			? ir_emit (store, tr, &dst, a->host_idx)
 			: ir_emit (store_imm, tr, &dst, src->imm);
-  ir_trace_access (tr, node->store.dst.regs.write.def->node, len);
+  ir_trace_access (tr, len);
 }
 
 static void
@@ -3304,7 +3290,7 @@ ir_assign_emit_load (struct ir_trans *tr,
   struct ir_enc_mem_args src;
   ir_init_emit_mem_args (&src, &node->load.src, a + 1);
   uint8_t len = ir_emit (load, tr, a->host_idx, &src);
-  ir_trace_access (tr, node->load.src.regs.read.def->node, len);
+  ir_trace_access (tr, len);
 }
 
 static void
@@ -3417,17 +3403,16 @@ ir_cjmp_iclass_from_cond_str_op (xed_iclass_enum_t iclass)
 #define IR_ASSIGN_ENCODE_REC_STR_OP_ACCESS_INST_NUM	3
 
 static uint32_t
-ir_assign_encode_rec_str_op_access (struct ir_flattened *flat, uint8_t *bytes,
-				    struct ir_node *node, uint8_t read)
+ir_assign_encode_rec_str_op_access (struct ir_flattened *flat,
+		struct ir_trans *tr, uint8_t *bytes, struct ir_node *node)
 {
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, flat->dag);
 
-  uint64_t idx = ((uint64_t) layout.accesses >> 3) + (read
-	? node->cond_str_op.read_idx : node->cond_str_op.write_idx);
-  uint64_t cond_idx = (uint64_t) layout.access_conds + (read
-	? node->cond_str_op.cond_read_idx : node->cond_str_op.cond_write_idx);
-  uint8_t reg_idx = read ? TRANS_RSI : TRANS_RDI;
+  uint64_t idx = ((uint64_t) layout.accesses >> 3) + tr->access_idx;
+  uint64_t cond_idx = (uint64_t) layout.access_conds + tr->access_cond_idx;
+  uint8_t reg_idx = tr->access->type == ERI_ACCESS_READ
+			? TRANS_RSI : TRANS_RDI;
 
   eri_file_t log = flat->dag->log;
 
@@ -3459,10 +3444,10 @@ ir_assign_emit_cond_str_op (struct ir_flattened *flat, struct ir_trans *tr,
   uint8_t op[INST_BYTES * inst_num];
   uint32_t len = 0;
   if (ir_cond_str_op_rsi (iclass))
-    len = ir_assign_encode_rec_str_op_access (flat, op, node, 1);
+    len = ir_assign_encode_rec_str_op_access (flat, tr, op, node);
   if (ir_cond_str_op_rdi (iclass))
     {
-      len += ir_assign_encode_rec_str_op_access (flat, op + len, node, 0);
+      len += ir_assign_encode_rec_str_op_access (flat, tr, op + len, node);
       uint8_t map_end = (--a)->host_idx;
       uint8_t map_start = (--a)->host_idx;
       len += ir_assign_encode_rec_check_write (flat, op + len,
@@ -3485,11 +3470,9 @@ ir_assign_emit_cond_str_op (struct ir_flattened *flat, struct ir_trans *tr,
 
   uint64_t str_op_rip_off = tr->insts.off + str_op_off;
   if (ir_cond_str_op_rsi (iclass))
-    ir_add_trace_access (&tr->trace_accesses, str_op_rip_off, str_op_len,
-	node->cond_str_op.read_idx, node->cond_str_op.cond_read_idx);
+    ir_trace_inc_access (tr, str_op_rip_off, str_op_len);
   if (ir_cond_str_op_rdi (iclass))
-    ir_add_trace_access (&tr->trace_accesses, str_op_rip_off, str_op_len,
-	node->cond_str_op.write_idx, node->cond_str_op.cond_write_idx);
+    ir_trace_inc_access (tr, str_op_rip_off, str_op_len);
 
   ir_emit_raw (tr, op, len);
   ir_emit_raw (tr, fall, fall_len);
@@ -3564,8 +3547,8 @@ ir_assign_emit_cond_branch (struct ir_trans *tr,
 }
 
 static void
-ir_assign_gen_ras (struct ir_flattened *flat, struct ir_node *node,
-		   struct eri_buf *ras)
+ir_assign_gen_ras (struct ir_flattened *flat, struct ir_trans *tr,
+		   struct ir_node *node, struct eri_buf *ras)
 {
   eri_file_t log = flat->dag->log;
   switch (node->tag)
@@ -3574,7 +3557,7 @@ ir_assign_gen_ras (struct ir_flattened *flat, struct ir_node *node,
     case IR_END:
     case IR_ERR_END:
       ir_assign_gen_end_ras (flat, node, ras); break;
-    case IR_REC_MEM: ir_assign_gen_rec_mem_ras (flat, node, ras); break;
+    case IR_REC_MEM: ir_assign_gen_rec_mem_ras (flat, tr, node, ras); break;
     case IR_STORE: ir_assign_gen_store_ras (log, node, ras); break;
     case IR_LOAD: ir_assign_gen_load_ras (node, ras); break;
     case IR_ADD: ir_assign_gen_add_ras (flat, node, ras); break;
@@ -3623,7 +3606,7 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_trans *tr,
   struct eri_buf ras_buf;
   eri_assert_buf_mtpool_init (&ras_buf, flat->dag->pool,
 			      sizeof (struct ir_ra) * 32);
-  ir_assign_gen_ras (flat, node, &ras_buf);
+  ir_assign_gen_ras (flat, tr, node, &ras_buf);
 
   struct ir_ra *ras = ras_buf.buf;
   uint32_t n = ras_buf.off / sizeof *ras;
@@ -3677,13 +3660,15 @@ ir_assign_hosts (struct ir_flattened *flat, struct ir_trans *tr,
 
   ir_assign_update_free_deps (flat, tr, node);
 
-  for (i = 0; i < TRANS_REG_NUM; ++i)
-    if (assigns[i].check_guest)
-      ir_try_update_guest_loc (flat, tr, assigns[i].check_guest);
+  if (node->tag != IR_END && node->tag != IR_ERR_END)
+    for (i = 0; i < TRANS_REG_NUM; ++i)
+      if (assigns[i].check_guest)
+	ir_try_update_guest_loc (flat, tr, assigns[i].check_guest);
 }
 
 static void
-ir_gen_init (struct ir_flattened *flat, struct ir_node *node)
+ir_gen_init (struct ir_flattened *flat,
+	     struct ir_trans *tr, struct ir_node *node)
 {
   uint8_t i;
   for (i = 0; i < TRANS_REG_NUM; ++i)
@@ -3691,7 +3676,7 @@ ir_gen_init (struct ir_flattened *flat, struct ir_node *node)
       if (i != TRANS_RIP)
 	node->next_guests[i]->locs.local = ir_get_local (flat);
       flat->guest_locs[i].def = node->next_guests[i];
-      ir_init_guest_loc (flat->guest_locs + i);
+      ir_set_guest_loc (flat, tr, i);
     }
 }
 
@@ -3699,24 +3684,13 @@ static struct eri_trans *
 ir_output (struct ir_dag *dag, struct ir_trans *tr)
 {
   struct ir_accesses *a = &dag->accesses;
-
-  /*
-   * The last inst length is not necessary if the signal is explicitly
-   * specified, because the last inst is not executed.
-   */
-  uint64_t guest_insts_off = dag->guest_insts.off
-			- tr->sig_info.sig ? sizeof (struct inst_len) : 0;
   struct eri_trans *res = eri_assert_mtmalloc_struct (dag->pool,
 	typeof (*res), (insts, tr->insts.off),
-	(guest_insts, guest_insts_off), (traces, tr->traces.off),
-	(accesses.accesses, a->accesses.off));
+	(traces, tr->traces.off), (accesses.accesses, a->accesses.off));
 
   eri_log8 (dag->log, "res->buf: %lx\n", res->buf);
 
   res->len = dag->len;
-
-  eri_memcpy (res->guest_insts, dag->guest_insts.buf, guest_insts_off);
-  res->guest_insts_num = guest_insts_off / sizeof *res->guest_insts;
 
   eri_memcpy (res->insts, tr->insts.buf, tr->insts.off);
   res->insts_len = tr->insts.off;
@@ -3732,22 +3706,12 @@ ir_output (struct ir_dag *dag, struct ir_trans *tr)
 
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, dag);
-  res->accesses.num = layout.accesses_num;
+  res->accesses.num = a->accesses.off / sizeof (struct access);
+  res->accesses.vars_count = layout.access_vars_count;
   res->accesses.conds_count = layout.access_conds_count;
-
-  res->accesses.traces = tr->trace_accesses.traces;
 
   res->local_num = tr->local_num;
   return res;
-}
-
-static void
-ir_init_trace_accesses (struct ir_trace_accesses *traces,
-			struct eri_mtpool *pool, uint64_t num)
-{
-  traces->traces = eri_assert_mtmalloc (pool,
-					sizeof traces->traces[0] * num);
-  traces->i = 0;
 }
 
 static struct eri_trans *
@@ -3772,7 +3736,8 @@ ir_generate (struct ir_dag *dag, void *analysis)
   struct ir_trans tr = { dag->log, analysis };
   eri_assert_buf_mtpool_init (&tr.insts, dag->pool, 512);
   eri_assert_buf_mtpool_init (&tr.traces, dag->pool, 512);
-  ir_init_trace_accesses (&tr.trace_accesses, dag->pool, layout.accesses_num);
+  struct eri_buf *acc = &dag->accesses.accesses;
+  tr.access = acc->buf;
 
   if (local != TRANS_RDI)
     ir_emit (mov, &tr, local, TRANS_RDI);
@@ -3780,13 +3745,19 @@ ir_generate (struct ir_dag *dag, void *analysis)
   struct ir_node *node;
   ERI_LST_FOREACH (ir_flat, &flat, node)
     if (node->tag == IR_INIT)
-      ir_gen_init (&flat, node);
+      ir_gen_init (&flat, &tr, node);
     else if (node->tag == IR_ERR_END && ! node->end.sig_info.sig)
       ir_emit_raw (&tr, node->end.bytes, node->end.len);
     else
       ir_assign_hosts (&flat, &tr, node);
 
-  eri_lassert (dag->log, tr.trace_accesses.i == layout.accesses_num);
+  if ((uint64_t) tr.access != (uint64_t) acc->buf + acc->off)
+    {
+      eri_log (dag->log, "%lu %lu\n",
+	((uint64_t) tr.access - (uint64_t) acc->buf) / sizeof (struct access),
+	acc->off / sizeof (struct access));
+      eri_lassert (dag->log, 0);
+    }
 
   tr.local_num = flat.local_num;
   struct eri_trans *res = ir_output (dag, &tr);
@@ -3818,8 +3789,6 @@ eri_translate (struct eri_translate_args *args)
   ERI_LST_INIT_LIST (ir_alloc, &dag);
 
   uint32_t max_inst_count = args->tf ? 1 : args->max_inst_count;
-  eri_assert_buf_mtpool_init (&dag.guest_insts, dag.pool,
-	eri_round_up (max_inst_count * sizeof (struct inst_len) / 4, 16));
 
   dag.map_start = ir_get_load_imm (&dag, args->map_range->start);
   dag.map_end = ir_get_load_imm (&dag, args->map_range->end);
@@ -3902,6 +3871,7 @@ eri_translate (struct eri_translate_args *args)
       ir_finish_inst (&dag, node);
       if (++i == max_inst_count)
 	{
+	  eri_memset (node->next_guests, 0, sizeof node->next_guests);
 	  ir_end (&dag, 0);
 	  break;
 	}
@@ -3917,14 +3887,12 @@ eri_translate (struct eri_translate_args *args)
 out:
   ir_free_all (&dag);
   eri_assert_buf_fini (&dag.accesses.accesses);
-  eri_assert_buf_fini (&dag.guest_insts);
   return res;
 }
 
 void
 eri_trans_destroy (struct eri_mtpool *pool, struct eri_trans *tr)
 {
-  eri_assert_mtfree (pool, tr->accesses.traces);
   eri_assert_mtfree (pool, tr);
 }
 
@@ -3979,16 +3947,18 @@ append_access (struct eri_buf *buf, uint64_t addr,
 }
 
 static void
-collect_accesses (eri_file_t log, struct eri_buf *buf, uint8_t read,
+collect_accesses (eri_file_t log, struct eri_buf *buf,
 		  struct accesses *acc, uint64_t *addrs, uint8_t *conds)
 {
-  uint64_t i, c = 0;
+  uint64_t i, v = 0, c = 0;
   for (i = 0; i < acc->num; ++i)
     {
       struct access *a = acc->accesses + i;
+      uint64_t addr = a->var ? addrs[v++] : a->addr;
       if (! a->cond || conds[c++])
-	append_access (buf, addrs[i], a->size, a->type);
+	append_access (buf, addr, a->size, a->type);
     }
+  eri_lassert (log, v == acc->vars_count);
   eri_lassert (log, c == acc->conds_count);
 }
 
@@ -4015,9 +3985,8 @@ eri_trans_leave_active (struct eri_trans_leave_active_args *args,
   struct active_local_layout_args layout;
   trans_active_local_layout (&layout, act);
 
-  collect_accesses (log, args->accesses, 1, &tr->accesses,
+  collect_accesses (log, args->accesses, &tr->accesses,
 		    layout.accesses, layout.access_conds);
-  append_access (args->accesses, tr->rip, tr->len, ERI_ACCESS_READ); // TODO
 
   *info = tr->sig_info;
   return tr->tf;
@@ -4050,17 +4019,17 @@ sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
 		const struct eri_siginfo *info,
 		struct accesses *acc, uint64_t *addrs, uint8_t *conds)
 {
-  uint64_t i;
+  uint64_t i, v = 0, c = 0;
   for (i = 0; i < acc->num; ++i)
     {
-      struct trace_access *t = acc->traces + i;
-      if (t->rip_off <= rip_off
-	  || (si_map_err (info) && t->rip_off - t->inst_len == rip_off))
+      struct access *a = acc->accesses + i;
+      if (a->rip_off <= rip_off
+	  || (si_map_err (info) && a->rip_off - a->inst_len == rip_off))
 	{
-	  struct access *a = acc->accesses + t->idx;
-	  if (! a->cond || conds[t->cond_idx])
-	    append_access (buf, addrs[t->idx], t->rip_off <= rip_off
-		? a->size : info->fault.addr + 1 - addrs[t->idx], a->type);
+	  uint64_t addr = a->var ? addrs[v++] : a->addr;
+	  if (! a->cond || conds[c++])
+	    append_access (buf, addrs[i], a->rip_off <= rip_off
+		? a->size : info->fault.addr + 1 - addr, a->type);
 	}
     }
 }
@@ -4080,19 +4049,11 @@ eri_trans_sig_leave_active (struct eri_trans_leave_active_args *args,
   trans_active_local_layout (&layout, act);
 
   struct trans_loc locs[TRANS_REG_NUM];
-  uint64_t static_local_num
-	= ((uint64_t) layout.dynamics - (uint64_t) layout.local) >> 3;
-
-  uint64_t i;
-  for (i = 0; i < TRANS_REG_NUM; ++i)
-    if (i != TRANS_RIP)
-      trans_set_loc (locs + i, TRANS_LOC_LOCAL, static_local_num + i);
-    else
-      trans_set_loc (locs + i, TRANS_LOC_IMM, tr->rip);
 
   uint64_t rip_off = rip - (uint64_t) tr->insts;
   struct trace_guest *traces = tr->traces;
 
+  uint64_t i;
   for (i = 0; i < tr->traces_num && traces[i].rip_off <= rip_off; ++i)
     locs[traces[i].reg_idx] = traces[i].loc;
 
@@ -4111,14 +4072,6 @@ eri_trans_sig_leave_active (struct eri_trans_leave_active_args *args,
 
   sig_collect_accesses (args->accesses, rip_off, info, &tr->accesses,
 			layout.accesses, layout.access_conds);
-  uint64_t len = regs->rip - tr->rip; // TODO
-  for (i = 0; i < tr->guest_insts_num; ++i)
-    if (tr->guest_insts[i].rip == regs->rip)
-      {
-	len += tr->guest_insts[i].len;
-	break;
-      }
-  append_access (args->accesses, tr->rip, len, ERI_ACCESS_READ);
 }
 
 void *
