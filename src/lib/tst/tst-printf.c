@@ -20,7 +20,7 @@ tst_foreach_line (uint64_t size)
   eri_assert_init_pool (&pool, pool_buf, sizeof pool_buf);
   struct eri_buf buf;
   eri_assert (eri_buf_pool_init (&buf, &pool, size) == 0);
-  eri_assert (eri_file_foreach_line ("/proc/self/smaps",
+  eri_assert (eri_file_foreach_line ("/proc/self/maps",
 				     &buf, proc_line, 0) == 0);
   eri_assert (eri_buf_fini (&buf) == 0);
   eri_assert_fini_pool (&pool);
