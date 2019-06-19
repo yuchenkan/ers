@@ -123,7 +123,7 @@ struct eri_trans
   struct eri_siginfo sig_info;
   uint8_t new_tf;
 
-  struct accesses accesses; // TODO
+  struct accesses accesses;
 
   uint64_t local_num;
 
@@ -331,6 +331,7 @@ struct ir_node
 	  struct ir_dep memory;
 	  struct ir_dep prev;
 	  struct ir_dep map_start, map_end;
+	  struct ir_dep rec_mem;
 	} rec_mem;
       struct
 	{
@@ -477,8 +478,9 @@ struct ir_dag
   struct ir_def *memory;
   struct ir_def *prev;
   struct ir_def *last;
+  struct ir_def *rec_mem;
 
-  struct ir_accesses accesses; // TODO
+  struct ir_accesses accesses;
 };
 
 ERI_DEFINE_LIST (static, ir_alloc, struct ir_dag, struct ir_alloc)
@@ -535,7 +537,7 @@ struct ir_trans
   struct trans_loc final_locs[TRANS_REG_NUM];
   struct eri_siginfo sig_info;
 
-  struct ir_trace_accesses trace_accesses; // TODO
+  struct ir_trace_accesses trace_accesses;
 
   uint64_t local_num;
 };
@@ -869,6 +871,8 @@ ir_eval_rec_mem (struct ir_dag *dag, struct ir_rec_mem_args *args)
 				       args->read, mem->size, 0, 0);
   ir_depand (node, &node->rec_mem.memory, dag->memory, 0);
   ir_depand (node, &node->rec_mem.prev, dag->prev, 0);
+  ir_depand (node, &node->rec_mem.rec_mem, dag->rec_mem, 0);
+   dag->rec_mem = &node->seq;
   if (! args->read)
     {
       ir_depand (node, &node->rec_mem.map_start, dag->map_start, 1);
@@ -3192,7 +3196,7 @@ struct active_local_layout_args
 
   void *local;
 
-  void *accesses; // TODO
+  void *accesses;
   void *access_conds;
 
   void *dynamics;
