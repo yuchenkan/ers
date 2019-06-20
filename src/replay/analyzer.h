@@ -41,6 +41,8 @@ void eri_analyzer_group__destroy (eri_analyzer_group_type *group);
 struct eri_analyzer__create_args
 {
   eri_analyzer_group_type *group;
+  eri_analyzer_type *parent;
+
   uint64_t id;
   struct eri_entry *entry;
 

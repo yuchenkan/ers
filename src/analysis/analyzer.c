@@ -218,6 +218,7 @@ analysis_enter (struct eri_analyzer *al,
 	    regs->rip, regs->rcx, regs->r11, regs->rflags);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
+  // TODO do analysis
   if (eri_atomic_load (&al->group->exit, 0)) exit (al);
 
   struct eri_analyzer_group *group = al->group;
@@ -386,8 +387,6 @@ analysis (struct eri_trans_active *act)
   update_access_from_buf (al, &accesses, "accesses");
   eri_assert_buf_fini (&accesses);
 
-  // TODO do analysis
-
   if (info.sig) raise (al, &info, &regs);
   else if (tf) raise_single_step (al, &regs);
 
@@ -464,8 +463,6 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 
   update_access_from_buf (al, &accesses, "sig leave accesses");
   eri_assert_buf_fini (&accesses);
-
-  // TODO do analysis
 }
 
 static void
@@ -550,7 +547,6 @@ update_mm_prot (struct eri_analyzer *al, uint8_t read,
       mm_perm_rbt_insert (perms, it);
     }
 
-  // TODO do analysis
   update_access_from_buf (al, &accesses,
 		 permitted ? "mm permitted" : "mm not permitted");
   eri_assert_buf_fini (&accesses);
