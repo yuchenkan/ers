@@ -211,6 +211,8 @@ analysis_enter (struct eri_analyzer *al,
 	    regs->rip, regs->rcx, regs->r11, regs->rflags);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
+  if (eri_atomic_load (&al->group->exit, 0)) exit (al);
+
   struct eri_analyzer_group *group = al->group;
   eri_assert_lock (&group->trans_lock);
   struct trans_key key = { regs->rip, !! (regs->rflags & ERI_RFLAGS_TF) };
@@ -304,14 +306,33 @@ release_active (struct eri_analyzer *al)
 }
 
 static void
-dump_accesses (eri_file_t log, const char *head, struct eri_buf *acc)
+dump_accesses (eri_file_t log, uint8_t t, struct eri_access *a, uint64_t n)
 {
-  struct eri_access *a = (void *) acc->buf;
-  uint64_t i, n = acc->off / sizeof *a;
-  if (n) eri_log3 (log, "%s\n", head);
+  uint64_t i;
   for (i = 0; i < n; ++i)
-    eri_rlog3 (log, "  %lx %lu %s\n",
+    eri_rlogn (t, log, "  %lx %lu %s\n",
 	       a[i].addr, a[i].size, eri_access_type_str (a[i].type));
+}
+
+static void
+update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
+	       const char *msg)
+{
+  if (! n) return;
+
+  uint8_t t = 3;
+  eri_logn (t, al->log.file, "%s\n", msg);
+  dump_accesses (al->log.file, t, acc, n);
+
+  // TODO
+}
+
+static void
+update_access_from_buf (struct eri_analyzer *al, struct eri_buf *acc,
+			const char *msg)
+{
+  update_access (al, (void *) acc->buf,
+		 acc->off / sizeof (struct eri_access), msg);
 }
 
 static eri_noreturn void
@@ -328,11 +349,10 @@ analysis (struct eri_trans_active *act)
   uint8_t tf = eri_trans_leave_active (&args, &info);
   release_active (al);
 
-  // TODO
-  dump_accesses (log, "accesses", &accesses);
+  update_access_from_buf (al, &accesses, "accesses");
   eri_assert_buf_fini (&accesses);
 
-  if (eri_atomic_load (&al->group->exit, 0)) exit (al);
+  // TODO do analysis
 
   if (info.sig) raise (al, &info, &regs);
   else if (tf) raise_single_step (al, &regs);
@@ -402,15 +422,16 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 			= { al->act, log, &regs, &accesses };
   eri_trans_sig_leave_active (&leave_args, info, mctx);
 
-  // TODO
-  dump_accesses (log, "sig leave accesses", &accesses);
-  eri_assert_buf_fini (&accesses);
-
   struct eri_mcontext saved = *mctx;
   eri_mcontext_from_registers (mctx, &regs);
 
   if (args->handler (info, args->ctx, args->args)) release_active (al);
   else *mctx = saved;
+
+  update_access_from_buf (al, &accesses, "sig leave accesses");
+  eri_assert_buf_fini (&accesses);
+
+  // TODO do analysis
 }
 
 static void
@@ -495,9 +516,9 @@ update_mm_prot (struct eri_analyzer *al, uint8_t read,
       mm_perm_rbt_insert (perms, it);
     }
 
-  // TODO
-  dump_accesses (al->log.file,
-		 permitted ? "mm permitted" : "mm not permitted", &accesses);
+  // TODO do analysis
+  update_access_from_buf (al, &accesses,
+		 permitted ? "mm permitted" : "mm not permitted");
   eri_assert_buf_fini (&accesses);
 }
 
@@ -515,8 +536,7 @@ eri_analyzer__update_mm_prot (struct eri_analyzer *al,
 }
 
 void
-eri_analyzer__update_access (eri_analyzer_type *analyzer,
-			     struct eri_access *acc)
+eri_analyzer__update_access (struct eri_analyzer *al, struct eri_access *acc)
 {
-  // TODO
+  update_access (al, acc, 1, "extern");
 }
