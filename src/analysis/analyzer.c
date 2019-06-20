@@ -306,10 +306,10 @@ release_active (struct eri_analyzer *al)
 static void
 dump_accesses (eri_file_t log, const char *head, struct eri_buf *acc)
 {
-  uint64_t i;
   struct eri_access *a = (void *) acc->buf;
-  eri_rlog3 (log, "%s\n", head);
-  for (i = 0; i < acc->off / sizeof *a; ++i)
+  uint64_t i, n = acc->off / sizeof *a;
+  if (n) eri_log3 (log, "%s\n", head);
+  for (i = 0; i < n; ++i)
     eri_rlog3 (log, "  %lx %lu %s\n",
 	       a[i].addr, a[i].size, eri_access_type_str (a[i].type));
 }
@@ -403,7 +403,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
   eri_trans_sig_leave_active (&leave_args, info, mctx);
 
   // TODO
-  dump_accesses (log, "sig leave accesses\n", &accesses);
+  dump_accesses (log, "sig leave accesses", &accesses);
   eri_assert_buf_fini (&accesses);
 
   struct eri_mcontext saved = *mctx;
@@ -414,62 +414,91 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 }
 
 static void
-update_mm_prot (struct eri_mtpool *pool,
-		struct mm_perms *perms, struct eri_range range, uint8_t p)
+update_mm_prot (struct eri_analyzer *al, uint8_t read,
+		struct eri_range *range, uint8_t permitted)
 {
-  if (p)
+  struct eri_analyzer_group *group = al->group;
+  struct mm_perms *perms = read ? &group->read_perms : &group->write_perms;
+
+  if (permitted)
     {
-      struct mm_perm *eq = mm_perm_rbt_get (perms, &range.start, ERI_RBT_EQ);
-      if (eq && eq->end == range.end) return;
+      struct mm_perm *eq = mm_perm_rbt_get (perms, &range->start, ERI_RBT_EQ);
+      if (eq && eq->end == range->end) return;
     }
 
-  // TODO
+  struct eri_mtpool *pool = group->pool;
+  uint8_t type = read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE;
 
-  struct mm_perm *lt = mm_perm_rbt_get (perms, &range.start, ERI_RBT_LT);
+  struct eri_buf accesses;
+  eri_assert_buf_mtpool_init (&accesses, pool, 16);
+
+  struct mm_perm *lt = mm_perm_rbt_get (perms, &range->start, ERI_RBT_LT);
+
+  uint64_t start = range->start, end = range->end;
+  uint64_t perm_start = range->start;
+  if (lt && lt->end > start)
+    {
+      if (permitted)
+	{
+	  mm_perm_rbt_remove (perms, lt);
+	  start = lt->start;
+	  perm_start = lt->end;
+	  eri_assert_mtfree (pool, lt);
+	}
+      else
+	{
+	  eri_append_access (&accesses, start, lt->end - start, type);
+	  lt->end = start;
+	}
+    }
+
   struct mm_perm *it = lt ? mm_perm_rbt_get_next (lt)
 			  : mm_perm_rbt_get_first (perms);
 
-  if (lt && lt->end > range.start)
+  while (it && it->end <= end)
     {
-      if (p)
-	{
-	  mm_perm_rbt_remove (perms, lt);
-	  range.start = lt->start;
-	  eri_assert_mtfree (pool, lt);
-	}
-      else lt->end = range.start;
-    }
+      uint64_t acc_start = permitted ? perm_start : it->start;
+      eri_append_access (&accesses, acc_start,
+		(permitted ? it->start : it->end) - acc_start, type);
 
-  while (it && it->end < range.end)
-    {
       struct mm_perm *tmp = mm_perm_rbt_get_next (it);
       mm_perm_rbt_remove (perms, it);
       eri_assert_mtfree (pool, it);
       it = tmp;
     }
 
-  if (it && it->start < range.end)
+  if (it && it->start < end)
     {
       mm_perm_rbt_remove (perms, it);
-      if (p)
+      if (permitted)
 	{
-	  range.end = it->end;
+	  eri_append_access (&accesses, perm_start,
+			     it->start - perm_start, type);
+	  end = it->end;
 	  eri_assert_mtfree (pool, it);
 	}
       else
 	{
-	  it->start = range.end;
+	  eri_append_access (&accesses, it->start, end - it->start, type);
+	  it->start = end;
 	  mm_perm_rbt_insert (perms, it);
 	}
     }
+  else if (permitted)
+    eri_append_access (&accesses, perm_start, end - perm_start, type);
 
-  if (p)
+  if (permitted)
     {
       it = eri_assert_mtmalloc (pool, sizeof *it);
-      it->start = range.start;
-      it->end = range.end;
+      it->start = start;
+      it->end = end;
       mm_perm_rbt_insert (perms, it);
     }
+
+  // TODO
+  dump_accesses (al->log.file,
+		 permitted ? "mm permitted" : "mm not permitted", &accesses);
+  eri_assert_buf_fini (&accesses);
 }
 
 void
@@ -480,10 +509,8 @@ eri_analyzer__update_mm_prot (struct eri_analyzer *al,
 
   /* XXX: already protected by the caller now */
   eri_assert_lock (&group->mm_prot_lock);
-  update_mm_prot (group->pool, &group->read_perms, range,
-		  !! (prot & ERI_PROT_READ));
-  update_mm_prot (group->pool, &group->write_perms, range,
-		  !! (prot & ERI_PROT_WRITE));
+  update_mm_prot (al, 1, &range, !! (prot & ERI_PROT_READ));
+  update_mm_prot (al, 0, &range, !! (prot & ERI_PROT_WRITE));
   eri_assert_unlock (&group->mm_prot_lock);
 }
 

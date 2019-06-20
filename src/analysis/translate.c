@@ -1327,7 +1327,7 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 
 done:
   dag->len += inst_len;
-  ir_add_const_access (&dag->accesses, 1, inst_len, rip);
+  ir_add_const_access (&dag->accesses, 1, rip, inst_len);
   return 1;
 }
 
@@ -1358,18 +1358,18 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
   xed_decoded_inst_t *dec = &node->inst.dec;
 
   xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
-  eri_rlog3 (log, "cate: %s, ", xed_category_enum_t2str (cate));
+  eri_rlog4 (log, "cate: %s, ", xed_category_enum_t2str (cate));
   xed_iclass_enum_t iclass = xed_decoded_inst_get_iclass (dec);
-  eri_rlog3 (log, "iclass: %s, ", xed_iclass_enum_t2str (iclass));
+  eri_rlog4 (log, "iclass: %s, ", xed_iclass_enum_t2str (iclass));
   xed_iform_enum_t iform = xed_decoded_inst_get_iform_enum (dec);
-  eri_rlog3 (log, "%s, ", xed_iform_to_iclass_string_att (iform));
+  eri_rlog4 (log, "%s, ", xed_iform_to_iclass_string_att (iform));
 
   xed_uint_t length = xed_decoded_inst_get_length (dec);
   xed_operand_values_t *ops = xed_decoded_inst_operands (dec);
 
   const xed_inst_t *inst = xed_decoded_inst_inst (dec);
   int noperands = xed_inst_noperands (inst);
-  eri_rlog3 (log, "length: %u, size: %u, addr_size: %u, noperands: %u\n",
+  eri_rlog4 (log, "length: %u, size: %u, addr_size: %u, noperands: %u\n",
 	length, xed_operand_values_get_effective_operand_width (ops) >> 3,
 	xed_operand_values_get_effective_address_width (ops) >> 3, noperands);
 
@@ -1378,7 +1378,7 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
     {
       const xed_operand_t *op = xed_inst_operand (inst, i);
       xed_operand_enum_t op_name = xed_operand_name (op);
-      eri_rlog3 (log, "  opname: %s, ", xed_operand_enum_t2str (op_name));
+      eri_rlog4 (log, "  opname: %s, ", xed_operand_enum_t2str (op_name));
 
       if (op_name == XED_OPERAND_SEG0
 	  || op_name == XED_OPERAND_SEG1
@@ -1388,7 +1388,7 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
 	  || (op_name >= XED_OPERAND_REG0 && op_name <= XED_OPERAND_REG8))
 	{
 	  xed_reg_enum_t reg = xed_decoded_inst_get_reg (dec, op_name);
-	  eri_rlog3 (log, "operand: %s, ", xed_reg_enum_t2str (reg));
+	  eri_rlog4 (log, "operand: %s, ", xed_reg_enum_t2str (reg));
 	}
       else if (op_name == XED_OPERAND_MEM0 || op_name == XED_OPERAND_AGEN)
 	{
@@ -1404,12 +1404,12 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
 	  eri_assert (seg != XED_REG_FSBASE && seg != XED_REG_GSBASE);
 	  eri_assert (index != XED_REG_FSBASE && index != XED_REG_GSBASE);
 
-	  eri_rlog3 (log, "base: %s, ", xed_reg_enum_t2str (base));
-	  eri_rlog3 (log, "seg: %s, ", xed_reg_enum_t2str (seg));
-	  eri_rlog3 (log, "index: %s, ", xed_reg_enum_t2str (index));
-	  eri_rlog3 (log, "disp: %lx, %lx, ", disp, ~disp + 1);
-	  eri_rlog3 (log, "disp_width: %u, ", disp_width);
-	  eri_rlog3 (log, "length: %u, ", length);
+	  eri_rlog4 (log, "base: %s, ", xed_reg_enum_t2str (base));
+	  eri_rlog4 (log, "seg: %s, ", xed_reg_enum_t2str (seg));
+	  eri_rlog4 (log, "index: %s, ", xed_reg_enum_t2str (index));
+	  eri_rlog4 (log, "disp: %lx, %lx, ", disp, ~disp + 1);
+	  eri_rlog4 (log, "disp_width: %u, ", disp_width);
+	  eri_rlog4 (log, "length: %u, ", length);
 	}
       else if (op_name == XED_OPERAND_MEM1)
 	{
@@ -1420,16 +1420,16 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
 	  eri_assert (base != XED_REG_FSBASE && base != XED_REG_GSBASE);
 	  eri_assert (seg != XED_REG_FSBASE && seg != XED_REG_GSBASE);
 
-	  eri_rlog3 (log, "base: %s, ", xed_reg_enum_t2str (base));
-	  eri_rlog3 (log, "seg: %s, ", xed_reg_enum_t2str (seg));
-	  eri_rlog3 (log, "length: %u, ", length);
+	  eri_rlog4 (log, "base: %s, ", xed_reg_enum_t2str (base));
+	  eri_rlog4 (log, "seg: %s, ", xed_reg_enum_t2str (seg));
+	  eri_rlog4 (log, "length: %u, ", length);
 	}
       else if (op_name == XED_OPERAND_RELBR)
 	{
 	  xed_int32_t disp = xed_decoded_inst_get_branch_displacement (dec);
 
-	  eri_rlog3 (log, "disp: %x, %x, ", disp, ~disp + 1);
-	  eri_rlog3 (log, "addr: %lx, ", rip + length + disp);
+	  eri_rlog4 (log, "disp: %x, %x, ", disp, ~disp + 1);
+	  eri_rlog4 (log, "addr: %lx, ", rip + length + disp);
 	}
       else if (op_name == XED_OPERAND_IMM0)
 	{
@@ -1437,14 +1437,14 @@ ir_dump_inst (eri_file_t log, struct ir_node *node)
 	  xed_uint_t is_signed = xed_decoded_inst_get_immediate_is_signed (dec);
 	  xed_uint_t width = xed_decoded_inst_get_immediate_width (dec);
 
-	  eri_rlog3 (log, "imm: %lx, %lu, %lx, %lu, ",
+	  eri_rlog4 (log, "imm: %lx, %lu, %lx, %lu, ",
 		     imm, imm, ~imm + 1, ~imm + 1);
-	  eri_rlog3 (log, "is_signed: %u, ", is_signed);
-	  eri_rlog3 (log, "width: %u, ", width);
+	  eri_rlog4 (log, "is_signed: %u, ", is_signed);
+	  eri_rlog4 (log, "width: %u, ", width);
 	}
 
       xed_operand_action_enum_t rw = xed_decoded_inst_operand_action (dec, i);
-      eri_rlog3 (log, "action: %s\n", xed_operand_action_enum_t2str (rw));
+      eri_rlog4 (log, "action: %s\n", xed_operand_action_enum_t2str (rw));
     }
 }
 
@@ -2331,7 +2331,7 @@ ir_add_trace_guest (struct ir_flat *flat, uint8_t idx,
 {
   if (idx == TRANS_RIP)
     {
-      eri_log3 (flat->dag->log, "%lx\n", flat->insts.off);
+      eri_log4 (flat->dag->log, "%lx\n", flat->insts.off);
       ir_trace_inc_access (flat, flat->insts.off, 0);
     }
   struct trace_guest t = { flat->insts.off, idx, loc };
@@ -3577,7 +3577,7 @@ static void
 ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
 {
   eri_file_t log = flat->dag->log;
-  eri_log3 (log, "%s\n", ir_node_tag_str (node->tag));
+  eri_log4 (log, "%s\n", ir_node_tag_str (node->tag));
 
   ir_assign_update_usage (flat, node);
 
@@ -3924,14 +3924,6 @@ eri_trans_enter_active (struct eri_trans_active *act)
 }
 
 static void
-append_access (struct eri_buf *buf, uint64_t addr,
-	       uint64_t size, uint8_t type)
-{
-  struct eri_access acc = { addr, size, type };
-  eri_assert_buf_append (buf, &acc, sizeof acc);
-}
-
-static void
 collect_accesses (eri_file_t log, struct eri_buf *buf,
 		  struct accesses *acc, uint64_t *addrs, uint8_t *conds)
 {
@@ -3941,7 +3933,7 @@ collect_accesses (eri_file_t log, struct eri_buf *buf,
       struct access *a = acc->accesses + i;
       uint64_t addr = a->var ? addrs[v++] : a->addr;
       if (! a->cond || conds[c++])
-	append_access (buf, addr, a->size, a->type);
+	eri_append_access (buf, addr, a->size, a->type);
     }
   eri_lassert (log, v == acc->vars_count);
   eri_lassert (log, c == acc->conds_count);
@@ -4013,7 +4005,7 @@ sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
 	{
 	  uint64_t addr = a->var ? addrs[v++] : a->addr;
 	  if (! a->cond || conds[c++])
-	    append_access (buf, addrs[i], a->rip_off <= rip_off
+	    eri_append_access (buf, addrs[i], a->rip_off <= rip_off
 		? a->size : info->fault.addr + 1 - addr, a->type);
 	}
     }

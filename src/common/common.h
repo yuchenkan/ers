@@ -5,6 +5,7 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
+#include <lib/buf.h>
 #include <lib/printf.h>
 #include <lib/lock.h>
 #include <lib/syscall.h>
@@ -221,5 +222,13 @@ eri_set_access (struct eri_access *acc, uint64_t addr,
   eri_set_access (acc, addr, size, ERI_ACCESS_READ)
 #define eri_set_write(acc, addr, size) \
   eri_set_access (acc, addr, size, ERI_ACCESS_WRITE)
+
+static eri_unused void
+eri_append_access (struct eri_buf *buf, uint64_t addr,
+		   uint64_t size, uint8_t type)
+{
+  struct eri_access acc = { addr, size, type };
+  eri_assert_buf_append (buf, &acc, sizeof acc);
+}
 
 #endif

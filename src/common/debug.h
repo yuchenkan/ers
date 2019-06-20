@@ -123,7 +123,12 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
 
 #define eri_log2(log, fmt, ...)	eri_logn (2, log, fmt, ##__VA_ARGS__)
 #define eri_log3(log, fmt, ...)	eri_logn (3, log, fmt, ##__VA_ARGS__)
+#define eri_log4(log, fmt, ...)	eri_logn (4, log, fmt, ##__VA_ARGS__)
+#define eri_log5(log, fmt, ...)	eri_logn (5, log, fmt, ##__VA_ARGS__)
+#define eri_log6(log, fmt, ...)	eri_logn (6, log, fmt, ##__VA_ARGS__)
+#define eri_log7(log, fmt, ...)	eri_logn (7, log, fmt, ##__VA_ARGS__)
 #define eri_log8(log, fmt, ...)	eri_logn (8, log, fmt, ##__VA_ARGS__)
+#define eri_log9(log, fmt, ...)	eri_logn (9, log, fmt, ##__VA_ARGS__)
 
 #define eri_rlogn(n, log, fmt, ...) \
   eri_rlog (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
@@ -132,6 +137,18 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
   eri_rlogn (2, log, fmt, ##__VA_ARGS__)
 #define eri_rlog3(log, fmt, ...) \
   eri_rlogn (3, log, fmt, ##__VA_ARGS__)
+#define eri_rlog4(log, fmt, ...) \
+  eri_rlogn (4, log, fmt, ##__VA_ARGS__)
+#define eri_rlog5(log, fmt, ...) \
+  eri_rlogn (5, log, fmt, ##__VA_ARGS__)
+#define eri_rlog6(log, fmt, ...) \
+  eri_rlogn (6, log, fmt, ##__VA_ARGS__)
+#define eri_rlog7(log, fmt, ...) \
+  eri_rlogn (7, log, fmt, ##__VA_ARGS__)
+#define eri_rlog8(log, fmt, ...) \
+  eri_rlogn (8, log, fmt, ##__VA_ARGS__)
+#define eri_rlog9(log, fmt, ...) \
+  eri_rlogn (9, log, fmt, ##__VA_ARGS__)
 
 static eri_unused void
 eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,
