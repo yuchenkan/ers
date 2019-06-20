@@ -97,8 +97,6 @@ struct eri_trans
   uint64_t rip;
   uint8_t tf;
 
-  uint64_t len;
-
   uint8_t *insts;
   uint64_t insts_len;
 
@@ -864,6 +862,8 @@ ir_eval_rec_mem (struct ir_dag *dag, struct ir_rec_mem_args *args)
 static struct ir_def *
 ir_get_rec_mem (struct ir_dag *dag, struct ir_mem_args *mem, uint8_t read)
 {
+  if (mem->seg != XED_REG_INVALID) return 0; // TODO fs gs
+
   struct ir_rec_mem_args args = { *mem, read };
   return ir_eval (dag, struct ir_def *, rec_mem, &args);
 }
@@ -3121,8 +3121,6 @@ static void
 ir_assign_gen_rec_mem_ras (struct ir_flat *flat,
 			   struct ir_node *node, struct eri_buf *ras)
 {
-  if (node->rec_mem.mem.seg != XED_REG_INVALID) return; // TODO fs gs
-
   ir_append_mem_ras (ras, &node->rec_mem.mem);
   if (flat->access->type == ERI_ACCESS_READ)
     ir_append_ra (ras, TRANS_REG_NUM, 0, &flat->dummy);
@@ -3204,8 +3202,6 @@ static void
 ir_assign_emit_rec_mem (struct ir_flat *flat,
 			struct ir_node *node, struct ir_ra *a)
 {
-  if (node->rec_mem.mem.seg != XED_REG_INVALID) return; // TODO fs gs
-
   struct ir_enc_mem_args mem;
   a = ir_init_emit_mem_args (&mem, &node->rec_mem.mem, a);
   ir_emit (lea, flat, a->host_idx, &mem);
@@ -3242,6 +3238,10 @@ ir_assign_gen_store_ras (eri_file_t log,
     ir_append_ra (ras, TRANS_REG_NUM, src, 0);
 }
 
+// TODO fs gs
+static void ir_try_trace_access (struct ir_flat *flat,
+				 struct ir_def *def, uint8_t len);
+
 static void
 ir_assign_emit_store (struct ir_flat *flat,
 		      struct ir_node *node, struct ir_ra *a)
@@ -3252,7 +3252,7 @@ ir_assign_emit_store (struct ir_flat *flat,
   uint8_t len = ! ir_assign_def_fits_imml (flat->dag->log, src)
 			? ir_emit (store, flat, &dst, a->host_idx)
 			: ir_emit (store_imm, flat, &dst, src->imm);
-  ir_trace_access (flat, len);
+  ir_try_trace_access (flat, node->store.dst.regs.write.def, len);
 }
 
 static void
@@ -3270,7 +3270,7 @@ ir_assign_emit_load (struct ir_flat *flat,
   struct ir_enc_mem_args src;
   ir_init_emit_mem_args (&src, &node->load.src, a + 1);
   uint8_t len = ir_emit (load, flat, a->host_idx, &src);
-  ir_trace_access (flat, len);
+  ir_try_trace_access (flat, node->load.src.regs.read.def, len);
 }
 
 static void
@@ -3667,8 +3667,6 @@ ir_output (struct ir_dag *dag, struct ir_flat *flat)
 
   eri_log8 (dag->log, "res->buf: %lx\n", res->buf);
 
-  res->len = dag->len;
-
   eri_memcpy (res->insts, flat->insts.buf, flat->insts.off);
   res->insts_len = flat->insts.off;
 
@@ -3860,6 +3858,7 @@ eri_translate (struct eri_translate_args *args)
 out:
   ir_free_all (&dag);
   eri_assert_buf_fini (&dag.accesses.accesses);
+  if (args->len) *args->len = dag.len;
   return res;
 }
 

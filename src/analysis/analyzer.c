@@ -27,6 +27,7 @@ struct trans
   uint64_t ref_count;
 
   struct eri_trans *trans;
+  uint64_t len;
   uint64_t wait;
   uint32_t done;
 
@@ -131,6 +132,13 @@ free_mm_perms (struct eri_mtpool *pool, struct mm_perms *perms)
     }
 }
 
+static void
+destroy_trans (struct eri_mtpool *pool, struct trans *t)
+{
+  if (t->trans) eri_trans_destroy (pool, t->trans);
+  eri_assert_mtfree (pool, t);
+}
+
 void
 eri_analyzer_group__destroy (struct eri_analyzer_group *group)
 {
@@ -139,8 +147,7 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
     {
       trans_rbt_remove (group, t);
       eri_xassert (t->ref_count == 0, eri_info);
-      if (t->trans) eri_trans_destroy (group->pool, t->trans);
-      eri_assert_mtfree (group->pool, t);
+      destroy_trans (group->pool, t);
     }
   free_mm_perms (group->pool, &group->read_perms);
   free_mm_perms (group->pool, &group->write_perms);
@@ -230,7 +237,7 @@ analysis_enter (struct eri_analyzer *al,
       struct eri_translate_args args = {
 	group->pool, al->log.file, group->map_range, group->page_size,
 	group->max_inst_count, key.rip, key.tf, trans, exec_copy_user,
-	al, analysis
+	al, analysis, &trans->len
       };
 
       trans->trans = eri_translate (&args);
@@ -315,6 +322,29 @@ dump_accesses (eri_file_t log, uint8_t t, struct eri_access *a, uint64_t n)
 }
 
 static void
+check_trans_cache (eri_file_t log,
+		   struct eri_analyzer_group *group, struct eri_access *acc)
+{
+  if (acc->type != ERI_ACCESS_WRITE && acc->type != ERI_ACCESS_PROT_READ)
+    return;
+
+  struct eri_range range = { acc->addr, acc->addr + acc->size };
+
+  eri_assert_lock (&group->trans_lock);
+  struct trans *t, *nt;
+  ERI_RBT_FOREACH_SAFE (trans, group, t, nt)
+    if (! eri_atomic_load (&t->ref_count, 0)
+	&& t->trans /* don't bother to remove error */
+	&& eri_cross (&range, t->key.rip, t->len))
+      {
+	eri_log (log, "remove trans cache %lx %lu\n", t->key.rip, t->len);
+	trans_rbt_remove (group, t);
+	destroy_trans (group->pool, t);
+      }
+  eri_assert_unlock (&group->trans_lock);
+}
+
+static void
 update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
 	       const char *msg)
 {
@@ -323,6 +353,10 @@ update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
   uint8_t t = 3;
   eri_logn (t, al->log.file, "%s\n", msg);
   dump_accesses (al->log.file, t, acc, n);
+
+  uint64_t i;
+  for (i = 0; i < n; ++i)
+    check_trans_cache (al->log.file, al->group, acc + i);
 
   // TODO
 }

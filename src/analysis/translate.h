@@ -39,6 +39,8 @@ struct eri_translate_args
   void *copy_args;
 
   void *analysis;
+
+  uint64_t *len;
 };
 
 struct eri_trans *eri_translate (struct eri_translate_args *args);
