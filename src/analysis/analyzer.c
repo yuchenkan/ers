@@ -57,7 +57,7 @@ struct race_chain
   struct race_ref *cur;
 };
 
-struct race_pair;
+struct race_pair
 {
   struct eri_lock lock;
 
@@ -73,7 +73,9 @@ struct race
 
   ERI_LST_LIST_FIELDS (race_pair)
 };
+
 #endif
+// TODO
 
 struct trans_key
 {
@@ -236,6 +238,7 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
 void
 eri_analyzer__destroy (struct eri_analyzer *al)
 {
+  // TODO analysis
   struct eri_mtpool *pool = al->group->pool;
   eri_close_log (pool, &al->log);
   eri_assert_mtfree (al->group->pool, al);
