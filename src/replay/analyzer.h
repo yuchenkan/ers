@@ -30,6 +30,7 @@ struct eri_analyzer_group__create_args
   uint64_t page_size;
   uint64_t file_buf_size;
   uint32_t max_inst_count;
+  uint64_t max_race_enter;
 
   int32_t *pid;
   void *error; /* noreturn void (*) (void *) */
@@ -77,9 +78,9 @@ void eri_analyzer__update_mm_prot (eri_analyzer_type *analyzer,
 void eri_analyzer__update_access (eri_analyzer_type *analyzer,
 				  struct eri_access *acc);
 
-void eri_analyzer__sync_race (eri_analyzer_type *analyzer,
-			      uint64_t key, uint64_t ver);
-void eri_analyzer__update_race (eri_analyzer_type *analyzer,
+void eri_analyzer__race_before (eri_analyzer_type *analyzer,
 				uint64_t key, uint64_t ver);
+void eri_analyzer__race_after (eri_analyzer_type *analyzer,
+			       uint64_t key, uint64_t ver);
 
 #endif

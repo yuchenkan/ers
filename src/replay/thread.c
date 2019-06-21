@@ -229,7 +229,7 @@ version_wait (struct thread *th, struct version *ver, uint64_t exp)
 {
   uint8_t res = version_do_wait (th, ver, exp);
   if (res && eri_enable_analyzer)
-    eri_analyzer__sync_race (th->analyzer, (uint64_t) ver, exp);
+    eri_analyzer__race_after (th->analyzer, (uint64_t) ver, exp);
   return res;
 }
 
@@ -262,7 +262,7 @@ version_update (struct thread *th, struct version *ver)
 
   /* Marking happens-before before happens-after is awoken.  */
   if (eri_enable_analyzer)
-    eri_analyzer__update_race (th->analyzer, (uint64_t) ver, v);
+    eri_analyzer__race_before (th->analyzer, (uint64_t) ver, v);
 
   ERI_LST_FOREACH (version_wakeup, &wakeup, w)
     version_unlock_waiter (th->group->pool, w);
@@ -341,9 +341,10 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 
   if (eri_enable_analyzer)
     {
+      /* XXX: parameterize */
       struct eri_analyzer_group__create_args args = {
         group->pool, &group->map_range, group->log, group->page_size,
-	group->file_buf_size, 64 /* XXX parameterize */, &group->pid, error
+	group->file_buf_size, 64, 1024 * 1024, &group->pid, error
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
     }

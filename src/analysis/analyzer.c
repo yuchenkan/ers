@@ -4,6 +4,7 @@
 #include <lib/lock.h>
 #include <lib/atomic.h>
 #include <lib/buf.h>
+#include <lib/list.h>
 #include <lib/rbtree.h>
 #include <lib/malloc.h>
 
@@ -14,7 +15,6 @@
 #include <analysis/analyzer.h>
 #include <analysis/translate.h>
 
-#if 0
 #define RACE_SYNC_BORN		0
 #define RACE_SYNC_KEY_VER	1
 
@@ -74,8 +74,43 @@ struct race
   ERI_LST_LIST_FIELDS (race_pair)
 };
 
-#endif
 // TODO
+static struct race *
+race_init (struct eri_mtpool *pool, eri_file_t log)
+{
+  return 0;
+}
+
+static struct race *
+race_born (struct race *parent, eri_file_t log)
+{
+  return 0;
+}
+
+static void
+race_end (struct race *race)
+{
+}
+
+static void
+race_push (struct race *race)
+{
+}
+
+static void
+race_access (struct race *race, struct eri_access *acc, uint64_t n)
+{
+}
+
+static void
+race_before (struct race *race, uint64_t key, uint64_t ver)
+{
+}
+
+static void
+race_after (struct race *race, uint64_t key, uint64_t ver)
+{
+}
 
 struct trans_key
 {
@@ -122,6 +157,7 @@ struct eri_analyzer_group
   uint64_t page_size;
   uint64_t file_buf_size;
   uint32_t max_inst_count;
+  uint64_t max_race_enter;
 
   int32_t *pid;
 
@@ -161,7 +197,8 @@ struct eri_analyzer
   struct eri_siginfo act_sig_info;
   struct eri_mcontext act_sig_mctx;
 
-  // struct race *race;
+  uint64_t race_enter;
+  struct race *race;
 };
 
 struct eri_analyzer_group *
@@ -177,6 +214,7 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->page_size = args->page_size;
   group->file_buf_size = args->file_buf_size;
   group->max_inst_count = args->max_inst_count;
+  group->max_race_enter = args->max_race_enter;
   group->pid = args->pid;
   group->error = args->error;
 
@@ -232,13 +270,19 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   al->sig_info = 0;
   al->act = 0;
   al->act_sig_info.sig = 0;
+
+  al->race_enter = 0;
+  struct eri_analyzer *pal = args->parent;
+  eri_file_t log = al->log.file;
+  al->race = pal ? race_born (pal->race, log) : race_init (group->pool, log);
   return al;
 }
 
 void
 eri_analyzer__destroy (struct eri_analyzer *al)
 {
-  // TODO analysis
+  race_end (al->race);
+
   struct eri_mtpool *pool = al->group->pool;
   eri_close_log (pool, &al->log);
   eri_assert_mtfree (al->group->pool, al);
@@ -274,9 +318,11 @@ analysis_enter (struct eri_analyzer *al,
 	    regs->rip, regs->rcx, regs->r11, regs->rflags);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
-  // TODO do analysis
-
   struct eri_analyzer_group *group = al->group;
+
+  al->race_enter = (al->race_enter + 1) % group->max_race_enter;
+  if (! al->race_enter) race_push (al->race);
+
   eri_assert_lock (&group->trans_lock);
   struct trans_key key = { regs->rip, !! (regs->rflags & ERI_RFLAGS_TF) };
   struct trans *trans = trans_rbt_get (group, &key, ERI_RBT_EQ);
@@ -414,7 +460,7 @@ update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
   for (i = 0; i < n; ++i)
     check_trans_cache (al->log.file, al->group, acc + i);
 
-  // TODO
+  race_access (al->race, acc, n);
 }
 
 static void
@@ -628,13 +674,16 @@ eri_analyzer__update_access (struct eri_analyzer *al,
 }
 
 void
-eri_analyzer__sync_race (struct eri_analyzer *al,
-			 uint64_t key, uint64_t ver)
+eri_analyzer__race_before (struct eri_analyzer *al,
+			   uint64_t key, uint64_t ver)
 {
+  race_before (al->race, key, ver);
+  al->race_enter = 0;
 }
 
 void
-eri_analyzer__update_race (struct eri_analyzer *al,
-			   uint64_t key, uint64_t ver)
+eri_analyzer__race_after (struct eri_analyzer *al,
+			  uint64_t key, uint64_t ver)
 {
+  race_after (al->race, key, ver);
 }
