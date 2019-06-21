@@ -245,9 +245,11 @@ uint64_t eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
 void eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
 				     struct eri_iovec *iov);
 
+#define ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS		2
 struct eri_sigframe *eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,
-	struct eri_stack *stack, const struct eri_sigset *mask);
+	struct eri_stack *stack, const struct eri_sigset *mask,
+	struct eri_access *acc);
 
 #define eri_entry__get_sig_info(entry)		(&(entry)->_sig_info)
 #define eri_entry__sig_is_pending(entry)	((entry)->_sig_pending)

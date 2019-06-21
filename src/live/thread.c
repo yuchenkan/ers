@@ -2089,7 +2089,7 @@ sig_action (struct eri_entry *entry)
       record_signal (th, info, act);
       if (! eri_entry__setup_user_frame (entry, &act->act,
 			&th->sig_alt_stack,
-			eri_live_signal_thread__get_sig_mask (sig_th)))
+			eri_live_signal_thread__get_sig_mask (sig_th), 0))
 	core (th, 0);
 
       eri_entry__clear_signal (entry);

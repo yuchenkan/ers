@@ -414,8 +414,11 @@ eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
 struct eri_sigframe *
 eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,
-	struct eri_stack *stack, const struct eri_sigset *mask)
+	struct eri_stack *stack, const struct eri_sigset *mask,
+	struct eri_access *acc)
 {
+  init_acc_opt (acc, ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS);
+
   struct eri_registers *regs = &entry->_regs;
 
   struct eri_sigframe frame;
@@ -438,7 +441,8 @@ eri_entry__setup_user_frame (
       uint32_t fps_size = entry->_fpstate.base.size;
       rsp = eri_round_down (rsp - fps_size, 64);
       if (! copy_to_user (entry, (void *) rsp,
-			  &entry->_fpstate, fps_size, 0)) return 0;
+		&entry->_fpstate, fps_size, fetch_inc_acc_opt (&acc)))
+	return 0;
       frame.ctx.mctx.fpstate = (void *) rsp;
     }
 
@@ -453,7 +457,7 @@ eri_entry__setup_user_frame (
   regs->rip = (uint64_t) act->act;
   regs->rflags &= ~(ERI_RFLAGS_TF | ERI_RFLAGS_DF | ERI_RFLAGS_RF);
 
-  return copy_obj_to_user (entry, user_frame, &frame, 0) ? user_frame : 0;
+  return copy_obj_to_user (entry, user_frame, &frame, acc) ? user_frame : 0;
 }
 
 void

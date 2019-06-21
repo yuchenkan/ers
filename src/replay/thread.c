@@ -619,18 +619,18 @@ update_access (struct thread *th, struct eri_access *acc, uint64_t n)
       eri_analyzer__update_access (th->analyzer, acc + i);
 }
 
-#define _may_access_user(proc, th, acc, n) \
+#define _call_with_user_access(proc, th, acc, n) \
   ({ typeof (proc) _res = proc;						\
      update_access (th, acc, n); _res; })
-#define may_access_user(th, n, proc, ...) \
+#define call_with_user_access(th, n, proc, ...) \
   ({ uint64_t _n = n;							\
      struct eri_access _acc[_n];					\
-     _may_access_user ((proc) (__VA_ARGS__, _acc), th, _acc, _n); })
+     _call_with_user_access ((proc) (__VA_ARGS__, _acc), th, _acc, _n); })
 
 static uint8_t
 copy_to_user (struct thread *th, void *dst, const void *src, uint64_t size)
 {
-  return may_access_user (th, 1,
+  return call_with_user_access (th, 1,
 		eri_entry__copy_to_user, th->entry, dst, src, size);
 }
 
@@ -1106,11 +1106,11 @@ DEFINE_SYSCALL (rt_sigprocmask)
 {
   struct eri_sigset mask;
   struct eri_sigset old_mask = th->sig_mask;
-  syscall_leave_if_error (th, 0, may_access_user (th, 1,
+  syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 	eri_entry__syscall_get_rt_sigprocmask, entry, &old_mask, &mask));
   if (eri_entry__syscall_rt_sigprocmask_mask (entry))
     eri_set_sig_mask (&th->sig_mask, &mask);
-  syscall_leave (th, 0, may_access_user (th, 1,
+  syscall_leave (th, 0, call_with_user_access (th, 1,
 	eri_entry__syscall_set_rt_sigprocmask, entry, &old_mask));
 }
 
@@ -1153,7 +1153,7 @@ DEFINE_SYSCALL (rt_sigaction)
 
 DEFINE_SYSCALL (sigaltstack)
 {
-  syscall_leave (th, 0, may_access_user (th,
+  syscall_leave (th, 0, call_with_user_access (th,
 	ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK_USER_ACCESSES,
 	eri_entry__syscall_sigaltstack, entry, &th->sig_alt_stack));
 }
@@ -1163,7 +1163,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   struct eri_stack st = {
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
-  if (! may_access_user (th,
+  if (! call_with_user_access (th,
 	ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES,
 	eri_entry__syscall_rt_sigreturn, entry, &st, &th->sig_mask))
     check_exit (th);
@@ -1509,7 +1509,7 @@ syscall_do_read (SYSCALL_PARAMS)
     {
       struct eri_iovec *iov;
       int32_t iov_cnt;
-      syscall_leave_if_error (th, 0, may_access_user (th, 1,
+      syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
       syscall_do_read_data (th, iov, 1, iov_cnt);
@@ -1532,7 +1532,7 @@ syscall_do_write (SYSCALL_PARAMS)
   struct eri_iovec *iov;
   int32_t iov_cnt;
   if (! writev) eri_entry__test_invalidate (entry, &buf);
-  else syscall_leave_if_error (th, 0, may_access_user (th, 1,
+  else syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
   uint8_t div = DIV_NONE;
@@ -2108,9 +2108,10 @@ sig_action (struct eri_entry *entry)
   eri_log (th->log.file, "%u %lx\n", sig,
 	   hash_regs (th->log.file, eri_entry__get_regs (entry)));
 
-  // TODO access
-  if (! eri_entry__setup_user_frame (entry, &act.act,
-				     &th->sig_alt_stack, &th->sig_mask))
+  if (! call_with_user_access (th,
+			ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS,
+			eri_entry__setup_user_frame, entry, &act.act,
+			&th->sig_alt_stack, &th->sig_mask))
     check_exit (th);
 
   eri_entry__clear_signal (entry);
