@@ -1724,6 +1724,9 @@ DEFINE_SYSCALL (mmap)
   int32_t flags = regs->r10;
   uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
 
+  if (! anony) prot |= ERI_PROT_READ;
+  prot = eri_common_get_mem_prot (prot);
+
   uint64_t id;
   if (! try_unserialize (uint64, th, &id) || (anony && id)) diverged (th, 1);
 
@@ -1744,6 +1747,9 @@ DEFINE_SYSCALL (mmap)
   if (! anony) eri_assert_syscall (close, fd);
 
   if (err) diverged (th, 1);
+
+  struct eri_access acc = { res, len, ERI_ACCESS_WRITE };
+  update_access (th, &acc, 1);
 
   update_mm_prot (th, res, len, prot);
 

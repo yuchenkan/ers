@@ -1735,7 +1735,25 @@ DEFINE_SYSCALL (mmap)
 
   if (! len) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  int32_t prot = eri_common_get_mem_prot (regs->rdx);
+  int32_t prot = regs->rdx;
+  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
+  /*
+   * XXX: rec_mmap can't handle file mapping with no read permission.
+   * We can't do:
+   * 1. map with read permission and then remove it,
+   * 2. map to our space and remap it,
+   * for both are not atomic.
+   * We can delay the record until this area becomes readable, for which
+   * we need to do some bookkeeping.
+   */
+  if (! anony && ! (prot & ERI_PROT_READ))
+    {
+      eri_llog_info (th->log,
+	"non anonymosu mapping with no read permission is not supported, "
+	"read permission is implied\n");
+      prot |= ERI_PROT_READ;
+    }
+  prot = eri_common_get_mem_prot (prot);
 
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
@@ -1745,9 +1763,7 @@ DEFINE_SYSCALL (mmap)
   };
   eri_assert_unlock (&group->mm_lock);
 
-  uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
   eri_live_thread_recorder__rec_mmap (th->rec, &rec, anony ? 0 : len);
-
   eri_entry__syscall_leave (entry, rec.result);
 }
 
