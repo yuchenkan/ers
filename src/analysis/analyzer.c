@@ -14,6 +14,14 @@
 #include <analysis/analyzer.h>
 #include <analysis/translate.h>
 
+#if 0
+struct race_block
+{
+  uint64_t ref_count;
+  // TODO
+};
+#endif
+
 struct trans_key
 {
   uint64_t rip;
@@ -62,7 +70,7 @@ struct eri_analyzer_group
 
   int32_t *pid;
 
-  uint8_t exit;
+  void *error;
 
   struct eri_lock trans_lock;
   ERI_RBT_TREE_FIELDS (trans, struct trans)
@@ -96,7 +104,6 @@ struct eri_analyzer
   struct eri_siginfo act_sig_info;
   struct eri_mcontext act_sig_mctx;
 
-  void *exit;
   void *args;
 };
 
@@ -114,7 +121,7 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->file_buf_size = args->file_buf_size;
   group->max_inst_count = args->max_inst_count;
   group->pid = args->pid;
-  group->exit = 0;
+  group->error = args->error;
 
   eri_init_lock (&group->trans_lock, 0);
   ERI_RBT_INIT_TREE (trans, group);
@@ -164,7 +171,6 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
 		eri_enabled_debug () ? 0 : group->file_buf_size);
   al->entry = args->entry;
   al->tid = args->tid;
-  al->exit = args->exit;
   al->args = args->args;
   al->sig_info = 0;
   al->act = 0;
@@ -181,18 +187,10 @@ eri_analyzer__destroy (struct eri_analyzer *al)
 }
 
 static eri_noreturn void
-exit (struct eri_analyzer *al)
+error (struct eri_analyzer *al)
 {
-  eri_noreturn void (*e) (void *) = al->exit;
+  eri_noreturn void (*e) (void *) = al->group->error;
   e (al->args);
-}
-
-eri_noreturn void
-eri_analyzer__exit_group (struct eri_analyzer *al)
-{
-  // TODO do analysis
-  eri_atomic_store (&al->group->exit, 1, 0);
-  exit (al);
 }
 
 static uint8_t
@@ -219,7 +217,6 @@ analysis_enter (struct eri_analyzer *al,
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   // TODO do analysis
-  if (eri_atomic_load (&al->group->exit, 0)) exit (al);
 
   struct eri_analyzer_group *group = al->group;
   eri_assert_lock (&group->trans_lock);
@@ -264,7 +261,7 @@ analysis_enter (struct eri_analyzer *al,
   if (! tr)
     {
       eri_atomic_dec (&trans->ref_count, 1);
-      eri_analyzer__exit_group (al);
+      error (al);
     }
 
   struct eri_trans_create_active_args args = {
@@ -566,7 +563,20 @@ eri_analyzer__update_mm_prot (struct eri_analyzer *al,
 }
 
 void
-eri_analyzer__update_access (struct eri_analyzer *al, struct eri_access *acc)
+eri_analyzer__update_access (struct eri_analyzer *al,
+			     struct eri_access *acc)
 {
   update_access (al, acc, 1, "extern");
+}
+
+void
+eri_analyzer__sync_race (struct eri_analyzer *al,
+			 uint64_t key, uint64_t ver)
+{
+}
+
+void
+eri_analyzer__update_race (struct eri_analyzer *al,
+			   uint64_t key, uint64_t ver)
+{
 }

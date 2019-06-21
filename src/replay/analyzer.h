@@ -32,6 +32,7 @@ struct eri_analyzer_group__create_args
   uint32_t max_inst_count;
 
   int32_t *pid;
+  void *error; /* noreturn void (*) (void *) */
 };
 
 eri_analyzer_group_type *eri_analyzer_group__create (
@@ -48,7 +49,6 @@ struct eri_analyzer__create_args
 
   int32_t *tid;
 
-  void *exit; /* noreturn void (*) (void *) */
   void *args;
 };
 
@@ -56,7 +56,6 @@ eri_analyzer_type *eri_analyzer__create (
 			struct eri_analyzer__create_args *args);
 void eri_analyzer__destroy (eri_analyzer_type *analyzer);
 
-eri_noreturn void eri_analyzer__exit_group (eri_analyzer_type *analyzer);
 eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,
 				       struct eri_registers *regs);
 
@@ -77,5 +76,10 @@ void eri_analyzer__update_mm_prot (eri_analyzer_type *analyzer,
 				   struct eri_range range, int32_t prot);
 void eri_analyzer__update_access (eri_analyzer_type *analyzer,
 				  struct eri_access *acc);
+
+void eri_analyzer__sync_race (eri_analyzer_type *analyzer,
+			      uint64_t key, uint64_t ver);
+void eri_analyzer__update_race (eri_analyzer_type *analyzer,
+				uint64_t key, uint64_t ver);
 
 #endif

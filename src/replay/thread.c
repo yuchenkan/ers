@@ -160,7 +160,7 @@ struct thread
 };
 
 static uint8_t
-version_wait (struct thread *th, struct version *ver, uint64_t exp)
+version_do_wait (struct thread *th, struct version *ver, uint64_t exp)
 {
   if (eri_atomic_load (&ver->ver, 0) >= exp) return 1;
 
@@ -191,13 +191,22 @@ version_wait (struct thread *th, struct version *ver, uint64_t exp)
   return ! waiter.dead_locked;
 }
 
+static uint8_t
+version_wait (struct thread *th, struct version *ver, uint64_t exp)
+{
+  uint8_t res = version_do_wait (th, ver, exp);
+  if (res && eri_enable_analyzer)
+    eri_analyzer__sync_race (th->analyzer, (uint64_t) ver, exp);
+  return res;
+}
+
 static void
 version_update (struct thread *th, struct version *ver)
 {
   struct version_activity *act = &th->group->ver_act;
 
   eri_assert_lock (&ver->lock);
-  eri_atomic_inc (&ver->ver, 0);
+  uint64_t v = eri_atomic_inc_fetch (&ver->ver, 0);
   struct version_waiter *w, *nw;
   ERI_LST_FOREACH_SAFE (version_waiter, ver, w, nw)
     if (ver->ver == w->ver)
@@ -214,6 +223,9 @@ version_update (struct thread *th, struct version *ver)
 	eri_assert_unlock (&w->lock);
       }
   eri_assert_unlock (&ver->lock);
+
+  if (eri_enable_analyzer)
+    eri_analyzer__update_race (th->analyzer, (uint64_t) ver, v);
 }
 
 static uint8_t
@@ -260,6 +272,7 @@ io_out (struct thread *th, uint64_t ver)
 
 static void sig_handler (int32_t sig, struct eri_siginfo *info,
 			 struct eri_ucontext *ctx);
+static eri_noreturn void error (struct thread *th);
 
 static struct thread_group *
 create_group (const struct eri_replay_rtld_args *rtld_args)
@@ -290,7 +303,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
     {
       struct eri_analyzer_group__create_args args = {
         group->pool, &group->map_range, group->log, group->page_size,
-	group->file_buf_size, 64 /* XXX parameterize */, &group->pid
+	group->file_buf_size, 64 /* XXX parameterize */, &group->pid, error
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
     }
@@ -345,8 +358,6 @@ analysis (struct eri_entry *entry)
 static eri_noreturn void main_entry (struct eri_entry *entry);
 static eri_noreturn void sig_action (struct eri_entry *entry);
 
-static eri_noreturn void exit (struct thread *th);
-
 static struct thread *
 create (struct thread_group *group, struct thread *pth,
 	uint64_t id, int32_t *clear_user_tid)
@@ -383,7 +394,7 @@ create (struct thread_group *group, struct thread *pth,
     {
       struct eri_analyzer__create_args args = {
 	group->analyzer_group, pth ? pth->analyzer : 0,
-	id, th->entry, &th->tid, exit, th
+	id, th->entry, &th->tid, th
       };
       th->analyzer = eri_analyzer__create (&args);
     }
@@ -412,6 +423,43 @@ destroy (struct thread *th)
   eri_assert_mtfree (pool, th);
 }
 
+static void
+cleanup (void *args)
+{
+  struct thread *th = args;
+  eri_assert_sys_futex_wait (&th->alive, 1, 0);
+  if (eri_enabled_debug ()) eri_log (th->log.file, "destroy\n");
+  destroy (th);
+}
+
+static eri_noreturn void
+exit (struct thread *th)
+{
+  eri_log (th->log.file, "\n");
+  struct thread_group *group = th->group;
+  version_activity_dec (&group->ver_act);
+  eri_assert_lock (&group->exit_lock);
+  if (eri_atomic_dec_fetch (&group->thread_count, 1))
+    {
+      eri_helper__invoke (group->helper, cleanup, th);
+      eri_assert_unlock (&group->exit_lock);
+      if (eri_enabled_debug ()) eri_log (th->log.file, "exit\n");
+      eri_assert_sys_exit (0);
+    }
+
+  eri_assert_unlock (&group->exit_lock);
+
+  if (eri_enabled_debug ()) eri_log (th->log.file, "exit helper\n");
+  eri_helper__exit (group->helper);
+
+  if (eri_enabled_debug ()) eri_log (th->log.file, "final exit\n");
+  eri_preserve (&group->pool->pool);
+
+  destroy (th);
+  destroy_group (group);
+  eri_assert_sys_exit (0);
+}
+
 #define diverged(th, local) \
   do {									\
     struct thread *_th = th;						\
@@ -421,8 +469,14 @@ destroy (struct thread *th)
       eri_lassert (_th->log.file,					\
 		   ! version_wait (_th, &_th->group->freeze, 1));	\
     eri_log_info (_th->log.file, "diverged\n");				\
-    eri_analyzer__exit_group (_th->analyzer);				\
+    exit (th);								\
   } while (0)
+
+static eri_noreturn void
+error (struct thread *th)
+{
+  diverged (th, 1);
+}
 
 static uint8_t
 try_unserialize_mark (struct thread *th, uint8_t *mark)
@@ -910,43 +964,6 @@ DEFINE_SYSCALL (set_tid_address)
 {
   th->clear_user_tid = (void *) regs->rdi;
   syscall_leave (th, 0, 0);
-}
-
-static void
-cleanup (void *args)
-{
-  struct thread *th = args;
-  eri_assert_sys_futex_wait (&th->alive, 1, 0);
-  if (eri_enabled_debug ()) eri_log (th->log.file, "destroy\n");
-  destroy (th);
-}
-
-static eri_noreturn void
-exit (struct thread *th)
-{
-  eri_log (th->log.file, "\n");
-  struct thread_group *group = th->group;
-  version_activity_dec (&group->ver_act);
-  eri_assert_lock (&group->exit_lock);
-  if (eri_atomic_dec_fetch (&group->thread_count, 1))
-    {
-      eri_helper__invoke (group->helper, cleanup, th);
-      eri_assert_unlock (&group->exit_lock);
-      if (eri_enabled_debug ()) eri_log (th->log.file, "exit\n");
-      eri_assert_sys_exit (0);
-    }
-
-  eri_assert_unlock (&group->exit_lock);
-
-  if (eri_enabled_debug ()) eri_log (th->log.file, "exit helper\n");
-  eri_helper__exit (group->helper);
-
-  if (eri_enabled_debug ()) eri_log (th->log.file, "final exit\n");
-  eri_preserve (&group->pool->pool);
-
-  destroy (th);
-  destroy_group (group);
-  eri_assert_sys_exit (0);
 }
 
 static eri_noreturn void
