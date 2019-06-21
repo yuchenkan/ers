@@ -115,8 +115,6 @@ struct thread_group
   struct version *atomic_table;
   uint64_t atomic_table_size;
 
-  uint8_t diverged;
-
   struct eri_lock exit_lock;
   uint64_t thread_count;
 
@@ -314,7 +312,6 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
       version_init (group->sig_acts + sig - 1);
     }
 
-  group->diverged = 0;
   eri_init_lock (&group->exit_lock, 0);
   group->thread_count = 1;
 
@@ -415,23 +412,16 @@ destroy (struct thread *th)
   eri_assert_mtfree (pool, th);
 }
 
-#define diverged(th) \
+#define diverged(th, local) \
   do {									\
     struct thread *_th = th;						\
-    if (! eri_atomic_exchange (&_th->group->diverged, 1, 0))		\
-      eri_log_info (_th->log.file, "diverged\n");			\
-									\
-    if (eri_enable_analyzer) eri_analyzer__exit_group (_th->analyzer);	\
-    else eri_assert_unreachable ();					\
-  } while (0)
-
-#define freeze(th) \
-  do {									\
-    struct thread *_th = th;						\
-    struct thread_group *_group = _th->group;				\
-    eri_file_t _log = _th->log.file;					\
-    eri_log_info (_log, "freeze\n");					\
-    eri_lassert (_log, ! version_wait (_th, &_group->freeze, 1));	\
+    uint8_t _local = local;						\
+    if (! eri_enable_analyzer) eri_assert_unreachable ();		\
+    if (_local)								\
+      eri_lassert (_th->log.file,					\
+		   ! version_wait (_th, &_th->group->freeze, 1));	\
+    eri_log_info (_th->log.file, "diverged\n");				\
+    eri_analyzer__exit_group (_th->analyzer);				\
   } while (0)
 
 static uint8_t
@@ -456,7 +446,7 @@ static uint8_t
 fetch_mark (struct thread *th)
 {
   uint8_t mark;
-  if (! try_unserialize_mark (th, &mark)) diverged (th);
+  if (! try_unserialize_mark (th, &mark)) diverged (th, 1);
   return mark;
 }
 
@@ -780,60 +770,72 @@ static uint64_t
 syscall_fetch_result (struct thread *th)
 {
   uint64_t res;
-  if (check_magic (th, ERI_SYSCALL_RESULT_MAGIC)
-      && try_unserialize (uint64, th, &res)) return res;
-  diverged (th);
+  if (! check_magic (th, ERI_SYSCALL_RESULT_MAGIC)
+      || ! try_unserialize (uint64, th, &res)) diverged (th, 1);
+  return res;
 }
 
-static void
+static uint64_t
 syscall_fetch_in (struct thread *th)
 {
   uint64_t in;
-  if (check_magic (th, ERI_SYSCALL_IN_MAGIC)
-      && try_unserialize (uint64, th, &in) && io_in (th, in)) return;
-  diverged (th);
+  if (! check_magic (th, ERI_SYSCALL_IN_MAGIC)
+      || ! try_unserialize (uint64, th, &in)) diverged (th, 1);
+  return in;
 }
 
 static void
 syscall_fetch_out (struct thread *th)
 {
   uint64_t out;
-  if (check_magic (th, ERI_SYSCALL_OUT_MAGIC)
-      && try_unserialize (uint64, th, &out) && io_out (th, out)) return;
-  diverged (th);
+  if (! check_magic (th, ERI_SYSCALL_OUT_MAGIC)
+      || ! try_unserialize (uint64, th, &out)) diverged (th, 1);
+  if (! io_out (th, out)) diverged (th, 0);
 }
 
-static uint64_t
-syscall_do_fetch_res_in (struct thread *th, uint16_t magic,
-			 uint8_t (*wait) (struct thread *, uint64_t))
+static struct eri_syscall_res_in_record
+syscall_do_fetch_res_in (struct thread *th, uint16_t magic)
 {
   struct eri_syscall_res_in_record rec;
-  if (check_magic (th, magic)
-      && try_unserialize (syscall_res_in_record, th, &rec)
-      && wait (th, rec.in)) return rec.result;
-  diverged (th);
+  if (! check_magic (th, magic)
+      || ! try_unserialize (syscall_res_in_record, th, &rec))
+    diverged (th, 1);
+  return rec;
 }
 
-static uint64_t
+static struct eri_syscall_res_in_record
 syscall_fetch_res_in (struct thread *th)
 {
-  return syscall_do_fetch_res_in (th, ERI_SYSCALL_RES_IN_MAGIC, io_in);
+  return syscall_do_fetch_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
 }
 
-static uint64_t
+static struct eri_syscall_res_in_record
 syscall_fetch_res_io (struct thread *th)
 {
   struct eri_syscall_res_io_record rec;
-  if (check_magic (th, ERI_SYSCALL_RES_IO_MAGIC)
-      && try_unserialize (syscall_res_io_record, th, &rec)
-      && io_out (th, rec.out) && io_in (th, rec.in)) return rec.result;
-  diverged (th);
+  if (! check_magic (th, ERI_SYSCALL_RES_IO_MAGIC)
+      || ! try_unserialize (syscall_res_io_record, th, &rec))
+    diverged (th, 1);
+  if (! io_out (th, rec.out)) diverged (th, 0);
+
+  struct eri_syscall_res_in_record res = { rec.result, rec.in };
+  return res;
+}
+
+static eri_noreturn void
+syscall_do_res_in (struct thread *th)
+{
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_in (th);
+  if (! io_in (th, rec.in)) diverged (th, 0);
+  syscall_leave (th, 1, rec.result);
 }
 
 static eri_noreturn void
 syscall_do_res_io (struct thread *th)
 {
-  syscall_leave (th, 1, syscall_fetch_res_io (th));
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
+  if (! io_in (th, rec.in)) diverged (th, 0);
+  syscall_leave (th, 1, rec.result);
 }
 
 DEFINE_SYSCALL (clone)
@@ -841,9 +843,9 @@ DEFINE_SYSCALL (clone)
   struct eri_syscall_clone_record rec;
   if (! check_magic (th, ERI_SYSCALL_CLONE_MAGIC)
       || ! try_unserialize (syscall_clone_record, th, &rec))
-    diverged (th);
+    diverged (th, 1);
 
-  if (! io_out (th, rec.out)) diverged (th);
+  if (! io_out (th, rec.out)) diverged (th, 0);
 
   uint64_t res = rec.result;
   if (eri_syscall_is_error (res)) syscall_leave (th, 1, res);
@@ -854,7 +856,7 @@ DEFINE_SYSCALL (clone)
 
   int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
   struct thread *cth = create (th->group, th, rec.id, clear_user_tid);
-  if (! cth) diverged (th);
+  if (! cth) diverged (th, 1);
 
   eri_atomic_inc (&th->group->thread_count, 1);
   version_activity_inc (&th->group->ver_act);
@@ -954,7 +956,7 @@ check_exit (struct thread *th)
   if (eri_unserialize_uint8_or_eof (th->file, &err))
     {
       eri_log_info (th->log.file, "not eof %u\n", err);
-      diverged (th);
+      diverged (th, 1);
     }
   exit (th);
 }
@@ -968,21 +970,21 @@ syscall_do_exit (SYSCALL_PARAMS)
       struct eri_syscall_exit_clear_tid_record rec;
       if (! check_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
 	  || ! try_unserialize (syscall_exit_clear_tid_record, th, &rec))
-	diverged (th);
+	diverged (th, 1);
 
       if (! atomic_wait (th, (uint64_t) user_tid,
 			 sizeof *user_tid, rec.clear_tid.ver))
-	diverged (th);
+	diverged (th, 0);
 
       if (rec.clear_tid.updated)
 	{
-	  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
+	  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th, 1);
 	  *user_tid = 0;
 	  eri_entry__reset_test_access (entry);
 	  atomic_updated (th, (uint64_t) user_tid, sizeof *user_tid);
 	}
 
-      if (! io_out (th, rec.out)) diverged (th);
+      if (! io_out (th, rec.out)) diverged (th, 0);
     }
   else syscall_fetch_out (th);
   check_exit (th);
@@ -1015,10 +1017,7 @@ SYSCALL_TO_IMPL (getegid)
 DEFINE_SYSCALL (gettid) { syscall_leave (th, 0, th->user_tid); }
 DEFINE_SYSCALL (getpid) { syscall_leave (th, 0, th->group->user_pid); }
 
-DEFINE_SYSCALL (getppid)
-{
-  syscall_leave (th, 1, syscall_fetch_res_in (th));
-}
+DEFINE_SYSCALL (getppid) { syscall_do_res_in (th); }
 
 SYSCALL_TO_IMPL (setreuid)
 SYSCALL_TO_IMPL (setregid)
@@ -1136,18 +1135,18 @@ DEFINE_SYSCALL (rt_sigaction)
       if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC)
 	  || ! try_unserialize (sigaction, th, &act)
 	  || ! try_unserialize (uint64, th, &act_ver))
-	diverged (th);
+	diverged (th, 1);
 
       res = copy_obj_to_user_or_fault (th, user_old_act, &act);
     }
   else if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
 	   || ! try_unserialize (uint64, th, &act_ver))
-    diverged (th);
+    diverged (th, 1);
 
   struct thread_group *group = th->group;
   if ((user_act || ! eri_syscall_is_error (res))
       && ! version_wait (th, group->sig_acts + sig - 1, act_ver))
-    diverged (th);
+    diverged (th, 0);
   if (user_act) version_update (th, group->sig_acts + sig - 1);
   syscall_leave (th, 1, res);
 }
@@ -1179,20 +1178,19 @@ DEFINE_SYSCALL (rt_sigpending)
 
   struct eri_syscall_rt_sigpending_record rec;
   if (! check_magic (th, ERI_SYSCALL_RT_SIGPENDING_MAGIC)
-      || ! try_unserialize (syscall_rt_sigpending_record, th, &rec))
-    diverged (th);
+      || ! try_unserialize (syscall_rt_sigpending_record, th, &rec)
+      || copy_to_user (th, (void *) regs->rdi, &rec.set, ERI_SIG_SETSIZE)
+		!= (rec.result != ERI_EFAULT)) diverged (th, 1);
 
-  if (copy_to_user (th, (void *) regs->rdi, &rec.set, ERI_SIG_SETSIZE)
-      != (rec.result != ERI_EFAULT)) freeze (th);
+  if (! io_in (th, rec.in)) diverged (th, 0);
 
-  if (! io_in (th, rec.in)) diverged (th);
   syscall_leave (th, 1, rec.result);
 }
 
 static eri_noreturn void
 syscall_do_pause (struct thread *th)
 {
-  syscall_fetch_in (th);
+  if (! io_in (th, syscall_fetch_in (th))) diverged (th, 0);
   syscall_leave (th, 1, ERI_EINTR);
 }
 
@@ -1226,15 +1224,12 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   struct eri_syscall_rt_sigtimedwait_record rec;
   if (! check_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
-      || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec))
-    diverged (th);
+      || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec)
+      || (user_info && ! eri_syscall_is_non_fault_error (rec.result)
+	  && copy_obj_to_user (th, user_info, &rec.info)
+		!= (rec.result != ERI_EFAULT))) diverged (th, 1);
 
-  if (! io_in (th, rec.in)) diverged (th);
-
-  if (user_info
-      && ! eri_syscall_is_non_fault_error (rec.result)
-      && (copy_obj_to_user (th, user_info, &rec.info)
-	  != (rec.result != ERI_EFAULT))) freeze (th);
+  if (! io_in (th, rec.in)) diverged (th, 0);
 
   syscall_leave (th, 1, rec.result);
 }
@@ -1246,13 +1241,14 @@ DEFINE_SYSCALL (tgkill) { syscall_do_res_io (th); }
 static eri_noreturn void
 syscall_do_rt_sigqueueinfo (SYSCALL_PARAMS)
 {
-  uint64_t res = syscall_fetch_res_io (th);
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
 
   struct eri_siginfo *user_info = (void *) (regs->rax
 			== __NR_rt_sigqueueinfo ? regs->rdx : regs->r10);
-  if (read_obj_from_user (th, user_info) != (res != ERI_EFAULT))
-    freeze (th);
-  syscall_leave (th, 1, res);
+  if (read_obj_from_user (th, user_info) != (rec.result != ERI_EFAULT))
+    diverged (th, 1);
+  if (! io_in (th, rec.in)) diverged (th, 0);
+  syscall_leave (th, 1, rec.result);
 }
 
 DEFINE_SYSCALL (rt_sigqueueinfo)
@@ -1306,7 +1302,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   if (! read_obj_from_user (th, user_mask))
     syscall_leave (th, 0, ERI_EINVAL);
 
-  syscall_leave (th, 1, syscall_fetch_res_io (th));
+  syscall_do_res_io (th);
 }
 
 DEFINE_SYSCALL (signalfd) { syscall_do_signalfd (SYSCALL_ARGS); }
@@ -1329,14 +1325,15 @@ SYSCALL_TO_IMPL (perf_event_open)
 static eri_noreturn void
 syscall_do_open (SYSCALL_PARAMS)
 {
-  uint64_t res = syscall_fetch_res_io (th);
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
   const char *user_pathname = (void *) (regs->rax == __NR_openat
 					? regs->rsi : regs->rdi);
   uint64_t len;
   if (read_str_from_user (th, user_pathname, ERI_PATH_MAX, &len)
-      ? (len == ERI_PATH_MAX) != (res == ERI_ENAMETOOLONG)
-      : res != ERI_EFAULT) freeze (th);
-  syscall_leave (th, 1, res);
+	? (len == ERI_PATH_MAX) != (rec.result == ERI_ENAMETOOLONG)
+	: rec.result != ERI_EFAULT) diverged (th, 1);
+  if (! io_in (th, rec.in)) diverged (th, 0);
+  syscall_leave (th, 1, rec.result);
 }
 
 DEFINE_SYSCALL (open) { syscall_do_open (SYSCALL_ARGS); }
@@ -1437,7 +1434,7 @@ syscall_get_read_data (struct thread *th, void *dst,
       off += size;
     }
   /* Live failed to record all data, must have something wrong.  */
-  if (! (res = off == total)) freeze (th);
+  res = off == total;
 
 out:
   if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
@@ -1453,15 +1450,28 @@ sum_iovec (struct eri_iovec *iov, int32_t n)
   return sum;
 }
 
-static uint64_t
-syscall_fetch_read (struct thread *th, void *dst,
-		    uint8_t readv, uint64_t limit)
+#define DIV_NONE	0
+#define DIV_LOCAL	1
+#define DIV_GLOBAL	2
+
+static eri_noreturn void
+syscall_div_in_leave (struct thread *th, uint8_t div,
+		      uint64_t in, uint64_t result)
 {
-  uint8_t div = 0;
+  if (div == DIV_LOCAL) diverged (th, 1);
+  if (div == DIV_GLOBAL || ! io_in (th, in)) diverged (th, 0);
+  syscall_leave (th, 1, result);
+}
+
+static eri_noreturn void
+syscall_do_read_data (struct thread *th, void *dst,
+		      uint8_t readv, uint64_t limit)
+{
+  uint8_t div = DIV_NONE;
   struct eri_syscall_res_in_record rec;
   if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
-      || ! try_unserialize (syscall_res_in_record, th, &rec)
-      || ! io_in (th, rec.in)) { div = 1; goto out; };
+      || ! try_unserialize (syscall_res_in_record, th, &rec))
+    { div = DIV_LOCAL; goto out; };
 
   if (rec.result == ERI_EFAULT)
     {
@@ -1474,14 +1484,13 @@ syscall_fetch_read (struct thread *th, void *dst,
   if (eri_syscall_is_error (rec.result) || rec.result == 0) goto out;
 
   if (rec.result > (readv ? sum_iovec (dst, limit) : limit))
-    { div = 1; goto out; }
+    { div = DIV_LOCAL; goto out; }
 
-  div = ! syscall_get_read_data (th, dst, rec.result, readv);
+  if (! syscall_get_read_data (th, dst, rec.result, readv)) div = DIV_LOCAL;
 
 out:
   if (readv) eri_entry__syscall_free_rw_iov (th->entry, dst);
-  if (div) diverged (th);
-  return rec.result;
+  syscall_div_in_leave (th, div, rec.in, rec.result);
 }
 
 static eri_noreturn void
@@ -1494,8 +1503,7 @@ syscall_do_read (SYSCALL_PARAMS)
     {
       uint64_t buf = regs->rsi;
       eri_entry__test_invalidate (entry, &buf);
-      syscall_leave (th, 1,
-		syscall_fetch_read (th, (void *) buf, 0, regs->rdx));
+      syscall_do_read_data (th, (void *) buf, 0, regs->rdx);
     }
   else
     {
@@ -1504,7 +1512,7 @@ syscall_do_read (SYSCALL_PARAMS)
       syscall_leave_if_error (th, 0, may_access_user (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
-      syscall_leave (th, 1, syscall_fetch_read (th, iov, 1, iov_cnt));
+      syscall_do_read_data (th, iov, 1, iov_cnt);
     }
 }
 
@@ -1527,33 +1535,38 @@ syscall_do_write (SYSCALL_PARAMS)
   else syscall_leave_if_error (th, 0, may_access_user (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
-  uint8_t div = 0;
-  uint64_t res = syscall_fetch_res_io (th);
+  uint8_t div = DIV_NONE;
+  struct eri_syscall_res_io_record rec;
+  if (! check_magic (th, ERI_SYSCALL_RES_IO_MAGIC)
+      || ! try_unserialize (syscall_res_io_record, th, &rec))
+    { div = DIV_LOCAL; goto out; }
+  if (! io_out (th, rec.out)) { div = DIV_GLOBAL; goto out; };
+
   struct eri_access acc;
-  if (res == ERI_EFAULT)
+  if (rec.result == ERI_EFAULT)
     {
       eri_set_write (&acc, writev ? (uint64_t) iov->base : buf, 1);
       update_access (th, &acc, 1);
       goto out;
     }
 
-  if (eri_syscall_is_error (res) || ! res) goto out;
+  if (eri_syscall_is_error (rec.result) || ! rec.result) goto out;
 
-  if (res > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
-    { div = 1; goto out; }
+  if (rec.result > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
+    { div = DIV_LOCAL; goto out; }
 
   if (! writev)
     {
-      eri_set_write (&acc, buf, res);
+      eri_set_write (&acc, buf, rec.result);
       update_access (th, &acc, 1);
     }
   else
     {
       uint64_t c = 0;
       struct eri_iovec *v = iov;
-      while (c < res)
+      while (c < rec.result)
 	{
-	  uint64_t s = eri_min (v->len, res - c);
+	  uint64_t s = eri_min (v->len, rec.result - c);
 	  eri_set_write (&acc, (uint64_t) (v++)->base, s);
 	  update_access (th, &acc, 1);
 	  c += s;
@@ -1562,8 +1575,7 @@ syscall_do_write (SYSCALL_PARAMS)
 
 out:
   if (writev) eri_entry__syscall_free_rw_iov (th->entry, iov);
-  if (div) diverged (th);
-  syscall_leave (th, 1, res);
+  syscall_div_in_leave (th, div, rec.in, rec.result);
 }
 
 DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
@@ -1685,9 +1697,12 @@ mm_update (struct thread *th)
 }
 
 static uint64_t
-syscall_fetch_mm_res_in (struct thread *th, uint16_t magic)
+syscall_mm_enter (struct thread *th, uint16_t magic)
 {
-  return syscall_do_fetch_res_in (th, magic, mm_wait);
+  struct eri_syscall_res_in_record rec
+			= syscall_do_fetch_res_in (th, magic);
+  if (! mm_wait (th, rec.in)) diverged (th, 0);
+  return rec.result;
 }
 
 static eri_noreturn void
@@ -1702,7 +1717,7 @@ DEFINE_SYSCALL (mmap)
   uint64_t len = regs->rsi;
   if (! len) syscall_leave (th, 0, ERI_EINVAL);
 
-  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_MMAP_MAGIC);
+  uint64_t res  = syscall_mm_enter (th, ERI_SYSCALL_MMAP_MAGIC);
   if (eri_syscall_is_error (res)) goto out;
 
   int32_t prot = regs->rdx;
@@ -1710,16 +1725,15 @@ DEFINE_SYSCALL (mmap)
   uint8_t anony = !! (flags & ERI_MAP_ANONYMOUS);
 
   uint64_t id;
-  if (! try_unserialize (uint64, th, &id) || (anony && id)) diverged (th);
+  if (! try_unserialize (uint64, th, &id) || (anony && id)) diverged (th, 1);
 
   int32_t fd = -1;
   if (! anony)
     {
       uint8_t ok;
-      if (! try_unserialize (uint8, th, &ok)) diverged (th);
-      if (! ok) { freeze (th); diverged (th); }
+      if (! try_unserialize (uint8, th, &ok) || ! ok) diverged (th, 1);
 
-      if ((fd = open_mmap_file (th->group->path, id)) == -1) diverged (th);
+      if ((fd = open_mmap_file (th->group->path, id)) == -1) diverged (th, 1);
     }
 
   /* XXX: flags */
@@ -1729,7 +1743,7 @@ DEFINE_SYSCALL (mmap)
 			eri_syscall (mmap, res, len, prot, flags, fd, 0));
   if (! anony) eri_assert_syscall (close, fd);
 
-  if (err) diverged (th);
+  if (err) diverged (th, 1);
 
   update_mm_prot (th, res, len, prot);
 
@@ -1739,14 +1753,14 @@ out:
 
 DEFINE_SYSCALL (mprotect)
 {
-  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+  uint64_t res = syscall_mm_enter (th, ERI_SYSCALL_RES_IN_MAGIC);
   if (eri_syscall_is_error (res)) goto out;
 
   uint64_t addr = regs->rdi;
   uint64_t len = regs->rsi;
   int32_t prot = eri_common_get_mem_prot (regs->rdx);
   if (eri_syscall_is_error (
-		eri_syscall (mprotect, addr, len, prot))) diverged (th);
+		eri_syscall (mprotect, addr, len, prot))) diverged (th, 1);
 
   update_mm_prot (th, addr, len, prot);
 
@@ -1756,10 +1770,10 @@ out:
 
 DEFINE_SYSCALL (munmap)
 {
-  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+  uint64_t res = syscall_mm_enter (th, ERI_SYSCALL_RES_IN_MAGIC);
   if (eri_syscall_is_error (res)) goto out;
 
-  if (eri_syscall_is_error (eri_entry__syscall (entry))) diverged (th);
+  if (eri_syscall_is_error (eri_entry__syscall (entry))) diverged (th, 1);
 
   update_mm_prot (th, regs->rdi, regs->rsi, 0);
 
@@ -1772,7 +1786,7 @@ SYSCALL_TO_IMPL (madvise)
 
 DEFINE_SYSCALL (brk)
 {
-  uint64_t res = syscall_fetch_mm_res_in (th, ERI_SYSCALL_RES_IN_MAGIC);
+  uint64_t res = syscall_mm_enter (th, ERI_SYSCALL_RES_IN_MAGIC);
 
   struct thread_group *group = th->group;
   uint64_t old = eri_round_up (group->brk, group->page_size);
@@ -1782,10 +1796,10 @@ DEFINE_SYSCALL (brk)
 	eri_syscall (mmap, old, now - old,
 		ERI_PROT_READ | ERI_PROT_WRITE | ERI_PROT_EXEC,
 		ERI_MAP_PRIVATE | ERI_MAP_FIXED | ERI_MAP_ANONYMOUS, -1, 0)))
-    diverged (th);
+    diverged (th, 1);
   if (old > now && eri_syscall_is_error (
 				eri_syscall (munmap, now, old - now)))
-    diverged (th);
+    diverged (th, 1);
 
   group->brk = res;
   syscall_mm_leave (th, res);
@@ -1815,7 +1829,7 @@ DEFINE_SYSCALL (futex)
       uint8_t ok = read_obj_from_user (th, user_addr)
 		   && (cmd != ERI_FUTEX_WAIT || ! user_timeout
 		       || read_obj_from_user (th, user_timeout));
-      if (ok != (res != ERI_EFAULT)) freeze (th);
+      if (ok != (res != ERI_EFAULT)) diverged (th, 1);
       syscall_leave (th, 1, res);
     }
 
@@ -1907,7 +1921,7 @@ sync_async (struct thread *th)
 {
   uint64_t steps;
   if (! check_magic (th, ERI_SYNC_ASYNC_MAGIC)
-      || ! try_unserialize (uint64, th, &steps)) diverged (th);
+      || ! try_unserialize (uint64, th, &steps)) diverged (th, 1);
 
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
@@ -1973,9 +1987,8 @@ atomic (struct thread *th)
 
   struct eri_atomic_record rec;
   if (! check_magic (th, ERI_ATOMIC_MAGIC)
-      || ! try_unserialize (atomic_record, th, &rec)
-      || ! atomic_wait (th, mem, size, rec.ver))
-    diverged (th);
+      || ! try_unserialize (atomic_record, th, &rec)) diverged (th, 1);
+  if (! atomic_wait (th, mem, size, rec.ver)) diverged (th, 0);
 
   uint64_t val = eri_entry__get_atomic_val (entry);
 
@@ -1983,11 +1996,11 @@ atomic (struct thread *th)
 
   if (rec.updated)
     {
-      if (code == ERI_OP_ATOMIC_LOAD) diverged (th);
+      if (code == ERI_OP_ATOMIC_LOAD) diverged (th, 1);
 
       eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
 
-      if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
+      if (! eri_entry__test_access (entry, mem, 0)) diverged (th, 1);
       if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
       else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
       else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
@@ -2038,14 +2051,16 @@ main_entry (struct eri_entry *entry)
 
 #define SIG_FETCH_ASYNC	ERI_NSIG
 
-static int32_t
-fetch_async_sig_info (struct thread *th, struct eri_siginfo *info)
+static uint64_t
+fetch_async_sig_info (struct thread *th, struct eri_siginfo *info,
+		      int32_t *sig)
 {
   uint64_t in;
-  if (try_unserialize (uint64, th, &in) && io_in (th, in)
-      && try_unserialize (siginfo, th, info) && ! eri_si_sync (info))
-    return info->sig;
-  diverged (th);
+  if (! try_unserialize (uint64, th, &in)
+      || ! try_unserialize (siginfo, th, info) || eri_si_sync (info))
+    diverged (th, 1);
+  *sig = info->sig;
+  return in;
 }
 
 static eri_noreturn void
@@ -2056,9 +2071,11 @@ sig_action (struct eri_entry *entry)
   struct eri_siginfo *info = eri_entry__get_sig_info (entry);
   int32_t sig = info->sig;
 
-  if (sig == SIG_FETCH_ASYNC) sig = fetch_async_sig_info (th, info);
+  if (sig == SIG_FETCH_ASYNC
+      && ! io_in (th, fetch_async_sig_info (th, info, &sig)))
+    diverged (th, 0);
   if (eri_si_sync (info) && ! check_magic (th, ERI_SIGNAL_MAGIC))
-    diverged (th);
+    diverged (th, 1);
 
   if (sig == 0) check_exit (th);
 
@@ -2066,7 +2083,7 @@ sig_action (struct eri_entry *entry)
     check_exit (th);
 
   struct eri_sig_act act;
-  if (! try_unserialize (sig_act, th, &act)) diverged (th);
+  if (! try_unserialize (sig_act, th, &act)) diverged (th, 1);
 
   if (act.type == ERI_SIG_ACT_LOST)
     {
@@ -2080,17 +2097,18 @@ sig_action (struct eri_entry *entry)
       || act.type != eri_sig_digest_act (info, &act.act))
     {
       eri_log_info (th->log.file, "inconsistent sig_act detected\n");
-      diverged (th);
+      diverged (th, 1);
     }
 
   if (! version_wait (th, th->group->sig_acts + sig - 1, act.ver))
-    diverged (th);
+    diverged (th, 0);
 
   if (eri_sig_act_internal_act (&act)) check_exit (th);
 
   eri_log (th->log.file, "%u %lx\n", sig,
 	   hash_regs (th->log.file, eri_entry__get_regs (entry)));
 
+  // TODO access
   if (! eri_entry__setup_user_frame (entry, &act.act,
 				     &th->sig_alt_stack, &th->sig_mask))
     check_exit (th);
