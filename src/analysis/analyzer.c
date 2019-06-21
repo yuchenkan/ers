@@ -15,10 +15,63 @@
 #include <analysis/translate.h>
 
 #if 0
-struct race_block
+#define RACE_SYNC_BORN		0
+#define RACE_SYNC_KEY_VER	1
+
+struct race_unit
 {
   uint64_t ref_count;
+
   // TODO
+};
+
+struct race_sync
+{
+  uint8_t type;
+  union
+    {
+      uint64_t born;
+      struct
+	{
+	  uint64_t key;
+	  uint64_t ver;
+	} key_ver;
+    };
+};
+
+struct race_ref
+{
+  struct race_ref *prev;
+
+  struct eri_buf afters;
+  struct eri_buf units;
+
+  struct race_sync before;
+};
+
+struct race;
+
+struct race_chain
+{
+  struct race *race;
+  struct race_ref *cur;
+};
+
+struct race_pair;
+{
+  struct eri_lock lock;
+
+  struct race_chain *first;
+  struct race_chain *second;
+
+  ERI_LST_NODE_FIELDS (race_pair)
+};
+
+struct race
+{
+  struct race_unit *cur;
+
+  ERI_LST_LIST_FIELDS (race_pair)
 };
 #endif
 
@@ -98,13 +151,15 @@ struct eri_analyzer
   struct eri_entry *entry;
   int32_t *tid;
 
+  void *args;
+
   struct eri_siginfo *sig_info;
 
   struct eri_trans_active *act;
   struct eri_siginfo act_sig_info;
   struct eri_mcontext act_sig_mctx;
 
-  void *args;
+  // struct race *race;
 };
 
 struct eri_analyzer_group *
