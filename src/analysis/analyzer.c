@@ -15,13 +15,12 @@
 #include <analysis/analyzer.h>
 #include <analysis/translate.h>
 
-#define RACE_SYNC_BORN		0
+#define RACE_SYNC_CLONE		0
 #define RACE_SYNC_KEY_VER	1
 
 struct race_unit
 {
-  uint64_t ref_count;
-
+  struct race_unit *prev;
   // TODO
 };
 
@@ -30,85 +29,112 @@ struct race_sync
   uint8_t type;
   union
     {
-      uint64_t born;
+      uint64_t clone;
       struct
 	{
 	  uint64_t key;
 	  uint64_t ver;
-	} key_ver;
+	} kv;
     };
 };
 
-struct race_ref
+struct race_block
 {
-  struct race_ref *prev;
+  uint64_t ref_count;
+
+  struct race_block *prev;
+  struct race_unit *chain;
 
   struct eri_buf afters;
-  struct eri_buf units;
-
   struct race_sync before;
 };
 
 struct race;
 
-struct race_chain
+struct race_ref
 {
   struct race *race;
-  struct race_ref *cur;
+
+  struct race_block *cur;
+  struct race_unit *unit;
+
+  struct race_block *last;
 };
 
-struct race_pair
+struct race_group
 {
+  struct eri_mtpool *pool;
   struct eri_lock lock;
-
-  struct race_chain *first;
-  struct race_chain *second;
-
-  ERI_LST_NODE_FIELDS (race_pair)
 };
 
 struct race
 {
-  struct race_unit *cur;
+  struct race_group *group;
+  eri_file_t log;
 
-  ERI_LST_LIST_FIELDS (race_pair)
+  uint64_t ref_count;
+  struct race_block *cur;
+
+  ERI_LST_LIST_FIELDS (race_ref);
 };
 
+#if 0
 // TODO
-static struct race *
-race_init (struct eri_mtpool *pool, eri_file_t log)
+static void
+alloc_race_unit (struct race *ra)
 {
+  ra->cur = eri_assert_mtmalloc (ra->pool, sizeof *ra->cur);
+  ra->cur->ref_count = 1;
+}
+#endif
+
+static struct race *
+race_init (struct race_group *group, eri_file_t log)
+{
+#if 0
+  struct race *ra = eri_assert_mtmalloc (pool, sizeof *ra);
+  ra->pool = pool;
+  ra->log = log;
+  alloc_race_unit (ra);
+  ERI_LST_INIT_LIST (race_pair, ra);
+  return ra;
+#endif
   return 0;
 }
 
 static struct race *
-race_born (struct race *parent, eri_file_t log)
+race_clone (struct race *ra, uint64_t id, eri_file_t log)
 {
+#if 0
+  struct race *cra = race_init (ra->pool, log);
+
+  return cra;
+#endif
   return 0;
 }
 
 static void
-race_end (struct race *race)
+race_end (struct race *ra)
 {
 }
 
 static void
-race_push (struct race *race)
+race_push (struct race *ra)
 {
 }
 
 static void
-race_access (struct race *race, struct eri_access *acc, uint64_t n)
+race_access (struct race *ra, struct eri_access *acc, uint64_t n)
 {
 }
 
 static void
-race_before (struct race *race, uint64_t key, uint64_t ver)
+race_before (struct race *ra, uint64_t key, uint64_t ver)
 {
 }
 
 static void
-race_after (struct race *race, uint64_t key, uint64_t ver)
+race_after (struct race *ra, uint64_t key, uint64_t ver)
 {
 }
 
@@ -169,6 +195,8 @@ struct eri_analyzer_group
   struct eri_lock mm_prot_lock;
   struct mm_perms read_perms;
   struct mm_perms write_perms;
+
+  struct race_group race;
 };
 
 static uint8_t
@@ -220,6 +248,13 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
 
   eri_init_lock (&group->trans_lock, 0);
   ERI_RBT_INIT_TREE (trans, group);
+
+  eri_init_lock (&group->mm_prot_lock, 0);
+  ERI_RBT_INIT_TREE (mm_perm, &group->read_perms);
+  ERI_RBT_INIT_TREE (mm_perm, &group->write_perms);
+
+  group->race.pool = group->pool;
+  eri_init_lock (&group->race.lock, 0);
   return group;
 }
 
@@ -274,7 +309,8 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   al->race_enter = 0;
   struct eri_analyzer *pal = args->parent;
   eri_file_t log = al->log.file;
-  al->race = pal ? race_born (pal->race, log) : race_init (group->pool, log);
+  al->race = pal ? race_clone (pal->race, args->id, log)
+		 : race_init (&group->race, log);
   return al;
 }
 
