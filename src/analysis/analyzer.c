@@ -38,104 +38,509 @@ struct race_sync
     };
 };
 
+struct race_last
+{
+  struct race_ref *ref;
+  struct race_block *blk;
+
+  ERI_LST_NODE_FIELDS (race_last)
+};
+
 struct race_block
 {
-  uint64_t ref_count;
+  uint64_t id;
 
-  struct race_block *prev;
-  struct race_unit *chain;
+  uint64_t ref_count;
+  uint8_t empty_end;
+
+  struct race_block *prev; /* weak pointer */
+  struct race_unit *unit;
 
   struct eri_buf afters;
   struct race_sync before;
+
+  ERI_LST_LIST_FIELDS (race_last)
 };
+
+ERI_DEFINE_LIST (static, race_last, struct race_block, struct race_last)
 
 struct race;
 
+struct race_cursor
+{
+  struct race_block *blk;
+  struct race_unit *unit;
+};
+
 struct race_ref
 {
-  struct race *race;
+  struct race *src;
+  struct race *dst;
+  struct race_last last;
 
-  struct race_block *cur;
-  struct race_unit *unit;
+  struct race_cursor confirm;
 
-  struct race_block *last;
+  ERI_LST_NODE_FIELDS (race_ref)
+  ERI_LST_NODE_FIELDS (race_confirm)
 };
 
 struct race_group
 {
   struct eri_mtpool *pool;
   struct eri_lock lock;
+
+  uint64_t race_id;
+  uint64_t block_id;
 };
 
 struct race
 {
+  uint64_t id;
+
   struct race_group *group;
   eri_file_t log;
 
   uint64_t ref_count;
+  uint8_t end;
+
   struct race_block *cur;
 
   ERI_LST_LIST_FIELDS (race_ref);
+  ERI_LST_LIST_FIELDS (race_confirm);
 };
 
-#if 0
-// TODO
-static void
-alloc_race_unit (struct race *ra)
-{
-  ra->cur = eri_assert_mtmalloc (ra->pool, sizeof *ra->cur);
-  ra->cur->ref_count = 1;
-}
-#endif
+ERI_DEFINE_LIST (static, race_ref, struct race, struct race_ref)
+ERI_DEFINE_LIST (static, race_confirm, struct race, struct race_ref)
 
 static struct race *
 race_init (struct race_group *group, eri_file_t log)
 {
-#if 0
-  struct race *ra = eri_assert_mtmalloc (pool, sizeof *ra);
-  ra->pool = pool;
+  struct race *ra = eri_assert_mtmalloc (group->pool, sizeof *ra);
+  ra->id = eri_atomic_fetch_inc (&group->race_id, 0);
+  eri_log (log, "[RACE] alloc race: r%lu\n", ra->id);
+
+  ra->group = group;
   ra->log = log;
-  alloc_race_unit (ra);
-  ERI_LST_INIT_LIST (race_pair, ra);
+  ra->ref_count = 1;
+  ra->end = 0;
+  ra->cur = 0;
+  ERI_LST_INIT_LIST (race_ref, ra);
   return ra;
-#endif
-  return 0;
+}
+
+static void
+race_add_unit (eri_file_t log,
+	       struct eri_mtpool *pool, struct race_block *blk)
+{
+  struct race_unit *unit = eri_assert_mtmalloc (pool, sizeof *unit);
+  eri_log9 (log, "[RACE] alloc unit: %lx\n", unit);
+  unit->prev = blk->unit;
+  blk->unit = unit;
+}
+
+static void
+race_add_block (struct race *ra)
+{
+  struct eri_mtpool *pool = ra->group->pool;
+  struct race_block *blk = eri_assert_mtmalloc (pool, sizeof *blk);
+  blk->id = eri_atomic_fetch_inc (&ra->group->block_id, 0);
+  eri_log (ra->log, "[RACE] alloc block: b%lu, ref_count: %lu\n",
+	   blk->id, ra->ref_count);
+
+  blk->ref_count = ra->ref_count;
+  blk->empty_end = 0;
+  blk->prev = ra->cur;
+  blk->unit = 0;
+  race_add_unit (ra->log, pool, blk);
+  eri_assert_buf_mtpool_init (&blk->afters, pool,
+			      4 * sizeof (struct race_sync));
+  ERI_LST_INIT_LIST (race_last, blk);
+  ra->cur = blk;
+}
+
+static void
+race_set_last (struct race_last *last, struct race_block *blk)
+{
+  if (last->blk) race_last_lst_remove (last->blk, last);
+  race_last_lst_append (blk, last);
+  last->blk = blk;
+}
+
+static void
+race_add_ref (eri_file_t log,
+	      struct race *src, struct race *dst, struct race_block *last)
+{
+  struct eri_mtpool *pool = src->group->pool;
+  struct race_ref *ref = eri_assert_mtmalloc (pool, sizeof *ref);
+  eri_log9 (log, "[RACE] alloc ref: %lx\n", ref);
+  ref->src = src;
+  eri_log (log, "[RACE] race inc ref_count: r%lu\n", dst->id);
+  eri_atomic_inc (&dst->ref_count, 0);
+  ref->dst = dst;
+  ref->last.ref = ref;
+  ref->last.blk = 0;
+  struct race_block *blk = dst->cur;
+  while (1)
+    {
+      eri_log (log, "[RACE] block inc ref_count: b%lu\n", blk->id);
+      eri_atomic_inc (&blk->ref_count, 0);
+      if (blk == last) break;
+      blk = blk->prev;
+    }
+  race_set_last (&ref->last, last);
+  race_ref_lst_append (src, ref);
+}
+
+static void
+race_collect_confirm (struct race *ra)
+{
+  ERI_LST_INIT_LIST (race_confirm, ra);
+
+  struct race_ref *r;
+  ERI_LST_FOREACH (race_ref, ra, r)
+    {
+      r->confirm.blk = r->dst->cur;
+      r->confirm.unit = r->dst->cur->unit;
+      race_confirm_lst_append (ra, r);
+    }
+}
+
+static void
+race_push_block (struct race *ra, struct race_sync *before)
+{
+  ra->cur->before = *before;
+  race_add_block (ra);
+  race_collect_confirm (ra);
+}
+
+static void
+race_add_after (struct race *ra, struct race_sync *after)
+{
+  eri_assert_buf_append (&ra->cur->afters, after, sizeof *after);
+}
+
+static struct race_cursor
+race_confirm_next (struct race_ref *ref, struct race_cursor *cur)
+{
+  struct race_cursor res = { 0 };
+  if (cur->unit->prev)
+    {
+      res.blk = cur->blk;
+      res.unit = cur->unit->prev;
+      return res;
+    }
+
+  if (cur->blk == ref->last.blk) return res;
+
+  struct race_block *blk;
+  for (blk = cur->blk->prev; ! blk->unit; blk = blk->prev)
+    if (blk == ref->last.blk) return res;
+
+  res.blk = blk;
+  res.unit = blk->unit;
+  return res;
+}
+
+static void
+race_confirm_unit (struct race_group *group,
+		   struct race_unit *a, struct race_unit *b)
+{
+  // TODO
+}
+
+static void
+race_do_confirm (struct race_group *group,
+		 struct race_unit *unit, struct race_ref *ref)
+{
+  struct race_cursor cur;
+  for (cur = race_confirm_next (ref, &ref->confirm);
+       cur.unit; cur = race_confirm_next (ref, &cur))
+    race_confirm_unit (group, unit, cur.unit);
+}
+
+static void
+race_confirm (struct race *ra, struct race_unit *unit)
+{
+  struct race_ref *r;
+  ERI_LST_FOREACH (race_confirm, ra, r)
+    race_do_confirm (ra->group, unit, r);
+}
+
+static void
+race_confirm_push_block (struct race *ra)
+{
+  race_confirm (ra, ra->cur->prev->unit);
+}
+
+static void
+race_confirm_push_unit (struct race *ra)
+{
+  race_confirm (ra, ra->cur->unit->prev);
+}
+
+static void
+race_lock (struct race *ra)
+{
+  eri_assert_lock (&ra->group->lock);
+}
+
+static void
+race_unlock (struct race *ra)
+{
+  eri_assert_unlock (&ra->group->lock);
+}
+
+static void
+race_release_block (eri_file_t log,
+		    struct eri_mtpool *pool, struct race_block *blk)
+{
+  eri_log (log, "[RACE] block dec ref_count: b%lu\n", blk->id);
+  if (eri_atomic_dec_fetch (&blk->ref_count, 1)) return;
+
+  eri_assert_buf_fini (&blk->afters);
+  struct race_unit *u = blk->unit;
+  while (u)
+    {
+      struct race_unit *t = u->prev;
+      eri_log9 (log, "[RACE] free unit: %lx\n", u);
+      eri_assert_mtfree (pool, u);
+      u = t;
+    }
+  eri_log (log, "[RACE] free block: b%lu\n", blk->id);
+  eri_assert_mtfree (pool, blk);
 }
 
 static struct race *
 race_clone (struct race *ra, uint64_t id, eri_file_t log)
 {
-#if 0
-  struct race *cra = race_init (ra->pool, log);
+  eri_log (ra->log, "[RACE] call\n");
+
+  struct race *cra = race_init (ra->group, log);
+  race_add_block (cra);
+  struct race_sync sync = { RACE_SYNC_CLONE, .clone = id };
+  race_add_after (cra, &sync);
+
+  if (ra->cur)
+    {
+      race_lock (ra);
+      struct race_ref *r;
+      ERI_LST_FOREACH (race_ref, ra, r)
+	{
+	  if (! r->dst->end)
+	    race_add_ref (ra->log, r->dst, cra, cra->cur);
+	  race_add_ref (ra->log, cra, r->dst, r->last.blk);
+	}
+      race_push_block (ra, &sync);
+      race_add_ref (ra->log, ra, cra, cra->cur);
+      race_add_ref (ra->log, cra, ra, ra->cur);
+      race_unlock (ra);
+
+      race_confirm_push_block (ra);
+      race_release_block (ra->log, ra->group->pool, ra->cur->prev);
+    }
+  else
+    {
+      race_add_block (ra);
+      race_add_ref (ra->log, ra, cra, cra->cur);
+      race_add_ref (ra->log, cra, ra, ra->cur);
+    }
 
   return cra;
-#endif
-  return 0;
+}
+
+static void
+race_push_unit (struct race *ra)
+{
+  race_add_unit (ra->log, ra->group->pool, ra->cur);
+  race_collect_confirm (ra);
+}
+
+static void
+race_release (eri_file_t log, struct race *ra)
+{
+  eri_log (log, "[RACE] race dec ref_count: r%lu\n", ra->id);
+  if (eri_atomic_dec_fetch (&ra->ref_count, 1)) return;
+
+  eri_log (log, "[RACE] free race: r%lu\n", ra->id);
+  eri_assert_mtfree (ra->group->pool, ra);
+}
+
+static void
+race_release_blocks (eri_file_t log, struct eri_mtpool *pool,
+		     struct race_block *first, struct race_block *last,
+		     struct eri_buf *afters)
+{
+  while (1)
+    {
+      struct race_block *prev = first->prev;
+      if (afters) eri_assert_buf_concat (afters, &first->afters);
+      race_release_block (log, pool, first);
+      if (first == last) break;
+      first = prev;
+    }
+}
+
+static void
+race_free_ref (eri_file_t log,
+	       struct eri_mtpool *pool, struct race_ref *ref)
+{
+  eri_log9 (log, "[RACE] free ref: %lx\n", ref);
+  race_last_lst_remove (ref->last.blk, &ref->last);
+  eri_assert_mtfree (pool, ref);
 }
 
 static void
 race_end (struct race *ra)
 {
+  eri_log (ra->log, "[RACE] call\n");
+
+  if (! ra->cur) goto out;
+
+  struct eri_mtpool *pool = ra->group->pool;
+
+  race_lock (ra);
+  race_push_unit (ra);
+  ra->cur->empty_end = 1; // TODO
+  if (ra->cur->empty_end)
+    {
+      struct race_last *l, *nl;
+      ERI_LST_FOREACH_SAFE (race_last, ra->cur, l, nl)
+	{
+	  race_release_block (ra->log, pool, ra->cur);
+	  race_release (ra->log, ra);
+
+	  race_ref_lst_remove (l->ref->src, l->ref);
+	  race_free_ref (ra->log, pool, l->ref);
+	}
+    }
+  race_unlock (ra);
+
+  race_confirm_push_unit (ra);
+  race_release_block (ra->log, pool, ra->cur);
+
+  race_lock (ra);
+  ra->end = 1;
+  struct race_ref *r, *nr;
+  ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
+    {
+      race_release_blocks (ra->log, pool, r->dst->cur, r->last.blk, 0);
+      race_release (ra->log, r->dst);
+      race_ref_lst_remove (ra, r);
+      race_free_ref (ra->log, pool, r);
+    }
+  race_unlock (ra);
+
+out:
+  race_release (ra->log, ra);
 }
 
 static void
 race_push (struct race *ra)
 {
+  eri_log (ra->log, "[RACE] call\n");
+
+  if (! ra->cur) return;
+
+  race_lock (ra);
+  race_push_unit (ra);
+  race_unlock (ra);
+  race_confirm_push_unit (ra);
 }
 
 static void
 race_access (struct race *ra, struct eri_access *acc, uint64_t n)
 {
+  // TODO
 }
 
 static void
 race_before (struct race *ra, uint64_t key, uint64_t ver)
 {
+  eri_log (ra->log, "[RACE] call\n");
+
+  if (! ra->cur) return;
+
+  struct race_sync sync = {
+    RACE_SYNC_KEY_VER, .kv.key = key, .kv.ver = ver
+  };
+  race_lock (ra);
+  race_push_block (ra, &sync);
+  race_unlock (ra);
+
+  race_confirm_push_block (ra);
+  race_release_block (ra->log, ra->group->pool, ra->cur->prev);
+}
+
+static uint8_t
+race_block_before (struct race_block *blk, struct race_sync *sync)
+{
+  struct race_sync *before = &blk->before;
+  if (before->type != sync->type) return 0;
+  return before->type == RACE_SYNC_CLONE ? before->clone == sync->clone
+	: before->kv.key == sync->kv.key && before->kv.ver <= sync->kv.ver;
+}
+
+static struct race_block *
+race_get_last (struct race_block *cur, struct race_block *last,
+	       struct race_sync *sync)
+{
+  while (cur != last && ! race_block_before (cur->prev, sync))
+    cur = cur->prev;
+  return cur;
+}
+
+static void
+race_trim_before (struct race *ra, struct race_sync *sync)
+{
+  struct eri_mtpool *pool = ra->group->pool;
+
+  struct eri_buf afters;
+  eri_assert_buf_mtpool_init (&afters, pool, 4);
+
+  struct race_ref *r, *nr;
+  ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
+    {
+      struct race_block *old = r->last.blk;
+      struct race_block *last = race_get_last (r->dst->cur, old, sync);
+      if (last == old) continue;
+
+      race_set_last (&r->last, last);
+      race_release_blocks (ra->log, pool, last->prev, old, &afters);
+
+      if (last == r->dst->cur && r->dst->cur->empty_end)
+	{
+	  race_release_block (ra->log, pool, last);
+	  race_release (ra->log, r->dst);
+
+	  race_ref_lst_remove (ra, r);
+	  race_free_ref (ra->log, pool, r);
+	}
+    }
+
+  struct race_sync *a = (void *) afters.buf;
+  uint64_t n = afters.off / sizeof *a, i;
+  for (i = 0; i < n; ++i) race_trim_before (ra, a + i);
+
+  eri_assert_buf_fini (&afters);
 }
 
 static void
 race_after (struct race *ra, uint64_t key, uint64_t ver)
 {
+  eri_log (ra->log, "[RACE] call\n");
+
+  if (! ra->cur) return;
+
+  struct race_sync sync = {
+    RACE_SYNC_KEY_VER, .kv.key = key, .kv.ver = ver
+  };
+  race_add_after (ra, &sync);
+
+  race_lock (ra);
+  race_trim_before (ra, &sync);
+  race_unlock (ra);
+
+  eri_log (ra->log, "[RACE]\n");
 }
 
 struct trans_key
@@ -255,6 +660,8 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
 
   group->race.pool = group->pool;
   eri_init_lock (&group->race.lock, 0);
+  group->race.race_id = 0;
+  group->race.block_id = 0;
   return group;
 }
 

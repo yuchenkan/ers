@@ -122,8 +122,9 @@ struct thread_group
 {
   struct eri_mtpool *pool;
 
-  uint64_t page_size;
   struct eri_range map_range;
+  uint64_t base;
+  uint64_t page_size;
 
   const char *path;
   const char *log;
@@ -323,8 +324,9 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
 
-  group->page_size = rtld_args->page_size;
   group->map_range = rtld_args->map_range;
+  group->base = rtld_args->base;
+  group->page_size = rtld_args->page_size;
   group->path = eri_assert_malloc (&pool->pool,
 				   eri_strlen (rtld_args->path) + 1);
   eri_strcpy ((void *) group->path, rtld_args->path);
@@ -2175,7 +2177,7 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
   int32_t sig = info->sig;
   if (eri_enabled_debug ())
     eri_log_info (th->log.file, "%u %lx %lx %lx %lx %lx\n", sig, info,
-		  ctx->mctx.rip, ctx->mctx.rip - th->group->map_range.start,
+		  ctx->mctx.rip, ctx->mctx.rip - th->group->base,
 		  ctx->mctx.r11, ctx->mctx.rflags);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)

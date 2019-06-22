@@ -7,6 +7,7 @@
 #include <lib/syscall.h>
 #include <lib/printf.h>
 #include <lib/lock.h>
+#include <lib/atomic.h>
 
 #include <common/common.h>
 
@@ -89,9 +90,12 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
   va_end (arg);
 }
 
+uint64_t _eri_do_log_order;
 #define eri_do_log(enabled, file, flags, level, fmt, ...) \
   _eri_log (enabled, file, flags,					\
-	    fmt, "[" ERI_STR (level) " %s:%u(%s)]\t" fmt,		\
+	    fmt, "[" ERI_STR (level) " %lu %s:%u(%s)]\t" fmt,		\
+	    eri_global_enable_debug					\
+		? eri_atomic_fetch_inc (&_eri_do_log_order, 0) : 0,	\
 	    _eri_unify_file (__FILE__), __LINE__, __FUNCTION__,		\
 	    ##__VA_ARGS__)
 

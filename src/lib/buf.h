@@ -35,6 +35,8 @@ int32_t eri_buf_concat (struct eri_buf *buf, const struct eri_buf *data);
 
 #define eri_assert_buf_append(buf, data, size) \
   eri_assert (eri_buf_append (buf, data, size) == 0)
+#define eri_assert_buf_concat(buf, data) \
+  eri_assert (eri_buf_concat (buf, data) == 0)
 
 #define eri_buf_static_init(buf, data, size) \
   eri_buf_init (buf, 0, 0, data, size)

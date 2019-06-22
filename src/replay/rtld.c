@@ -149,7 +149,7 @@ eri_init_map (struct init_map_args *args)
   const char *log = args->log ? c : 0;
 
   struct eri_replay_rtld_args rtld_args = {
-    { map_start, map_end }, page_size, args->debug, path, conf, log,
+    { map_start, map_end }, base, page_size, args->debug, path, conf, log,
     args->stack_size, args->file_buf_size, args->diverge,
     base + segs_end, map_end - base - segs_end
   };

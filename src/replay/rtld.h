@@ -9,6 +9,7 @@
 struct eri_replay_rtld_args
 {
   struct eri_range map_range;
+  uint64_t base;
   uint64_t page_size;
 
   uint8_t debug;
