@@ -38,14 +38,6 @@ struct race_sync
     };
 };
 
-struct race_last
-{
-  struct race_ref *ref;
-  struct race_block *blk;
-
-  ERI_LST_NODE_FIELDS (race_last)
-};
-
 struct race_block
 {
   uint64_t id;
@@ -58,11 +50,7 @@ struct race_block
 
   struct eri_buf afters;
   struct race_sync before;
-
-  ERI_LST_LIST_FIELDS (race_last)
 };
-
-ERI_DEFINE_LIST (static, race_last, struct race_block, struct race_last)
 
 struct race;
 
@@ -76,7 +64,7 @@ struct race_ref
 {
   struct race *src;
   struct race *dst;
-  struct race_last last;
+  struct race_block *last;
 
   struct race_cursor confirm;
 
@@ -154,16 +142,20 @@ race_add_block (struct race *ra)
   race_add_unit (ra->log, pool, blk);
   eri_assert_buf_mtpool_init (&blk->afters, pool,
 			      4 * sizeof (struct race_sync));
-  ERI_LST_INIT_LIST (race_last, blk);
   ra->cur = blk;
 }
 
 static void
-race_set_last (struct race_last *last, struct race_block *blk)
+race_hold_blocks (eri_file_t log,
+		  struct race_block *first, struct race_block *last)
 {
-  if (last->blk) race_last_lst_remove (last->blk, last);
-  race_last_lst_append (blk, last);
-  last->blk = blk;
+  while (1)
+    {
+      eri_log (log, "[RACE] block inc ref_count: b%lu\n", first->id);
+      eri_atomic_inc (&first->ref_count, 0);
+      if (first == last) break;
+      first = first->prev;
+    }
 }
 
 static void
@@ -177,18 +169,47 @@ race_add_ref (eri_file_t log,
   eri_log (log, "[RACE] race inc ref_count: r%lu\n", dst->id);
   eri_atomic_inc (&dst->ref_count, 0);
   ref->dst = dst;
-  ref->last.ref = ref;
-  ref->last.blk = 0;
-  struct race_block *blk = dst->cur;
-  while (1)
-    {
-      eri_log (log, "[RACE] block inc ref_count: b%lu\n", blk->id);
-      eri_atomic_inc (&blk->ref_count, 0);
-      if (blk == last) break;
-      blk = blk->prev;
-    }
-  race_set_last (&ref->last, last);
+  ref->last = last;
+  race_hold_blocks (log, dst->cur, last);
   race_ref_lst_append (src, ref);
+}
+
+static void
+race_release_block (eri_file_t log,
+		    struct eri_mtpool *pool, struct race_block *blk)
+{
+  eri_log (log, "[RACE] block dec ref_count: b%lu\n", blk->id);
+  if (eri_atomic_dec_fetch (&blk->ref_count, 1)) return;
+
+  eri_assert_buf_fini (&blk->afters);
+  struct race_unit *u = blk->unit;
+  while (u)
+    {
+      struct race_unit *t = u->prev;
+      eri_log9 (log, "[RACE] free unit: %lx\n", u);
+      eri_assert_mtfree (pool, u);
+      u = t;
+    }
+  eri_log (log, "[RACE] free block: b%lu\n", blk->id);
+  eri_assert_mtfree (pool, blk);
+}
+
+static void
+race_release (eri_file_t log, struct race *ra)
+{
+  eri_log (log, "[RACE] race dec ref_count: r%lu\n", ra->id);
+  if (eri_atomic_dec_fetch (&ra->ref_count, 1)) return;
+
+  eri_log (log, "[RACE] free race: r%lu\n", ra->id);
+  eri_assert_mtfree (ra->group->pool, ra);
+}
+
+static void
+race_free_ref (eri_file_t log,
+	       struct eri_mtpool *pool, struct race_ref *ref)
+{
+  eri_log9 (log, "[RACE] free ref: %lx\n", ref);
+  eri_assert_mtfree (pool, ref);
 }
 
 static void
@@ -196,9 +217,20 @@ race_collect_confirm (struct race *ra)
 {
   ERI_LST_INIT_LIST (race_confirm, ra);
 
-  struct race_ref *r;
-  ERI_LST_FOREACH (race_ref, ra, r)
+  struct eri_mtpool *pool = ra->group->pool;
+  struct race_ref *r, *nr;
+  ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
     {
+      if (r->last == r->dst->cur && r->last->empty_end)
+	{
+	  race_release_block (ra->log, pool, r->last);
+	  race_release (ra->log, r->dst);
+
+	  race_ref_lst_remove (ra, r);
+	  race_free_ref (ra->log, pool, r);
+	  continue;
+	}
+
       r->confirm.blk = r->dst->cur;
       r->confirm.unit = r->dst->cur->unit;
       race_confirm_lst_append (ra, r);
@@ -230,11 +262,11 @@ race_confirm_next (struct race_ref *ref, struct race_cursor *cur)
       return res;
     }
 
-  if (cur->blk == ref->last.blk) return res;
+  if (cur->blk == ref->last) return res;
 
   struct race_block *blk;
   for (blk = cur->blk->prev; ! blk->unit; blk = blk->prev)
-    if (blk == ref->last.blk) return res;
+    if (blk == ref->last) return res;
 
   res.blk = blk;
   res.unit = blk->unit;
@@ -290,26 +322,6 @@ race_unlock (struct race *ra)
   eri_assert_unlock (&ra->group->lock);
 }
 
-static void
-race_release_block (eri_file_t log,
-		    struct eri_mtpool *pool, struct race_block *blk)
-{
-  eri_log (log, "[RACE] block dec ref_count: b%lu\n", blk->id);
-  if (eri_atomic_dec_fetch (&blk->ref_count, 1)) return;
-
-  eri_assert_buf_fini (&blk->afters);
-  struct race_unit *u = blk->unit;
-  while (u)
-    {
-      struct race_unit *t = u->prev;
-      eri_log9 (log, "[RACE] free unit: %lx\n", u);
-      eri_assert_mtfree (pool, u);
-      u = t;
-    }
-  eri_log (log, "[RACE] free block: b%lu\n", blk->id);
-  eri_assert_mtfree (pool, blk);
-}
-
 static struct race *
 race_clone (struct race *ra, uint64_t id, eri_file_t log)
 {
@@ -328,7 +340,7 @@ race_clone (struct race *ra, uint64_t id, eri_file_t log)
 	{
 	  if (! r->dst->end)
 	    race_add_ref (ra->log, r->dst, cra, cra->cur);
-	  race_add_ref (ra->log, cra, r->dst, r->last.blk);
+	  race_add_ref (ra->log, cra, r->dst, r->last);
 	}
       race_push_block (ra, &sync);
       race_add_ref (ra->log, ra, cra, cra->cur);
@@ -356,16 +368,6 @@ race_push_unit (struct race *ra)
 }
 
 static void
-race_release (eri_file_t log, struct race *ra)
-{
-  eri_log (log, "[RACE] race dec ref_count: r%lu\n", ra->id);
-  if (eri_atomic_dec_fetch (&ra->ref_count, 1)) return;
-
-  eri_log (log, "[RACE] free race: r%lu\n", ra->id);
-  eri_assert_mtfree (ra->group->pool, ra);
-}
-
-static void
 race_release_blocks (eri_file_t log, struct eri_mtpool *pool,
 		     struct race_block *first, struct race_block *last,
 		     struct eri_buf *afters)
@@ -381,15 +383,6 @@ race_release_blocks (eri_file_t log, struct eri_mtpool *pool,
 }
 
 static void
-race_free_ref (eri_file_t log,
-	       struct eri_mtpool *pool, struct race_ref *ref)
-{
-  eri_log9 (log, "[RACE] free ref: %lx\n", ref);
-  race_last_lst_remove (ref->last.blk, &ref->last);
-  eri_assert_mtfree (pool, ref);
-}
-
-static void
 race_end (struct race *ra)
 {
   eri_log (ra->log, "[RACE] call\n");
@@ -401,18 +394,6 @@ race_end (struct race *ra)
   race_lock (ra);
   race_push_unit (ra);
   ra->cur->empty_end = 1; // TODO
-  if (ra->cur->empty_end)
-    {
-      struct race_last *l, *nl;
-      ERI_LST_FOREACH_SAFE (race_last, ra->cur, l, nl)
-	{
-	  race_release_block (ra->log, pool, ra->cur);
-	  race_release (ra->log, ra);
-
-	  race_ref_lst_remove (l->ref->src, l->ref);
-	  race_free_ref (ra->log, pool, l->ref);
-	}
-    }
   race_unlock (ra);
 
   race_confirm_push_unit (ra);
@@ -423,7 +404,7 @@ race_end (struct race *ra)
   struct race_ref *r, *nr;
   ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
     {
-      race_release_blocks (ra->log, pool, r->dst->cur, r->last.blk, 0);
+      race_release_blocks (ra->log, pool, r->dst->cur, r->last, 0);
       race_release (ra->log, r->dst);
       race_ref_lst_remove (ra, r);
       race_free_ref (ra->log, pool, r);
@@ -500,21 +481,11 @@ race_trim_before (struct race *ra, struct race_sync *sync)
   struct race_ref *r, *nr;
   ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
     {
-      struct race_block *old = r->last.blk;
+      struct race_block *old = r->last;
       struct race_block *last = race_get_last (r->dst->cur, old, sync);
-      if (last == old) continue;
-
-      race_set_last (&r->last, last);
+      if (old == last) continue;
+      r->last = last;
       race_release_blocks (ra->log, pool, last->prev, old, &afters);
-
-      if (last == r->dst->cur && r->dst->cur->empty_end)
-	{
-	  race_release_block (ra->log, pool, last);
-	  race_release (ra->log, r->dst);
-
-	  race_ref_lst_remove (ra, r);
-	  race_free_ref (ra->log, pool, r);
-	}
     }
 
   struct race_sync *a = (void *) afters.buf;

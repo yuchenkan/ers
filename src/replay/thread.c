@@ -2177,12 +2177,17 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 {
   int32_t sig = info->sig;
   if (eri_enabled_debug ())
-    eri_log_info (th->log.file, "sig %u, info %lx, rip %lx, "
-		  "rip - base %lx, rbx %lx, r11 %lx, rflags %lx, "
-		  "fault.addr %lx\n",
-		  sig, info, ctx->mctx.rip, ctx->mctx.rip - th->group->base,
-		  ctx->mctx.rbx, ctx->mctx.r11, ctx->mctx.rflags,
-		  info->fault.addr);
+    eri_log_info (th->log.file, "sig %u, info %lx, fault.addr %lx, "
+	"rip %lx, rip - base %lx, rax %lx, rbx %lx, rcx %lx, rdx %lx, "
+	"rsi %lx, rdi %lx, rbp %lx, rsp %lx, r8 %lx, r9 %lx, r10 %lx, "
+	"r11 %lx, r12 %lx r13 %lx, r14 %lx, r15 %lx, rflags %lx\n",
+	sig, info, info->fault.addr,
+	ctx->mctx.rip, ctx->mctx.rip - th->group->base,
+        ctx->mctx.rax, ctx->mctx.rbx, ctx->mctx.rcx, ctx->mctx.rdx,
+	ctx->mctx.rsi, ctx->mctx.rdi, ctx->mctx.rbp, ctx->mctx.rsp,
+	ctx->mctx.r8, ctx->mctx.r9,  ctx->mctx.r10, ctx->mctx.r11,
+	ctx->mctx.r12, ctx->mctx.r13,  ctx->mctx.r14, ctx->mctx.r15,
+	ctx->mctx.rflags);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     info->sig = SIG_FETCH_ASYNC;

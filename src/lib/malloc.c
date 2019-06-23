@@ -2,7 +2,7 @@
 #include <lib/malloc.h>
 #include <lib/rbtree.h>
 
-#undef ERI_NO_CHECK
+// #undef ERI_NO_CHECK
 
 #define BLK_FREE	0
 #define BLK_NOTFREE	1
