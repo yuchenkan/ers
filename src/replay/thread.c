@@ -265,7 +265,7 @@ version_update (struct thread *th, struct version *ver)
   if (eri_enable_analyzer)
     eri_analyzer__race_before (th->analyzer, (uint64_t) ver, v);
 
-  ERI_LST_FOREACH (version_wakeup, &wakeup, w)
+  ERI_LST_FOREACH_SAFE (version_wakeup, &wakeup, w, nw)
     version_unlock_waiter (th->group->pool, w);
 }
 
@@ -676,8 +676,9 @@ eri_noreturn void
 eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {
   eri_global_enable_debug = rtld_args->debug;
-  eri_debug ("%lx, %lx, %u\n",
-	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size);
+  eri_debug ("%lx, %lx, %u, base = %lx\n",
+	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size,
+	     rtld_args->base);
   if (eri_global_enable_debug && ! rtld_args->log)
     rtld_args->log = eri_enable_analyzer
 				? "eri-analysis-log" : "eri-replay-log";
@@ -2176,9 +2177,12 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 {
   int32_t sig = info->sig;
   if (eri_enabled_debug ())
-    eri_log_info (th->log.file, "%u %lx %lx %lx %lx %lx\n", sig, info,
-		  ctx->mctx.rip, ctx->mctx.rip - th->group->base,
-		  ctx->mctx.r11, ctx->mctx.rflags);
+    eri_log_info (th->log.file, "sig %u, info %lx, rip %lx, "
+		  "rip - base %lx, rbx %lx, r11 %lx, rflags %lx, "
+		  "fault.addr %lx\n",
+		  sig, info, ctx->mctx.rip, ctx->mctx.rip - th->group->base,
+		  ctx->mctx.rbx, ctx->mctx.r11, ctx->mctx.rflags,
+		  info->fault.addr);
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     info->sig = SIG_FETCH_ASYNC;
