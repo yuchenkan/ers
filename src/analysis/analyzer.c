@@ -20,6 +20,101 @@
 #define RACE_SYNC_CLONE		0
 #define RACE_SYNC_KEY_VER	1
 
+struct interval
+{
+  uint64_t start;
+  uint64_t end;
+  ERI_RBT_NODE_FIELDS (interval, struct interval)
+};
+
+struct interval_tree
+{
+  ERI_RBT_TREE_FIELDS (interval, struct interval)
+};
+
+ERI_DEFINE_RBTREE (static, interval, struct interval_tree,
+		   struct interval, uint64_t, eri_less_than)
+
+static void
+update_interval_tree (struct eri_mtpool *pool, struct interval_tree *tree,
+		      uint64_t start, uint64_t end, uint8_t add,
+		      void (*diff) (uint64_t, uint64_t, void *), void *args)
+{
+  if (add)
+    {
+      struct interval *lte = interval_rbt_get (tree, &start, ERI_RBT_LTE);
+      if (lte && lte->end >= end) return;
+    }
+
+  struct interval *lt = interval_rbt_get (tree, &start, ERI_RBT_LT);
+
+  uint64_t add_start = start;
+  if (lt && lt->end > start)
+    {
+      if (add)
+	{
+	  interval_rbt_remove (tree, lt);
+	  start = lt->start;
+	  add_start = lt->end;
+	  eri_assert_mtfree (pool, lt);
+	}
+      else
+	{
+	  diff (start, lt->end, args);
+	  lt->end = start;
+	}
+    }
+
+  struct interval *it = lt ? interval_rbt_get_next (lt)
+			   : interval_rbt_get_first (tree);
+
+  while (it && it->end <= end)
+    {
+      diff (add ? add_start : it->start, (add ? it->start : it->end), args);
+      struct interval *tmp = interval_rbt_get_next (it);
+      interval_rbt_remove (tree, it);
+      eri_assert_mtfree (pool, it);
+      it = tmp;
+    }
+
+  if (it && it->start < end)
+    {
+      interval_rbt_remove (tree, it);
+      if (add)
+	{
+	  diff (add_start, it->start, args);
+	  end = it->end;
+	  eri_assert_mtfree (pool, it);
+	}
+      else
+	{
+	  diff (it->start, end, args);
+	  it->start = start;
+	  interval_rbt_insert (tree, it);
+	}
+    }
+  else if (add) diff (add_start, end, args);
+
+  if (add)
+    {
+      it = eri_assert_mtmalloc (pool, sizeof *it);
+      it->start = start;
+      it->end = end;
+      interval_rbt_insert (tree, it);
+    }
+}
+
+static void
+empty_interval_tree (struct eri_mtpool *pool, struct interval_tree *tree)
+{
+  struct interval *n, *nn;
+  ERI_RBT_FOREACH_SAFE (interval, tree, n, nn)
+    {
+      interval_rbt_remove (tree, n);
+      eri_assert_mtfree (pool, n);
+    }
+}
+
 struct race_access
 {
   uint64_t addr;
@@ -60,62 +155,73 @@ struct race_sync
     };
 };
 
-struct race_range
-{
-  uint64_t addr;
-  uint64_t size;
-
-  ERI_RBT_NODE_FIELDS (race_range, struct race_range)
-};
-
-struct race_ranges
-{
-  ERI_RBT_TREE_FIELDS (race_range, struct race_range)
-};
-
-ERI_DEFINE_RBTREE (static, race_range, struct race_ranges,
-		   struct race_range, uint64_t, eri_less_than)
-
 struct race_inc
 {
   uint64_t addr;
   uint64_t size;
 };
 
-static uint8_t
-race_ranges_insert (struct eri_mtpool *pool, struct race_ranges *ranges,
-		    struct race_access *acc, struct race_inc *inc)
+static void
+race_ranges_insert_diff (uint64_t start, uint64_t end, void *args)
 {
-  // TODO
-  return 1;
+  struct race_inc inc = { start, end - start };
+  eri_assert_buf_append (args, &inc, 1);
+}
+
+static uint8_t
+race_ranges_insert (struct eri_mtpool *pool, struct interval_tree *ranges,
+		    struct race_access *acc, struct eri_buf *incs)
+{
+  uint64_t o = incs->o;
+  update_interval_tree (pool, ranges, acc->addr, acc->addr + acc->size, 1,
+			race_ranges_insert_diff, incs);
+  return o != incs->o;
 }
 
 static void
-race_ranges_increase (struct eri_mtpool *pool, struct race_ranges *ranges,
+race_ranges_increase (struct eri_mtpool *pool, struct interval_tree *ranges,
 		      struct race_inc *inc)
 {
-  // TODO
+  uint64_t start = inc->addr, end = inc->addr + inc->size;
+  struct interval *lt = interval_rbt_get (ranges, &start, ERI_RBT_LT);
+  struct interval *gt = lt ? interval_rbt_get_next (lt)
+			   : interval_rbt_get_first (ranges);
+  if (lt && lt->end == start)
+    {
+      start = lt->start;
+      interval_rbt_remove (ranges, lt);
+      eri_assert_mtfree (pool, lt);
+    }
+  if (gt && gt->start == end)
+    {
+      end = gt->end;
+      interval_rbt_remove (ranges, gt);
+      eri_assert_mtfree (pool, gt);
+    }
+  struct interval *range = eri_assert_mtmalloc (pool, sizeof *range);
+  range->start = start;
+  range->end = end;
+  interval_rbt_insert (ranges, range);
 }
 
 static uint8_t
-race_ranges_intersects (struct race_ranges *a, struct race_ranges *b)
+race_ranges_intersects (struct interval_tree *a, struct interval_tree *b)
 {
-  // TODO
-  return 1;
-}
-
-static void
-race_empty_ranges (struct eri_mtpool *pool, struct race_ranges *ranges)
-{
-  // TODO
+  struct interval *i = interval_rbt_get_first (a);
+  struct interval *j = interval_rbt_get_first (b);
+  while (i && j)
+    if (i->end <= j->start) i = interval_rbt_get_next (i);
+    else if (j->end <= i->start) j = interval_rbt_get_next (j);
+    else return 1;
+  return 0;
 }
 
 struct race_area
 {
-  struct race_ranges reads;
-  struct race_ranges writes;
-  struct race_ranges prot_reads;
-  struct race_ranges prot_writes;
+  struct interval_tree reads;
+  struct interval_tree writes;
+  struct interval_tree prot_reads;
+  struct interval_tree prot_writes;
 };
 
 struct race_inc_area
@@ -248,10 +354,10 @@ race_create (struct race_group *group, eri_file_t log)
 static void
 race_init_area (struct race_area *area)
 {
-  ERI_RBT_INIT_TREE (race_range, &area->reads);
-  ERI_RBT_INIT_TREE (race_range, &area->writes);
-  ERI_RBT_INIT_TREE (race_range, &area->prot_reads);
-  ERI_RBT_INIT_TREE (race_range, &area->prot_writes);
+  ERI_RBT_INIT_TREE (interval, &area->reads);
+  ERI_RBT_INIT_TREE (interval, &area->writes);
+  ERI_RBT_INIT_TREE (interval, &area->prot_reads);
+  ERI_RBT_INIT_TREE (interval, &area->prot_writes);
 }
 
 static void
@@ -278,7 +384,7 @@ race_add_unit (eri_file_t log,
 
 static void
 race_ranges_apply_inc (struct eri_mtpool *pool,
-		       struct race_ranges *ranges, struct eri_buf *inc)
+		       struct interval_tree *ranges, struct eri_buf *inc)
 {
   struct race_inc *p = eri_buf_release (inc);
 
@@ -324,10 +430,10 @@ race_seal_unit (struct eri_mtpool *pool, struct race_block *blk)
 static void
 race_empty_area (struct eri_mtpool *pool, struct race_area *area)
 {
-  race_empty_ranges (pool, &area->reads);
-  race_empty_ranges (pool, &area->writes);
-  race_empty_ranges (pool, &area->prot_reads);
-  race_empty_ranges (pool, &area->prot_writes);
+  empty_interval_tree (pool, &area->reads);
+  empty_interval_tree (pool, &area->writes);
+  empty_interval_tree (pool, &area->prot_reads);
+  empty_interval_tree (pool, &area->prot_writes);
 }
 
 static void
@@ -563,7 +669,7 @@ race_get_conflicts (eri_file_t log, struct race_group *group,
 	eri_log_info (log, "conflict detected: %s %lx %lu, %s, %lx %lu\n",
 		      eri_access_type_str (ta), i->addr, i->size,
 		      eri_access_type_str (tb), j->addr, j->size);
-	// eri_atomic_store (&group->error, 1, 0); // TODO
+	eri_atomic_store (&group->error, 1, 0); // TODO
 	i = race_access_rbt_get_next (i);
       }
 }
@@ -752,12 +858,10 @@ race_access (struct race *ra, struct eri_access *acc, uint64_t n)
   uint8_t t = acc->type;
 
   struct race_access a = { acc->addr, acc->size };
-  struct race_inc i;
   if (! race_ranges_insert (ra->group->pool,
-			    race_get_type (t, &ra->cur->cur), &a, &i))
+			    race_get_type (t, &ra->cur->cur), &a,
+			    race_get_type (t, &ra->cur->inc)))
     return;
-
-  eri_assert_buf_append (race_get_type (t, &ra->cur->inc), &i, 1);
 
   struct eri_buf *as = race_get_type (t, ra->cur->unit);
   if (as->o)
@@ -874,21 +978,6 @@ struct trans
   ERI_RBT_NODE_FIELDS (trans, struct trans)
 };
 
-struct mm_perm
-{
-  uint64_t start;
-  uint64_t end;
-  ERI_RBT_NODE_FIELDS (mm_perm, struct mm_perm)
-};
-
-struct mm_perms
-{
-  ERI_RBT_TREE_FIELDS (mm_perm, struct mm_perm)
-};
-
-ERI_DEFINE_RBTREE (static, mm_perm, struct mm_perms, struct mm_perm,
-		   uint64_t, eri_less_than)
-
 struct eri_analyzer_group
 {
   struct eri_mtpool *pool;
@@ -909,8 +998,8 @@ struct eri_analyzer_group
   ERI_RBT_TREE_FIELDS (trans, struct trans)
 
   struct eri_lock mm_prot_lock;
-  struct mm_perms read_perms;
-  struct mm_perms write_perms;
+  struct interval_tree read_perms;
+  struct interval_tree write_perms;
 
   struct race_group race;
 };
@@ -966,22 +1055,11 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   ERI_RBT_INIT_TREE (trans, group);
 
   eri_init_lock (&group->mm_prot_lock, 0);
-  ERI_RBT_INIT_TREE (mm_perm, &group->read_perms);
-  ERI_RBT_INIT_TREE (mm_perm, &group->write_perms);
+  ERI_RBT_INIT_TREE (interval, &group->read_perms);
+  ERI_RBT_INIT_TREE (interval, &group->write_perms);
 
   race_init_group (&group->race, group->pool);
   return group;
-}
-
-static void
-free_mm_perms (struct eri_mtpool *pool, struct mm_perms *perms)
-{
-  struct mm_perm *p, *np;
-  ERI_RBT_FOREACH_SAFE (mm_perm, perms, p, np)
-    {
-      mm_perm_rbt_remove (perms, p);
-      eri_assert_mtfree (pool, p);
-    }
 }
 
 static void
@@ -1001,8 +1079,8 @@ eri_analyzer_group__destroy (struct eri_analyzer_group *group)
       eri_xassert (t->ref_count == 0, eri_info);
       destroy_trans (group->pool, t);
     }
-  free_mm_perms (group->pool, &group->read_perms);
-  free_mm_perms (group->pool, &group->write_perms);
+  empty_interval_tree (group->pool, &group->read_perms);
+  empty_interval_tree (group->pool, &group->write_perms);
   eri_assert_mtfree (group->pool, group);
 }
 
@@ -1320,87 +1398,37 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
   eri_assert_buf_fini (&accesses);
 }
 
+struct update_mm_prot_diff_args
+{
+  struct eri_buf *accesses;
+  uint8_t type;
+};
+
+static void
+update_mm_prot_diff (uint64_t start, uint64_t end, void *args)
+{
+  struct update_mm_prot_diff_args *a = args;
+  eri_append_access (a->accesses, start, end - start, a->type);
+}
+
 static void
 update_mm_prot (struct eri_analyzer *al, uint8_t read,
 		struct eri_range *range, uint8_t permitted)
 {
   struct eri_analyzer_group *group = al->group;
-  struct mm_perms *perms = read ? &group->read_perms : &group->write_perms;
-
-  if (permitted)
-    {
-      struct mm_perm *eq = mm_perm_rbt_get (perms, &range->start, ERI_RBT_EQ);
-      if (eq && eq->end == range->end) return;
-    }
-
   struct eri_mtpool *pool = group->pool;
-  uint8_t type = read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE;
 
   struct eri_buf accesses;
   eri_assert_buf_mtpool_init (&accesses, pool, 16, struct eri_access);
 
-  struct mm_perm *lt = mm_perm_rbt_get (perms, &range->start, ERI_RBT_LT);
+  struct update_mm_prot_diff_args args = {
+    &accesses, read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE
+  };
 
-  uint64_t start = range->start, end = range->end;
-  uint64_t perm_start = range->start;
-  if (lt && lt->end > start)
-    {
-      if (permitted)
-	{
-	  mm_perm_rbt_remove (perms, lt);
-	  start = lt->start;
-	  perm_start = lt->end;
-	  eri_assert_mtfree (pool, lt);
-	}
-      else
-	{
-	  eri_append_access (&accesses, start, lt->end - start, type);
-	  lt->end = start;
-	}
-    }
-
-  struct mm_perm *it = lt ? mm_perm_rbt_get_next (lt)
-			  : mm_perm_rbt_get_first (perms);
-
-  while (it && it->end <= end)
-    {
-      uint64_t acc_start = permitted ? perm_start : it->start;
-      eri_append_access (&accesses, acc_start,
-		(permitted ? it->start : it->end) - acc_start, type);
-
-      struct mm_perm *tmp = mm_perm_rbt_get_next (it);
-      mm_perm_rbt_remove (perms, it);
-      eri_assert_mtfree (pool, it);
-      it = tmp;
-    }
-
-  if (it && it->start < end)
-    {
-      mm_perm_rbt_remove (perms, it);
-      if (permitted)
-	{
-	  eri_append_access (&accesses, perm_start,
-			     it->start - perm_start, type);
-	  end = it->end;
-	  eri_assert_mtfree (pool, it);
-	}
-      else
-	{
-	  eri_append_access (&accesses, it->start, end - it->start, type);
-	  it->start = end;
-	  mm_perm_rbt_insert (perms, it);
-	}
-    }
-  else if (permitted)
-    eri_append_access (&accesses, perm_start, end - perm_start, type);
-
-  if (permitted)
-    {
-      it = eri_assert_mtmalloc (pool, sizeof *it);
-      it->start = start;
-      it->end = end;
-      mm_perm_rbt_insert (perms, it);
-    }
+  update_interval_tree (pool,
+		read ? &group->read_perms : &group->write_perms,
+		range->start, range->end, permitted,
+		update_mm_prot_diff, &args);
 
   update_access_from_buf (al, &accesses,
 		 permitted ? "mm permitted" : "mm not permitted");
