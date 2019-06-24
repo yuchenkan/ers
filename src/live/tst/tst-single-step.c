@@ -42,8 +42,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 eri_noreturn void
 tst_live_start (void)
 {
-  eri_info ("start\n");
- tid = tst_assert_syscall (gettid);
+  eri_info ("start %lx\n", &tid);
+  tid = tst_assert_syscall (gettid);
 
   struct eri_sigaction act = {
     sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER, tst_assert_sys_sigreturn

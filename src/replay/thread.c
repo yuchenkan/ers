@@ -877,7 +877,7 @@ syscall_fetch_in (struct thread *th)
   return in;
 }
 
-static void
+static eri_unused void
 syscall_fetch_out (struct thread *th)
 {
   uint64_t out;
@@ -1019,26 +1019,36 @@ static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
   int32_t *user_tid = th->clear_user_tid;
-  if (user_tid && write_user (th, user_tid, sizeof *user_tid))
+  uint64_t size = sizeof *user_tid;
+
+  struct eri_syscall_exit_record rec;
+  if (! check_magic (th, ERI_SYSCALL_EXIT_MAGIC)
+      || ! try_unserialize (syscall_exit_record, th, &rec)) diverged (th);
+
+  if (! rec.clear_tid.ok)
     {
-      struct eri_syscall_exit_clear_tid_record rec;
-      if (! check_magic (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
-	  || ! try_unserialize (syscall_exit_clear_tid_record, th, &rec)
-	  || ! atomic_wait (th, (uint64_t) user_tid,
-			    sizeof *user_tid, rec.clear_tid.ver))
+      if (user_tid && write_user (th, user_tid, size)) 
 	diverged (th);
-
-      if (rec.clear_tid.updated)
-	{
-	  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
-	  *user_tid = 0;
-	  eri_entry__reset_test_access (entry);
-	  atomic_updated (th, (uint64_t) user_tid, sizeof *user_tid);
-	}
-
-      if (! io_out (th, rec.out)) diverged (th);
+      goto out;
     }
-  else syscall_fetch_out (th);
+
+  if (! user_tid
+      || ! atomic_wait (th, (uint64_t) user_tid, size, rec.clear_tid.ver))
+    diverged (th);
+
+  struct eri_access acc = { (uint64_t) user_tid, size, ERI_ACCESS_WRITE };
+  update_access (th, &acc, 1);
+
+  if (rec.clear_tid.updated)
+    {
+      if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
+      *user_tid = 0;
+      eri_entry__reset_test_access (entry);
+      atomic_updated (th, (uint64_t) user_tid, size);
+    }
+
+out:
+  if (! io_out (th, rec.out)) diverged (th);
   check_exit (th);
 }
 
@@ -1869,16 +1879,14 @@ SYSCALL_TO_IMPL (swapoff)
 
 DEFINE_SYSCALL (futex)
 {
-  int32_t *user_addr = (void *) regs->rdi;
   int32_t op = regs->rsi;
   int32_t cmd = op & ERI_FUTEX_CMD_MASK;
   struct eri_timespec *user_timeout = (void *) regs->r10;
   if (cmd == ERI_FUTEX_WAIT || cmd == ERI_FUTEX_WAKE)
     {
       uint64_t res = syscall_fetch_result (th);
-      uint8_t ok = read_obj_from_user (th, user_addr)
-		   && (cmd != ERI_FUTEX_WAIT || ! user_timeout
-		       || read_obj_from_user (th, user_timeout));
+      uint8_t ok = cmd != ERI_FUTEX_WAIT || ! user_timeout
+		   || read_obj_from_user (th, user_timeout);
       if (ok != (res != ERI_EFAULT)) diverged (th);
       syscall_leave (th, 1, res);
     }
@@ -2032,17 +2040,33 @@ atomic (struct thread *th)
   uint64_t mem = eri_entry__get_atomic_mem (entry);
   uint8_t size = eri_entry__get_atomic_size (entry);
 
-  if (! atomic_access_user (th, (void *) mem, size, code))
-    eri_entry__restart (entry);
-
   struct eri_atomic_record rec;
   if (! check_magic (th, ERI_ATOMIC_MAGIC)
-      || ! try_unserialize (atomic_record, th, &rec)
-      || ! atomic_wait (th, mem, size, rec.ver)) diverged (th);
+      || ! try_unserialize (atomic_record, th, &rec)) diverged (th);
+
+  if (! rec.ok)
+    {
+      if (atomic_access_user (th, (void *) mem, size, code)) diverged (th);
+      eri_entry__restart (entry);
+    }
+
+  if (! atomic_wait (th, mem, size, rec.ver)) diverged (th);
 
   uint64_t val = eri_entry__get_atomic_val (entry);
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
+
+  struct eri_access acc[2] = { 0 };
+  if (code == ERI_OP_ATOMIC_LOAD)
+    eri_set_read (acc, mem, size);
+  else if (code == ERI_OP_ATOMIC_STORE)
+    eri_set_write (acc, mem, size);
+  else
+    {
+      eri_set_read (acc, mem, size);
+      eri_set_write (acc + 1, mem, size);
+    }
+  update_access (th, acc, eri_length_of (acc));
 
   if (rec.updated)
     {

@@ -101,7 +101,7 @@ static uint8_t
 race_ranges_intersects (struct race_ranges *a, struct race_ranges *b)
 {
   // TODO
-  return 0;
+  return 1;
 }
 
 static void
@@ -550,9 +550,22 @@ race_confirm_prev (struct race_confirm_context *ctx)
 
 static void
 race_get_conflicts (eri_file_t log, struct race_group *group,
-		    struct race_accesses *a, struct race_accesses *b)
+		    uint8_t ta, struct race_accesses *a,
+		    uint8_t tb, struct race_accesses *b)
 {
-  // TODO
+  struct race_access *i = race_access_rbt_get_first (a);
+  struct race_access *j = race_access_rbt_get_first (b);
+  while (i && j)
+    if (i->addr + i->size <= j->addr) i = race_access_rbt_get_next (i);
+    else if (j->addr + j->size <= i->addr) j = race_access_rbt_get_next (j);
+    else
+      {
+	eri_log_info (log, "conflict detected: %s %lx %lu, %s, %lx %lu\n",
+		      eri_access_type_str (ta), i->addr, i->size,
+		      eri_access_type_str (tb), j->addr, j->size);
+	// eri_atomic_store (&group->error, 1, 0); // TODO
+	i = race_access_rbt_get_next (i);
+      }
 }
 
 static void
@@ -563,8 +576,8 @@ race_confirm_unit (struct race_confirm_context *ctx)
     for (j = ERI_ACCESS_START; j < ERI_ACCESS_END; ++j)
       if (ctx->conflicts[i - ERI_ACCESS_START][j - ERI_ACCESS_START])
 	race_get_conflicts (ctx->log, ctx->group,
-			    race_get_type (i, &ctx->unit->sealed),
-			    race_get_type (j, &ctx->cur.unit->sealed));
+			    i, race_get_type (i, &ctx->unit->sealed),
+			    j, race_get_type (j, &ctx->cur.unit->sealed));
 }
 
 static void
@@ -1193,7 +1206,7 @@ update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
   if (! n) return;
 
   uint8_t t = 3;
-  eri_logn (t, al->log.file, "%s\n", msg);
+  eri_logn (t, al->log.file, "%s %lu\n", msg, n);
   dump_accesses (al->log.file, t, acc, n);
 
   uint64_t i;

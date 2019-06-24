@@ -638,7 +638,7 @@ syscall_record_res_in (struct eri_live_thread *th, uint64_t res)
   syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
 }
 
-static void
+static eri_unused void
 syscall_record_out (struct eri_live_thread *th)
 {
   syscall_record (th, ERI_SYSCALL_OUT_MAGIC, (void *) io_out (th));
@@ -755,6 +755,7 @@ syscall_do_exit (SYSCALL_PARAMS)
   if (! eri_live_signal_thread__exit (sig_th, exit_group, status))
     syscall_restart (entry);
 
+  struct eri_syscall_exit_record rec = { .clear_tid.ok = 0 };
   if (th->clear_user_tid)
     {
       struct eri_live_thread_group *group = th->group;
@@ -767,24 +768,21 @@ syscall_do_exit (SYSCALL_PARAMS)
       if (clear_user_tid (th, user_tid, &old_val))
 	{
 	  uint8_t updated = old_val != 0;
-	  struct eri_syscall_exit_clear_tid_record rec = {
-	    .out = io_out (th),
-	    .clear_tid = {
-	      .updated = updated,
-	      .ver = unlock_atomic (group, &idx, updated)
-	    }
-	  };
+	  rec.clear_tid.ok = 1;
+	  rec.clear_tid.updated = updated;
+	  rec.clear_tid.ver = unlock_atomic (group, &idx, updated);
 	  eri_syscall (futex, user_tid, ERI_FUTEX_WAKE, 1);
-	  syscall_record (th, ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC, &rec);
-	  goto recorded;
+	  goto record;
+	  syscall_record (th, ERI_SYSCALL_EXIT_MAGIC, &rec);
 	}
 
       unlock_atomic (group, &idx, 0);
     }
 
-  syscall_record_out (th);
+record:
+  rec.out = io_out (th);
+  syscall_record (th, ERI_SYSCALL_EXIT_MAGIC, &rec);
 
-recorded:
   eri_llog (th->log, "syscall exit\n");
   eri_assert_sys_exit_nr (nr, 0);
 }
@@ -1986,8 +1984,12 @@ atomic (struct eri_live_thread *th)
 
   struct eri_pair idx = lock_atomic (group, mem, size);
 
+  struct eri_atomic_record rec = { 0 };
   if (! eri_entry__test_access (entry, (void *) mem, 0))
     {
+      if (eri_si_access_fault (eri_entry__get_sig_info (entry)))
+	eri_live_thread_recorder__rec_atomic (th->rec, &rec);
+
       unlock_atomic (group, &idx, 0);
       eri_entry__restart (entry);
     }
@@ -2010,11 +2012,11 @@ atomic (struct eri_live_thread *th)
 	  || code == ERI_OP_ATOMIC_INC || code == ERI_OP_ATOMIC_DEC
 	  || (code == ERI_OP_ATOMIC_CMPXCHG
 	      && (regs->rflags & ERI_RFLAGS_ZF ? old_val != val : 0));
-  struct eri_atomic_record rec = {
-    .updated = updated,
-    .ver = unlock_atomic (group, &idx, updated),
-    .val = atomic_op_output (code) ? old_val : 0
-  };
+
+  rec.ok = 1;
+  rec.updated = updated;
+  rec.ver = unlock_atomic (group, &idx, updated);
+  rec.val = atomic_op_output (code) ? old_val : 0;
 
   /* XXX: cmpxchg16b */
 

@@ -397,6 +397,9 @@ void
 eri_serialize_atomic_record (eri_file_t file,
 			     const struct eri_atomic_record *rec)
 {
+  eri_serialize_uint8 (file, rec->ok);
+  if (! rec->ok) return;
+
   uint8_t flags = (rec->updated ? ATOMIC_RECORD_UPDATED : 0)
 		  | (rec->ver.first == rec->ver.second
 					? ATOMIC_RECORD_SAME_VER : 0)
@@ -413,6 +416,9 @@ uint8_t
 eri_try_unserialize_atomic_record (eri_file_t file,
 				   struct eri_atomic_record *rec)
 {
+  if (! eri_try_unserialize_uint8 (file, &rec->ok)) return 0;
+  if (! rec->ok) return 1;
+
   uint8_t flags;
   if (! eri_try_unserialize_uint8 (file, &flags)) return 0;
   rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
@@ -507,26 +513,26 @@ eri_unserialize_syscall_clone_record (eri_file_t file,
 }
 
 void
-eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
-			const struct eri_syscall_exit_clear_tid_record *rec)
+eri_serialize_syscall_exit_record (eri_file_t file,
+			const struct eri_syscall_exit_record *rec)
 {
   eri_serialize_uint64 (file, rec->out);
   eri_serialize_atomic_record (file, &rec->clear_tid);
 }
 
 uint8_t
-eri_try_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
-			struct eri_syscall_exit_clear_tid_record *rec)
+eri_try_unserialize_syscall_exit_record (eri_file_t file,
+			struct eri_syscall_exit_record *rec)
 {
   return eri_try_unserialize_uint64 (file, &rec->out)
 	 && eri_try_unserialize_atomic_record (file, &rec->clear_tid);
 }
 
 void
-eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
-			struct eri_syscall_exit_clear_tid_record *rec)
+eri_unserialize_syscall_exit_record (eri_file_t file,
+			struct eri_syscall_exit_record *rec)
 {
-  eri_assert (eri_try_unserialize_syscall_exit_clear_tid_record (file, rec));
+  eri_assert (eri_try_unserialize_syscall_exit_record (file, rec));
 }
 
 void

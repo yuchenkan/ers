@@ -166,7 +166,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RES_IN, ##__VA_ARGS__)					\
   p (SYSCALL_RES_IO, ##__VA_ARGS__)					\
   p (SYSCALL_CLONE, ##__VA_ARGS__)					\
-  p (SYSCALL_EXIT_CLEAR_TID, ##__VA_ARGS__)				\
+  p (SYSCALL_EXIT, ##__VA_ARGS__)					\
   p (SYSCALL_RT_SIGACTION_SET, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGACTION, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGPENDING, ##__VA_ARGS__)				\
@@ -205,6 +205,7 @@ eri_record_magic_str (uint16_t magic)
 
 struct eri_atomic_record
 {
+  uint8_t ok;
   uint8_t updated;
   struct eri_pair ver;
   uint64_t val;
@@ -262,18 +263,18 @@ uint8_t eri_try_unserialize_syscall_clone_record (eri_file_t file,
 void eri_unserialize_syscall_clone_record (eri_file_t file,
 			struct eri_syscall_clone_record *rec);
 
-struct eri_syscall_exit_clear_tid_record
+struct eri_syscall_exit_record
 {
   uint64_t out;
   struct eri_atomic_record clear_tid;
 };
 
-void eri_serialize_syscall_exit_clear_tid_record (eri_file_t file,
-			const struct eri_syscall_exit_clear_tid_record *rec);
-uint8_t eri_try_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
-			struct eri_syscall_exit_clear_tid_record *rec);
-void eri_unserialize_syscall_exit_clear_tid_record (eri_file_t file,
-			struct eri_syscall_exit_clear_tid_record *rec);
+void eri_serialize_syscall_exit_record (eri_file_t file,
+			const struct eri_syscall_exit_record *rec);
+uint8_t eri_try_unserialize_syscall_exit_record (eri_file_t file,
+			struct eri_syscall_exit_record *rec);
+void eri_unserialize_syscall_exit_record (eri_file_t file,
+			struct eri_syscall_exit_record *rec);
 
 struct eri_syscall_rt_sigpending_record
 {

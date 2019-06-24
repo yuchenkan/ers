@@ -108,15 +108,16 @@ main (int32_t argc, const char **argv)
 	      printf (", ..id: 0x%lx\n", rec.id);
 	    else printf ("\n");
 	  }
-	else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
+	else if (magic == ERI_SYSCALL_EXIT_MAGIC)
 	  {
-	    struct eri_syscall_exit_clear_tid_record rec;
-	    eri_unserialize_syscall_exit_clear_tid_record (file, &rec);
+	    struct eri_syscall_exit_record rec;
+	    eri_unserialize_syscall_exit_record (file, &rec);
 	    printf ("  syscall.exit.out: %lu\n", rec.out);
-	    printf ("  syscall.exit.clear_tid.updated: %u, "
-		    "...ver: %lu %lu, ...val: 0x%lx\n",
-		    rec.clear_tid.updated, rec.clear_tid.ver.first,
-		    rec.clear_tid.ver.second, rec.clear_tid.val);
+	    if (rec.clear_tid.ok)
+	      printf ("  syscall.exit.clear_tid.updated: %u, "
+		      "...ver: %lu %lu, ...val: 0x%lx\n",
+		      rec.clear_tid.updated, rec.clear_tid.ver.first,
+		      rec.clear_tid.ver.second, rec.clear_tid.val);
 	  }
 	else if (magic == ERI_SYSCALL_RT_SIGACTION_SET_MAGIC)
 	  printf ("  syscall.rt_sigaction: %lu\n",
@@ -185,8 +186,10 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_atomic_record rec;
 	    eri_unserialize_atomic_record (file, &rec);
-	    printf ("  atomic.updated: %u, .ver: %lu %lu, .val: 0x%lx\n",
-		    rec.updated, rec.ver.first, rec.ver.second, rec.val);
+	    printf ("  atomic.ok: %u\n", rec.ok);
+	    if (rec.ok)
+	      printf ("  atomic.updated: %u, .ver: %lu %lu, .val: 0x%lx\n",
+		      rec.updated, rec.ver.first, rec.ver.second, rec.val);
 	  }
       }
     else eri_assert_unreachable ();

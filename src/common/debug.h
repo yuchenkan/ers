@@ -75,6 +75,7 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
     }
   else
     {
+      va_arg (arg, uint64_t);
       va_arg (arg, const char *);
       va_arg (arg, uint32_t);
       va_arg (arg, const char *);
@@ -135,7 +136,7 @@ uint64_t _eri_do_log_order;
 #define eri_log9(log, fmt, ...)	eri_logn (9, log, fmt, ##__VA_ARGS__)
 
 #define eri_rlogn(n, log, fmt, ...) \
-  eri_rlog (eri_global_enable_debug >= n ? log : 0, fmt, ##__VA_ARGS__)
+  eri_rlog (eri_global_enable_debug >= (n) ? log : 0, fmt, ##__VA_ARGS__)
 
 #define eri_rlog2(log, fmt, ...) \
   eri_rlogn (2, log, fmt, ##__VA_ARGS__)

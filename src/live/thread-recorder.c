@@ -310,8 +310,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_res_io_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_EXIT_CLEAR_TID_MAGIC)
-    eri_serialize_syscall_exit_clear_tid_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_EXIT_MAGIC)
+    eri_serialize_syscall_exit_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
     {
       struct eri_sig_act *act = rec;
