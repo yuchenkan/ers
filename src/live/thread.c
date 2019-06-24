@@ -1976,7 +1976,7 @@ atomic (struct eri_live_thread *th)
   uint8_t size = eri_entry__get_atomic_size (entry);
 
   struct eri_live_thread_group *group = th->group;
-  if (eri_cross (&group->map_range, mem, size)) mem = 0;
+  if (eri_across (&group->map_range, mem, size)) mem = 0;
 
   uint64_t old_val;
   uint64_t val = eri_entry__get_atomic_val (entry);
