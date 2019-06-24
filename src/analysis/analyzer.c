@@ -18,10 +18,27 @@
 #define RACE_SYNC_CLONE		0
 #define RACE_SYNC_KEY_VER	1
 
+struct race_access
+{
+  uint64_t i;
+
+  uint64_t inc_addr;
+  uint64_t inc_size;
+
+  uint64_t addr;
+  uint64_t size;
+
+  uint64_t rip;
+};
+
 struct race_unit
 {
   struct race_unit *prev;
-  // TODO
+
+  struct eri_buf reads;
+  struct eri_buf writes;
+  struct eri_buf prot_reads;
+  struct eri_buf prot_writes;
 };
 
 struct race_sync
@@ -38,6 +55,29 @@ struct race_sync
     };
 };
 
+struct race_range
+{
+  uint64_t addr;
+  uint64_t size;
+
+  ERI_RBT_NODE_FIELDS (race_range, struct race_range)
+};
+
+struct race_ranges
+{
+  ERI_RBT_TREE_FIELDS (race_range, struct race_range)
+};
+
+// TODO
+
+struct race_area
+{
+  struct race_ranges reads;
+  struct race_ranges writes;
+  struct race_ranges prot_reads;
+  struct race_ranges prot_writes;
+};
+
 struct race_block
 {
   uint64_t id;
@@ -47,6 +87,9 @@ struct race_block
 
   struct race_block *prev; /* weak pointer */
   struct race_unit *unit;
+
+  struct race_area pushed;
+  struct race_area cur;
 
   struct eri_buf afters;
   struct race_sync before;
@@ -120,10 +163,14 @@ static void
 race_add_unit (eri_file_t log,
 	       struct eri_mtpool *pool, struct race_block *blk)
 {
-  struct race_unit *unit = eri_assert_mtmalloc (pool, sizeof *unit);
-  eri_log9 (log, "[RACE] alloc unit: %lx\n", unit);
-  unit->prev = blk->unit;
-  blk->unit = unit;
+  struct race_unit *u = eri_assert_mtmalloc (pool, sizeof *u);
+  eri_log9 (log, "[RACE] alloc unit: %lx\n", u);
+  u->prev = blk->unit;
+  eri_assert_buf_mtpool_init (&u->reads, pool, 0, struct race_access);
+  eri_assert_buf_mtpool_init (&u->writes, pool, 0, struct race_access);
+  eri_assert_buf_mtpool_init (&u->prot_reads, pool, 0, struct race_access);
+  eri_assert_buf_mtpool_init (&u->prot_writes, pool, 0, struct race_access);
+  blk->unit = u;
 }
 
 static void
@@ -140,8 +187,7 @@ race_add_block (struct race *ra)
   blk->prev = ra->cur;
   blk->unit = 0;
   race_add_unit (ra->log, pool, blk);
-  eri_assert_buf_mtpool_init (&blk->afters, pool,
-			      4 * sizeof (struct race_sync));
+  eri_assert_buf_mtpool_init (&blk->afters, pool, 1, struct race_sync);
   ra->cur = blk;
 }
 
@@ -187,6 +233,10 @@ race_release_block (eri_file_t log,
     {
       struct race_unit *t = u->prev;
       eri_log9 (log, "[RACE] free unit: %lx\n", u);
+      eri_assert_buf_fini (&u->reads);
+      eri_assert_buf_fini (&u->writes);
+      eri_assert_buf_fini (&u->prot_reads);
+      eri_assert_buf_fini (&u->prot_writes);
       eri_assert_mtfree (pool, u);
       u = t;
     }
@@ -241,6 +291,7 @@ static void
 race_push_block (struct race *ra, struct race_sync *before)
 {
   ra->cur->before = *before;
+  eri_assert_buf_shrink (&ra->cur->afters);
   race_add_block (ra);
   race_collect_confirm (ra);
 }
@@ -248,11 +299,11 @@ race_push_block (struct race *ra, struct race_sync *before)
 static void
 race_add_after (struct race *ra, struct race_sync *after)
 {
-  eri_assert_buf_append (&ra->cur->afters, after, sizeof *after);
+  eri_assert_buf_append (&ra->cur->afters, after, 1);
 }
 
 static struct race_cursor
-race_confirm_next (struct race_ref *ref, struct race_cursor *cur)
+race_confirm_prev (struct race_ref *ref, struct race_cursor *cur)
 {
   struct race_cursor res = { 0 };
   if (cur->unit->prev)
@@ -264,12 +315,8 @@ race_confirm_next (struct race_ref *ref, struct race_cursor *cur)
 
   if (cur->blk == ref->last) return res;
 
-  struct race_block *blk;
-  for (blk = cur->blk->prev; ! blk->unit; blk = blk->prev)
-    if (blk == ref->last) return res;
-
-  res.blk = blk;
-  res.unit = blk->unit;
+  res.blk = cur->blk->prev;
+  res.unit = cur->blk->prev->unit;
   return res;
 }
 
@@ -284,9 +331,10 @@ static void
 race_do_confirm (struct race_group *group,
 		 struct race_unit *unit, struct race_ref *ref)
 {
+  // TODO
   struct race_cursor cur;
-  for (cur = race_confirm_next (ref, &ref->confirm);
-       cur.unit; cur = race_confirm_next (ref, &cur))
+  for (cur = race_confirm_prev (ref, &ref->confirm);
+       cur.unit; cur = race_confirm_prev (ref, &cur))
     race_confirm_unit (group, unit, cur.unit);
 }
 
@@ -360,11 +408,20 @@ race_clone (struct race *ra, uint64_t id, eri_file_t log)
   return cra;
 }
 
-static void
+static uint8_t
+race_unit_is_empty (struct race_unit *unit)
+{
+  return 0; // TODO
+}
+
+static uint8_t
 race_push_unit (struct race *ra)
 {
+  if (race_unit_is_empty (ra->cur->unit)) return 0;
+
   race_add_unit (ra->log, ra->group->pool, ra->cur);
   race_collect_confirm (ra);
+  return 1;
 }
 
 static void
@@ -392,11 +449,11 @@ race_end (struct race *ra)
   struct eri_mtpool *pool = ra->group->pool;
 
   race_lock (ra);
-  race_push_unit (ra);
-  ra->cur->empty_end = 1; // TODO
+  uint8_t push = race_push_unit (ra);
+  ra->cur->empty_end = ! ra->cur->unit->prev;
   race_unlock (ra);
 
-  race_confirm_push_unit (ra);
+  if (push) race_confirm_push_unit (ra);
   race_release_block (ra->log, pool, ra->cur);
 
   race_lock (ra);
@@ -423,9 +480,9 @@ race_push (struct race *ra)
   if (! ra->cur) return;
 
   race_lock (ra);
-  race_push_unit (ra);
+  uint8_t push = race_push_unit (ra);
   race_unlock (ra);
-  race_confirm_push_unit (ra);
+  if (push) race_confirm_push_unit (ra);
 }
 
 static void
@@ -476,7 +533,7 @@ race_trim_before (struct race *ra, struct race_sync *sync)
   struct eri_mtpool *pool = ra->group->pool;
 
   struct eri_buf afters;
-  eri_assert_buf_mtpool_init (&afters, pool, 4);
+  eri_assert_buf_mtpool_init (&afters, pool, 4, struct race_sync);
 
   struct race_ref *r, *nr;
   ERI_LST_FOREACH_SAFE (race_ref, ra, r, nr)
@@ -489,7 +546,7 @@ race_trim_before (struct race *ra, struct race_sync *sync)
     }
 
   struct race_sync *a = (void *) afters.buf;
-  uint64_t n = afters.off / sizeof *a, i;
+  uint64_t n = afters.o, i;
   for (i = 0; i < n; ++i) race_trim_before (ra, a + i);
 
   eri_assert_buf_fini (&afters);
@@ -881,8 +938,7 @@ static void
 update_access_from_buf (struct eri_analyzer *al, struct eri_buf *acc,
 			const char *msg)
 {
-  update_access (al, (void *) acc->buf,
-		 acc->off / sizeof (struct eri_access), msg);
+  update_access (al, (void *) acc->buf, acc->o, msg);
 }
 
 static eri_noreturn void
@@ -894,7 +950,8 @@ analysis (struct eri_trans_active *act)
   struct eri_registers regs;
   struct eri_siginfo info;
   struct eri_buf accesses;
-  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16);
+  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16,
+			      struct eri_access);
   struct eri_trans_leave_active_args args = { act, log, &regs, &accesses };
   uint8_t tf = eri_trans_leave_active (&args, &info);
   release_active (al);
@@ -965,7 +1022,8 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 
   struct eri_registers regs;
   struct eri_buf accesses;
-  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16);
+  eri_assert_buf_mtpool_init (&accesses, al->group->pool, 16,
+			      struct eri_access);
   struct eri_trans_leave_active_args leave_args
 			= { al->act, log, &regs, &accesses };
   eri_trans_sig_leave_active (&leave_args, info, mctx);
@@ -997,7 +1055,7 @@ update_mm_prot (struct eri_analyzer *al, uint8_t read,
   uint8_t type = read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE;
 
   struct eri_buf accesses;
-  eri_assert_buf_mtpool_init (&accesses, pool, 16);
+  eri_assert_buf_mtpool_init (&accesses, pool, 16, struct eri_access);
 
   struct mm_perm *lt = mm_perm_rbt_get (perms, &range->start, ERI_RBT_LT);
 

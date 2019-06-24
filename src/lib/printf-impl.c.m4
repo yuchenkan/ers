@@ -464,23 +464,23 @@ m4_ns(file_foreach_line) (const char *path, struct eri_buf *buf,
   if ((res = m4_ns(fopen) (path, 1, &f, 0, 0)) != 0)
     return res;
 
-  eri_assert (buf->off == 0 && buf->size != 0);
+  eri_assert (buf->o == 0 && buf->n != 0);
   while (1)
     {
       const char *d = 0;
       while (1)
 	{
 	  uint64_t l;
-	  if ((res = m4_ns(fread) (f, buf->buf + buf->off,
-				   buf->size - buf->off, &l)) != 0)
+	  if ((res = m4_ns(fread) (f, buf->buf + buf->o,
+				   buf->n - buf->o, &l)) != 0)
 	    return res;
-	  buf->off += l;
+	  buf->o += l;
 
-	  if ((d = eri_strntok (buf->buf, '\n', buf->off))
-	      || buf->off != buf->size)
+	  if ((d = eri_strntok (buf->buf, '\n', buf->o))
+	      || buf->o != buf->n)
 	    break;
 
-	  eri_buf_reserve (buf, buf->size);
+	  eri_buf_reserve (buf, buf->n);
 	}
 
       const char *s = buf->buf;
@@ -492,19 +492,19 @@ m4_ns(file_foreach_line) (const char *path, struct eri_buf *buf,
 	      s = d + 1;
 	    }
 	  while ((d = eri_strntok (s, '\n',
-				   (char *) buf->buf + buf->off - s)));
+				   (char *) buf->buf + buf->o - s)));
 	}
 
-      if (buf->off != buf->size)
+      if (buf->o != buf->n)
 	{
-	  if (s < (char *) buf->buf + buf->off)
-	    proc (s, (char *) buf->buf + buf->off - s, data);
-	  buf->off = 0;
+	  if (s < (char *) buf->buf + buf->o)
+	    proc (s, (char *) buf->buf + buf->o - s, data);
+	  buf->o = 0;
 	  break;
 	}
 
-      buf->off = (char *) buf->buf + buf->off - s;
-      eri_memmove (buf->buf, s, buf->off);
+      buf->o = (char *) buf->buf + buf->o - s;
+      eri_memmove (buf->buf, s, buf->o);
     }
   return m4_ns(fclose) (f);
 }

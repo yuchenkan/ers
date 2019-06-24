@@ -350,7 +350,7 @@ fix_init_maps (struct eri_live_thread_group *group, uint64_t rsp)
   struct eri_buf buf;
   eri_live_init_get_maps (group->pool, &group->map_range, &buf);
   struct eri_smaps_map *maps = buf.buf;
-  uint64_t n = buf.off / sizeof *maps;
+  uint64_t n = buf.o;
 
   uint64_t i, stack_end = 0;
   for (i = 0; i < n; ++i)

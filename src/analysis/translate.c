@@ -823,7 +823,7 @@ ir_add_const_access (struct ir_accesses *acc,
   struct access a = {
     read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, 0, 0, addr
   };
-  eri_assert_buf_append (&acc->accesses, &a, sizeof a);
+  eri_assert_buf_append (&acc->accesses, &a, 1);
 }
 
 static void
@@ -833,7 +833,7 @@ ir_add_access (struct ir_accesses *acc,
   struct access a = {
     read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, cond, 1
   };
-  eri_assert_buf_append (&acc->accesses, &a, sizeof a);
+  eri_assert_buf_append (&acc->accesses, &a, 1);
   if (cond) ++acc->conds_count;
   ++acc->vars_count;
 }
@@ -2290,19 +2290,19 @@ ir_emit_raw (struct ir_flat *flat, uint8_t *bytes, uint64_t len)
 	  eri_assert (err != XED_ERROR_BUFFER_TOO_SHORT);
 	  if (err != XED_ERROR_NONE)
 	    {
-	      eri_rlog (log, "%lx:", flat->insts.off + i);
+	      eri_rlog (log, "%lx:", flat->insts.o + i);
 	      uint8_t j;
 	      for (j = 0; j < len - i; ++j)
 		eri_rlog (log, " %x", bytes[i + j]);
 	      eri_rlog (log, "\n");
 	      break;
 	    }
-	  else ir_dump_dis_dec (log, flat->insts.off + i, &dec);
+	  else ir_dump_dis_dec (log, flat->insts.o + i, &dec);
 	}
     }
 
   eri_assert_buf_append (&flat->insts, bytes, len);
-  eri_log8 (log, "rip: %lx\n", flat->insts.off);
+  eri_log8 (log, "rip: %lx\n", flat->insts.o);
 }
 
 #define ir_emit(what, flat, ...) \
@@ -2331,11 +2331,11 @@ ir_add_trace_guest (struct ir_flat *flat, uint8_t idx,
 {
   if (idx == TRANS_RIP)
     {
-      eri_log4 (flat->dag->log, "%lx\n", flat->insts.off);
-      ir_trace_inc_access (flat, flat->insts.off, 0);
+      eri_log4 (flat->dag->log, "%lx\n", flat->insts.o);
+      ir_trace_inc_access (flat, flat->insts.o, 0);
     }
-  struct trace_guest t = { flat->insts.off, idx, loc };
-  eri_assert_buf_append (&flat->traces, &t, sizeof t);
+  struct trace_guest t = { flat->insts.o, idx, loc };
+  eri_assert_buf_append (&flat->traces, &t, 1);
 }
 
 static void
@@ -2979,8 +2979,8 @@ ir_append_ra (struct eri_buf *ras, uint8_t idx,
 
   struct ir_ra a;
   ir_init_ra (&a, idx, dep, def);
-  eri_assert_buf_append (ras, &a, sizeof a);
-  return (void *) ((uint8_t *) ras->buf + ras->off - sizeof a);
+  eri_assert_buf_append (ras, &a, 1);
+  return (struct ir_ra *) ras->buf + ras->o - 1;
 }
 
 static void
@@ -3008,7 +3008,7 @@ ir_init_emit_mem_args (struct ir_enc_mem_args *args,
 static void
 ir_trace_access (struct ir_flat *flat, uint8_t len)
 {
-  ir_trace_inc_access (flat, flat->insts.off, len);
+  ir_trace_inc_access (flat, flat->insts.o, len);
 }
 
 static void
@@ -3448,7 +3448,7 @@ ir_assign_emit_cond_str_op (struct ir_flat *flat,
   ir_emit (cjmp_relbr, flat, addr_size == 8
 		? XED_ICLASS_JRCXZ : XED_ICLASS_JECXZ, addr_size, len);
 
-  uint64_t str_op_rip_off = flat->insts.off + str_op_off;
+  uint64_t str_op_rip_off = flat->insts.o + str_op_off;
   if (ir_cond_str_op_rsi (iclass))
     ir_trace_inc_access (flat, str_op_rip_off, str_op_len);
   if (ir_cond_str_op_rdi (iclass))
@@ -3582,12 +3582,11 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
   ir_assign_update_usage (flat, node);
 
   struct eri_buf ras_buf;
-  eri_assert_buf_mtpool_init (&ras_buf, flat->dag->pool,
-			      sizeof (struct ir_ra) * 32);
+  eri_assert_buf_mtpool_init (&ras_buf, flat->dag->pool, 32, struct ir_ra);
   ir_assign_gen_ras (flat, node, &ras_buf);
 
   struct ir_ra *ras = ras_buf.buf;
-  uint32_t n = ras_buf.off / sizeof *ras;
+  uint32_t n = ras_buf.o;
 
   if (eri_global_enable_debug >= 8) ir_dump_ras (log, ras, n);
 
@@ -3662,26 +3661,28 @@ ir_output (struct ir_dag *dag, struct ir_flat *flat)
 {
   struct ir_accesses *a = &dag->accesses;
   struct eri_trans *res = eri_assert_mtmalloc_struct (dag->pool,
-	typeof (*res), (insts, flat->insts.off),
-	(traces, flat->traces.off), (accesses.accesses, a->accesses.off));
+	typeof (*res), (insts, flat->insts.o),
+	(traces, eri_buf_off (&flat->traces)),
+	(accesses.accesses, eri_buf_off (&a->accesses)));
 
   eri_log8 (dag->log, "res->buf: %lx\n", res->buf);
 
-  eri_memcpy (res->insts, flat->insts.buf, flat->insts.off);
-  res->insts_len = flat->insts.off;
+  eri_memcpy (res->insts, flat->insts.buf, flat->insts.o);
+  res->insts_len = flat->insts.o;
 
-  eri_memcpy (res->traces, flat->traces.buf, flat->traces.off);
-  res->traces_num = flat->traces.off / sizeof *res->traces;
+  eri_memcpy (res->traces, flat->traces.buf, eri_buf_off (&flat->traces));
+  res->traces_num = flat->traces.o;
 
   eri_memcpy (res->final_locs, flat->final_locs, sizeof res->final_locs);
 
   res->sig_info = flat->sig_info;
 
-  eri_memcpy (res->accesses.accesses, a->accesses.buf, a->accesses.off);
+  eri_memcpy (res->accesses.accesses,
+	      a->accesses.buf, eri_buf_off (&a->accesses));
 
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, dag);
-  res->accesses.num = a->accesses.off / sizeof (struct access);
+  res->accesses.num = a->accesses.o;
   res->accesses.vars_count = layout.access_vars_count;
   res->accesses.conds_count = layout.access_conds_count;
 
@@ -3708,8 +3709,9 @@ ir_generate (struct ir_dag *dag, void *analysis)
   for (i = 0; i < TRANS_REG_NUM; ++i)
     ir_init_host (&flat, i, i == local ? &flat.local : &flat.dummy);
 
-  eri_assert_buf_mtpool_init (&flat.insts, dag->pool, 512);
-  eri_assert_buf_mtpool_init (&flat.traces, dag->pool, 512);
+  struct eri_mtpool *pool = dag->pool;
+  eri_assert_buf_mtpool_init (&flat.insts, pool, 512, uint8_t);
+  eri_assert_buf_mtpool_init (&flat.traces, pool, 32, struct trace_guest);
   struct eri_buf *acc = &dag->accesses.accesses;
   flat.access = acc->buf;
 
@@ -3723,11 +3725,11 @@ ir_generate (struct ir_dag *dag, void *analysis)
       ir_emit_raw (&flat, node->end.bytes, node->end.len);
     else ir_assign_hosts (&flat, node);
 
-  if ((uint64_t) flat.access != (uint64_t) acc->buf + acc->off)
+  if ((uint64_t) flat.access != (uint64_t) acc->buf + eri_buf_off (acc))
     {
       eri_log (dag->log, "%lu %lu\n", ((uint64_t) flat.access
 			- (uint64_t) acc->buf) / sizeof (struct access),
-	acc->off / sizeof (struct access));
+	       acc->o);
       eri_lassert (dag->log, 0);
     }
 
@@ -3765,7 +3767,7 @@ eri_translate (struct eri_translate_args *args)
   dag.map_end = ir_get_load_imm (&dag, args->map_range->end);
 
   eri_assert_buf_mtpool_init (&dag.accesses.accesses,
-			dag.pool, sizeof (struct access) * max_inst_count);
+			      dag.pool, max_inst_count, struct access);
 
   struct ir_node *init = ir_alloc_node (&dag, IR_INIT, 0);
   dag.init = &init->seq;

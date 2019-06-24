@@ -228,7 +228,7 @@ eri_append_access (struct eri_buf *buf, uint64_t addr,
 		   uint64_t size, uint8_t type)
 {
   struct eri_access acc = { addr, size, type };
-  eri_assert_buf_append (buf, &acc, sizeof acc);
+  eri_assert_buf_append (buf, &acc, 1);
 }
 
 #endif

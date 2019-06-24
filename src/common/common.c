@@ -148,10 +148,10 @@ eri_smaps_foreach_map (const char *smaps, struct eri_mtpool *pool,
 	void (*proc) (const struct eri_smaps_map *, void *), void *args)
 {
   struct eri_buf buf;
-  eri_assert_buf_mtpool_init (&buf, pool, 256);
+  eri_assert_buf_mtpool_init (&buf, pool, 256, char);
 
   struct proc_smaps_line_args line_args = { proc, args };
-  eri_assert_buf_mtpool_init (&line_args.buf, pool, 1024);
+  eri_assert_buf_mtpool_init (&line_args.buf, pool, 1024, char);
 
   eri_assert_file_foreach_line (smaps, &buf, proc_smaps_line, &line_args);
 
