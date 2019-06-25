@@ -945,17 +945,17 @@ DEFINE_SYSCALL (clone)
   int32_t *user_ptid = (void *) regs->rdx;
   int32_t *user_ctid = (void *) regs->r10;
 
+  if (flags & ERI_CLONE_PARENT_SETTID)
+    (void) copy_obj_to_user (th, user_ptid, &res);
+  if (flags & ERI_CLONE_CHILD_SETTID)
+    (void) copy_obj_to_user (th, user_ctid, &res);
+
   int32_t *clear_user_tid = flags & ERI_CLONE_CHILD_CLEARTID ? user_ctid : 0;
   struct thread *cth = create (th->group, th, rec.id, clear_user_tid);
   if (! cth) diverged (th);
 
   eri_atomic_inc (&th->group->thread_count, 1);
   version_activity_inc (&th->group->ver_act);
-
-  if (flags & ERI_CLONE_PARENT_SETTID)
-    (void) copy_obj_to_user (th, user_ptid, &res);
-  if (flags & ERI_CLONE_CHILD_SETTID)
-    (void) copy_obj_to_user (th, user_ctid, &res);
 
   struct eri_entry *centry = cth->entry;
   struct eri_registers *cregs = eri_entry__get_regs (centry);

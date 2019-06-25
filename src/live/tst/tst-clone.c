@@ -38,6 +38,7 @@ start (int32_t *a0, int32_t *a1, int32_t *a2)
 eri_noreturn void
 tst_live_start (void)
 {
+  eri_info ("%lx\n", &pid);
   pid = tst_assert_syscall (getpid);
   eri_assert (tst_assert_syscall (gettid) == pid);
 
