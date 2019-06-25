@@ -13,4 +13,4 @@ TST_LIVE_DIVERGE_DEFINE_TST (4, ERI_EVAL (do {
   tst_atomic_inc (&a, 1);
   tst_yield (4);
   tst_atomic_inc (diverge ? &b : &a, 1);
-} while (0)), 1, 0, 0)
+} while (0)), 0, 0, 0)
