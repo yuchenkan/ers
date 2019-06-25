@@ -820,7 +820,7 @@ atomic_wait (struct thread *th,
 }
 
 static void
-do_atomic_updated (struct thread *th, uint64_t slot)
+do_atomic_update (struct thread *th, uint64_t slot)
 {
   struct thread_group *group = th->group;
   uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
@@ -828,11 +828,11 @@ do_atomic_updated (struct thread *th, uint64_t slot)
 }
 
 static void
-atomic_updated (struct thread *th, uint64_t mem, uint8_t size)
+atomic_update (struct thread *th, uint64_t mem, uint8_t size)
 {
-  do_atomic_updated (th, eri_atomic_slot (mem));
+  do_atomic_update (th, eri_atomic_slot (mem));
   if (eri_atomic_cross_slot (mem, size))
-    do_atomic_updated (th, eri_atomic_slot2 (mem, size));
+    do_atomic_update (th, eri_atomic_slot2 (mem, size));
 }
 
 #define SYSCALL_PARAMS \
@@ -1027,8 +1027,7 @@ syscall_do_exit (SYSCALL_PARAMS)
 
   if (! rec.clear_tid.ok)
     {
-      if (user_tid && write_user (th, user_tid, size)) 
-	diverged (th);
+      if (user_tid && write_user (th, user_tid, size)) diverged (th);
       goto out;
     }
 
@@ -1039,13 +1038,10 @@ syscall_do_exit (SYSCALL_PARAMS)
   struct eri_access acc = { (uint64_t) user_tid, size, ERI_ACCESS_WRITE };
   update_access (th, &acc, 1);
 
-  if (rec.clear_tid.updated)
-    {
-      if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
-      *user_tid = 0;
-      eri_entry__reset_test_access (entry);
-      atomic_updated (th, (uint64_t) user_tid, size);
-    }
+  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
+  *user_tid = 0;
+  eri_entry__reset_test_access (entry);
+  atomic_update (th, (uint64_t) user_tid, size);
 
 out:
   if (! io_out (th, rec.out)) diverged (th);
@@ -2068,21 +2064,20 @@ atomic (struct thread *th)
     }
   update_access (th, acc, eri_length_of (acc));
 
-  if (rec.updated)
+  eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
+
+  if (code != ERI_OP_ATOMIC_LOAD)
     {
-      if (code == ERI_OP_ATOMIC_LOAD) diverged (th);
-
-      eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
-
       if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
       if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
       else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
       else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
       else if (size == 8) atomic_uint64_t (code, (void *) mem, val, regs);
       eri_entry__reset_test_access (entry);
-
-      atomic_updated (th, mem, size);
     }
+  else if (! read_user (th, (void *) mem, size)) diverged (th);
+
+  atomic_update (th, mem, size);
 
   fetch_test_async_signal (th);
 

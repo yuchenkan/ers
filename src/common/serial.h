@@ -206,7 +206,6 @@ eri_record_magic_str (uint16_t magic)
 struct eri_atomic_record
 {
   uint8_t ok;
-  uint8_t updated;
   struct eri_pair ver;
   uint64_t val;
 };

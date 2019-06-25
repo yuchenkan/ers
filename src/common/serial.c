@@ -389,9 +389,8 @@ eri_unserialize_async_signal_record (eri_file_t file,
   eri_assert (eri_try_unserialize_async_signal_record (file, rec));
 }
 
-#define ATOMIC_RECORD_UPDATED	1
-#define ATOMIC_RECORD_SAME_VER	2
-#define ATOMIC_RECORD_ZERO_VAL	4
+#define ATOMIC_RECORD_SAME_VER	1
+#define ATOMIC_RECORD_ZERO_VAL	2
 
 void
 eri_serialize_atomic_record (eri_file_t file,
@@ -400,8 +399,7 @@ eri_serialize_atomic_record (eri_file_t file,
   eri_serialize_uint8 (file, rec->ok);
   if (! rec->ok) return;
 
-  uint8_t flags = (rec->updated ? ATOMIC_RECORD_UPDATED : 0)
-		  | (rec->ver.first == rec->ver.second
+  uint8_t flags = (rec->ver.first == rec->ver.second
 					? ATOMIC_RECORD_SAME_VER : 0)
 		  | (rec->val == 0 ? ATOMIC_RECORD_ZERO_VAL : 0);
   eri_serialize_uint8 (file, flags);
@@ -421,7 +419,6 @@ eri_try_unserialize_atomic_record (eri_file_t file,
 
   uint8_t flags;
   if (! eri_try_unserialize_uint8 (file, &flags)) return 0;
-  rec->updated = !! (flags & ATOMIC_RECORD_UPDATED);
   if (! eri_try_unserialize_uint64 (file, &rec->ver.first)) return 0;
   if (flags & ATOMIC_RECORD_SAME_VER) rec->ver.second = rec->ver.first;
   else if (! eri_try_unserialize_uint64 (file, &rec->ver.second)) return 0;

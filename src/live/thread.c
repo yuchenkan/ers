@@ -559,7 +559,7 @@ do_unlock_atomic (struct eri_live_thread_group *group, uint64_t idx)
 
 static struct eri_pair
 unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
-	       uint8_t updated)
+	       uint8_t ok)
 {
   uint8_t cross = idx->first != idx->second;
   struct eri_pair ver = {
@@ -567,8 +567,7 @@ unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
     group->atomic_table[idx->second] >> 1
   };
 
-
-  if (updated)
+  if (ok)
     {
       group->atomic_table[idx->first] += 2;
       if (cross) group->atomic_table[idx->second] += 2;
@@ -767,13 +766,10 @@ syscall_do_exit (SYSCALL_PARAMS)
       int32_t old_val;
       if (clear_user_tid (th, user_tid, &old_val))
 	{
-	  uint8_t updated = old_val != 0;
 	  rec.clear_tid.ok = 1;
-	  rec.clear_tid.updated = updated;
-	  rec.clear_tid.ver = unlock_atomic (group, &idx, updated);
+	  rec.clear_tid.ver = unlock_atomic (group, &idx, 1);
 	  eri_syscall (futex, user_tid, ERI_FUTEX_WAKE, 1);
 	  goto record;
-	  syscall_record (th, ERI_SYSCALL_EXIT_MAGIC, &rec);
 	}
 
       unlock_atomic (group, &idx, 0);
@@ -2006,16 +2002,8 @@ atomic (struct eri_live_thread *th)
 
   eri_entry__reset_test_access (entry);
 
-  uint8_t updated
-	= ((code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)
-	   && old_val != val)
-	  || code == ERI_OP_ATOMIC_INC || code == ERI_OP_ATOMIC_DEC
-	  || (code == ERI_OP_ATOMIC_CMPXCHG
-	      && (regs->rflags & ERI_RFLAGS_ZF ? old_val != val : 0));
-
   rec.ok = 1;
-  rec.updated = updated;
-  rec.ver = unlock_atomic (group, &idx, updated);
+  rec.ver = unlock_atomic (group, &idx, 1);
   rec.val = atomic_op_output (code) ? old_val : 0;
 
   /* XXX: cmpxchg16b */
