@@ -311,6 +311,7 @@ struct ir_node
 	} end;
       struct
 	{
+	  uint64_t idx;
 	  struct ir_mem mem;
 	  struct ir_dep memory;
 	  struct ir_dep prev;
@@ -340,6 +341,11 @@ struct ir_node
 	{
 	  xed_iclass_enum_t iclass;
 	  uint8_t addr_size;
+
+	  uint64_t read_idx;
+	  uint64_t read_cond_idx;
+	  uint64_t write_idx;
+	  uint64_t write_cond_idx;
 
 	  struct ir_def dst;
 
@@ -846,6 +852,7 @@ ir_eval_rec_mem (struct ir_dag *dag, struct ir_rec_mem_args *args)
   struct ir_node *node = ir_alloc_node (dag, IR_REC_MEM,
 		args->read ? ir_deps (1, 0) : ir_deps (3, 1));
   node->deps += ir_init_mem (node, &node->rec_mem.mem, mem);
+  node->rec_mem.idx = dag->accesses.vars_count;
   ir_add_access (&dag->accesses, args->read, mem->size, 0);
   ir_depand (node, &node->rec_mem.memory, dag->memory, 0);
   ir_depand (node, &node->rec_mem.prev, dag->prev, 0);
@@ -1055,9 +1062,15 @@ ir_create_cond_str_op (struct ir_dag *dag, struct ir_cond_str_op_args *args)
 
   uint32_t size = ir_str_op_size (xed_norep_map (iclass));
   if (ir_cond_str_op_rsi (iclass))
-    ir_add_access (&dag->accesses, 1, size, 1);
+    {
+      node->cond_str_op.read_idx = dag->accesses.vars_count;
+      node->cond_str_op.read_cond_idx = dag->accesses.conds_count;
+      ir_add_access (&dag->accesses, 1, size, 1);
+    }
   if (ir_cond_str_op_rdi (iclass))
     {
+      node->cond_str_op.write_idx = dag->accesses.vars_count;
+      node->cond_str_op.write_cond_idx = dag->accesses.conds_count;
       ir_add_access (&dag->accesses, 0, size, 1);
       ir_depand (node, &node->cond_str_op.map_start, dag->map_start, 1);
       ir_depand (node, &node->cond_str_op.map_end, dag->map_end, 1);
@@ -1265,12 +1278,12 @@ ir_get_rip (struct ir_dag *dag)
 static void
 ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
 {
-  eri_rlog2 (log, "%lx:", rip);
+  eri_rlog (log, "%lx:", rip);
 
   char dis[64];
   eri_assert (xed_format_context (XED_SYNTAX_ATT, dec,
 				  dis, sizeof dis, rip, 0, 0));
-  eri_rlog2 (log, " %s\n", dis);
+  eri_rlog (log, " %s\n", dis);
 }
 
 static xed_error_enum_t
@@ -1311,7 +1324,7 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
   xed_error_enum_t err = ir_do_decode (dec, bytes, len);
   if (err == XED_ERROR_BUFFER_TOO_SHORT) return 0;
 
-  if (err == XED_ERROR_NONE)
+  if (err == XED_ERROR_NONE && eri_global_enable_debug >= 2)
     ir_dump_dis_dec (dag->log, rip, dec);
 
   if (err != XED_ERROR_NONE)
@@ -3209,7 +3222,7 @@ ir_assign_emit_rec_mem (struct ir_flat *flat,
 
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, flat->dag);
-  uint64_t idx = ((uint64_t) layout.accesses >> 3) + flat->access_idx;
+  uint64_t idx = ((uint64_t) layout.accesses >> 3) + node->rec_mem.idx;
 
   ir_assign_init_local_enc_mem_args (flat, idx, &rec);
   ir_emit (store, flat, &rec, a->host_idx);
@@ -3384,20 +3397,20 @@ ir_cjmp_iclass_from_cond_str_op (xed_iclass_enum_t iclass)
 
 static uint32_t
 ir_assign_encode_rec_str_op_access (struct ir_flat *flat,
-				    uint8_t *bytes, struct ir_node *node)
+	uint8_t *bytes, uint8_t addr_size, uint64_t idx, uint64_t cond_idx)
 {
   struct active_local_layout_args layout;
   ir_active_local_layout (&layout, flat->dag);
 
-  uint64_t idx = ((uint64_t) layout.accesses >> 3) + flat->access_idx;
-  uint64_t cond_idx = (uint64_t) layout.access_conds + flat->access_cond_idx;
+  uint64_t local_idx = ((uint64_t) layout.accesses >> 3) + idx;
+  uint64_t local_cond_idx = (uint64_t) layout.access_conds + cond_idx;
   uint8_t reg_idx = flat->access->type == ERI_ACCESS_READ
 			? TRANS_RSI : TRANS_RDI;
 
   eri_file_t log = flat->dag->log;
 
   uint8_t len = 0;
-  if (node->cond_str_op.addr_size == 4)
+  if (addr_size == 4)
     {
       struct ir_enc_mem_args mem = {
 	reg_idx, TRANS_REG_NUM, .addr_size = 4
@@ -3406,9 +3419,9 @@ ir_assign_encode_rec_str_op_access (struct ir_flat *flat,
     }
 
   struct ir_enc_mem_args rec;
-  ir_assign_init_local_enc_mem_args (flat, idx, &rec);
+  ir_assign_init_local_enc_mem_args (flat, local_idx, &rec);
   len += ir_encode_store (log, bytes + len, &rec, reg_idx);
-  ir_assign_init_local_enc_mem_args_size (flat, cond_idx, &rec, 1);
+  ir_assign_init_local_enc_mem_args_size (flat, local_cond_idx, &rec, 1);
   return len + ir_encode_store_imm (log, bytes + len, &rec, 1);
 }
 
@@ -3424,10 +3437,12 @@ ir_assign_emit_cond_str_op (struct ir_flat *flat,
   uint8_t op[INST_BYTES * inst_num];
   uint32_t len = 0;
   if (ir_cond_str_op_rsi (iclass))
-    len = ir_assign_encode_rec_str_op_access (flat, op, node);
+    len = ir_assign_encode_rec_str_op_access (flat, op, addr_size,
+	node->cond_str_op.read_idx, node->cond_str_op.read_cond_idx);
   if (ir_cond_str_op_rdi (iclass))
     {
-      len += ir_assign_encode_rec_str_op_access (flat, op + len, node);
+      len += ir_assign_encode_rec_str_op_access (flat, op + len, addr_size,
+	node->cond_str_op.write_idx, node->cond_str_op.write_cond_idx);
       uint8_t map_end = (--a)->host_idx;
       uint8_t map_start = (--a)->host_idx;
       len += ir_assign_encode_rec_check_write (flat, op + len,
