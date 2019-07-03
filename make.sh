@@ -2,9 +2,20 @@ set -ex
 
 cd $(dirname "$0")
 
+trd_xed=3rd/xed
+if [ ! -d $trd_xed ]; then
+  mkdir -p $trd_xed
+  git clone https://github.com/intelxed/xed.git $trd_xed
+fi
+
+trd_xed_mbuild=$trd_xed/../mbuild
+if [ ! -d $trd_xed_mbuild ]; then
+  mkdir -p $trd_xed_mbuild
+  git clone https://github.com/intelxed/mbuild.git $trd_xed_mbuild
+fi
+
 cflags=$(node -e "console.log ((() => { $(cat basic-cflags.g) }) ())")
 
-trd_xed=3rd/xed
 (cd $trd_xed && ./mfile.py --extra-flags="-g $cflags")
 
 src_xed=src/analysis/xed.gen
