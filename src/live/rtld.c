@@ -53,11 +53,10 @@ rtld (void **args, uint64_t rdx)
   rtld_args.buf_size = buf_size;
 
   struct eri_auxv *auxv;
-  for (auxv = (struct eri_auxv *)(envp + 1);
+  for (rtld_args.auxv = auxv = (struct eri_auxv *)(envp + 1);
        auxv->type != ERI_AT_NULL; ++auxv)
     if (auxv->type == ERI_AT_PAGESZ) page_size = auxv->val;
   rtld_args.page_size = page_size;
-  rtld_args.auxv = auxv;
 
   uint64_t res = eri_syscall (open, live, ERI_O_RDONLY);
   if (res == ERI_ENOENT)
@@ -85,6 +84,8 @@ rtld (void **args, uint64_t rdx)
 
   uint64_t base = map_base (segs, nsegs, page_size, &rtld_args);
   eri_map_bin (fd, segs, nsegs, base, page_size);
+
+  eri_assert_fprintf (ERI_STDERR, "base = %lx\n", base);
 
   if (nrels)
     {

@@ -55,6 +55,7 @@ struct signal_thread_group
 
   struct watch watch;
   struct eri_helper *helper;
+  uint8_t exit_helper;
 
   uint64_t io;
 
@@ -205,6 +206,9 @@ create_group (struct eri_live_rtld_args *rtld_args)
     }
 
   group->th_id = 0;
+
+  group->exit_helper = 0;
+
   group->io = 0;
 
   struct eri_live_thread__create_group_args args = {
@@ -382,6 +386,9 @@ start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
       eri_assert_syscall (waitid, ERI_P_PGID, pgid, &info, ERI_WEXITED, 0);
       eri_assert ((info.chld.pid == th_pid || info.chld.pid == pgid)
 		  && info.chld.status == 0);
+      if (info.chld.pid == th_pid
+	  && ! eri_atomic_load (&group->exit_helper, 0))
+	eri_xassert (! "group->exit_helper", eri_info);
     }
   eri_debug ("leave watch\n");
   eri_assert_sys_exit (0);
@@ -864,6 +871,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
   eri_log (sig_th->log.file, "exit last thread\n");
 
+  eri_atomic_store (&group->exit_helper, 1, 0);
   event->done = 1;
   release_event (event);
   eri_live_thread__join (th);

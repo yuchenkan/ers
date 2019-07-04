@@ -357,6 +357,7 @@ start (struct eri_live_thread *th)
   eri_sig_empty_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
+  eri_log (th->log.file, "\n");
   eri_entry__leave (th->entry);
 }
 
