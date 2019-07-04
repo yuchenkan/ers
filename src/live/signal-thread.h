@@ -102,8 +102,6 @@ const struct eri_sigset *eri_live_signal_thread__get_sig_mask (
 
 uint64_t eri_live_signal_thread__get_id (
 		const struct eri_live_signal_thread *sig_th);
-struct eri_buf_file *eri_live_signal_thread__get_log (
-		struct eri_live_signal_thread *sig_th);
 
 int32_t eri_live_signal_thread__get_pid (
 		const struct eri_live_signal_thread *sig_th);

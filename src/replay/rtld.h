@@ -13,6 +13,7 @@ struct eri_replay_rtld_args
   uint64_t page_size;
 
   uint8_t debug;
+  uint8_t log_no_seq;
 
   const char *path;
   const char *conf;

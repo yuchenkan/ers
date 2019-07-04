@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <lib/printf.h>
+
 struct eri_mtpool;
 struct eri_siginfo;
 struct eri_sigframe;
@@ -19,6 +21,7 @@ struct eri_live_thread_group;
 struct eri_live_thread__create_group_args
 {
   struct eri_live_rtld_args *rtld_args;
+  const char *log;
   uint64_t file_buf_size;
   uint64_t *io;
 };
@@ -50,6 +53,8 @@ void eri_live_thread__join (struct eri_live_thread *th);
 
 void eri_live_thread__sig_handler (struct eri_live_thread *th,
 		struct eri_sigframe *frame, struct eri_sig_act *act);
+
+eri_file_t eri_live_thread__get_sig_log (const struct eri_live_thread *th);
 
 int32_t eri_live_thread__get_pid (const struct eri_live_thread *th);
 int32_t eri_live_thread__get_tid (const struct eri_live_thread *th);

@@ -661,12 +661,13 @@ eri_noreturn void
 eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 {
   eri_global_enable_debug = rtld_args->debug;
+  eri_log_no_seq = rtld_args->log_no_seq;
   eri_debug ("%lx, %lx, %u, base = %lx\n",
 	     rtld_args->map_range.start, rtld_args->buf, rtld_args->buf_size,
 	     rtld_args->base);
   if (eri_global_enable_debug && ! rtld_args->log)
     rtld_args->log = eri_enable_analyzer
-				? "eri-analysis-log" : "eri-replay-log";
+			? "eri-analysis-log" : "eri-replay-log";
   struct thread_group *group = create_group (rtld_args);
   struct thread *th = create (group, 0, 0, 0);
   eri_xassert (th, eri_info);

@@ -20,7 +20,8 @@ struct init_map_args
   uint64_t size;
   uint64_t text_offset;
 
-  uint64_t debug;
+  uint8_t debug;
+  uint8_t log_no_seq;
 
   uint8_t conf;
   uint8_t log;
@@ -149,7 +150,8 @@ eri_init_map (struct init_map_args *args)
   const char *log = args->log ? c : 0;
 
   struct eri_replay_rtld_args rtld_args = {
-    { map_start, map_end }, base, page_size, args->debug, path, conf, log,
+    { map_start, map_end }, base, page_size,
+    args->debug, args->log_no_seq, path, conf, log,
     args->stack_size, args->file_buf_size, args->diverge,
     base + segs_end, map_end - base - segs_end
   };
@@ -178,7 +180,8 @@ rtld (void **args)
     || eri_get_arg_int (*envp, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
     || eri_get_arg_str (*envp, "ERI_LOG=", (void *) &log)
     || eri_get_arg_int (*envp, "ERI_DIVERGE=", &diverge, 10)
-    || eri_get_arg_int (*envp, "ERI_DEBUG=", &eri_global_enable_debug, 10));
+    || eri_get_arg_int (*envp, "ERI_DEBUG=", &eri_global_enable_debug, 10)
+    || eri_get_arg_int (*envp, "ERI_LOG_NO_SEQ=", &eri_log_no_seq, 10));
 
   struct eri_elf64_phdr *phdrs = 0;
   uint64_t phnum = 0;
@@ -221,7 +224,7 @@ rtld (void **args)
   eri_unserialize_init_record (file, &rec);
 
   struct init_map_args init_args = {
-    .debug = eri_global_enable_debug,
+    .debug = eri_global_enable_debug, .log_no_seq = eri_log_no_seq,
     .conf = !! conf, .log = !! log,
     .fd = eri_assert_syscall (open, "/proc/self/exe", ERI_O_RDONLY),
     .page_size = page_size,

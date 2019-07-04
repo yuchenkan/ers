@@ -91,9 +91,10 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
   struct eri_live_thread *th = sig_th->th;
   struct eri_siginfo *info = &frame->info;
 
+  eri_file_t log = eri_live_thread__get_sig_log (th);
   if (! eri_si_single_step (info) && eri_si_sync (info))
-    eri_llog (&sig_th->log, "sig = %u, frame = %lx, rip = %lx\n",
-	      info->sig, frame, frame->ctx.mctx.rip);
+    eri_log (log, "sig = %u, frame = %lx, rip = %lx\n",
+	     info->sig, frame, frame->ctx.mctx.rip);
 
   if (eri_si_sync (info))
     {
@@ -104,8 +105,8 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
   if (! thread_sig_filter (sig_th->group, info)) return;
 
   *info = *sig_th->sig_info;
-  eri_llog (&sig_th->log, "sig = %u, frame = %lx, rip = %lx\n",
-	    info->sig, frame, frame->ctx.mctx.rip);
+  eri_log (log, "sig = %u, frame = %lx, rip = %lx\n",
+	   info->sig, frame, frame->ctx.mctx.rip);
   eri_live_thread__sig_handler (th, frame, &sig_th->sig_act);
 }
 
@@ -158,8 +159,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   if (! eri_live_thread__sig_digest_act (th, info, &sig_th->sig_act, 0))
     return;
 
-  eri_llog (&sig_th->log, "sig = %u, frame = %lx, code = %u\n",
-	    info->sig, frame, info->code);
+  eri_log (sig_th->sig_log.file, "sig = %u, frame = %lx, code = %u\n",
+	   info->sig, frame, info->code);
   sig_th->sig_info = info;
   eri_assert_syscall (tgkill, th_pid, th_tid, SIG_SIGNAL);
 
@@ -167,7 +168,7 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       && ctx->mctx.rip != sig_th->event_sig_reset_restart)
     ctx->mctx.rip = sig_th->event_sig_restart;
 
-  eri_llog (&sig_th->log, "\n");
+  eri_log (sig_th->sig_log.file, "\n");
   eri_sig_fill_set (&ctx->sig_mask);
 }
 
@@ -182,7 +183,8 @@ create_group (struct eri_live_rtld_args *rtld_args)
       for (p = rtld_args->envp; *p; ++p)
 	(void) (eri_get_arg_int (*p, "ERS_FILE_BUF_SIZE=", &file_buf_size, 10)
 	|| eri_get_arg_str (*p, "ERI_LOG=", (void *) &log)
-	|| eri_get_arg_int (*p, "ERI_DEBUG=", &eri_global_enable_debug, 10));
+	|| eri_get_arg_int (*p, "ERI_DEBUG=", &eri_global_enable_debug, 10)
+	|| eri_get_arg_int (*p, "ERI_LOG_NO_SEQ=", &eri_log_no_seq, 10));
 
       if (eri_global_enable_debug && ! log) log = "eri-live-log";
     }
@@ -206,7 +208,7 @@ create_group (struct eri_live_rtld_args *rtld_args)
   group->io = 0;
 
   struct eri_live_thread__create_group_args args = {
-    rtld_args, file_buf_size, &group->io
+    rtld_args, group->log, file_buf_size, &group->io
   };
   group->thread_group = eri_live_thread__create_group (pool, &args);
   return group;
@@ -261,15 +263,24 @@ fini_event (struct eri_live_signal_thread *sig_th)
   eri_assert_syscall (close, sig_th->event_pipe[1]);
 }
 
+static void
+open_log (struct eri_live_signal_thread *sig_th, struct eri_buf_file *log,
+	  const char *name)
+{
+  struct signal_thread_group *group = sig_th->group;
+  eri_open_log (group->pool, log, group->log, name, sig_th->id,
+		eri_enabled_debug () ? 0 : group->file_buf_size);
+}
+
 static struct eri_live_signal_thread *
 create (struct signal_thread_group *group)
 {
   struct eri_live_signal_thread *sig_th
 	= eri_assert_mtmalloc (group->pool, sizeof *sig_th);
-  sig_th->id = eri_atomic_fetch_inc (&group->th_id, 0);
-  eri_open_log (group->pool, &sig_th->log, group->log, "l", sig_th->id,
-		eri_enabled_debug () ? 0 : group->file_buf_size);
   sig_th->group = group;
+  sig_th->id = eri_atomic_fetch_inc (&group->th_id, 0);
+  open_log (sig_th, &sig_th->log, "s");
+  open_log (sig_th, &sig_th->sig_log, "ss");
   sig_th->alive = 1;
   return sig_th;
 }
@@ -279,6 +290,7 @@ destroy (struct eri_live_signal_thread *sig_th)
 {
   struct eri_mtpool *pool = sig_th->group->pool;
   eri_close_log (pool, &sig_th->log);
+  eri_close_log (pool, &sig_th->sig_log);
   eri_assert_mtfree (pool, sig_th);
 }
 
@@ -554,7 +566,7 @@ struct syscall_event
 static eri_noreturn void
 event_loop (struct eri_live_signal_thread *sig_th)
 {
-  eri_llog (&sig_th->log, "\n");
+  eri_log (sig_th->log.file, "\n");
   struct signal_thread_group *group = sig_th->group;
 
   uint8_t pending_exit_group = 0;
@@ -567,7 +579,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       eri_assert (! eri_syscall_is_error (res));
 
       uint32_t type = ((struct event_type *) event_type)->type;
-      eri_llog (&sig_th->log, "%u\n", type);
+      eri_log (sig_th->log.file, "%u\n", type);
       if (type == CLONE_EVENT)
 	clone (sig_th, event_type);
       else if (type == EXIT_EVENT)
@@ -649,7 +661,7 @@ struct clone_event {
 static eri_noreturn void
 start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 {
-  eri_llog (&sig_th->log, "\n");
+  eri_log (sig_th->log.file, "\n");
 
   init_sig_stack (sig_th);
 
@@ -697,8 +709,8 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     &sig_cth->tid, &sig_cth->alive, 0, start, sig_cth, event
   };
 
-  eri_llog (&sig_th->log, "clone %lx %lx %lx\n",
-	    event, sig_cth, sig_cth_args.stack);
+  eri_log (sig_th->log.file, "clone %lx %lx %lx\n",
+	   event, sig_cth, sig_cth_args.stack);
   args->result = eri_sys_clone (&sig_cth_args);
   uint8_t error_sig_clone = eri_syscall_is_error (args->result);
 
@@ -723,7 +735,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     }
 
   restore_sig_mask (sig_th);
-  eri_llog (&sig_th->log, "clone done %lx %lu\n", event, args->result);
+  eri_log (sig_th->log.file, "clone done %lx %lu\n", event, args->result);
   eri_assert_unlock (&event->clone_done);
   return;
 
@@ -811,6 +823,8 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   uint64_t status = event->status;
   struct eri_live_thread *th = sig_th->th;
 
+  eri_log (sig_th->log.file, "status = %lu\n", status);
+
   if (! event->group
       && eri_atomic_dec_fetch (&group->thread_count, 1))
     {
@@ -826,18 +840,18 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
       unhold_exit_group (&group->exit_group_lock);
 
-      eri_llog (&sig_th->log, "exit %lx\n", sig_th);
+      eri_log (sig_th->log.file, "exit %lx\n", sig_th);
       eri_assert_sys_exit (status);
     }
   else if (! event->group) eri_assert (try_lock_exit_group (group));
   else
     {
-      eri_llog (&sig_th->log, "exit group\n");
+      eri_log (sig_th->log.file, "exit group\n");
       inform_exit_group (sig_th);
 
       struct eri_live_signal_thread *it, *nit;
 
-      eri_llog (&sig_th->log, "exit thread group\n");
+      eri_log (sig_th->log.file, "exit thread group\n");
       ERI_LST_FOREACH_SAFE (thread, group, it, nit)
 	if (it != sig_th)
 	  {
@@ -848,7 +862,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 	  }
     }
 
-  eri_llog (&sig_th->log, "exit last thread\n");
+  eri_log (sig_th->log.file, "exit last thread\n");
 
   event->done = 1;
   release_event (event);
@@ -879,7 +893,6 @@ uint8_t
 eri_live_signal_thread__exit (struct eri_live_signal_thread *sig_th,
 			      uint8_t group, uint64_t status)
 {
-  eri_llog (&sig_th->log, "status = %lu\n", status);
   struct exit_event event = { INIT_EVENT_TYPE (EXIT_EVENT), group, status };
   proc_event (sig_th, &event);
   return event.done;

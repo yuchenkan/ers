@@ -27,6 +27,7 @@ struct eri_live_signal_thread
 
   uint64_t id;
   struct eri_buf_file log;
+  struct eri_buf_file sig_log;
 
   int32_t alive;
 

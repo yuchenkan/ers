@@ -10,4 +10,4 @@ if (typeof environ === 'undefined') var environ = '';
 let live = `live/tst/tst-init-${name}`;
 await this.update ([ `${live}.out` ]);
 await env.run (`rm -rf ${env.trim (goal)}-log`, true);
-await this.invoke ('tst/goal/out.g', { src, environ: `${environ} ERI_LOG=${env.trim (env.base (goal))}-log ERS_DATA=../../${live}-data` });
+await this.invoke ('tst/goal/out.g', { src, environ: `${environ} ERI_LOG_NO_SEQ=1 ERI_LOG=${env.trim (env.base (goal))}-log ERS_DATA=../../${live}-data` });

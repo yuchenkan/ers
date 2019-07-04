@@ -47,7 +47,7 @@ struct eri_live_thread_recorder
   struct eri_live_thread_recorder_group *group;
 
   struct eri_entry *entry;
-  struct eri_buf_file *log;
+  eri_file_t log;
 
   uint8_t pending_sync_async;
   uint64_t sync_async_cnt;
@@ -59,7 +59,7 @@ struct eri_live_thread_recorder
 struct eri_live_thread_recorder *
 eri_live_thread_recorder__create (
 	struct eri_live_thread_recorder_group *group,
-	struct eri_entry *entry, uint64_t id, struct eri_buf_file *log)
+	struct eri_entry *entry, uint64_t id, eri_file_t log)
 {
   uint64_t buf_size = group->file_buf_size;
   struct eri_live_thread_recorder *th_rec
@@ -147,7 +147,7 @@ record_init_map (const struct eri_smaps_map *map, void *args)
   const char *path = map->path;
   eri_xassert (! map->grows_down, eri_info);
 
-  eri_llog (th_rec->log, "%s %lx %lx %u\n", path ? : "<>", start, end, prot);
+  eri_log (th_rec->log, "%s %lx %lx %u\n", path ? : "<>", start, end, prot);
 
   uint8_t type = eri_within (&map->range, a->rsp)
 			? ERI_INIT_MAP_STACK
@@ -182,7 +182,7 @@ eri_live_thread_recorder__rec_init (
   struct record_init_map_args args = { th_rec, rec->rsp };
   eri_init_foreach_map (th_rec->group->pool, &rec->map_range,
 			     record_init_map, &args);
-  eri_llog (th_rec->log, "leave rec_init\n");
+  eri_log (th_rec->log, "leave rec_init\n");
 }
 
 void

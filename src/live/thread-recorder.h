@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <lib/printf.h>
+
 struct eri_mtpool;
 struct eri_init_record;
 struct eri_atomic_record;
@@ -20,7 +22,7 @@ void eri_live_thread_recorder__destroy_group (
 
 struct eri_live_thread_recorder *eri_live_thread_recorder__create (
 	struct eri_live_thread_recorder_group *group,
-	struct eri_entry *entry, uint64_t id, struct eri_buf_file *log);
+	struct eri_entry *entry, uint64_t id, eri_file_t log);
 void eri_live_thread_recorder__destroy (
 		struct eri_live_thread_recorder *th_rec);
 

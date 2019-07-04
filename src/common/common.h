@@ -22,7 +22,6 @@ eri_file_t eri_open_path (const char *path, const char *name,
 
 struct eri_buf_file
 {
-  struct eri_lock lock;
   eri_file_t file;
   void *buf;
 };

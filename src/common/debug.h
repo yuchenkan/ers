@@ -91,12 +91,13 @@ _eri_log (uint8_t enabled, eri_file_t file, uint32_t flags,
   va_end (arg);
 }
 
-uint64_t _eri_do_log_order;
+uint64_t _eri_do_log_seq;
+uint8_t eri_log_no_seq;
 #define eri_do_log(enabled, file, flags, level, fmt, ...) \
   _eri_log (enabled, file, flags,					\
 	    fmt, "[" ERI_STR (level) " %lu %s:%u(%s)]\t" fmt,		\
-	    eri_global_enable_debug					\
-		? eri_atomic_fetch_inc (&_eri_do_log_order, 0) : 0,	\
+	    ! eri_log_no_seq						\
+		? eri_atomic_fetch_inc (&_eri_do_log_seq, 0) : 0,	\
 	    _eri_unify_file (__FILE__), __LINE__, __FUNCTION__,		\
 	    ##__VA_ARGS__)
 
@@ -159,7 +160,6 @@ static eri_unused void
 eri_open_log (struct eri_mtpool *pool, struct eri_buf_file *file,
 	const char *log, const char *name, uint64_t id, uint64_t buf_size)
 {
-  eri_init_lock (&file->lock, 0);
   if (! log) { file->file = 0; return; }
 
   eri_malloc_open_path (pool, file, log, name, id, buf_size);
@@ -170,19 +170,6 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
 {
   if (file->file) eri_free_close (pool, file);
 }
-
-#define _eri_llog(fn, log, fmt, ...) \
-  do {									\
-    struct eri_buf_file *_blog = log;					\
-    if (_blog) eri_assert_lock (&_blog->lock);				\
-    fn (_blog ? _blog->file : 0, fmt, ##__VA_ARGS__);			\
-    if (_blog) eri_assert_unlock (&_blog->lock);			\
-  } while (0)
-
-#define eri_llog(log, fmt, ...) \
-  _eri_llog (eri_log, log, fmt, ##__VA_ARGS__)
-#define eri_llog_info(log, fmt, ...) \
-  _eri_llog (eri_log_info, log, fmt, ##__VA_ARGS__)
 
 #define eri_debug_stop() \
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)

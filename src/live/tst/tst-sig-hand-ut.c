@@ -214,7 +214,7 @@ tst_main (void)
   };
 
   uint64_t io;
-  struct eri_live_thread__create_group_args args = { &rtld_args, 0, &io };
+  struct eri_live_thread__create_group_args args = { &rtld_args, 0, 0, &io };
 
   struct eri_live_thread_group *group
 	= eri_live_thread__create_group (&sig_th.pool, &args);
