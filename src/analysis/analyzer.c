@@ -655,6 +655,10 @@ race_push_block (struct race *ra, struct race_sync *before)
 static void
 race_add_after (struct race *ra, struct race_sync *after)
 {
+  if (after->type == RACE_SYNC_KEY_VER)
+    eri_log (ra->log, "[RACE] block: b%lu, unit: u%lu, sync.kv: %lx %lu\n",
+	     ra->cur->id, ra->cur->unit->id, after->kv.key, after->kv.ver);
+
   eri_assert_buf_append (&ra->cur->afters, after, 1);
 }
 
@@ -714,7 +718,11 @@ race_collect_conflicts (struct race_confirm_context *ctx)
 
 	if ((ctx->conflicts[i - ERI_ACCESS_START][j - ERI_ACCESS_START]
 		= race_may_conflict (i, j) && race_ranges_intersects (a, b)))
-	  c = 1;
+	  {
+	    eri_log (ctx->log, "[RACE] unit: u%lu\n", ctx->unit->id);
+	    eri_log (ctx->log, "[RACE] block: b%lu\n", ctx->cur.blk->id);
+	    c = 1;
+	  }
       }
 
   uint8_t t = 2;
@@ -751,12 +759,16 @@ race_confirm_prev (struct race_confirm_context *ctx)
 }
 
 static void
-race_get_conflicts (eri_file_t log, struct race_group *group,
-		    uint8_t ta, struct race_accesses *a,
-		    uint8_t tb, struct race_accesses *b)
+race_get_conflicts (struct race_confirm_context *ctx, uint8_t type, uint8_t ref_type)
 {
-  struct race_access *i = race_access_rbt_get_first (a);
-  struct race_access *j = race_access_rbt_get_first (b);
+  struct race_accesses *acc = race_get_type (type, &ctx->unit->sealed);
+  struct race_accesses *ref = race_get_type (ref_type, &ctx->cur.unit->sealed);
+
+  uint64_t id = ctx->unit->id;
+  uint64_t ref_id = ctx->cur.unit->id;
+
+  struct race_access *i = race_access_rbt_get_first (acc);
+  struct race_access *j = race_access_rbt_get_first (ref);
   while (i && j)
     if (i->addr + i->size <= j->addr) i = race_access_rbt_get_next (i);
     else if (j->addr + j->size <= i->addr) j = race_access_rbt_get_next (j);
@@ -764,10 +776,11 @@ race_get_conflicts (eri_file_t log, struct race_group *group,
       {
         if (i->addr || j->addr)
 	  {
-	    eri_log_info (log, "conflict detected: %s %lx %lu, %s, %lx %lu\n",
-			  eri_access_type_str (ta), i->addr, i->size,
-			  eri_access_type_str (tb), j->addr, j->size);
-	    eri_atomic_store (&group->error, 1, 0); // TODO
+	    eri_log_info (ctx->log,
+		"conflict detected: %s %lx %lu u%lu, %s, %lx %lu u%lu\n",
+		eri_access_type_str (type), i->addr, i->size, id,
+		eri_access_type_str (ref_type), j->addr, j->size, ref_id);
+	    eri_atomic_store (&ctx->group->error, 1, 0); // TODO
 	  }
 	i = race_access_rbt_get_next (i);
       }
@@ -780,9 +793,7 @@ race_confirm_unit (struct race_confirm_context *ctx)
   for (i = ERI_ACCESS_START; i < ERI_ACCESS_END; ++i)
     for (j = ERI_ACCESS_START; j < ERI_ACCESS_END; ++j)
       if (ctx->conflicts[i - ERI_ACCESS_START][j - ERI_ACCESS_START])
-	race_get_conflicts (ctx->log, ctx->group,
-			    i, race_get_type (i, &ctx->unit->sealed),
-			    j, race_get_type (j, &ctx->cur.unit->sealed));
+	race_get_conflicts (ctx, i, j);
 }
 
 static void
@@ -914,7 +925,6 @@ race_end (struct race *ra)
   race_lock (ra);
   uint8_t push = race_push_unit (ra);
   race_empty_area (pool, &ra->cur->cur);
-  ra->cur->empty_end = ! ra->cur->unit->prev;
   race_unlock (ra);
 
   if (push) race_confirm_push_unit (ra);
@@ -930,10 +940,23 @@ race_end (struct race *ra)
       race_ref_lst_remove (ra, r);
       race_free_ref (ra->log, pool, r);
     }
+  ra->cur->empty_end = ! ra->cur->unit->prev;
   race_unlock (ra);
 
 out:
   race_release (ra->log, ra);
+}
+
+static void
+race_test_release_cur (struct race *ra)
+{
+  if (race_ref_lst_get_size (ra) == 0)
+    {
+      struct eri_mtpool *pool = ra->group->pool;
+      race_empty_area (pool, &ra->cur->cur);
+      race_release_block (ra->log, pool, ra->cur);
+      ra->cur = 0;
+    }
 }
 
 static void
@@ -947,6 +970,8 @@ race_push (struct race *ra)
   uint8_t push = race_push_unit (ra);
   race_unlock (ra);
   if (push) race_confirm_push_unit (ra);
+
+  race_test_release_cur (ra);
 }
 
 static void
@@ -997,11 +1022,16 @@ race_before (struct race *ra, uint64_t key, uint64_t ver)
     RACE_SYNC_KEY_VER, .kv.key = key, .kv.ver = ver
   };
   race_lock (ra);
+  eri_log (ra->log, "[RACE] block: b%lu, unit: u%lu, sync.kv: %lx %lu\n",
+	   ra->cur->id, ra->cur->unit->id, key, ver);
+
   race_push_block (ra, &sync);
   race_unlock (ra);
 
   race_confirm_push_block (ra);
   race_release_block (ra->log, ra->group->pool, ra->cur->prev);
+
+  race_test_release_cur (ra);
 }
 
 static uint8_t
@@ -1052,6 +1082,7 @@ race_after (struct race *ra, uint64_t key, uint64_t ver)
 {
   eri_log2 (ra->log, "[RACE] call\n");
 
+  race_push (ra);
   if (! ra->cur) return;
 
   struct race_sync sync = {
@@ -1251,8 +1282,8 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
-  eri_log2 (al->log.file, "rip = %lx rsp = %lx r11 = %lx rflags = %lx\n",
-	    regs->rip, regs->rsp, regs->r11, regs->rflags);
+  eri_log (al->log.file, "rip = %lx rsp = %lx r11 = %lx rflags = %lx\n",
+	   regs->rip, regs->rsp, regs->r11, regs->rflags);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   struct eri_analyzer_group *group = al->group;
@@ -1391,7 +1422,7 @@ update_access (struct eri_analyzer *al, struct eri_access *acc, uint64_t n,
 {
   if (! n) return;
 
-  uint8_t t = 3;
+  uint8_t t = 0;
   eri_logn (t, al->log.file, "%s %lu\n", msg, n);
   dump_accesses (al->log.file, t, acc, n);
 

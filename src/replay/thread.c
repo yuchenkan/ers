@@ -33,16 +33,7 @@ struct version_waiter
   uint64_t ver;
   uint8_t dead_locked;
   ERI_LST_NODE_FIELDS (version_waiter)
-  ERI_LST_NODE_FIELDS (version_wakeup)
 };
-
-struct version_wakeup
-{
-  ERI_LST_LIST_FIELDS (version_wakeup)
-};
-
-ERI_DEFINE_LIST (static, version_wakeup,
-		 struct version_wakeup, struct version_waiter)
 
 struct version
 {
@@ -237,13 +228,14 @@ version_wait (struct thread *th, struct version *ver, uint64_t exp)
 static void
 version_update (struct thread *th, struct version *ver)
 {
+  /* Marking happens-before before happens-after is awoken.  */
+  if (eri_enable_analyzer)
+    eri_analyzer__race_before (th->analyzer, (uint64_t) ver, ver->ver + 1);
+
   struct version_activity *act = &th->group->ver_act;
 
-  struct version_wakeup wakeup;
-  ERI_LST_INIT_LIST (version_wakeup, &wakeup);
-
   eri_assert_lock (&ver->lock);
-  uint64_t v = eri_atomic_inc_fetch (&ver->ver, 0);
+  eri_atomic_inc (&ver->ver, 0);
   struct version_waiter *w, *nw;
   ERI_LST_FOREACH_SAFE (version_waiter, ver, w, nw)
     if (ver->ver == w->ver)
@@ -257,16 +249,9 @@ version_update (struct thread *th, struct version *ver)
 	  }
 
 	version_activity_inc (act);
-	version_wakeup_lst_append (&wakeup, w);
+	version_unlock_waiter (th->group->pool, w);
       }
   eri_assert_unlock (&ver->lock);
-
-  /* Marking happens-before before happens-after is awoken.  */
-  if (eri_enable_analyzer)
-    eri_analyzer__race_before (th->analyzer, (uint64_t) ver, v);
-
-  ERI_LST_FOREACH_SAFE (version_wakeup, &wakeup, w, nw)
-    version_unlock_waiter (th->group->pool, w);
 }
 
 static uint8_t
@@ -2012,8 +1997,10 @@ static void								\
 ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
 			   struct eri_registers *regs)			\
 {									\
-  if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
-    *mem = val;								\
+  if (code == ERI_OP_ATOMIC_LOAD)					\
+    eri_atomic_load (mem, 0);						\
+  else if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
+    eri_atomic_store (mem, val, 0);					\
   else if (code == ERI_OP_ATOMIC_INC)					\
     eri_atomic_inc_x (mem, &regs->rflags, 0);				\
   else if (code == ERI_OP_ATOMIC_DEC)					\
@@ -2066,16 +2053,12 @@ atomic (struct thread *th)
 
   eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
 
-  if (code != ERI_OP_ATOMIC_LOAD)
-    {
-      if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
-      if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
-      else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
-      else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
-      else if (size == 8) atomic_uint64_t (code, (void *) mem, val, regs);
-      eri_entry__reset_test_access (entry);
-    }
-  else if (! read_user (th, (void *) mem, size)) diverged (th);
+  if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
+  if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
+  else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
+  else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
+  else if (size == 8) atomic_uint64_t (code, (void *) mem, val, regs);
+  eri_entry__reset_test_access (entry);
 
   atomic_update (th, mem, size);
 
@@ -2195,7 +2178,7 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 	       struct thread *th)
 {
   int32_t sig = info->sig;
-  if (eri_enabled_debug ())
+  if (eri_global_enable_debug >= 3)
     eri_log_info (th->log.file, "sig %u, info %lx, fault.addr %lx, "
 	"rip %lx, rip - base %lx, rax %lx, rbx %lx, rcx %lx, rdx %lx, "
 	"rsi %lx, rdi %lx, rbp %lx, rsp %lx, r8 %lx, r9 %lx, r10 %lx, "
@@ -2207,6 +2190,12 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 	ctx->mctx.r8, ctx->mctx.r9,  ctx->mctx.r10, ctx->mctx.r11,
 	ctx->mctx.r12, ctx->mctx.r13,  ctx->mctx.r14, ctx->mctx.r15,
 	ctx->mctx.rflags);
+  else if (eri_global_enable_debug >= 1)
+    eri_log_info (th->log.file, "sig %u, info %lx, fault.addr %lx, "
+	"rip %lx, rip - base %lx, rax %lx\n",
+	sig, info, info->fault.addr,
+	ctx->mctx.rip, ctx->mctx.rip - th->group->base, ctx->mctx.rax);
+
 
   if (info->code == ERI_SI_TKILL && info->kill.pid == th->group->pid)
     info->sig = SIG_FETCH_ASYNC;
