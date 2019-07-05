@@ -1751,24 +1751,33 @@ DEFINE_SYSCALL (getdents64) { syscall_do_read (SYSCALL_ARGS); }
 SYSCALL_TO_IMPL (getcwd)
 SYSCALL_TO_IMPL (chdir)
 SYSCALL_TO_IMPL (fchdir)
-SYSCALL_TO_IMPL (rename)
-SYSCALL_TO_IMPL (renameat)
-SYSCALL_TO_IMPL (renameat2)
-SYSCALL_TO_IMPL (mkdir)
-SYSCALL_TO_IMPL (mkdirat)
-SYSCALL_TO_IMPL (rmdir)
+
+static const char *
+syscall_do_rename_get_oldpath (int32_t nr, struct eri_registers *regs)
+{
+  if (nr == __NR_rename || nr == __NR_link || nr == __NR_symlink
+      || nr == __NR_symlinkat) return (void *) regs->rdi;
+  else return (void *) regs->rsi;
+}
+
+static const char *
+syscall_do_rename_get_newpath (int32_t nr, struct eri_registers *regs)
+{
+  if (nr == __NR_rename || nr == __NR_link || nr == __NR_symlink)
+    return (void *) regs->rsi;
+  else if (nr == __NR_symlinkat) return (void *) regs->rdx;
+  else return (void *) regs->r10;
+}
 
 static eri_noreturn void
-syscall_do_link (SYSCALL_PARAMS)
+syscall_do_rename (SYSCALL_PARAMS)
 {
   struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
   uint64_t res = rec.result;
 
   int32_t nr = regs->rax;
-  const char *user_oldpath = (void *) (nr != __NR_linkat
-				       ? regs->rdi : regs->rsi);
-  const char *user_newpath = (void *) (nr == __NR_link || nr == __NR_symlink
-		? regs->rsi : (nr == __NR_linkat ? regs->r10 : regs->rdx));
+  const char *user_oldpath = syscall_do_rename_get_oldpath (nr, regs);
+  const char *user_newpath = syscall_do_rename_get_newpath (nr, regs);
 
   uint8_t old_err = syscall_user_path_error (th, user_oldpath, res);
   uint8_t new_err = syscall_user_path_error (th, user_newpath, res);
@@ -1781,14 +1790,22 @@ err:
   syscall_leave (th, 1, res);
 }
 
-DEFINE_SYSCALL (link) { syscall_do_link (SYSCALL_ARGS); }
-DEFINE_SYSCALL (linkat) { syscall_do_link (SYSCALL_ARGS); }
+DEFINE_SYSCALL (rename) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat2) { syscall_do_rename (SYSCALL_ARGS); }
+
+SYSCALL_TO_IMPL (mkdir)
+SYSCALL_TO_IMPL (mkdirat)
+SYSCALL_TO_IMPL (rmdir)
+
+DEFINE_SYSCALL (link) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (linkat) { syscall_do_rename (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (unlink) { syscall_do_open (SYSCALL_ARGS); }
 DEFINE_SYSCALL (unlinkat) { syscall_do_open (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (symlink) { syscall_do_link (SYSCALL_ARGS); }
-DEFINE_SYSCALL (symlinkat) { syscall_do_link (SYSCALL_ARGS); }
+DEFINE_SYSCALL (symlink) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (symlinkat) { syscall_do_rename (SYSCALL_ARGS); }
 
 static eri_noreturn void
 syscall_do_readlink (SYSCALL_PARAMS)

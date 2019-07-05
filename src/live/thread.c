@@ -1757,9 +1757,11 @@ DEFINE_SYSCALL (getdents64) { syscall_do_getdents (SYSCALL_ARGS); }
 SYSCALL_TO_IMPL (getcwd)
 SYSCALL_TO_IMPL (chdir)
 SYSCALL_TO_IMPL (fchdir)
-SYSCALL_TO_IMPL (rename)
-SYSCALL_TO_IMPL (renameat)
-SYSCALL_TO_IMPL (renameat2)
+
+DEFINE_SYSCALL (rename) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat2) { syscall_do_res_io (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (mkdir)
 SYSCALL_TO_IMPL (mkdirat)
 SYSCALL_TO_IMPL (rmdir)
