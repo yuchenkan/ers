@@ -230,6 +230,8 @@ syscall_start_record (struct eri_live_thread_recorder *th_rec,
 {
   submit_sync_async (th_rec);
 
+  eri_log3 (th_rec->log, "%s\n", eri_record_magic_str (magic));
+
   eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);
   eri_serialize_magic (th_rec->file, magic);
 }

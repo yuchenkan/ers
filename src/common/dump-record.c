@@ -195,7 +195,7 @@ main (int32_t argc, const char **argv)
 	    if (eri_syscall_is_ok (rec.result))
 	      {
 		uint64_t id = eri_unserialize_uint64 (file);
-		uint8_t ok = eri_unserialize_uint8 (file);
+		uint8_t ok = id ? eri_unserialize_uint8 (file) : 1;
 		printf (",..id: %lx, ..ok: %d\n", id, ok);
 	      }
 	    else printf ("\n");
