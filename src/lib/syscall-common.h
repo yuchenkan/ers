@@ -694,7 +694,18 @@ struct eri_stat
   struct eri_timespec ctime;
 };
 
-struct eri_dirent {
+struct eri_utsname
+{
+  char sysname[65];
+  char nodename[65];
+  char release[65];
+  char version[65];
+  char machine[65];
+  char domainname[65];
+};
+
+struct eri_dirent
+{
   uint64_t ino;
   int64_t off;
   uint16_t reclen;

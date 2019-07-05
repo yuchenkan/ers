@@ -310,7 +310,7 @@ eri_live_thread_recorder__rec_mmap (
 void
 eri_live_thread_recorder__rec_readlink (
 	struct eri_live_thread_recorder *th_rec,
-	struct eri_syscall_res_in_record *rec, char *buf, uint64_t size)
+	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len)
 {
   if (! th_rec) return;
 
@@ -318,8 +318,8 @@ eri_live_thread_recorder__rec_readlink (
   eri_serialize_syscall_res_in_record (th_rec->file, rec);
   if (eri_syscall_is_fault_or_ok (rec->result))
     {
-      eri_serialize_uint64 (th_rec->file, size);
-      eri_serialize_uint8_array (th_rec->file, (void *) buf, size);
+      eri_serialize_uint64 (th_rec->file, len);
+      eri_serialize_uint8_array (th_rec->file, (void *) buf, len);
     }
 }
 
@@ -356,6 +356,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_STAT_MAGIC)
     eri_serialize_syscall_stat_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_UNAME_MAGIC)
+    eri_serialize_syscall_uname_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 

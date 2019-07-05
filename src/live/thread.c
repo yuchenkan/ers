@@ -830,7 +830,29 @@ SYSCALL_TO_IMPL (ptrace)
 SYSCALL_TO_IMPL (syslog)
 SYSCALL_TO_IMPL (seccomp)
 
-SYSCALL_TO_IMPL (uname)
+DEFINE_SYSCALL (uname)
+{
+  struct eri_utsname *user_utsname = (void *) regs->rdi;
+  struct eri_utsname utsname;
+  eri_assert_syscall (uname, &utsname);
+
+  struct eri_syscall_uname_record rec;
+
+  eri_memset (&rec.utsname, 0, sizeof rec.utsname);
+  eri_strcpy (rec.utsname.sysname, utsname.sysname);
+  eri_strcpy (rec.utsname.nodename, utsname.nodename);
+  eri_strcpy (rec.utsname.release, utsname.release);
+  eri_strcpy (rec.utsname.version, utsname.version);
+  eri_strcpy (rec.utsname.machine, utsname.machine);
+  eri_strcpy (rec.utsname.domainname, utsname.domainname);
+
+  rec.result = eri_entry__copy_obj_to_user (entry, user_utsname,
+				&rec.utsname, 0) ? 0 : ERI_EFAULT;
+  rec.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_UNAME_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
 SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
 SYSCALL_TO_IMPL (getrandom)
@@ -1817,9 +1839,9 @@ SYSCALL_TO_IMPL (mknodat)
 
 SYSCALL_TO_IMPL (umask)
 
-SYSCALL_TO_IMPL (chmod)
-SYSCALL_TO_IMPL (fchmod)
-SYSCALL_TO_IMPL (fchmodat)
+DEFINE_SYSCALL (chmod) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (fchmod) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (fchmodat) { syscall_do_res_io (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (chown)
 SYSCALL_TO_IMPL (fchown)

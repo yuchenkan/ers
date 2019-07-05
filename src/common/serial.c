@@ -178,6 +178,31 @@ eri_unserialize_uint64_array (eri_file_t file, uint64_t *a, uint64_t size)
 }
 
 void
+eri_serialize_str (eri_file_t file, const char *s, uint64_t size)
+{
+  uint64_t n = eri_strlen (s);
+  eri_assert (n < size);
+  eri_serialize_uint64 (file, n);
+  eri_serialize_uint8_array (file, (void *) s, n);
+}
+
+uint8_t
+eri_try_unserialize_str (eri_file_t file, char *s, uint64_t size)
+{
+  uint64_t n;
+  if (! eri_try_unserialize_uint64 (file, &n) || n >= size
+      || ! eri_try_unserialize_uint8_array (file, (void *) s, n)) return 0;
+  s[n] = '\0';
+  return 1;
+}
+
+void
+eri_unserialize_str (eri_file_t file, char *s, uint64_t size)
+{
+  eri_assert (eri_try_unserialize_str (file, s, size));
+}
+
+void
 eri_serialize_pair (eri_file_t file, struct eri_pair pair)
 {
   eri_serialize_uint64 (file, pair.first);
@@ -403,6 +428,40 @@ void
 eri_unserialize_stat (eri_file_t file, struct eri_stat *stat)
 {
   eri_assert (eri_try_unserialize_stat (file, stat));
+}
+
+void
+eri_serialize_utsname (eri_file_t file, const struct eri_utsname *utsname)
+{
+  eri_serialize_str (file, utsname->sysname, sizeof utsname->sysname);
+  eri_serialize_str (file, utsname->nodename, sizeof utsname->nodename);
+  eri_serialize_str (file, utsname->release, sizeof utsname->release);
+  eri_serialize_str (file, utsname->version, sizeof utsname->version);
+  eri_serialize_str (file, utsname->machine, sizeof utsname->machine);
+  eri_serialize_str (file, utsname->domainname, sizeof utsname->domainname);
+}
+
+uint8_t
+eri_try_unserialize_utsname (eri_file_t file, struct eri_utsname *utsname)
+{
+  return eri_try_unserialize_str (file, utsname->sysname,
+				  sizeof utsname->sysname)
+	 && eri_try_unserialize_str (file, utsname->nodename,
+				     sizeof utsname->nodename)
+	 && eri_try_unserialize_str (file, utsname->release,
+				     sizeof utsname->release)
+	 && eri_try_unserialize_str (file, utsname->version,
+				     sizeof utsname->version)
+	 && eri_try_unserialize_str (file, utsname->machine,
+				     sizeof utsname->machine)
+	 && eri_try_unserialize_str (file, utsname->domainname,
+				     sizeof utsname->domainname);
+}
+
+void
+eri_unserialize_utsname (eri_file_t file, struct eri_utsname *utsname)
+{
+  eri_assert (eri_try_unserialize_utsname (file, utsname));
 }
 
 void
@@ -704,7 +763,7 @@ eri_try_unserialize_syscall_stat_record (eri_file_t file,
 {
   if (! eri_try_unserialize_uint64 (file, &rec->result)
       || ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
-  return (eri_syscall_is_non_fault_error (rec->result))
+  return eri_syscall_is_non_fault_error (rec->result)
 	 || eri_try_unserialize_stat (file, &rec->stat);
 }
 
@@ -713,4 +772,29 @@ eri_unserialize_syscall_stat_record (eri_file_t file,
 			struct eri_syscall_stat_record *rec)
 {
   eri_assert (eri_try_unserialize_syscall_stat_record (file, rec));
+}
+
+void
+eri_serialize_syscall_uname_record (eri_file_t file,
+			const struct eri_syscall_uname_record *rec)
+{
+  eri_serialize_uint64 (file, rec->result);
+  eri_serialize_uint64 (file, rec->in);
+  eri_serialize_utsname (file, &rec->utsname);
+}
+
+uint8_t
+eri_try_unserialize_syscall_uname_record (eri_file_t file,
+			struct eri_syscall_uname_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->result)
+	 && eri_try_unserialize_uint64 (file, &rec->in)
+	 && eri_try_unserialize_utsname (file, &rec->utsname);
+}
+
+void
+eri_unserialize_syscall_uname_record (eri_file_t file,
+			struct eri_syscall_uname_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_uname_record (file, rec));
 }

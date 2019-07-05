@@ -1046,7 +1046,22 @@ SYSCALL_TO_IMPL (ptrace)
 SYSCALL_TO_IMPL (syslog)
 SYSCALL_TO_IMPL (seccomp)
 
-SYSCALL_TO_IMPL (uname)
+DEFINE_SYSCALL (uname)
+{
+  struct eri_syscall_uname_record rec = { 0 };
+
+  if (! check_magic (th, ERI_SYSCALL_UNAME_MAGIC)
+      || ! try_unserialize (syscall_uname_record, th, &rec)
+      || eri_syscall_is_non_fault_error (rec.result)) diverged (th);
+
+  struct eri_utsname *user_utsname = (void *) regs->rdi;
+  if (copy_obj_to_user (th, user_utsname, &rec.utsname)
+	!= (rec.result != ERI_EFAULT)
+      || ! io_in (th, rec.in)) diverged (th);
+
+  syscall_leave (th, 1, rec.result);
+}
+
 SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
 SYSCALL_TO_IMPL (getrandom)
@@ -1386,7 +1401,8 @@ syscall_do_common_open (struct thread *th, struct eri_registers *regs,
   uint64_t res = rec.result;
 
   int32_t nr = regs->rax;
-  const char *user_path = (void *) (nr == __NR_openat || nr == __NR_faccessat
+  const char *user_path = (void *) (
+	nr == __NR_openat || nr == __NR_faccessat || nr == __NR_fchmodat
 					? regs->rsi : regs->rdi);
 
   if (syscall_user_path_error (th, user_path, res)) goto err;
@@ -1768,14 +1784,8 @@ err:
 DEFINE_SYSCALL (link) { syscall_do_link (SYSCALL_ARGS); }
 DEFINE_SYSCALL (linkat) { syscall_do_link (SYSCALL_ARGS); }
 
-static eri_noreturn void
-syscall_do_unlink (SYSCALL_PARAMS)
-{
-  syscall_do_common_open (th, regs, syscall_fetch_res_io (th));
-}
-
-DEFINE_SYSCALL (unlink) { syscall_do_unlink (SYSCALL_ARGS); }
-DEFINE_SYSCALL (unlinkat) { syscall_do_unlink (SYSCALL_ARGS); }
+DEFINE_SYSCALL (unlink) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (unlinkat) { syscall_do_open (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (symlink) { syscall_do_link (SYSCALL_ARGS); }
 DEFINE_SYSCALL (symlinkat) { syscall_do_link (SYSCALL_ARGS); }
@@ -1790,23 +1800,23 @@ syscall_do_readlink (SYSCALL_PARAMS)
 
   int32_t nr = regs->rax;
 
-  uint64_t size;
-  if (! try_unserialize (uint64, th, &size)
-      || size > (nr == __NR_readlink ? regs->rdx : regs->r10))
+  uint64_t len;
+  if (! try_unserialize (uint64, th, &len)
+      || len > (nr == __NR_readlink ? regs->rdx : regs->r10))
     diverged (th);
 
   char *user_buf = (void *) (nr == __NR_readlink ? regs->rsi : regs->rdx);
 
   uint8_t buf[1024];
   uint64_t c = 0;
-  for (c = 0; c < size; c += sizeof buf)
+  for (c = 0; c < len; c += sizeof buf)
     {
-      uint64_t s = eri_min (size - c, sizeof buf);
-      if (! try_unserialize (uint8_array, th, buf, s)) diverged (th);
-      if (! copy_to_user (th, user_buf + c, buf, s)) break;
+      uint64_t l = eri_min (len - c, sizeof buf);
+      if (! try_unserialize (uint8_array, th, buf, l)) diverged (th);
+      if (! copy_to_user (th, user_buf + c, buf, l)) break;
     }
 
-  if ((c < size) != (rec.result == ERI_EFAULT)) diverged (th);
+  if ((c < len) != (rec.result == ERI_EFAULT)) diverged (th);
 
 err:
   if (! io_in (th, rec.in)) diverged (th);
@@ -1821,9 +1831,9 @@ SYSCALL_TO_IMPL (mknodat)
 
 SYSCALL_TO_IMPL (umask)
 
-SYSCALL_TO_IMPL (chmod)
-SYSCALL_TO_IMPL (fchmod)
-SYSCALL_TO_IMPL (fchmodat)
+DEFINE_SYSCALL (chmod) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (fchmod) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (fchmodat) { syscall_do_open (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (chown)
 SYSCALL_TO_IMPL (fchown)

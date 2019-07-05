@@ -46,6 +46,10 @@ uint8_t eri_try_unserialize_uint64_array (eri_file_t file,
 void eri_unserialize_uint64_array (eri_file_t file,
 				   uint64_t *a, uint64_t size);
 
+void eri_serialize_str (eri_file_t file, const char *s, uint64_t size);
+uint8_t eri_try_unserialize_str (eri_file_t file, char *s, uint64_t size);
+void eri_unserialize_str (eri_file_t file, char *s, uint64_t size);
+
 void eri_serialize_pair (eri_file_t file, struct eri_pair pair);
 uint8_t eri_try_unserialize_pair (eri_file_t file, struct eri_pair *pair);
 struct eri_pair eri_unserialize_pair (eri_file_t file);
@@ -84,6 +88,12 @@ void eri_unserialize_timespec (eri_file_t file,
 void eri_serialize_stat (eri_file_t file, const struct eri_stat *stat);
 uint8_t eri_try_unserialize_stat (eri_file_t file, struct eri_stat *stat);
 void eri_unserialize_stat (eri_file_t file, struct eri_stat *stat);
+
+void eri_serialize_utsname (eri_file_t file,
+			    const struct eri_utsname *utsname);
+uint8_t eri_try_unserialize_utsname (eri_file_t file,
+				     struct eri_utsname *utsname);
+void eri_unserialize_utsname (eri_file_t file, struct eri_utsname *utsname);
 
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
@@ -189,6 +199,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGPENDING, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
   p (SYSCALL_STAT, ##__VA_ARGS__)					\
+  p (SYSCALL_UNAME, ##__VA_ARGS__)					\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
   p (SYSCALL_READLINK, ##__VA_ARGS__)					\
@@ -336,5 +347,18 @@ uint8_t eri_try_unserialize_syscall_stat_record (eri_file_t file,
 void eri_unserialize_syscall_stat_record (eri_file_t file,
 			struct eri_syscall_stat_record *rec);
 
+struct eri_syscall_uname_record
+{
+  uint64_t result;
+  uint64_t in;
+  struct eri_utsname utsname;
+};
+
+void eri_serialize_syscall_uname_record (eri_file_t file,
+			const struct eri_syscall_uname_record *rec);
+uint8_t eri_try_unserialize_syscall_uname_record (eri_file_t file,
+			struct eri_syscall_uname_record *rec);
+void eri_unserialize_syscall_uname_record (eri_file_t file,
+			struct eri_syscall_uname_record *rec);
 
 #endif

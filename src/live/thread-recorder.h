@@ -50,7 +50,7 @@ void eri_live_thread_recorder__rec_mmap (
 		struct eri_syscall_res_in_record *rec, uint64_t len);
 void eri_live_thread_recorder__rec_readlink (
 	struct eri_live_thread_recorder *th_rec,
-	struct eri_syscall_res_in_record *rec, char *buf, uint64_t size);
+	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len);
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

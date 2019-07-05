@@ -21,6 +21,7 @@ tst_live_start (void)
   tst_assert_syscall (link, link, "tst-link.t");
   tst_assert_syscall (unlink, "tst-link.t");
   tst_assert_syscall (symlink, link, "tst-symlink.t");
+
   tst_assert_syscall (unlink, "tst-symlink.t");
 
   eri_assert (tst_syscall (link, 0, "tst-link.t") == ERI_EFAULT);

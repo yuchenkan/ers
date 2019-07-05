@@ -156,6 +156,19 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.stat.result: %ld, ..in: %lu\n",
 		    rec.result, rec.in);
 	  }
+	else if (magic == ERI_SYSCALL_UNAME_MAGIC)
+	  {
+	    struct eri_syscall_uname_record rec;
+	    eri_unserialize_syscall_uname_record (file, &rec);
+	    printf ("  syscall.stat.result: %ld, ..in: %lu, "
+		    "..utsname.sysname: %s, ...nodename: %s, "
+		    "...release: %s, ...version: %s, ...machine: %s, "
+		    "...domainname: %s\n",
+		    rec.result, rec.in, rec.utsname.sysname,
+		    rec.utsname.nodename, rec.utsname.release,
+		    rec.utsname.version, rec.utsname.machine,
+		    rec.utsname.domainname);
+	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
 	    struct eri_syscall_res_in_record rec;
@@ -186,6 +199,18 @@ main (int32_t argc, const char **argv)
 		printf (",..id: %lx, ..ok: %d\n", id, ok);
 	      }
 	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_READLINK_MAGIC)
+	  {
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    printf ("  syscall.mmap.result: %ld, ..in: %lu\n",
+		    rec.result, rec.in);
+	    if (eri_syscall_is_fault_or_ok (rec.result))
+	      {
+	        uint64_t len = eri_unserialize_uint64 (file);
+		eri_unserialize_skip_uint8_array (file, len);
+	      }
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
