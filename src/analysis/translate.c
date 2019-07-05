@@ -1522,7 +1522,8 @@ ir_inst_op_read (xed_decoded_inst_t *dec, const xed_operand_t *op)
 {
   xed_operand_enum_t op_name = xed_operand_name (op);
   xed_reg_enum_t reg = xed_decoded_inst_get_reg (dec, op_name);
-  return xed_operand_read (op) || xed_get_register_width_bits (reg) < 32;
+  return xed_operand_read (op) || xed_operand_conditional_write (op)
+		|| xed_get_register_width_bits (reg) < 32;
 }
 
 static void
@@ -2790,6 +2791,7 @@ ir_assign_spill (struct ir_flat *flat,
       struct trans_loc src = { TRANS_LOC_REG, TRANS_RFLAGS };
       ir_set_host (flat, TRANS_RSP, &flat->dummy);
       ir_assign_move (flat, dst, src);
+      eri_log8 (flat->dag->log, "try update\n");
       ir_try_update_guest_loc (flat, check_guest);
       return;
     }
@@ -2987,6 +2989,7 @@ ir_assign_update_free_deps (struct ir_flat *flat, struct ir_node *node)
 	else
 	  {
 	    flat->guest_locs[i].def = next;
+	    eri_log8 (flat->dag->log, "try fix\n");
 	    ir_try_fix_guest_loc (flat, i);
 	  }
       }
@@ -3630,7 +3633,7 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
       {
 	struct ir_assign *a = assigns + ras[i].host_idx;
 	if (ras[i].dep) a->dep = ras[i].dep;
-	a->def = ras[i].def;
+	if (ras[i].def) a->def = ras[i].def;
 	a->exclusive = ras[i].exclusive;
        }
 

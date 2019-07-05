@@ -1560,8 +1560,8 @@ syscall_do_read (SYSCALL_PARAMS)
 {
 
   int32_t nr = regs->rax;
-  /* XXX: detect memory corruption in analysis */
-  if (nr == __NR_read || nr == __NR_pread64)
+  if (nr == __NR_read || nr == __NR_pread64
+      || nr == __NR_getdents || nr == __NR_getdents64)
     {
       uint64_t buf = regs->rsi;
       eri_entry__test_invalidate (entry, &buf);
@@ -1729,8 +1729,8 @@ SYSCALL_TO_IMPL (removexattr)
 SYSCALL_TO_IMPL (fremovexattr)
 SYSCALL_TO_IMPL (lremovexattr)
 
-SYSCALL_TO_IMPL (getdents)
-SYSCALL_TO_IMPL (getdents64)
+DEFINE_SYSCALL (getdents) { syscall_do_read (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getdents64) { syscall_do_read (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (getcwd)
 SYSCALL_TO_IMPL (chdir)

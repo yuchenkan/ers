@@ -1717,8 +1717,20 @@ SYSCALL_TO_IMPL (removexattr)
 SYSCALL_TO_IMPL (fremovexattr)
 SYSCALL_TO_IMPL (lremovexattr)
 
-SYSCALL_TO_IMPL (getdents)
-SYSCALL_TO_IMPL (getdents64)
+static eri_noreturn void
+syscall_do_getdents (SYSCALL_PARAMS)
+{
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs);
+  eri_entry__test_invalidate (entry, args.a + 1);
+  uint64_t res = eri_sys_syscall (&args);
+
+  syscall_record_read (th, res, (void *) args.a[1], 0);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (getdents) { syscall_do_getdents (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getdents64) { syscall_do_getdents (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (getcwd)
 SYSCALL_TO_IMPL (chdir)
