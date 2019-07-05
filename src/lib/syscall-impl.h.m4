@@ -35,7 +35,7 @@ m4_include(`m4/util.m4')
 #define m4_ns(assert_syscall)(...) \
   ({									\
     uint64_t _res = m4_ns(syscall) (__VA_ARGS__);			\
-    eri_assert (! eri_syscall_is_error (_res));				\
+    eri_assert (eri_syscall_is_ok (_res));				\
     _res;								\
   })
 
@@ -43,14 +43,14 @@ m4_include(`m4/util.m4')
   ({									\
     uint64_t _res = m4_ns(syscall) (__VA_ARGS__);			\
     ERI_EVAL (eri_xassert ERI_PP_CONCAT (				\
-		(! eri_syscall_is_error (_res), log), arg));		\
+		(eri_syscall_is_ok (_res), log), arg));			\
     _res;								\
   })
 
 #define m4_ns(assert_syscall_nr)(...) \
   ({									\
     uint64_t _res = m4_ns(syscall_nr) (__VA_ARGS__);			\
-    eri_assert (! eri_syscall_is_error (_res));				\
+    eri_assert (eri_syscall_is_ok (_res));				\
     _res;								\
   })
 
@@ -65,7 +65,7 @@ uint64_t m4_ns(sys_clone) (struct eri_sys_clone_args *args);
 
 #define m4_ns(assert_sys_clone)(args) \
   ({ uint64_t _res = m4_ns(sys_clone) (args);				\
-     eri_assert (! eri_syscall_is_error (_res)); _res; })
+     eri_assert (eri_syscall_is_ok (_res)); _res; })
 
 eri_noreturn void m4_ns(assert_sys_sigreturn) (void);
 
@@ -103,7 +103,7 @@ m4_ns(sys_open) (const char *path, uint8_t read)
 }
 #define m4_ns(assert_sys_open)(path, read) \
   ({ uint64_t _res = m4_ns(sys_open) (path, read);			\
-     eri_assert (! eri_syscall_is_error (_res)); _res; })
+     eri_assert (eri_syscall_is_ok (_res)); _res; })
 
 #define m4_ns(assert_sys_read)(fd, buf, size) \
   do {									\
@@ -115,7 +115,7 @@ m4_ns(sys_open) (const char *path, uint8_t read)
       {									\
 	uint64_t _res = m4_ns(syscall) (read, _fd, _buf, _end - _buf);	\
 	if (_res == ERI_EINTR) continue;				\
-	eri_assert (! eri_syscall_is_error (_res) && _res);		\
+	eri_assert (eri_syscall_is_ok (_res) && _res);			\
 	_buf += _res;							\
       }									\
   } while (0)
@@ -130,7 +130,7 @@ m4_ns(sys_open) (const char *path, uint8_t read)
       {									\
 	uint64_t _res = m4_ns(syscall) (write, _fd, _buf, _end - _buf);	\
 	if (_res == ERI_EINTR) continue;				\
-	eri_assert (! eri_syscall_is_error (_res));			\
+	eri_assert (eri_syscall_is_ok (_res));				\
 	_buf += _res;							\
       }									\
   } while (0)
@@ -138,7 +138,7 @@ m4_ns(sys_open) (const char *path, uint8_t read)
 #define m4_ns(assert_sys_mkdir)(path, mode) \
   do { uint64_t _res = m4_ns(syscall) (mkdir, path, mode);		\
        eri_assert (_res == ERI_EEXIST					\
-		   || ! eri_syscall_is_error (_res)); } while (0)
+		   || eri_syscall_is_ok (_res)); } while (0)
 
 #endif
 

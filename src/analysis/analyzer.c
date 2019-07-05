@@ -1236,8 +1236,8 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
-  eri_log2 (al->log.file, "rip = %lx rsp = %lx r11 = %lx rflags = %lx\n",
-	    regs->rip, regs->rsp, regs->r11, regs->rflags);
+  eri_log2 (al->log.file, "rip = %lx rsp = %lx rcx = %lx rbx = %lx\n",
+	    regs->rip, regs->rsp, regs->rcx, regs->rbx);
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   struct eri_analyzer_group *group = al->group;

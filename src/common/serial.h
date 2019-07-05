@@ -18,12 +18,18 @@ uint8_t eri_unserialize_uint8_or_eof (eri_file_t file, uint8_t *v);
 void eri_serialize_uint16 (eri_file_t file, uint16_t v);
 uint8_t eri_try_unserialize_uint16 (eri_file_t file, uint16_t *v);
 uint16_t eri_unserialize_uint16 (eri_file_t file);
+void eri_serialize_uint32 (eri_file_t file, uint32_t v);
+uint8_t eri_try_unserialize_uint32 (eri_file_t file, uint32_t *v);
+uint32_t eri_unserialize_uint32 (eri_file_t file);
 void eri_serialize_int32 (eri_file_t file, int32_t v);
 uint8_t eri_try_unserialize_int32 (eri_file_t file, int32_t *v);
 int32_t eri_unserialize_int32 (eri_file_t file);
 void eri_serialize_uint64 (eri_file_t file, uint64_t v);
 uint8_t eri_try_unserialize_uint64 (eri_file_t file, uint64_t *v);
 uint64_t eri_unserialize_uint64 (eri_file_t file);
+void eri_serialize_int64 (eri_file_t file, int64_t v);
+uint8_t eri_try_unserialize_int64 (eri_file_t file, int64_t *v);
+int64_t eri_unserialize_int64 (eri_file_t file);
 
 void eri_serialize_uint8_array (eri_file_t file,
 				const uint8_t *a, uint64_t size);
@@ -67,6 +73,17 @@ void eri_serialize_sig_act (eri_file_t file, const struct eri_sig_act *act);
 uint8_t eri_try_unserialize_sig_act (eri_file_t file,
 				     struct eri_sig_act *act);
 void eri_unserialize_sig_act (eri_file_t file, struct eri_sig_act *act);
+
+void eri_serialize_timespec (eri_file_t file,
+			     const struct eri_timespec *timespec);
+uint8_t eri_try_unserialize_timespec (eri_file_t file,
+				      struct eri_timespec *timespec);
+void eri_unserialize_timespec (eri_file_t file,
+			       struct eri_timespec *timespec);
+
+void eri_serialize_stat (eri_file_t file, const struct eri_stat *stat);
+uint8_t eri_try_unserialize_stat (eri_file_t file, struct eri_stat *stat);
+void eri_unserialize_stat (eri_file_t file, struct eri_stat *stat);
 
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
@@ -171,8 +188,10 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGACTION, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGPENDING, ##__VA_ARGS__)				\
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
+  p (SYSCALL_STAT, ##__VA_ARGS__)					\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
+  p (SYSCALL_READLINK, ##__VA_ARGS__)					\
   p (SYNC_ASYNC, ##__VA_ARGS__)						\
   p (ATOMIC, ##__VA_ARGS__)
 
@@ -302,5 +321,20 @@ uint8_t eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
 void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec);
+
+struct eri_syscall_stat_record
+{
+  uint64_t result;
+  uint64_t in;
+  struct eri_stat stat;
+};
+
+void eri_serialize_syscall_stat_record (eri_file_t file,
+			const struct eri_syscall_stat_record *rec);
+uint8_t eri_try_unserialize_syscall_stat_record (eri_file_t file,
+			struct eri_syscall_stat_record *rec);
+void eri_unserialize_syscall_stat_record (eri_file_t file,
+			struct eri_syscall_stat_record *rec);
+
 
 #endif

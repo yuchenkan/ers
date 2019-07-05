@@ -538,8 +538,19 @@ ir_reg_idx_from_xed (eri_file_t log, xed_reg_enum_t reg)
 }
 
 static xed_reg_enum_t
-ir_xed_reg_from_idx_opt (uint8_t reg_idx, uint8_t size)
+ir_xed_reg_from_idx_opt (uint8_t reg_idx, uint8_t size, uint8_t high)
 {
+  if (high)
+    {
+      eri_assert (size == 1);
+      if (reg_idx >= TRANS_REG_NUM) return XED_REG_INVALID;
+      else if (reg_idx == TRANS_RAX) return XED_REG_AH;
+      else if (reg_idx == TRANS_RCX) return XED_REG_CH;
+      else if (reg_idx == TRANS_RDX) return XED_REG_DH;
+      else if (reg_idx == TRANS_RBX) return XED_REG_BH;
+      else eri_xassert (0, eri_info);
+    }
+
   switch (reg_idx)
     {
 #define CONV_REG_IDX(creg, reg) \
@@ -570,9 +581,10 @@ ir_xed_reg_from_idx_opt (uint8_t reg_idx, uint8_t size)
 }
 
 static xed_reg_enum_t
-ir_xed_reg_from_idx (eri_file_t log, uint8_t reg_idx, uint8_t size)
+ir_xed_reg_from_idx (eri_file_t log, uint8_t reg_idx,
+		     uint8_t size, uint8_t high)
 {
-  xed_reg_enum_t reg = ir_xed_reg_from_idx_opt (reg_idx, size);
+  xed_reg_enum_t reg = ir_xed_reg_from_idx_opt (reg_idx, size, high);
   eri_lassert (log, reg != XED_REG_INVALID);
   return reg;
 }
@@ -1947,6 +1959,10 @@ ir_local_host_idx (struct ir_flat *flat)
 static uint8_t
 ir_inst_designated_reg (xed_decoded_inst_t *dec, const xed_operand_t *op)
 {
+  xed_operand_enum_t op_name = xed_operand_name (op);
+  xed_reg_enum_t reg = xed_decoded_inst_get_reg (dec, op_name);
+  if (reg >= XED_REG_GPR8h_FIRST && reg <= XED_REG_GPR8h_LAST) return 1;
+
   xed_category_enum_t cate = xed_decoded_inst_get_category (dec);
   xed_operand_visibility_enum_t vis = xed_operand_operand_visibility (op);
   return vis == XED_OPVIS_SUPPRESSED
@@ -1975,7 +1991,7 @@ struct ir_enc_mem_args
 static xed_reg_enum_t
 ir_xreg (eri_file_t log, uint8_t idx)
 {
-  return ir_xed_reg_from_idx (log, idx, 8);
+  return ir_xed_reg_from_idx (log, idx, 8, 0);
 }
 
 static void
@@ -2044,9 +2060,9 @@ ir_encode_set_mem0 (eri_file_t log,
 		    xed_encoder_request_t *enc, struct ir_enc_mem_args *mem)
 {
   xed_encoder_request_set_base0 (enc,
-			ir_xed_reg_from_idx_opt (mem->base, mem->addr_size));
+		ir_xed_reg_from_idx_opt (mem->base, mem->addr_size, 0));
   xed_encoder_request_set_index (enc,
-			ir_xed_reg_from_idx_opt (mem->index, mem->addr_size));
+		ir_xed_reg_from_idx_opt (mem->index, mem->addr_size, 0));
   xed_encoder_request_set_seg0 (enc, mem->seg);
   xed_encoder_request_set_scale (enc, mem->scale);
   xed_encoder_request_set_memory_displacement (enc, mem->disp,
@@ -2063,7 +2079,7 @@ ir_encode_load (eri_file_t log, uint8_t *bytes,
   ir_init_encode (&enc, XED_ICLASS_MOV, src->size, src->addr_size);
 
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
-			       ir_xed_reg_from_idx (log, dst, src->size));
+			       ir_xed_reg_from_idx (log, dst, src->size, 0));
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_REG0);
   xed_encoder_request_set_mem0 (&enc);
   ir_encode_set_mem0 (log, &enc, src);
@@ -2099,7 +2115,7 @@ ir_encode_store (eri_file_t log, uint8_t *bytes,
   ir_encode_set_mem0 (log, &enc, dst);
   xed_encoder_request_set_operand_order (&enc, 0, XED_OPERAND_MEM0);
   xed_encoder_request_set_reg (&enc, XED_OPERAND_REG0,
-			       ir_xed_reg_from_idx (log, src, dst->size));
+			       ir_xed_reg_from_idx (log, src, dst->size, 0));
   xed_encoder_request_set_operand_order (&enc, 1, XED_OPERAND_REG0);
   return ir_encode (log, bytes, &enc);
 }
@@ -3072,8 +3088,9 @@ ir_assign_emit_inst (struct ir_flat *flat,
       xed_operand_enum_t op_name = xed_operand_name (inst_reg->op);
       xed_reg_enum_t reg = xed_decoded_inst_get_reg (dec, op_name);
       uint8_t size = xed_get_register_width_bits64 (reg) >> 3;
+      uint8_t high = reg >= XED_REG_GPR8h_FIRST && reg <= XED_REG_GPR8h_LAST;
       xed_operand_values_set_operand_reg (ops, op_name,
-			ir_xed_reg_from_idx (log, (a++)->host_idx, size));
+		ir_xed_reg_from_idx (log, (a++)->host_idx, size, high));
     }
 
   struct ir_def *mems[] = {
@@ -3090,7 +3107,7 @@ ir_assign_emit_inst (struct ir_flat *flat,
   for (i = 0; i < eri_length_of (mem_op_names); ++i)
     if (mems[i])
       xed_operand_values_set_operand_reg (ops, mem_op_names[i],
-			ir_xed_reg_from_idx (log, (a++)->host_idx, 8));
+					  ir_xreg (log, (a++)->host_idx));
 
   uint8_t len = ir_emit (inst, flat, &node->inst.dec);
 

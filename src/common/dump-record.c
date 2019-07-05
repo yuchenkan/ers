@@ -104,7 +104,7 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_syscall_clone_record (file, &rec);
 	    printf ("  syscall.clone.out: %lu, ..result: %ld",
 		    rec.out, rec.result);
-	    if (! eri_syscall_is_error (rec.result))
+	    if (eri_syscall_is_ok (rec.result))
 	      printf (", ..id: 0x%lx\n", rec.id);
 	    else printf ("\n");
 	  }
@@ -134,7 +134,7 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_rt_sigpending_record rec;
 	    eri_unserialize_syscall_rt_sigpending_record (file, &rec);
 	    printf ("  syscall.rt_sigpending.result: %ld", rec.result);
-	    if (! eri_syscall_is_error (rec.result))
+	    if (eri_syscall_is_ok (rec.result))
 	      printf (", ..in: %lu, ..set: 0x%lx\n", rec.in, rec.set.val[0]);
 	    else printf ("\n");
 	  }
@@ -143,18 +143,25 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_rt_sigtimedwait_record rec;
 	    eri_unserialize_syscall_rt_sigtimedwait_record (file, &rec);
 	    printf ("  syscall.rt_sigtimedwait.result: %ld", rec.result);
-	    if (! eri_syscall_is_error (rec.result)
+	    if (eri_syscall_is_ok (rec.result)
 		|| rec.result == ERI_EINTR) printf (", ..in: %lu", rec.in);
-	    if (! eri_syscall_is_error (rec.result) && rec.info.sig)
+	    if (eri_syscall_is_ok (rec.result) && rec.info.sig)
 	      printf (", ..code: %d\n", rec.info.code);
 	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_STAT_MAGIC)
+	  {
+	    struct eri_syscall_stat_record rec;
+	    eri_unserialize_syscall_stat_record (file, &rec);
+	    printf ("  syscall.stat.result: %ld, ..in: %lu\n",
+		    rec.result, rec.in);
 	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
 	    struct eri_syscall_res_in_record rec;
 	    eri_unserialize_syscall_res_in_record (file, &rec);
 	    uint64_t off = 0;
-	    if (! eri_syscall_is_error (rec.result) && rec.result)
+	    if (eri_syscall_is_ok (rec.result) && rec.result)
 	      {
 		uint64_t size;
 		while ((size = eri_unserialize_uint64 (file)))
@@ -172,7 +179,7 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_syscall_res_in_record (file, &rec);
 	    printf ("  syscall.mmap.result: %ld, ..in: %lu",
 		    rec.result, rec.in);
-	    if (! eri_syscall_is_error (rec.result))
+	    if (eri_syscall_is_ok (rec.result))
 	      {
 		uint64_t id = eri_unserialize_uint64 (file);
 		uint8_t ok = eri_unserialize_uint8 (file);

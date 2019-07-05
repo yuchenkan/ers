@@ -583,7 +583,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       uint64_t res = eri_syscall (read, sig_th->event_pipe[0],
 				  &event_type, sizeof event_type);
       if (res == ERI_EINTR) continue;
-      eri_assert (! eri_syscall_is_error (res));
+      eri_assert (eri_syscall_is_ok (res));
 
       uint32_t type = ((struct event_type *) event_type)->type;
       eri_log (sig_th->log.file, "%u\n", type);
@@ -763,7 +763,7 @@ eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
 
   if (args->result == 0) return 0;
 
-  if (! eri_syscall_is_error (args->result))
+  if (eri_syscall_is_ok (args->result))
     {
       uint64_t res = eri_live_thread__clone (event.sig_cth->th);
       if (eri_syscall_is_error (res)) args->result = res;
@@ -1075,7 +1075,7 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
       sys_args->result = eri_syscall (ppoll, fds, 2, 0, &mask, ERI_SIG_SETSIZE);
       if (sys_args->result != ERI_EINTR)
 	{
-	  eri_assert (! eri_syscall_is_error (sys_args->result));
+	  eri_assert (eri_syscall_is_ok (sys_args->result));
 
 	  if (fds[1].revents & ERI_POLLIN) sys_args->result = ERI_EINTR;
 	}

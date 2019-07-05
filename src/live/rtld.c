@@ -41,7 +41,7 @@ rtld (void **args, uint64_t rdx)
   eri_sig_fill_set (&set);
   eri_assert_sys_sigprocmask (&set, &rtld_args.sig_mask);
 
-  const char *live = "ers/live";
+  const char *live = "/work/ers/live";
   uint64_t buf_size = 512 * 1024 * 1024;
   uint64_t page_size = 4096;
 
@@ -64,7 +64,7 @@ rtld (void **args, uint64_t rdx)
       eri_assert_fprintf (ERI_STDERR, "failed to load ERS_LIVE: %s\n", live);
       eri_assert_syscall (exit, 1);
     }
-  eri_assert (! eri_syscall_is_error (res));
+  eri_assert (eri_syscall_is_ok (res));
   int32_t fd = res;
 
   uint8_t buf[sizeof (uint16_t) + sizeof (uint64_t) * 2];
@@ -85,7 +85,7 @@ rtld (void **args, uint64_t rdx)
   uint64_t base = map_base (segs, nsegs, page_size, &rtld_args);
   eri_map_bin (fd, segs, nsegs, base, page_size);
 
-  eri_assert_fprintf (ERI_STDERR, "base = %lx\n", base);
+  // eri_assert_fprintf (ERI_STDERR, "base = %lx\n", base);
 
   if (nrels)
     {

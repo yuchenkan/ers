@@ -24,6 +24,8 @@ struct eri_live_thread_recorder_group *
 eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
 				const char *path, uint64_t file_buf_size)
 {
+  if (! path) return 0;
+
   eri_mkdir (path);
   struct eri_live_thread_recorder_group *group
 	= eri_assert_mtmalloc_struct (pool, typeof (*group),
@@ -39,7 +41,7 @@ void
 eri_live_thread_recorder__destroy_group (
 			struct eri_live_thread_recorder_group *group)
 {
-  eri_assert_mtfree (group->pool, group);
+  if (group) eri_assert_mtfree (group->pool, group);
 }
 
 struct eri_live_thread_recorder
@@ -61,6 +63,8 @@ eri_live_thread_recorder__create (
 	struct eri_live_thread_recorder_group *group,
 	struct eri_entry *entry, uint64_t id, eri_file_t log)
 {
+  if (! group) return 0;
+
   uint64_t buf_size = group->file_buf_size;
   struct eri_live_thread_recorder *th_rec
 		= eri_assert_mtmalloc (group->pool, sizeof *th_rec + buf_size);
@@ -97,6 +101,8 @@ submit_sync_async (struct eri_live_thread_recorder *th_rec)
 void
 eri_live_thread_recorder__destroy (struct eri_live_thread_recorder *th_rec)
 {
+  if (! th_rec) return;
+
   submit_sync_async (th_rec);
   eri_assert_fclose (th_rec->file);
   eri_assert_mtfree (th_rec->group->pool, th_rec);
@@ -121,7 +127,7 @@ record_mmap_file (struct eri_live_thread_recorder *th_rec,
       uint64_t l = eri_syscall (write, fd, buf + c, len - c);
       if (l == ERI_EINTR) continue;
       if (l == ERI_EFAULT) break;
-      eri_assert (! eri_syscall_is_error (l));
+      eri_assert (eri_syscall_is_ok (l));
       c += l;
     }
 
@@ -174,6 +180,8 @@ eri_live_thread_recorder__rec_init (
 			struct eri_live_thread_recorder *th_rec,
 			struct eri_init_record *rec)
 {
+  if (! th_rec) return;
+
   if (eri_global_enable_debug) eri_dump_maps ();
 
   eri_serialize_mark (th_rec->file, ERI_INIT_RECORD);
@@ -190,6 +198,8 @@ eri_live_thread_recorder__rec_signal (
 			struct eri_live_thread_recorder *th_rec,
 			uint8_t async, void *rec)
 {
+  if (! th_rec) return;
+
   submit_sync_async (th_rec);
 
   if (async)
@@ -220,6 +230,8 @@ eri_live_thread_recorder__rec_read (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__rec_read_args *args)
 {
+  if (! th_rec) return;
+
   syscall_start_record (th_rec, ERI_SYSCALL_READ_MAGIC);
   eri_serialize_syscall_res_in_record (th_rec->file, &args->rec);
   uint64_t res = args->rec.result;
@@ -279,6 +291,8 @@ eri_live_thread_recorder__rec_mmap (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec, uint64_t len)
 {
+  if (! th_rec) return;
+
   syscall_start_record (th_rec, ERI_SYSCALL_MMAP_MAGIC);
   eri_serialize_syscall_res_in_record (th_rec->file, rec);
   if (eri_syscall_is_error (rec->result)) return;
@@ -294,10 +308,28 @@ eri_live_thread_recorder__rec_mmap (
 }
 
 void
+eri_live_thread_recorder__rec_readlink (
+	struct eri_live_thread_recorder *th_rec,
+	struct eri_syscall_res_in_record *rec, char *buf, uint64_t size)
+{
+  if (! th_rec) return;
+
+  syscall_start_record (th_rec, ERI_SYSCALL_READLINK_MAGIC);
+  eri_serialize_syscall_res_in_record (th_rec->file, rec);
+  if (eri_syscall_is_fault_or_ok (rec->result))
+    {
+      eri_serialize_uint64 (th_rec->file, size);
+      eri_serialize_uint8_array (th_rec->file, (void *) buf, size);
+    }
+}
+
+void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec)
 {
+  if (! th_rec) return;
+
   syscall_start_record (th_rec, magic);
 
   if (magic == ERI_SYSCALL_RESULT_MAGIC
@@ -322,6 +354,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_rt_sigpending_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
     eri_serialize_syscall_rt_sigtimedwait_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_STAT_MAGIC)
+    eri_serialize_syscall_stat_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 
@@ -329,6 +363,8 @@ void
 eri_live_thread_recorder__rec_sync_async (
 			struct eri_live_thread_recorder *th_rec, uint64_t cnt)
 {
+  if (! th_rec) return;
+
   submit_sync_async (th_rec);
 
   th_rec->pending_sync_async = 1;
@@ -339,6 +375,8 @@ void
 eri_live_thread_recorder__rec_restart_sync_async (
 			struct eri_live_thread_recorder *th_rec, uint64_t cnt)
 {
+  if (! th_rec) return;
+
   eri_assert (th_rec->pending_sync_async);
 
   if (th_rec->sync_async_cnt != cnt)
@@ -352,6 +390,8 @@ eri_live_thread_recorder__rec_atomic (
 			struct eri_live_thread_recorder *th_rec,
 			struct eri_atomic_record *rec)
 {
+  if (! th_rec) return;
+
   submit_sync_async (th_rec);
 
   eri_serialize_mark (th_rec->file, ERI_SYNC_RECORD);

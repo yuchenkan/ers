@@ -469,11 +469,28 @@
 
 #define _ERI_SYSCALL_ARG(i, v, a)	, "r" (ERI_PASTE (_a, i))
 
-#define eri_syscall_is_error(val)	((uint64_t) (val) >= (uint64_t) -4095L)
+static eri_unused uint8_t
+eri_syscall_is_error (uint64_t val)
+{
+  return val >= (uint64_t) -4095l;
+}
+
+static eri_unused uint8_t
+eri_syscall_is_ok (uint64_t val)
+{
+  return ! eri_syscall_is_error (val);
+}
+
 static eri_unused uint8_t
 eri_syscall_is_non_fault_error (uint64_t val)
 {
   return eri_syscall_is_error (val) && val != ERI_EFAULT;
+}
+
+static eri_unused uint8_t
+eri_syscall_is_fault_or_ok (uint64_t val)
+{
+  return ! eri_syscall_is_non_fault_error (val);
 }
 
 #endif
@@ -531,6 +548,11 @@ eri_syscall_is_non_fault_error (uint64_t val)
 
 #define ERI_SFD_CLOEXEC		ERI_O_CLOEXEC
 #define ERI_SFD_NONBLOCK	ERI_O_NONBLOCK
+
+#define ERI_R_OK		4	/* Test for read permission.  */
+#define ERI_W_OK		2	/* Test for write permission.  */
+#define ERI_X_OK		1	/* Test for execute permission.  */
+#define ERI_F_OK		0	/* Test for existence.  */
 
 #define ERI_POLLIN		0x0001
 #define ERI_POLLPRI		0x0002
@@ -650,11 +672,10 @@ eri_syscall_is_non_fault_error (uint64_t val)
 
 struct eri_timespec
 {
-  uint64_t tv_sec;
-  uint64_t tv_nsec;
+  uint64_t sec;
+  uint64_t nsec;
 };
 
-#if 0
 struct eri_stat
 {
   uint64_t dev;
@@ -672,7 +693,6 @@ struct eri_stat
   struct eri_timespec mtime;
   struct eri_timespec ctime;
 };
-#endif
 
 struct eri_dirent {
   uint64_t ino;

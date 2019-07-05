@@ -14,6 +14,7 @@ BLANK (rec_init);
 BLANK (rec_signal);
 BLANK (rec_read);
 BLANK (rec_mmap);
+BLANK (rec_readlink);
 BLANK (rec_syscall);
 BLANK (rec_sync_async);
 BLANK (rec_restart_sync_async);

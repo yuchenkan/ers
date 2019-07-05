@@ -13,7 +13,7 @@ m4_ns(assert_lock, _) (struct eri_lock *lock)
     {
       uint64_t res = m4_ns(syscall) (futex, &lock->lock,
 				     ERI_FUTEX_WAIT, 1, 0);
-      eri_assert (! eri_syscall_is_error (res)
+      eri_assert (eri_syscall_is_ok (res)
 		  || res == ERI_EAGAIN || res == ERI_EINTR);
     }
   while (m4_ns(atomic_exchange) (&lock->lock, 1, 0));
