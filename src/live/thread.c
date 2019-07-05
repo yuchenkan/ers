@@ -91,6 +91,7 @@ struct eri_live_thread_group
 
   uint64_t page_size;
   struct eri_range map_range;
+  uint64_t base;
 
   const char *log;
   uint64_t file_buf_size;
@@ -246,6 +247,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->page_size = rtld_args->page_size;
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
+  group->base = rtld_args->base;
   group->log = args->log;
   group->file_buf_size = args->file_buf_size;
   group->init_user_stack_size = init_user_stack_size;
@@ -328,6 +330,7 @@ eri_live_thread__create_main (struct eri_live_thread_group *group,
   if (rtld_args->auxv) disable_vdso (rtld_args->auxv);
 
   struct eri_live_thread *th = create (group, sig_th, 0);
+  eri_log (th->log.file, "base = %lx\n", group->base);
   struct eri_entry *entry = th->entry;
 
   struct eri_registers *regs = eri_entry__get_regs (entry);
@@ -2328,8 +2331,10 @@ eri_live_thread__sig_handler (
 {
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
-  eri_log (th->sig_log.file, "sig = %u, frame = %lx, rip = %lx rax = %lx\n",
-	   info->sig, frame, ctx->mctx.rip, ctx->mctx.rax);
+  eri_log (th->sig_log.file, "sig = %u, frame = %lx, rip = %lx, "
+	   "rip - base = %lx, rax = %lx\n",
+	   info->sig, frame, ctx->mctx.rip, ctx->mctx.rip - th->group->base,
+	   ctx->mctx.rax);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)

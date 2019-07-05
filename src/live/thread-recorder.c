@@ -172,7 +172,16 @@ record_init_map (const struct eri_smaps_map *map, void *args)
       eri_serialize_uint8_array (file, (void *) a->rsp, end - a->rsp);
     }
   else if (type == ERI_INIT_MAP_FILE)
-    eri_assert (record_mmap_file (th_rec, start, end - start));
+    {
+      if (! prot & ERI_PROT_READ)
+	eri_assert_syscall (mprotect, start, end - start,
+			    prot | ERI_PROT_READ);
+
+      eri_assert (record_mmap_file (th_rec, start, end - start));
+
+      if (! prot & ERI_PROT_READ)
+	eri_assert_syscall (mprotect, start, end - start, prot);
+    }
 }
 
 void

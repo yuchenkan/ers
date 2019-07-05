@@ -22,6 +22,7 @@ struct eri_live_rtld_args
 
   uint64_t map_start;
   uint64_t map_end;
+  uint64_t base;
 
   uint64_t buf;
   uint64_t buf_size;

@@ -24,6 +24,7 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
   /* one guard page */
   uint64_t base = rtld_args->map_start + page_size - segs_start;
 
+  rtld_args->base = base;
   rtld_args->buf = base + segs_end;
   rtld_args->map_end = rtld_args->buf + buf_size;
 
