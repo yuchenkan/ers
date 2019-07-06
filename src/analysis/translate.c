@@ -2469,19 +2469,6 @@ ir_dump_ras (eri_file_t log, struct ir_ra *ras, uint32_t n)
     }
 }
 
-struct ir_assign_orders
-{
-  uint8_t orders[TRANS_GPREG_NUM];
-  uint8_t i;
-};
-
-static void
-ir_assign_order (struct ir_assign_orders *orders, uint8_t idx)
-{
-  eri_assert (idx < TRANS_GPREG_NUM);
-  orders->orders[orders->i++] = idx;
-}
-
 struct ir_assign
 {
   struct ir_def *dep;
@@ -2492,8 +2479,7 @@ struct ir_assign
 };
 
 static void
-ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra,
-			 struct ir_assign_orders *orders)
+ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra)
 {
   uint8_t i;
   for (i = 0; i < TRANS_GPREG_NUM; ++i)
@@ -2507,11 +2493,9 @@ ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra,
 }
 
 static void
-ir_assign_set_dep (struct ir_assign *assigns, uint8_t i,
-		   struct ir_ra *ra, struct ir_assign_orders *orders)
+ir_assign_set_dep (struct ir_assign *assigns, uint8_t i, struct ir_ra *ra)
 {
   ra->host_idx = i;
-  ir_assign_order (orders, i);
   assigns[i].dep = ra->dep;
   if (! assigns[i].def)
     {
@@ -2529,15 +2513,14 @@ ir_assign_dep_assignable (struct ir_assign *assign, struct ir_ra *ra)
 }
 
 static void
-ir_assign_dep_try_current (struct ir_assign *assigns, struct ir_ra *ra,
-			   struct ir_assign_orders *orders)
+ir_assign_dep_try_current (struct ir_assign *assigns, struct ir_ra *ra)
 {
   uint8_t i;
   for (i = 0; i < TRANS_GPREG_NUM; ++i)
     if (! assigns[i].destroyed && ir_assign_dep_assignable (assigns + i, ra)
 	&& ir_host_idxs_set (ra->dep->locs.host_idxs, i))
       {
-	ir_assign_set_dep (assigns, i, ra, orders);
+	ir_assign_set_dep (assigns, i, ra);
 	break;
       }
 }
@@ -2565,7 +2548,7 @@ ir_assign_get_ridx (struct ir_def *def, uint8_t next)
 
 static void
 ir_assign_dep_pick (struct ir_flat *flat, struct ir_assign *assigns,
-		    struct ir_ra *ra, struct ir_assign_orders *orders)
+		    struct ir_ra *ra)
 {
   uint8_t min = TRANS_REG_NUM;
   uint64_t min_ridx = -1;
@@ -2596,7 +2579,7 @@ ir_assign_dep_pick (struct ir_flat *flat, struct ir_assign *assigns,
 
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
   eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
-  ir_assign_set_dep (assigns, min, ra, orders);
+  ir_assign_set_dep (assigns, min, ra);
 }
 
 static void
@@ -3648,7 +3631,6 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
   if (eri_global_enable_debug >= 8) ir_dump_ras (log, ras, n);
 
   struct ir_assign assigns[TRANS_REG_NUM] = { 0 };
-  struct ir_assign_orders orders = { 0 };
 
   uint32_t i;
   for (i = 0; i < n; ++i)
@@ -3659,7 +3641,6 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
 	if (ras[i].dep)
 	  {
 	    eri_lassert (log, ! a->dep);
-	    if (idx != TRANS_RFLAGS) ir_assign_order (&orders, idx);
 	    a->dep = ras[i].dep;
 	  }
 
@@ -3677,17 +3658,17 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
   for (i = 0; i < n; ++i)
     if (ras[i].dep && ras[i].host_idx == TRANS_REG_NUM)
       {
-	ir_assign_dep_try_reuse (assigns, ras + i, &orders);
+	ir_assign_dep_try_reuse (assigns, ras + i);
 	if (ras[i].host_idx == TRANS_REG_NUM)
-	  ir_assign_dep_try_current (assigns, ras + i, &orders);
+	  ir_assign_dep_try_current (assigns, ras + i);
       }
 
   for (i = 0; i < n; ++i)
     if (ras[i].dep && ras[i].host_idx == TRANS_REG_NUM)
       {
-	ir_assign_dep_try_reuse (assigns, ras + i, &orders);
+	ir_assign_dep_try_reuse (assigns, ras + i);
 	if (ras[i].host_idx == TRANS_REG_NUM)
-	  ir_assign_dep_pick (flat, assigns, ras + i, &orders);
+	  ir_assign_dep_pick (flat, assigns, ras + i);
       }
 
   for (i = 0; i < n; ++i)
@@ -3698,10 +3679,8 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
   ir_assign_dep (flat, assigns, TRANS_RFLAGS);
   ir_assign_def (flat, assigns, TRANS_RFLAGS);
 
-  eri_lassert (log, orders.i <= eri_length_of (orders.orders));
-  eri_log (log, "orders.i = %u\n", orders.i);
-  for (i = 0; i < orders.i; ++i)
-    ir_assign_dep (flat, assigns, orders.orders[i]);
+  for (i = 0; i < TRANS_GPREG_NUM; ++i)
+    if (assigns[i].dep) ir_assign_dep (flat, assigns, i);
   for (i = 0; i < TRANS_GPREG_NUM; ++i)
     if (assigns[i].def) ir_assign_def (flat, assigns, i);
 
