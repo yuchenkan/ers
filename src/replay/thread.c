@@ -654,6 +654,7 @@ start_main (struct thread *th)
 
   eri_assert_syscall (set_tid_address, &th->alive);
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_FS, 0);
+  // eri_debug_stop ();
   start (th, next);
 }
 
@@ -2344,8 +2345,8 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 	ctx->mctx.rip, ctx->mctx.rip - th->group->base,
         ctx->mctx.rax, ctx->mctx.rbx, ctx->mctx.rcx, ctx->mctx.rdx,
 	ctx->mctx.rsi, ctx->mctx.rdi, ctx->mctx.rbp, ctx->mctx.rsp,
-	ctx->mctx.r8, ctx->mctx.r9,  ctx->mctx.r10, ctx->mctx.r11,
-	ctx->mctx.r12, ctx->mctx.r13,  ctx->mctx.r14, ctx->mctx.r15,
+	ctx->mctx.r8, ctx->mctx.r9, ctx->mctx.r10, ctx->mctx.r11,
+	ctx->mctx.r12, ctx->mctx.r13, ctx->mctx.r14, ctx->mctx.r15,
 	ctx->mctx.rflags);
   else if (eri_global_enable_debug >= 1)
     eri_log_info (th->log.file, "sig %u, info %lx, fault.addr %lx, "

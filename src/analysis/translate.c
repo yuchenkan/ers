@@ -2471,8 +2471,9 @@ ir_dump_ras (eri_file_t log, struct ir_ra *ras, uint32_t n)
 
 struct ir_assign
 {
-  uint8_t order;
+  uint8_t dep_order;
   struct ir_def *dep;
+  uint8_t def_order;
   struct ir_def *def;
   struct ir_def *check_guest;
   uint8_t exclusive;
@@ -2498,10 +2499,11 @@ ir_assign_set_dep (struct ir_assign *assigns, uint8_t i,
 		   struct ir_ra *ra, uint8_t order)
 {
   ra->host_idx = i;
-  assigns[i].order = order;
+  assigns[i].dep_order = order;
   assigns[i].dep = ra->dep;
   if (! assigns[i].def)
     {
+      assigns[i].def_order = order;
       assigns[i].def = ra->def;
       assigns[i].exclusive = ra->exclusive;
     }
@@ -2547,7 +2549,7 @@ static uint64_t
 ir_assign_get_ridx (struct ir_def *def, uint8_t next)
 {
   uint64_t ridx = next ? def->range.next_ridx : def->range.ridx;
-  return def->node ? ridx : (ridx + 1) / 2;
+  return def->node || ridx == -1 ? ridx : (ridx + 1) / 2;
 }
 
 static void
@@ -2613,6 +2615,8 @@ ir_assign_def_pick (struct ir_flat *flat, struct ir_assign *assigns,
 
         if (ir_assign_get_ridx (old, 1) < min_ridx)
 	  {
+eri_log (flat->dag->log, "%lx %lx %lu %lu %lu\n", old, old->node, old->range.next_ridx, ir_assign_get_ridx (old, 1), min_ridx);
+eri_log (flat->dag->log, "%lx %lx %lx %lu\n", flat->hosts[TRANS_RAX], flat->guest_locs[TRANS_RBP].def, old->locs.local, old->range.guest_count - old->range.dec_guest_count);
 	    min = i;
 	    min_ridx = ir_assign_get_ridx (old, 1);
 	  }
@@ -2621,8 +2625,8 @@ ir_assign_def_pick (struct ir_flat *flat, struct ir_assign *assigns,
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
   eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
   ra->host_idx = min;
-  assigns[i].order = order;
-  assigns[i].def = ra->def;
+  assigns[min].def_order = order;
+  assigns[min].def = ra->def;
 }
 
 static uint8_t
@@ -2699,6 +2703,7 @@ ir_assign_init_local_enc_mem_args_size (struct ir_flat *flat,
 		uint64_t idx, struct ir_enc_mem_args *args, uint8_t size)
 {
   args->base = ir_local_host_idx (flat);
+  eri_lassert (flat->dag->log, args->base != TRANS_REG_NUM);
   args->index = TRANS_REG_NUM;
   args->seg = XED_REG_INVALID;
   args->scale = 1;
@@ -2895,23 +2900,25 @@ ir_assign_load_dep (struct ir_flat *flat,
 }
 
 static void
-ir_assign_assign (struct ir_flat *flat,
-		  struct ir_assign *assigns, uint8_t i)
+ir_assign_dep_on_rflags (struct ir_flat *flat, struct ir_assign *assigns)
+{
+  struct ir_def *rflags = flat->hosts[TRANS_RFLAGS];
+
+  uint8_t i;
+  for (i = 0; i < TRANS_GPREG_NUM && assigns[i].dep != rflags; ++i)
+    continue;
+  if (i != TRANS_GPREG_NUM &&
+      ! ir_host_locs_has_gpreg_or_local (&rflags->locs))
+    {
+      ir_assign_prepare_rflags (flat, assigns);
+      ir_assign_spill (flat, rflags, assigns);
+    }
+}
+
+static void
+ir_assign_dep (struct ir_flat *flat, struct ir_assign *assigns, uint8_t i)
 {
   struct ir_def *old = flat->hosts[i];
-
-  if (i == TRANS_RFLAGS)
-    {
-      uint8_t i;
-      for (i = 0; i < TRANS_GPREG_NUM && assigns[i].dep != old; ++i)
-	continue;
-      if (i != TRANS_GPREG_NUM &&
-	  ! ir_host_locs_has_gpreg_or_local (&old->locs))
-	{
-	  ir_assign_prepare_rflags (flat, assigns);
-	  ir_assign_spill (flat, old, assigns);
-	}
-    }
 
   if (assigns[i].dep && assigns[i].dep != old)
     {
@@ -2930,10 +2937,14 @@ ir_assign_assign (struct ir_flat *flat,
       if (check_guest)
 	ir_try_update_guest_loc (flat, check_guest);
     }
+}
 
+static void
+ir_assign_def (struct ir_flat *flat, struct ir_assign *assigns, uint8_t i)
+{
   if (! assigns[i].def) return;
 
-  if (assigns[i].dep) old = assigns[i].dep;
+  struct ir_def *old = flat->hosts[i];
 
   if (ir_def_continue_in_use (old) && ir_assign_may_spill (old, i))
     {
@@ -3613,6 +3624,7 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
 {
   eri_file_t log = flat->dag->log;
   eri_log4 (log, "%s\n", ir_node_tag_str (node->tag));
+  eri_lassert (log, flat->local.range.next_ridx == -1);
 
   ir_assign_update_usage (flat, node);
 
@@ -3632,8 +3644,8 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
     if (ras[i].host_idx != TRANS_REG_NUM)
       {
 	struct ir_assign *a = assigns + ras[i].host_idx;
-	if (ras[i].dep) a->dep = ras[i].dep;
-	if (ras[i].def) a->def = ras[i].def;
+	if (! a->dep) a->dep = ras[i].dep;
+	if (! a->def) a->def = ras[i].def;
 	a->exclusive = ras[i].exclusive;
        }
 
@@ -3660,12 +3672,16 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
     if (ras[i].host_idx == TRANS_REG_NUM)
       ir_assign_def_pick (flat, assigns, ras + i, ++order);
 
-  ir_assign_assign (flat, assigns, TRANS_RFLAGS);
+  ir_assign_dep_on_rflags (flat, assigns);
+  ir_assign_dep (flat, assigns, TRANS_RFLAGS);
+  ir_assign_def (flat, assigns, TRANS_RFLAGS);
 
   for (i = 0; i <= order; ++i)
     for (j = 0; j < TRANS_GPREG_NUM; ++j)
-      if (assigns[j].order == i && (assigns[j].dep || assigns[j].def))
-	ir_assign_assign (flat, assigns, j);
+      {
+	if (assigns[j].dep_order == i) ir_assign_dep (flat, assigns, j);
+	if (assigns[j].def_order == i) ir_assign_def (flat, assigns, j);
+      }
 
   ir_assign_emit (flat, node, ras, n);
   eri_assert_buf_fini (&ras_buf);

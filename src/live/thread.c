@@ -1706,17 +1706,17 @@ syscall_do_stat (SYSCALL_PARAMS)
   struct eri_sys_syscall_args args;
   eri_init_sys_syscall_args_from_registers (&args, regs);
 
-  struct eri_stat stat;
-  *(at ? args.a + 2 : args.a + 1) = (uint64_t) &stat;
-  uint64_t res = eri_sys_syscall (&args);
-  if (eri_syscall_is_ok (res)
-      && ! eri_entry__copy_obj_to_user (entry, user_stat, &stat, 0))
-    res = ERI_EFAULT;
+  struct eri_syscall_stat_record rec;
+  *(at ? args.a + 2 : args.a + 1) = (uint64_t) &rec.stat;
+  rec.result = eri_sys_syscall (&args);
+  if (eri_syscall_is_ok (rec.result)
+      && ! eri_entry__copy_obj_to_user (entry, user_stat, &rec.stat, 0))
+    rec.result = ERI_EFAULT;
 
-  struct eri_syscall_stat_record rec = { res, io_in (th) };
+  rec.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_STAT_MAGIC, &rec);
 
-  eri_entry__syscall_leave (entry, res);
+  eri_entry__syscall_leave (entry, rec.result);
 }
 
 DEFINE_SYSCALL (stat) { syscall_do_stat (SYSCALL_ARGS); }

@@ -1236,8 +1236,18 @@ static eri_noreturn void
 analysis_enter (struct eri_analyzer *al,
 	        struct eri_registers *regs)
 {
-  eri_log2 (al->log.file, "rip = %lx rsp = %lx rsi = %lx rdi = %lx\n",
-	    regs->rip, regs->rsp, regs->rsi, regs->rdi);
+  if (eri_global_enable_debug >= 2)
+    eri_log (al->log.file, "rip %lx, rax %lx, rbx %lx, rcx %lx, rdx %lx, "
+	"rsi %lx, rdi %lx, rbp %lx, rsp %lx, r8 %lx, r9 %lx, r10 %lx, "
+	"r11 %lx, r12 %lx r13 %lx, r14 %lx, r15 %lx, rflags %lx\n",
+	regs->rip, regs->rax, regs->rbx, regs->rcx, regs->rdx, regs->rsi,
+	regs->rdi, regs->rbp, regs->rsp, regs->r8, regs->r9, regs->r10,
+	regs->r11, regs->r12, regs->r13,  regs->r14, regs->r15,
+	regs->rflags);
+  else
+    eri_log (al->log.file, "rip = %lx rsp = %lx rsi = %lx rdi = %lx\n",
+	     regs->rip, regs->rsp, regs->rsi, regs->rdi);
+
   eri_assert (! eri_within (al->group->map_range, regs->rip));
 
   struct eri_analyzer_group *group = al->group;
