@@ -2469,11 +2469,22 @@ ir_dump_ras (eri_file_t log, struct ir_ra *ras, uint32_t n)
     }
 }
 
+struct ir_assign_orders
+{
+  uint8_t orders[TRANS_GPREG_NUM];
+  uint8_t i;
+};
+
+static void
+ir_assign_order (struct ir_assign_orders *orders, uint8_t idx)
+{
+  eri_assert (idx < TRANS_GPREG_NUM);
+  orders->orders[orders->i++] = idx;
+}
+
 struct ir_assign
 {
-  uint8_t dep_order;
   struct ir_def *dep;
-  uint8_t def_order;
   struct ir_def *def;
   struct ir_def *check_guest;
   uint8_t exclusive;
@@ -2481,10 +2492,11 @@ struct ir_assign
 };
 
 static void
-ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra)
+ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra,
+			 struct ir_assign_orders *orders)
 {
   uint8_t i;
-  for (i = 0; i < TRANS_REG_NUM; ++i)
+  for (i = 0; i < TRANS_GPREG_NUM; ++i)
     if (assigns[i].dep == ra->dep && ! assigns[i].exclusive
 	&& ! ra->exclusive && (! assigns[i].def || ! ra->def))
       {
@@ -2496,14 +2508,13 @@ ir_assign_dep_try_reuse (struct ir_assign *assigns, struct ir_ra *ra)
 
 static void
 ir_assign_set_dep (struct ir_assign *assigns, uint8_t i,
-		   struct ir_ra *ra, uint8_t order)
+		   struct ir_ra *ra, struct ir_assign_orders *orders)
 {
   ra->host_idx = i;
-  assigns[i].dep_order = order;
+  ir_assign_order (orders, i);
   assigns[i].dep = ra->dep;
   if (! assigns[i].def)
     {
-      assigns[i].def_order = order;
       assigns[i].def = ra->def;
       assigns[i].exclusive = ra->exclusive;
     }
@@ -2519,14 +2530,14 @@ ir_assign_dep_assignable (struct ir_assign *assign, struct ir_ra *ra)
 
 static void
 ir_assign_dep_try_current (struct ir_assign *assigns, struct ir_ra *ra,
-			   uint8_t order)
+			   struct ir_assign_orders *orders)
 {
   uint8_t i;
   for (i = 0; i < TRANS_GPREG_NUM; ++i)
     if (! assigns[i].destroyed && ir_assign_dep_assignable (assigns + i, ra)
 	&& ir_host_idxs_set (ra->dep->locs.host_idxs, i))
       {
-	ir_assign_set_dep (assigns, i, ra, order);
+	ir_assign_set_dep (assigns, i, ra, orders);
 	break;
       }
 }
@@ -2554,7 +2565,7 @@ ir_assign_get_ridx (struct ir_def *def, uint8_t next)
 
 static void
 ir_assign_dep_pick (struct ir_flat *flat, struct ir_assign *assigns,
-		    struct ir_ra *ra, uint8_t order)
+		    struct ir_ra *ra, struct ir_assign_orders *orders)
 {
   uint8_t min = TRANS_REG_NUM;
   uint64_t min_ridx = -1;
@@ -2585,12 +2596,12 @@ ir_assign_dep_pick (struct ir_flat *flat, struct ir_assign *assigns,
 
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
   eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
-  ir_assign_set_dep (assigns, min, ra, order);
+  ir_assign_set_dep (assigns, min, ra, orders);
 }
 
 static void
 ir_assign_def_pick (struct ir_flat *flat, struct ir_assign *assigns,
-		    struct ir_ra *ra, uint8_t order)
+		    struct ir_ra *ra)
 {
   uint8_t min = TRANS_REG_NUM;
   uint64_t min_ridx = -1;
@@ -2615,8 +2626,6 @@ ir_assign_def_pick (struct ir_flat *flat, struct ir_assign *assigns,
 
         if (ir_assign_get_ridx (old, 1) < min_ridx)
 	  {
-eri_log (flat->dag->log, "%lx %lx %lu %lu %lu\n", old, old->node, old->range.next_ridx, ir_assign_get_ridx (old, 1), min_ridx);
-eri_log (flat->dag->log, "%lx %lx %lx %lu\n", flat->hosts[TRANS_RAX], flat->guest_locs[TRANS_RBP].def, old->locs.local, old->range.guest_count - old->range.dec_guest_count);
 	    min = i;
 	    min_ridx = ir_assign_get_ridx (old, 1);
 	  }
@@ -2625,7 +2634,6 @@ eri_log (flat->dag->log, "%lx %lx %lx %lu\n", flat->hosts[TRANS_RAX], flat->gues
   eri_log8 (flat->dag->log, "pick %s\n", trans_reg_str (min));
   eri_lassert (flat->dag->log, min != TRANS_REG_NUM);
   ra->host_idx = min;
-  assigns[min].def_order = order;
   assigns[min].def = ra->def;
 }
 
@@ -2918,6 +2926,7 @@ ir_assign_dep_on_rflags (struct ir_flat *flat, struct ir_assign *assigns)
 static void
 ir_assign_dep (struct ir_flat *flat, struct ir_assign *assigns, uint8_t i)
 {
+  eri_log8 (flat->dag->log, "\n");
   struct ir_def *old = flat->hosts[i];
 
   if (assigns[i].dep && assigns[i].dep != old)
@@ -2942,6 +2951,7 @@ ir_assign_dep (struct ir_flat *flat, struct ir_assign *assigns, uint8_t i)
 static void
 ir_assign_def (struct ir_flat *flat, struct ir_assign *assigns, uint8_t i)
 {
+  eri_log8 (flat->dag->log, "\n");
   if (! assigns[i].def) return;
 
   struct ir_def *old = flat->hosts[i];
@@ -3638,50 +3648,62 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
   if (eri_global_enable_debug >= 8) ir_dump_ras (log, ras, n);
 
   struct ir_assign assigns[TRANS_REG_NUM] = { 0 };
+  struct ir_assign_orders orders = { 0 };
 
-  uint32_t i, j;
+  uint32_t i;
   for (i = 0; i < n; ++i)
     if (ras[i].host_idx != TRANS_REG_NUM)
       {
-	struct ir_assign *a = assigns + ras[i].host_idx;
-	if (! a->dep) a->dep = ras[i].dep;
-	if (! a->def) a->def = ras[i].def;
+	uint8_t idx = ras[i].host_idx;
+	struct ir_assign *a = assigns + idx;
+	if (ras[i].dep)
+	  {
+	    eri_lassert (log, ! a->dep);
+	    if (idx != TRANS_RFLAGS) ir_assign_order (&orders, idx);
+	    a->dep = ras[i].dep;
+	  }
+
+	if (ras[i].def)
+	  {
+	    eri_lassert (log, ! a->def);
+	    a->def = ras[i].def;
+	  }
+
 	a->exclusive = ras[i].exclusive;
-       }
+      }
 
   ir_assign_check_rflags (flat, assigns, ras, n);
 
-  uint8_t order = 0;
   for (i = 0; i < n; ++i)
     if (ras[i].dep && ras[i].host_idx == TRANS_REG_NUM)
       {
-	ir_assign_dep_try_reuse (assigns, ras + i);
+	ir_assign_dep_try_reuse (assigns, ras + i, &orders);
 	if (ras[i].host_idx == TRANS_REG_NUM)
-	  ir_assign_dep_try_current (assigns, ras + i, ++order);
+	  ir_assign_dep_try_current (assigns, ras + i, &orders);
       }
 
   for (i = 0; i < n; ++i)
     if (ras[i].dep && ras[i].host_idx == TRANS_REG_NUM)
       {
-	ir_assign_dep_try_reuse (assigns, ras + i);
+	ir_assign_dep_try_reuse (assigns, ras + i, &orders);
 	if (ras[i].host_idx == TRANS_REG_NUM)
-	  ir_assign_dep_pick (flat, assigns, ras + i, ++order);
+	  ir_assign_dep_pick (flat, assigns, ras + i, &orders);
       }
 
   for (i = 0; i < n; ++i)
     if (ras[i].host_idx == TRANS_REG_NUM)
-      ir_assign_def_pick (flat, assigns, ras + i, ++order);
+      ir_assign_def_pick (flat, assigns, ras + i);
 
   ir_assign_dep_on_rflags (flat, assigns);
   ir_assign_dep (flat, assigns, TRANS_RFLAGS);
   ir_assign_def (flat, assigns, TRANS_RFLAGS);
 
-  for (i = 0; i <= order; ++i)
-    for (j = 0; j < TRANS_GPREG_NUM; ++j)
-      {
-	if (assigns[j].dep_order == i) ir_assign_dep (flat, assigns, j);
-	if (assigns[j].def_order == i) ir_assign_def (flat, assigns, j);
-      }
+  eri_lassert (log, orders.i <= eri_length_of (orders.orders));
+  eri_log (log, "orders.i = %u\n", orders.i);
+  for (i = 0; i < orders.i; ++i)
+    ir_assign_dep (flat, assigns, orders.orders[i]);
+  for (i = 0; i < TRANS_GPREG_NUM; ++i)
+    if (assigns[i].def) ir_assign_def (flat, assigns, i);
 
   ir_assign_emit (flat, node, ras, n);
   eri_assert_buf_fini (&ras_buf);
