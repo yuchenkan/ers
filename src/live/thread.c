@@ -558,9 +558,9 @@ eri_live_thread__join (struct eri_live_thread *th)
 }
 
 static uint64_t
-do_lock_atomic (struct eri_live_thread_group *group, uint64_t slot)
+do_lock_atomic (struct eri_live_thread_group *group, uint64_t aligned)
 {
-  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  uint64_t idx = eri_atomic_hash (aligned, group->atomic_table_size);
 
   uint32_t i = 0;
   while (eri_atomic_bit_test_set (group->atomic_table + idx, 0, 1))
@@ -571,9 +571,9 @@ do_lock_atomic (struct eri_live_thread_group *group, uint64_t slot)
 static struct eri_pair
 lock_atomic (struct eri_live_thread_group *group, uint64_t mem, uint8_t size)
 {
-  struct eri_pair idx = { do_lock_atomic (group, eri_atomic_slot (mem)) };
-  idx.second = eri_atomic_cross_slot (mem, size)
-	? do_lock_atomic (group, eri_atomic_slot2 (mem, size)) : idx.first;
+  struct eri_pair idx = { do_lock_atomic (group, eri_atomic_aligned (mem)) };
+  idx.second = eri_atomic_cross_aligned (mem, size)
+	? do_lock_atomic (group, eri_atomic_aligned2 (mem, size)) : idx.first;
   return idx;
 }
 

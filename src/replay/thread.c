@@ -790,10 +790,10 @@ read_str_from_user (struct thread *th, const char *str,
 }
 
 static uint8_t
-do_atomic_wait (struct thread *th, uint64_t slot, uint64_t ver)
+do_atomic_wait (struct thread *th, uint64_t aligned, uint64_t ver)
 {
   struct thread_group *group = th->group;
-  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  uint64_t idx = eri_atomic_hash (aligned, group->atomic_table_size);
   return version_wait (th, group->atomic_table + idx, ver);
 }
 
@@ -801,25 +801,25 @@ static uint8_t
 atomic_wait (struct thread *th,
 	     uint64_t mem, uint8_t size, struct eri_pair ver)
 {
-  return do_atomic_wait (th, eri_atomic_slot (mem), ver.first)
-	 && (! eri_atomic_cross_slot (mem, size) ? 1 : do_atomic_wait (th,
-				  eri_atomic_slot2 (mem, size), ver.second));
+  return do_atomic_wait (th, eri_atomic_aligned (mem), ver.first)
+	 && (! eri_atomic_cross_aligned (mem, size) ? 1 : do_atomic_wait (th,
+			eri_atomic_aligned2 (mem, size), ver.second));
 }
 
 static void
-do_atomic_update (struct thread *th, uint64_t slot)
+do_atomic_update (struct thread *th, uint64_t aligned)
 {
   struct thread_group *group = th->group;
-  uint64_t idx = eri_atomic_hash (slot, group->atomic_table_size);
+  uint64_t idx = eri_atomic_hash (aligned, group->atomic_table_size);
   version_update (th, group->atomic_table + idx);
 }
 
 static void
 atomic_update (struct thread *th, uint64_t mem, uint8_t size)
 {
-  do_atomic_update (th, eri_atomic_slot (mem));
-  if (eri_atomic_cross_slot (mem, size))
-    do_atomic_update (th, eri_atomic_slot2 (mem, size));
+  do_atomic_update (th, eri_atomic_aligned (mem));
+  if (eri_atomic_cross_aligned (mem, size))
+    do_atomic_update (th, eri_atomic_aligned2 (mem, size));
 }
 
 #define SYSCALL_PARAMS \

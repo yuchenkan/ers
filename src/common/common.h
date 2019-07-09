@@ -62,14 +62,15 @@ void eri_mkdir (const char *path);
        eri_sig_del_set (&_set, ERI_SIGSTOP);				\
        *(dst) = _set; } while (0)
 
-#define eri_atomic_slot(mem)		((mem) & ~0xf)
-#define eri_atomic_slot2(mem, size)	eri_atomic_slot ((mem) + (size) - 1)
+#define eri_atomic_aligned(mem)		((mem) & ~0xf)
+#define eri_atomic_aligned2(mem, size) \
+  eri_atomic_aligned ((mem) + (size) - 1)
 
-#define eri_atomic_cross_slot(mem, size) \
+#define eri_atomic_cross_aligned(mem, size) \
   ({ uint64_t _mem = mem;						\
-     eri_atomic_slot (_mem) != eri_atomic_slot2 (_mem, size); })
+     eri_atomic_aligned (_mem) != eri_atomic_aligned2 (_mem, size); })
 
-#define eri_atomic_hash(slot, size)	(eri_hash (slot) % (size))
+#define eri_atomic_hash(aligned, size)	(eri_hash (aligned) % (size))
 
 #define ERI_FOREACH_SIG_ACT_TYPE(p, ...) \
   p (IGNORE, ##__VA_ARGS__)						\
