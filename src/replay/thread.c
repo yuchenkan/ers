@@ -2020,8 +2020,9 @@ SYSCALL_TO_IMPL (swapoff)
 
 DEFINE_SYSCALL (futex)
 {
-  int32_t op = regs->rsi;
   uint64_t user_addr = regs->rdi;
+  int32_t op = regs->rsi;
+  int32_t val = regs->rdx;
   struct eri_timespec *user_timeout = (void *) regs->r10;
 
   uint64_t page_size = th->group->page_size;
@@ -2049,6 +2050,7 @@ DEFINE_SYSCALL (futex)
 	diverged (th);
 
       atomic_update (th, (uint64_t) user_addr, sizeof (int32_t));
+      if (rec.val != val) syscall_leave (th, 1, ERI_EAGAIN);
 
       /* XXX: not necessary */
       if (fetch_mark (th) != ERI_SYNC_RECORD) diverged (th);
