@@ -221,7 +221,7 @@ eri_record_magic_str (uint16_t magic)
   case ERI_PASTE2 (ERI_, m, _MAGIC):					\
     return ERI_STR (ERI_PASTE2 (ERI_, m, _MAGIC));
     ERI_FOREACH_RECORD_MAGIC (_ERI_CASE_RECORD_MAGIC_STR)
-    default: eri_assert_unreachable ();
+    default: return "unknown";
     }
 }
 

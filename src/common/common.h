@@ -233,4 +233,14 @@ eri_append_access (struct eri_buf *buf, uint64_t addr,
   eri_assert_buf_append (buf, &acc, 1);
 }
 
+static eri_unused uint64_t
+eri_syscall_futex_check_user_addr (uint64_t user_addr, uint64_t page_size)
+{
+  if (user_addr % sizeof (int32_t)) return ERI_EINVAL;
+  /* XXX */
+  if (user_addr + sizeof (int32_t) > ((1l << 47) - page_size))
+    return ERI_EFAULT;
+  return 0;
+}
+
 #endif

@@ -755,10 +755,12 @@ out:
   return done == size;
 }
 
-#define read_user(th, src, size)	access_user (th, src, size, READ)
-#define write_user(th, dst, size)	access_user (th, dst, size, WRITE)
+#define read_user(th, src, size) \
+  access_user (th, (void *) (src), size, READ)
+#define write_user(th, dst, size) \
+  access_user (th, (void *) (dst), size, WRITE)
 #define read_write_user(th, mem, size) \
-  access_user (th, mem, size, READ | WRITE)
+  access_user (th, (void *) mem, size, READ | WRITE)
 
 #define read_obj_from_user(th, obj)	read_user (th, obj, sizeof *(obj))
 
@@ -1026,7 +1028,7 @@ syscall_do_exit (SYSCALL_PARAMS)
   update_access (th, &acc, 1);
 
   if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
-  *user_tid = 0;
+  eri_atomic_store (user_tid, 0, 1);
   eri_entry__reset_test_access (entry);
   atomic_update (th, (uint64_t) user_tid, size);
 
@@ -2019,15 +2021,44 @@ SYSCALL_TO_IMPL (swapoff)
 DEFINE_SYSCALL (futex)
 {
   int32_t op = regs->rsi;
-  int32_t cmd = op & ERI_FUTEX_CMD_MASK;
+  uint64_t user_addr = regs->rdi;
   struct eri_timespec *user_timeout = (void *) regs->r10;
-  if (cmd == ERI_FUTEX_WAIT || cmd == ERI_FUTEX_WAKE)
+
+  uint64_t page_size = th->group->page_size;
+
+  int32_t cmd = op & ERI_FUTEX_CMD_MASK;
+  if (cmd == ERI_FUTEX_WAIT)
     {
-      uint64_t res = syscall_fetch_result (th);
-      uint8_t ok = cmd != ERI_FUTEX_WAIT || ! user_timeout
-		   || read_obj_from_user (th, user_timeout);
-      if (ok != (res != ERI_EFAULT)) diverged (th);
-      syscall_leave (th, 1, res);
+      syscall_leave_if_error (th, 0,
+	eri_syscall_futex_check_user_addr (user_addr, page_size));
+      if (user_timeout && ! read_obj_from_user (th, user_timeout))
+	syscall_leave (th, 0, ERI_EFAULT);
+
+      struct eri_atomic_record rec;
+      if (! check_magic (th, ERI_ATOMIC_MAGIC)
+	  || ! try_unserialize (atomic_record, th, &rec)) diverged (th);
+
+      if (! rec.ok)
+	{
+	  if (read_user (th, user_addr, sizeof (int32_t))) diverged (th);
+	  syscall_leave (th, 1, ERI_EFAULT);
+	}
+
+      if (! atomic_wait (th, user_addr, sizeof (int32_t), rec.ver)
+	  || ! read_user (th, user_addr, sizeof (int32_t)))
+	diverged (th);
+
+      atomic_update (th, (uint64_t) user_addr, sizeof (int32_t));
+
+      /* XXX: not necessary */
+      if (fetch_mark (th) != ERI_SYNC_RECORD) diverged (th);
+      syscall_do_res_in (th);
+    }
+  else if (cmd == ERI_FUTEX_WAKE)
+    {
+      syscall_leave_if_error (th, 0,
+	eri_syscall_futex_check_user_addr (user_addr, page_size));
+      syscall_leave (th, 1, syscall_fetch_result (th));
     }
 
   syscall_leave (th, 0, ERI_ENOSYS);
