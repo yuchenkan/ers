@@ -47,6 +47,18 @@ m4_pub_exp_nl
 
 m4_atomic(CMPXCHG, `reg, mem')
 m4_pub_exp_nl
+
+m4_atomic(AND, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(OR, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(XOR, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(XADD, `reg, mem')
+m4_pub_exp_nl
 m4_pub_exp_nl
 
 m4_pub_def_impl(m4_pub_do_paste)(x, y) x##y
@@ -72,5 +84,9 @@ m4_atomic_impl(INC, m)
 m4_atomic_impl(DEC, m)
 m4_atomic_impl(XCHG, `r, m')
 m4_atomic_impl(CMPXCHG, `r, m')
+m4_atomic_impl(AND, `r, m')
+m4_atomic_impl(OR, `r, m')
+m4_atomic_impl(XOR, `r, m')
+m4_atomic_impl(XADD, `r, m')
 m4_pub_exp_nl
 m4_pub_end

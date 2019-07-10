@@ -243,4 +243,22 @@ eri_syscall_futex_check_user_addr (uint64_t user_addr, uint64_t page_size)
   return 0;
 }
 
+static eri_unused uint64_t
+eri_syscall_futex_check_wake (uint32_t op, uint32_t mask,
+			      uint64_t user_addr, uint64_t page_size)
+{
+  if (op & ERI_FUTEX_CLOCK_REALTIME) return ERI_ENOSYS;
+  if (mask == 0) return ERI_EINVAL;
+  return eri_syscall_futex_check_user_addr (user_addr, page_size);
+}
+
+static eri_unused uint64_t
+eri_syscall_futex_check_wake2 (uint32_t op, uint32_t mask,
+		uint64_t user_addr, uint64_t user_addr2, uint64_t page_size)
+{
+  return eri_syscall_futex_check_wake (op, mask, user_addr, page_size)
+	? : eri_syscall_futex_check_user_addr (user_addr2, page_size);
+}
+
+
 #endif

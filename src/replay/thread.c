@@ -719,6 +719,18 @@ copy_to_user (struct thread *th, void *dst, const void *src, uint64_t size)
 #define copy_obj_to_user_or_fault(th, dst, src) \
   (copy_obj_to_user (th, dst, src) ? 0 : ERI_EFAULT)
 
+static uint8_t
+copy_from_user (struct thread *th, void *dst, const void *src, uint64_t size)
+{
+  return call_with_user_access (th, 1,
+		eri_entry__copy_from_user, th->entry, dst, src, size);
+}
+
+#define copy_obj_from_user(th, dst, src) \
+  copy_from_user (th, dst, src, sizeof *(dst))
+#define copy_obj_from_user_or_fault(th, dst, src) \
+  (copy_obj_from_user (th, dst, src) ? 0 : ERI_EFAULT)
+
 #define READ	1
 #define WRITE	2
 
@@ -822,6 +834,88 @@ atomic_update (struct thread *th, uint64_t mem, uint8_t size)
   do_atomic_update (th, eri_atomic_aligned (mem));
   if (eri_atomic_cross_aligned (mem, size))
     do_atomic_update (th, eri_atomic_aligned2 (mem, size));
+}
+
+static uint8_t
+atomic_access_user (struct thread *th, void *mem,
+		    uint8_t size, uint16_t code)
+{
+  switch (code)
+    {
+    case ERI_OP_ATOMIC_LOAD: return read_user (th, mem, size);
+    case ERI_OP_ATOMIC_STORE: return write_user (th, mem, size);
+    default: return read_write_user (th, mem, size);
+    }
+}
+
+#define DEFINE_ATOMIC_TYPE(type) \
+static uint64_t								\
+ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
+			   struct eri_registers *regs)			\
+{									\
+  if (code == ERI_OP_ATOMIC_LOAD)					\
+    return eri_atomic_load (mem, 0);					\
+  else if (code == ERI_OP_ATOMIC_XCHG)					\
+   return eri_atomic_exchange (mem, val, 0);				\
+  else if (code == ERI_OP_ATOMIC_STORE)					\
+    eri_atomic_store (mem, val, 0);					\
+  else if (code == ERI_OP_ATOMIC_INC)					\
+    eri_atomic_inc_x (mem, &regs->rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_DEC)					\
+    eri_atomic_dec_x (mem, &regs->rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
+    eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
+  else eri_assert_unreachable ();					\
+  return 0;								\
+}
+
+DEFINE_ATOMIC_TYPE (uint8_t)
+DEFINE_ATOMIC_TYPE (uint16_t)
+DEFINE_ATOMIC_TYPE (uint32_t)
+DEFINE_ATOMIC_TYPE (uint64_t)
+
+static uint8_t
+do_atomic (struct thread *th, uint16_t code, void *mem, uint8_t size,
+	   uint64_t val, const struct eri_atomic_record *rec, void *old_val,
+	   struct eri_registers *regs)
+{
+  if (! rec->ok) return ! atomic_access_user (th, mem, size, code);
+
+  struct eri_entry *entry = th->entry;
+
+  uint64_t dummy;
+  old_val = old_val ? : &dummy;
+
+  if (! atomic_wait (th, (uint64_t) mem, size, rec->ver)) return 0;
+
+  struct eri_access acc[2] = { 0 };
+  if (code == ERI_OP_ATOMIC_LOAD)
+    eri_set_read (acc, (uint64_t) mem, size);
+  else if (code == ERI_OP_ATOMIC_STORE)
+    eri_set_write (acc, (uint64_t) mem, size);
+  else
+    {
+      eri_set_read (acc, (uint64_t) mem, size);
+      eri_set_write (acc + 1, (uint64_t) mem, size);
+    }
+  update_access (th, acc, eri_length_of (acc));
+
+  if (! eri_entry__test_access (entry, mem, 0)) return 0;
+
+  if (size == 1)
+    *(uint8_t *) old_val = atomic_uint8_t (code, mem, val, regs);
+  else if (size == 2)
+    *(uint16_t *) old_val = atomic_uint16_t (code, mem, val, regs);
+  else if (size == 4)
+    *(uint32_t *) old_val = atomic_uint32_t (code, mem, val, regs);
+  else if (size == 8)
+    *(uint64_t *) old_val = atomic_uint64_t (code, mem, val, regs);
+  else eri_assert_unreachable ();
+
+  eri_entry__reset_test_access (entry);
+
+  atomic_update (th, (uint64_t) mem, size);
+  return 1;
 }
 
 #define SYSCALL_PARAMS \
@@ -1007,33 +1101,13 @@ check_exit (struct thread *th)
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
-  int32_t *user_tid = th->clear_user_tid;
-  uint64_t size = sizeof *user_tid;
-
   struct eri_syscall_exit_record rec;
   if (! check_magic (th, ERI_SYSCALL_EXIT_MAGIC)
-      || ! try_unserialize (syscall_exit_record, th, &rec)) diverged (th);
+      || ! try_unserialize (syscall_exit_record, th, &rec)
+      || ! do_atomic (th, ERI_OP_ATOMIC_STORE, th->clear_user_tid,
+		      sizeof (int32_t), 0, &rec.clear_tid, 0, 0)
+      || ! io_out (th, rec.out)) diverged (th);
 
-  if (! rec.clear_tid.ok)
-    {
-      if (user_tid && write_user (th, user_tid, size)) diverged (th);
-      goto out;
-    }
-
-  if (! user_tid
-      || ! atomic_wait (th, (uint64_t) user_tid, size, rec.clear_tid.ver))
-    diverged (th);
-
-  struct eri_access acc = { (uint64_t) user_tid, size, ERI_ACCESS_WRITE };
-  update_access (th, &acc, 1);
-
-  if (! eri_entry__test_access (entry, user_tid, 0)) diverged (th);
-  eri_atomic_store (user_tid, 0, 1);
-  eri_entry__reset_test_access (entry);
-  atomic_update (th, (uint64_t) user_tid, size);
-
-out:
-  if (! io_out (th, rec.out)) diverged (th);
   check_exit (th);
 }
 
@@ -2020,6 +2094,7 @@ SYSCALL_TO_IMPL (swapoff)
 
 DEFINE_SYSCALL (futex)
 {
+  // TODO
   uint64_t user_addr = regs->rdi;
   int32_t op = regs->rsi;
   int32_t val = regs->rdx;
@@ -2045,12 +2120,13 @@ DEFINE_SYSCALL (futex)
 	  syscall_leave (th, 1, ERI_EFAULT);
 	}
 
+      int32_t cur;
       if (! atomic_wait (th, user_addr, sizeof (int32_t), rec.ver)
-	  || ! read_user (th, user_addr, sizeof (int32_t)))
+	  || ! copy_from_user (th, &cur, (void *) user_addr, sizeof (int32_t)))
 	diverged (th);
 
       atomic_update (th, (uint64_t) user_addr, sizeof (int32_t));
-      if (rec.val != val) syscall_leave (th, 1, ERI_EAGAIN);
+      if (cur != val) syscall_leave (th, 1, ERI_EAGAIN);
 
       /* XXX: not necessary */
       if (fetch_mark (th) != ERI_SYNC_RECORD) diverged (th);
@@ -2171,92 +2247,26 @@ sync_async (struct thread *th)
   eri_entry__leave (entry);
 }
 
-static uint8_t
-atomic_access_user (struct thread *th, void *mem,
-		    uint8_t size, uint16_t code)
-{
-  switch (code)
-    {
-    case ERI_OP_ATOMIC_LOAD: return read_user (th, mem, size);
-    case ERI_OP_ATOMIC_STORE: return write_user (th, mem, size);
-    default: return read_write_user (th, mem, size);
-    }
-}
-
-#define DEFINE_ATOMIC_TYPE(type) \
-static void								\
-ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
-			   struct eri_registers *regs)			\
-{									\
-  if (code == ERI_OP_ATOMIC_LOAD)					\
-    eri_atomic_load (mem, 0);						\
-  else if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
-    eri_atomic_store (mem, val, 0);					\
-  else if (code == ERI_OP_ATOMIC_INC)					\
-    eri_atomic_inc_x (mem, &regs->rflags, 0);				\
-  else if (code == ERI_OP_ATOMIC_DEC)					\
-    eri_atomic_dec_x (mem, &regs->rflags, 0);				\
-  else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
-    eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
-  else eri_assert_unreachable ();					\
-}
-
-DEFINE_ATOMIC_TYPE (uint8_t)
-DEFINE_ATOMIC_TYPE (uint16_t)
-DEFINE_ATOMIC_TYPE (uint32_t)
-DEFINE_ATOMIC_TYPE (uint64_t)
-
 static eri_noreturn void
 atomic (struct thread *th)
 {
   struct eri_entry *entry = th->entry;
   uint16_t code = eri_entry__get_op_code (entry);
-  uint64_t mem = eri_entry__get_atomic_mem (entry);
-  uint8_t size = eri_entry__get_atomic_size (entry);
+
+  uint64_t old_val;
 
   struct eri_atomic_record rec;
   if (! check_magic (th, ERI_ATOMIC_MAGIC)
-      || ! try_unserialize (atomic_record, th, &rec)) diverged (th);
-
-  if (! rec.ok)
-    {
-      if (atomic_access_user (th, (void *) mem, size, code)) diverged (th);
-      eri_entry__restart (entry);
-    }
-
-  if (! atomic_wait (th, mem, size, rec.ver)) diverged (th);
-
-  uint64_t val = eri_entry__get_atomic_val (entry);
-
-  struct eri_registers *regs = eri_entry__get_regs (entry);
-
-  struct eri_access acc[2] = { 0 };
-  if (code == ERI_OP_ATOMIC_LOAD)
-    eri_set_read (acc, mem, size);
-  else if (code == ERI_OP_ATOMIC_STORE)
-    eri_set_write (acc, mem, size);
-  else
-    {
-      eri_set_read (acc, mem, size);
-      eri_set_write (acc + 1, mem, size);
-    }
-  update_access (th, acc, eri_length_of (acc));
-
-  eri_assert (size == 1 || size == 2 || size == 4 || size == 8);
-
-  if (! eri_entry__test_access (entry, mem, 0)) diverged (th);
-  if (size == 1) atomic_uint8_t (code, (void *) mem, val, regs);
-  else if (size == 2) atomic_uint16_t (code, (void *) mem, val, regs);
-  else if (size == 4) atomic_uint32_t (code, (void *) mem, val, regs);
-  else if (size == 8) atomic_uint64_t (code, (void *) mem, val, regs);
-  eri_entry__reset_test_access (entry);
-
-  atomic_update (th, mem, size);
+      || ! try_unserialize (atomic_record, th, &rec)
+      || ! do_atomic (th, code, (void *) eri_entry__get_atomic_mem (entry),
+		      eri_entry__get_atomic_size (entry),
+		      eri_entry__get_atomic_val (entry), &rec, &old_val,
+		      eri_entry__get_regs (entry))) diverged (th);
 
   fetch_test_async_signal (th);
 
   if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
-    eri_entry__atomic_interleave (entry, rec.val);
+    eri_entry__atomic_interleave (entry, old_val);
 
   eri_entry__leave (entry);
 }

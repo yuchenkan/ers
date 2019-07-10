@@ -14,6 +14,10 @@ m4_define(`m4_pub_atomic_inc', `6')m4_dnl
 m4_define(`m4_pub_atomic_dec', `7')m4_dnl
 m4_define(`m4_pub_atomic_xchg', `8')m4_dnl
 m4_define(`m4_pub_atomic_cmpxchg', `9')m4_dnl
+m4_define(`m4_pub_atomic_and', `10')m4_dnl
+m4_define(`m4_pub_atomic_or', `11')m4_dnl
+m4_define(`m4_pub_atomic_xor', `12')m4_dnl
+m4_define(`m4_pub_atomic_xadd', `13')m4_dnl
 m4_define(`m4_pub_do_paste', `a')m4_dnl
 m4_define(`m4_pub_paste', `b')m4_dnl
 m4_define(`m4_pub_paste2', `c')m4_dnl

@@ -517,6 +517,23 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_FUTEX_WAIT_PRIVATE	(ERI_FUTEX_WAIT | ERI_FUTEX_PRIVATE_FLAG)
 #define ERI_FUTEX_WAKE_PRIVATE	(ERI_FUTEX_WAKE | ERI_FUTEX_PRIVATE_FLAG)
 
+#define ERI_FUTEX_OP_SET	0	/* *(int *)UADDR2 = OPARG; */
+#define ERI_FUTEX_OP_ADD	1	/* *(int *)UADDR2 += OPARG; */
+#define ERI_FUTEX_OP_OR		2	/* *(int *)UADDR2 |= OPARG; */
+#define ERI_FUTEX_OP_ANDN	3	/* *(int *)UADDR2 &= ~OPARG; */
+#define ERI_FUTEX_OP_XOR	4	/* *(int *)UADDR2 ^= OPARG; */
+#define ERI_FUTEX_OP_NUM	5
+
+#define ERI_FUTEX_OP_OPARG_SHIFT	8	/* Use (1 << OPARG).  */
+
+#define ERI_FUTEX_OP_CMP_EQ	0	/* if (oldval == CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_NE	1	/* if (oldval != CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_LT	2	/* if (oldval < CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_LE	3	/* if (oldval <= CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_GT	4	/* if (oldval > CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_GE	5	/* if (oldval >= CMPARG) wake */
+#define ERI_FUTEX_OP_CMP_NUM	6
+
 #define ERI_PROT_READ		0x1
 #define ERI_PROT_WRITE		0x2
 #define ERI_PROT_EXEC		0x4
@@ -577,6 +594,10 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 
 #define ERI_PATH_MAX		4096
 
+#define ERI_SEEK_SET		0
+#define ERI_SEEK_CUR		1
+#define ERI_SEEK_END		2
+
 #define ERI_CLONE_VM			0x00000100
 #define ERI_CLONE_FS			0x00000200
 #define ERI_CLONE_FILES			0x00000400
@@ -593,9 +614,13 @@ eri_syscall_is_fault_or_ok (uint64_t val)
    | ERI_CLONE_THREAD | ERI_CLONE_SYSVSEM | ERI_CLONE_SETTLS		\
    | ERI_CLONE_PARENT_SETTID | ERI_CLONE_CHILD_CLEARTID)
 
-#define ERI_SEEK_SET		0
-#define ERI_SEEK_CUR		1
-#define ERI_SEEK_END		2
+#define ERI_PR_SET_PDEATHSIG	1
+
+#define ERI_P_PID		1
+#define ERI_P_PGID		2
+#define ERI_WEXITED		4
+
+#define ERI_RLIMIT_STACK	3
 
 #define ERI_SA_SIGINFO		4
 #define ERI_SA_RESTORER		0x04000000
@@ -662,14 +687,6 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 
 #define ERI_TRAP_TRACE		2
 
-#define ERI_PR_SET_PDEATHSIG	1
-
-#define ERI_P_PID		1
-#define ERI_P_PGID		2
-#define ERI_WEXITED		4
-
-#define ERI_RLIMIT_STACK	3
-
 #ifdef __ASSEMBLER__
 
 #define ERI_SIG_DFL		0
@@ -678,6 +695,31 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #else
 
 #include <lib/compiler.h>
+
+static eri_unused uint8_t
+eri_futex_op_get_op (int32_t op)
+{
+  return (op >> 28) & 0x7;
+}
+
+static eri_unused uint8_t
+eri_futex_op_get_cmp (uint32_t op)
+{
+  return (op >> 24) & 0xf;
+}
+
+static eri_unused int32_t
+eri_futex_op_get_arg (int32_t op)
+{
+  uint32_t a = (op << 8) >> 20;
+  return eri_futex_op_get_op (op) & ERI_FUTEX_OP_OPARG_SHIFT ? 1 << a : a;
+}
+
+static eri_unused int32_t
+eri_futex_op_get_cmp_arg (int32_t op)
+{
+  return (op << 20) >> 20;
+}
 
 struct eri_timespec
 {

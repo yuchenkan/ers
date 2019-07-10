@@ -19,6 +19,10 @@
 #define ERI_OP_ATOMIC_DEC	6
 #define ERI_OP_ATOMIC_XCHG	7
 #define ERI_OP_ATOMIC_CMPXCHG	8
+#define ERI_OP_ATOMIC_AND	9
+#define ERI_OP_ATOMIC_OR	10
+#define ERI_OP_ATOMIC_XOR	11
+#define ERI_OP_ATOMIC_XADD	12
 
 #define ERI_FOREACH_PUB_OP(p, ...) \
   p (SYSCALL, ##__VA_ARGS__)						\
@@ -29,7 +33,11 @@
   p (ATOMIC_INC, ##__VA_ARGS__)						\
   p (ATOMIC_DEC, ##__VA_ARGS__)						\
   p (ATOMIC_XCHG, ##__VA_ARGS__)					\
-  p (ATOMIC_CMPXCHG, ##__VA_ARGS__)
+  p (ATOMIC_CMPXCHG, ##__VA_ARGS__)					\
+  p (ATOMIC_AND, ##__VA_ARGS__)						\
+  p (ATOMIC_OR, ##__VA_ARGS__)						\
+  p (ATOMIC_XOR, ##__VA_ARGS__)						\
+  p (ATOMIC_XADD, ##__VA_ARGS__)
 
 #if 0
 #define ERI_ATOMIC_LOAD	0x1000
@@ -190,13 +198,13 @@ eri_returns_twice uint8_t _eri_entry__test_access (
      uint8_t _res;							\
      /* The guard page will protect us if preceeding map_start. */	\
      /* XXX: df should be cleared to make the guard robust */		\
-     if (eri_within (_entry->_map_range, _mem))				\
+     if (! _mem || eri_within (_entry->_map_range, _mem))		\
        {								\
 	 if (_done) *_done = 0;						\
 	 _res = 0;							\
        }								\
      else _res = _eri_entry__test_access (_entry, _mem, _done);		\
-     _res; })
+     eri_barrier (); _res; })
 #define eri_entry__reset_test_access(entry) \
   do { eri_barrier (); (entry)->_test_access = 0; } while (0)
 

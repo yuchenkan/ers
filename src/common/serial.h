@@ -237,7 +237,6 @@ struct eri_atomic_record
 {
   uint8_t ok;
   struct eri_pair ver;
-  uint64_t val;
 };
 
 void eri_serialize_atomic_record (eri_file_t file,

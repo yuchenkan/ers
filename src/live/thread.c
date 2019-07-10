@@ -644,6 +644,69 @@ unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
   return ver;
 }
 
+#define DEFINE_ATOMIC_TYPE(type) \
+static uint64_t								\
+ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
+			   struct eri_registers *regs)			\
+{									\
+  if (code == ERI_OP_ATOMIC_LOAD) return eri_atomic_load (mem, 0);	\
+  else if (code == ERI_OP_ATOMIC_XCHG)					\
+    return eri_atomic_exchange (mem, val, 0);				\
+  else if (code == ERI_OP_ATOMIC_STORE)					\
+    eri_atomic_store (mem, val, 0);					\
+  else if (code == ERI_OP_ATOMIC_INC)					\
+    eri_atomic_inc_x (mem, &regs->rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_DEC)					\
+    eri_atomic_dec_x (mem, &regs->rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
+    eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
+  else eri_assert_unreachable ();					\
+  return 0;								\
+}
+
+DEFINE_ATOMIC_TYPE (uint8_t)
+DEFINE_ATOMIC_TYPE (uint16_t)
+DEFINE_ATOMIC_TYPE (uint32_t)
+DEFINE_ATOMIC_TYPE (uint64_t)
+
+static void
+do_atomic (struct eri_live_thread *th, uint16_t code, void *mem,
+	   uint8_t size, uint64_t val, struct eri_atomic_record *rec,
+	   void *old_val, struct eri_registers *regs)
+{
+  struct eri_live_thread_group *group = th->group;
+  struct eri_entry *entry = th->entry;
+
+  uint64_t dummy;
+  old_val = old_val ? : &dummy;
+
+  struct eri_pair idx = lock_atomic (group, (uint64_t) mem, size);
+
+  if (! eri_entry__test_access (entry, mem, 0))
+    {
+      unlock_atomic (group, &idx, 0);
+      rec->ok = 0;
+      return;
+    }
+
+  /* XXX: cmpxchg16b */
+
+  if (size == 1)
+    *(uint8_t *) old_val = atomic_uint8_t (code, mem, val, regs);
+  else if (size == 2)
+    *(uint16_t *) old_val = atomic_uint16_t (code, mem, val, regs);
+  else if (size == 4)
+    *(uint32_t *) old_val = atomic_uint32_t (code, mem, val, regs);
+  else if (size == 8)
+    *(uint64_t *) old_val = atomic_uint64_t (code, mem, val, regs);
+  else eri_assert_unreachable ();
+
+  eri_entry__reset_test_access (entry);
+
+  rec->ok = 1;
+  rec->ver = unlock_atomic (group, &idx, 1);
+}
+
 /*
  * Guide of syscalls:
  *
@@ -813,16 +876,6 @@ DEFINE_SYSCALL (set_tid_address)
   eri_entry__syscall_leave (entry, 0);
 }
 
-static uint8_t
-clear_user_tid (struct eri_entry *entry,
-		int32_t *user_tid, int32_t *old_val)
-{
-  if (! eri_entry__test_access (entry, user_tid, 0)) return 0;
-  *old_val = eri_atomic_exchange (user_tid, 0, 1);
-  eri_entry__reset_test_access (entry);
-  return 1;
-}
-
 static struct futex_slot *
 syscall_get_futex_slot (struct eri_live_thread_group *group,
 		        uint64_t user_addr)
@@ -875,16 +928,13 @@ syscall_common_futex_wake (struct eri_live_thread *th,
 			   uint64_t user_addr, int32_t max, uint32_t mask)
 {
   struct eri_live_thread_group *group = th->group;
-  uint64_t page_size = group->page_size;
-  uint64_t res = eri_syscall_futex_check_user_addr (user_addr, page_size);
-  if (eri_syscall_is_error (res)) return res;
-  if (mask == 0) return ERI_EINVAL;
 
   struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
   struct futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
+  uint64_t res = 0;
   if (futex)
     {
-      syscall_futex_do_wake (th->log.file, futex, max, mask);
+      res = syscall_futex_do_wake (th->log.file, futex, max, mask);
       syscall_may_remove_free_futex (group->pool, slot, futex);
     }
   eri_assert_unlock (&slot->lock);
@@ -902,28 +952,16 @@ syscall_do_exit (SYSCALL_PARAMS)
   if (! eri_live_signal_thread__exit (sig_th, exit_group, status))
     syscall_restart (entry);
 
-  struct eri_syscall_exit_record rec = { .clear_tid.ok = 0 };
-  if (th->clear_user_tid)
-    {
-      struct eri_live_thread_group *group = th->group;
+  struct eri_syscall_exit_record rec;
 
-      int32_t *user_tid = th->clear_user_tid;
-      struct eri_pair idx
-	= lock_atomic (group, (uint64_t) user_tid, sizeof *user_tid);
+  uint64_t user_tid = (uint64_t) th->clear_user_tid;
+  do_atomic (th, ERI_OP_ATOMIC_STORE, (void *) user_tid,
+	     sizeof (int32_t), 0, &rec.clear_tid, 0, 0);
+  if (rec.clear_tid.ok
+      && eri_syscall_is_ok (eri_syscall_futex_check_user_addr (
+				    user_tid, th->group->page_size)))
+    syscall_common_futex_wake (th, user_tid, 1, -1);
 
-      int32_t old_val;
-      if (clear_user_tid (entry, user_tid, &old_val))
-	{
-	  rec.clear_tid.ok = 1;
-	  rec.clear_tid.ver = unlock_atomic (group, &idx, 1);
-	  syscall_common_futex_wake (th, (uint64_t) user_tid, 1, -1);
-	  goto record;
-	}
-
-      unlock_atomic (group, &idx, 0);
-    }
-
-record:
   rec.out = io_out (th);
   syscall_record (th, ERI_SYSCALL_EXIT_MAGIC, &rec);
 
@@ -2088,16 +2126,6 @@ syscall_futex_get_timeout (struct eri_entry *entry,
   return 0;
 }
 
-static uint8_t
-syscall_futex_user_load (struct eri_entry *entry,
-			 int32_t *user_addr, uint64_t *val)
-{
-  if (! eri_entry__test_access (entry, user_addr, 0)) return 0;
-  *val = eri_atomic_load (user_addr, 1);
-  eri_entry__reset_test_access (entry);
-  return 1;
-}
-
 static struct futex *
 syscall_get_or_create_futex (struct eri_mtpool *pool,
 			     struct futex_slot *slot, uint64_t user_addr)
@@ -2117,33 +2145,21 @@ static uint8_t
 syscall_futex_load_user (struct eri_live_thread *th, uint64_t user_addr,
 			 int32_t *val)
 {
-  struct eri_live_thread_group *group = th->group;
-  struct eri_entry *entry = th->entry;
-
-  struct eri_atomic_record rec = { 0 };
-  struct eri_pair idx = lock_atomic (group, user_addr, sizeof (int32_t));
-
-  if (! syscall_futex_user_load (entry, (void *) user_addr, &rec.val))
-    {
-      unlock_atomic (group, &idx, 0);
-      eri_live_thread_recorder__rec_atomic (th->rec, &rec);
-      return 0;
-    }
-  rec.ok = 1;
-  rec.ver = unlock_atomic (group, &idx, 1);
+  struct eri_atomic_record rec;
+  do_atomic (th, ERI_OP_ATOMIC_LOAD,
+	     (void *) user_addr, sizeof (int32_t), 0, &rec, val, 0);
   eri_live_thread_recorder__rec_atomic (th->rec, &rec);
-  *val = rec.val;
-  return 1;
+  return rec.ok;
 }
 
 static eri_noreturn void
 syscall_do_futex_wait (SYSCALL_PARAMS)
 {
   uint64_t user_addr = regs->rdi;
-  int32_t op = regs->rsi;
+  uint32_t op = regs->rsi;
   int32_t val = regs->rdx;
   const struct eri_timespec *user_timeout = (void *) regs->r10;
-  int32_t mask = (op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_WAIT ? -1 : regs->r9;
+  uint32_t mask = (op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_WAIT ? -1 : regs->r9;
 
   struct eri_live_thread_group *group = th->group;
 
@@ -2208,13 +2224,17 @@ static eri_noreturn void
 syscall_do_futex_wake (SYSCALL_PARAMS)
 {
   uint64_t user_addr = regs->rdi;
-  int32_t op = regs->rsi;
+  uint32_t op = regs->rsi;
   int32_t max = regs->rdx;
   uint32_t mask = (op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_WAKE ? -1 : regs->r9;
 
+  eri_entry__syscall_leave_if_error (entry,
+	eri_syscall_futex_check_wake (op, mask, user_addr,
+				      th->group->page_size));
+
   uint64_t res = syscall_common_futex_wake (th, user_addr, max, mask);
-  if (eri_syscall_is_ok (res)) syscall_record_result (th, res);
-  eri_entry__syscall_leave (th->entry, res);
+  syscall_record_result (th, res);
+  eri_entry__syscall_leave (entry, res);
 }
 
 static void
@@ -2248,7 +2268,7 @@ static eri_noreturn void
 syscall_do_futex_requeue (SYSCALL_PARAMS)
 {
   uint64_t user_addr = regs->rdi;
-  int32_t op = regs->rsi;
+  uint32_t op = regs->rsi;
   int32_t val = regs->rdx;
   int32_t val2 = regs->r10;
   uint64_t user_addr2 = regs->r8;
@@ -2258,9 +2278,8 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
   struct eri_mtpool *pool = group->pool;
 
   eri_entry__syscall_leave_if_error (entry,
-    eri_syscall_futex_check_user_addr (user_addr, group->page_size));
-  eri_entry__syscall_leave_if_error (entry,
-    eri_syscall_futex_check_user_addr (user_addr2, group->page_size));
+	eri_syscall_futex_check_wake2 (op, -1, user_addr, user_addr2,
+				       group->page_size));
 
   struct futex_slot *slots[2];
   syscall_lock_futex_slot2 (group, user_addr, user_addr2, slots);
@@ -2309,9 +2328,38 @@ record:
   eri_entry__syscall_leave (entry, 0);
 }
 
+static eri_noreturn void
+syscall_do_futex_wake_op (SYSCALL_PARAMS)
+{
+#if 0
+  uint64_t user_addr = regs->rdi;
+  uint32_t op = regs->rsi;
+  int32_t val = regs->rdx;
+  int32_t val2 = regs->r10;
+  uint64_t user_addr2 = regs->r8;
+  int32_t val3 = regs->r9;
+
+  eri_entry__syscall_leave_if_error (entry,
+	eri_syscall_futex_check_wake2 (op, -1, user_addr, user_addr2,
+				       group->page_size));
+
+  uint8_t op_op = eri_futex_op_get_op (val3);
+  uint8_t op_cmp = eri_futex_op_get_cmp (val3);
+  int32_t op_arg = eri_futex_op_get_arg (val3);
+  int32_t op_cmp_arg = eri_futex_op_get_cmp_arg (val3);
+
+  if (op_op >= ERI_FUTEX_OP_NUM || op_cmp >= ERI_FUTEX_OP_CMP_NUM)
+    eri_entry__syscall_leave (entry, ERI_ENOSYS);
+
+  struct futex_slot *slots[2];
+  syscall_lock_futex_slot2 (group, user_addr, user_addr2, slots);
+#endif
+  eri_assert_unreachable ();
+}
+
 DEFINE_SYSCALL (futex)
 {
-  int32_t op = regs->rsi;
+  uint32_t op = regs->rsi;
 
 /* XXX
   if (! op & ERI_FUTEX_PRIVATE_FLAG)
@@ -2332,7 +2380,7 @@ DEFINE_SYSCALL (futex)
     case ERI_FUTEX_FD: eri_entry__syscall_leave (entry, ERI_ENOSYS);
     case ERI_FUTEX_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
     case ERI_FUTEX_CMP_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
-    case ERI_FUTEX_WAKE_OP:
+    case ERI_FUTEX_WAKE_OP: syscall_do_futex_wake_op (SYSCALL_ARGS);
     case ERI_FUTEX_LOCK_PI:
     case ERI_FUTEX_UNLOCK_PI:
     case ERI_FUTEX_TRYLOCK_PI:
@@ -2431,89 +2479,27 @@ sync_async (struct eri_live_thread *th)
   eri_entry__leave (entry);
 }
 
-#define atomic_mask(size) \
-  ({ uint8_t _size = size;						\
-     _size == 1 ? 0xff : (_size == 2 ? 0xffff :				\
-		(_size == 4 ? 0xffffffff : (uint64_t) -1)); })
-
-#define DEFINE_ATOMIC_TYPE(type) \
-static uint64_t								\
-ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
-			   struct eri_registers *regs)			\
-{									\
-  if (code == ERI_OP_ATOMIC_LOAD) return eri_atomic_load (mem, 0);	\
-  else if (code == ERI_OP_ATOMIC_STORE || code == ERI_OP_ATOMIC_XCHG)	\
-    return eri_atomic_exchange (mem, val, 0);				\
-  else if (code == ERI_OP_ATOMIC_INC || code == ERI_OP_ATOMIC_DEC	\
-	   || code == ERI_OP_ATOMIC_CMPXCHG)				\
-    {									\
-      uint64_t res = eri_atomic_load (mem, 0);				\
-      if (code == ERI_OP_ATOMIC_INC)					\
-	eri_atomic_inc_x (mem, &regs->rflags, 0);			\
-      else if (code == ERI_OP_ATOMIC_DEC)				\
-	eri_atomic_dec_x (mem, &regs->rflags, 0);			\
-      else								\
-	eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
-      return res;							\
-    }									\
-  else eri_assert_unreachable ();					\
-}
-
-DEFINE_ATOMIC_TYPE (uint8_t)
-DEFINE_ATOMIC_TYPE (uint16_t)
-DEFINE_ATOMIC_TYPE (uint32_t)
-DEFINE_ATOMIC_TYPE (uint64_t)
-
-#define atomic_op_output(code) \
-  ({ uint16_t _code = code;						\
-     _code != ERI_OP_ATOMIC_STORE					\
-     && _code != ERI_OP_ATOMIC_INC && _code != ERI_OP_ATOMIC_DEC; })
-
 static eri_noreturn void
 atomic (struct eri_live_thread *th)
 {
   struct eri_entry *entry = th->entry;
-  uint64_t mem = eri_entry__get_atomic_mem (entry);
-  uint8_t size = eri_entry__get_atomic_size (entry);
 
-  struct eri_live_thread_group *group = th->group;
-  if (eri_across (&group->map_range, mem, size)) mem = 0;
+  uint16_t code = eri_entry__get_op_code (entry);
 
   uint64_t old_val;
-  uint64_t val = eri_entry__get_atomic_val (entry);
-  val &= atomic_mask (size);
-  uint16_t code = eri_entry__get_op_code (entry);
-  struct eri_registers *regs = eri_entry__get_regs (entry);
+  struct eri_atomic_record rec;
+  do_atomic (th, code, (void *) eri_entry__get_atomic_mem (entry),
+	     eri_entry__get_atomic_size (entry),
+	     eri_entry__get_atomic_val (entry), &rec, &old_val,
+	     eri_entry__get_regs (entry));
 
-  struct eri_pair idx = lock_atomic (group, mem, size);
-
-  struct eri_atomic_record rec = { 0 };
-  if (! eri_entry__test_access (entry, (void *) mem, 0))
+  if (! rec.ok)
     {
       if (eri_si_access_fault (eri_entry__get_sig_info (entry)))
 	eri_live_thread_recorder__rec_atomic (th->rec, &rec);
 
-      unlock_atomic (group, &idx, 0);
       eri_entry__restart (entry);
     }
-
-  if (size == 1)
-    old_val = atomic_uint8_t (code, (void *) mem, val, regs);
-  else if (size == 2)
-    old_val = atomic_uint16_t (code, (void *) mem, val, regs);
-  else if (size == 4)
-    old_val = atomic_uint32_t (code, (void *) mem, val, regs);
-  else if (size == 8)
-    old_val = atomic_uint64_t (code, (void *) mem, val, regs);
-  else eri_assert_unreachable ();
-
-  eri_entry__reset_test_access (entry);
-
-  rec.ok = 1;
-  rec.ver = unlock_atomic (group, &idx, 1);
-  rec.val = atomic_op_output (code) ? old_val : 0;
-
-  /* XXX: cmpxchg16b */
 
   eri_live_thread_recorder__rec_atomic (th->rec, &rec);
 
