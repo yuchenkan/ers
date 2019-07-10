@@ -75,44 +75,64 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_and)(m, v, b) \
   m4_ns(atomic_common2)(and, m, v, b)
 
+#define m4_ns(atomic_or)(m, v, b) \
+  m4_ns(atomic_common2)(or, m, v, b)
+
+#define m4_ns(atomic_xor)(m, v, b) \
+  m4_ns(atomic_common2)(xor, m, v, b)
+
 #define m4_ns(atomic_bts, _)(sz, _m, _off, _r, b) \
   asm volatile (ERI_STR (m4_ns(atomic_bts, __) (1, sz,			\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 2), %1))	\
 		: "=@ccc" (_r), "+m" (*_m) : "r" (_off)			\
 		ERI_PP_IF (b, : "memory"))
 
-#define m4_ns(atomic_bit_test_set)(m, off, b) \
+#define m4_ns(atomic_bts)(m, off, b) \
   ({ typeof (m) _m = m;							\
      typeof (off) _off = off;						\
      uint8_t _r;							\
      _eri_atomic_switch_size1 (_m, m4_ns(atomic_bts, _), _off, _r, b);	\
      _r; })
 
-#define m4_ns(atomic_xchg, _)(sz, _m, _r, b) \
-  asm volatile (ERI_STR (m4_ns(atomic_xchg, __) (1, sz,			\
+#define m4_ns(atomic_bit_test_set)(m, off, b) \
+  m4_ns(atomic_bts)(m, off, b) \
+
+#define m4_ns(atomic_xcommon, _)(sz, _m, op, _r, b) \
+  asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 0), %1))	\
 		: "+r" (_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
 
-#define m4_ns(atomic_exchange)(m, v, b) \
+#define m4_ns(atomic_xcommon)(op, m, v, b) \
   ({ typeof (m) _m = m;							\
      typeof (*_m) _r = (typeof (*_m)) (v);				\
-     _eri_atomic_switch_size (_m, m4_ns(atomic_xchg, _), _r, b);	\
+     _eri_atomic_switch_size (_m, m4_ns(atomic_xcommon, _), op, _r, b);	\
      _r; })
 
-#define m4_ns(atomic_cmpxchg, _)(sz, _m, _r, _a, _s, b) \
+#define m4_ns(atomic_xadd)(m, v, b) \
+  m4_ns(atomic_xcommon) (xadd, m, v, b)
+
+#define m4_ns(atomic_xchg)(m, v, b) \
+  m4_ns(atomic_xcommon) (xchg, m, v, b)
+
+#define m4_ns(atomic_exchange)(m, v, b)	m4_ns(atomic_xchg) (m, v, b)
+
+#define m4_ns(atomic_cmpxchg, _)(sz, _m, _z, _a, _r, b) \
   asm volatile (ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %1))	\
-		: "=@ccz" (_r), "+m" (*_m), "+a" (_a) : "r" (_s)	\
+		: "=@ccz" (_z), "+m" (*_m), "+a" (_a) : "r" (_r)	\
 		ERI_PP_IF (b, : "memory"))
 
-#define m4_ns(atomic_compare_exchange)(m, e, d, b) \
+#define m4_ns(atomic_cmpxchg)(m, a, r, b) \
   ({ typeof (m) _m = m;							\
-     typeof (*_m) _e = (typeof (*_m)) (e);				\
-     typeof (*_m) _d = (typeof (*_m)) (d);				\
-     uint8_t _r;							\
+     typeof (*_m) _a = (typeof (*_m)) (a);				\
+     typeof (*_m) _r = (typeof (*_m)) (r);				\
+     uint8_t _z;							\
      _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg, _),		\
-			      _r, _e, _d, b);				\
-     _r; })
+			      _z, _a, _r, b);				\
+     _z; })
+
+#define m4_ns(atomic_compare_exchange)(m, e, d, b) \
+  m4_ns(atomic_cmpxchg)(m, e, d, b) \
 
 #define m4_ns(atomic_inc_dec_x, __)(sz, _m, _f, b, cinc, inc) \
   asm volatile ("pushq\t%q0; popfq; "					\

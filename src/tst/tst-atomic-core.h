@@ -13,16 +13,16 @@
   ERI_PASTE (ERS_ATOMIC_, cinc) (e, sz, __m)
 
 #define __tst_atomic_and(e, sz, __r, __m) \
-  ERI_ATOMIC_AND (e, sz, __r, __m)
+  ERS_ATOMIC_AND (e, sz, __r, __m)
 
 #define __tst_atomic_or(e, sz, __r, __m) \
-  ERI_ATOMIC_OR (e, sz, __r, __m)
+  ERS_ATOMIC_OR (e, sz, __r, __m)
 
 #define __tst_atomic_xor(e, sz, __r, __m) \
-  ERI_ATOMIC_XOR (e, sz, __r, __m)
+  ERS_ATOMIC_XOR (e, sz, __r, __m)
 
 #define __tst_atomic_xadd(e, sz, __r, __m) \
-  ERI_ATOMIC_XADD (e, sz, __r, __m)
+  ERS_ATOMIC_XADD (e, sz, __r, __m)
 
 #define __tst_atomic_xchg(e, sz, __r, __m) \
   ERS_ATOMIC_XCHG (e, sz, __r, __m)
