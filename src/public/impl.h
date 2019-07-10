@@ -94,7 +94,7 @@
 #define _ERS_ATOMIC_LOAD(e, sz, mem, reg) \
   _ERS_ATOMIC_COMMON_LOAD (e, sz, mem, _ERS_LOAD_LOAD, reg)
 
-#define _ERS_ATOMIC_REG_TO_MEM(op, e, sz, reg, mem) \
+#define _ERS_ATOMIC_COMMON2(op, e, sz, reg, mem) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (op, sz));				\
   _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
@@ -104,9 +104,24 @@
   jmp	*_ERS_ENTRY (e, ENTER);						\
 20:
 
+#define _ERS_ATOMIC_XCOMMON2(op, e, sz, reg, mem) \
+30:									\
+  _ERS_ENTER (e, _ERS_ATOMIC_OP (op, sz));				\
+  _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
+  _ERS_ATOMIC_SAVE_MEM (e, mem);					\
+  _ERS_SAVE_START (e, 30b);						\
+  _ERS_SAVE_LEAVE (e, 10f);						\
+  _ERS_ATOMIC_SAVE_LEAVE (e, 20f);					\
+  jmp	*_ERS_ENTRY (e, ENTER);						\
+10:									\
+  _ERS_EXP_PASTE (mov, sz)	_ERS_ENTRY (e, ATOMIC_VAL), reg;	\
+  movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX);				\
+  jmp	*_ERS_ENTRY (e, ENTER);						\
+20:
+
 /* mov	imm8/16/32/r8/16/32/64, m8/16/32/64  */
 #define _ERS_ATOMIC_STORE(e, sz, imm_or_reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (STORE, e, sz, imm_or_reg, mem)
+  _ERS_ATOMIC_COMMON2 (STORE, e, sz, imm_or_reg, mem)
 
 #define _ERS_ATOMIC_INC_DEC(e, sz, mem, op) \
 30:									\
@@ -121,33 +136,21 @@
 #define _ERS_ATOMIC_DEC(e, sz, mem)	_ERS_ATOMIC_INC_DEC (e, sz, mem, DEC)
 
 #define _ERS_ATOMIC_XCHG(e, sz, reg, mem) \
-30:									\
-  _ERS_ENTER (e, _ERS_ATOMIC_OP (XCHG, sz));				\
-  _ERS_ATOMIC_SAVE_VAL (e, sz, reg);					\
-  _ERS_ATOMIC_SAVE_MEM (e, mem);					\
-  _ERS_SAVE_START (e, 30b);						\
-  _ERS_SAVE_LEAVE (e, 10f);						\
-  _ERS_ATOMIC_SAVE_LEAVE (e, 20f);					\
-  jmp	*_ERS_ENTRY (e, ENTER);						\
-10:									\
-  _ERS_EXP_PASTE (mov, sz)	_ERS_ENTRY (e, ATOMIC_VAL), reg;	\
-  movq	_ERS_RBX (e), _ERS_ENTRY (e, RBX);				\
-  jmp	*_ERS_ENTRY (e, ENTER);						\
-20:
+  _ERS_ATOMIC_XCOMMON2 (XCHG, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_CMPXCHG(e, sz, reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (CMPXCHG, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (CMPXCHG, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_AND(e, sz, reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (AND, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (AND, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_OR(e, sz, reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (OR, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (OR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_XOR(e, sz, reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (XOR, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_XADD(e, sz, reg, mem) \
-  _ERS_ATOMIC_REG_TO_MEM (XADD, e, sz, reg, mem)
+  _ERS_ATOMIC_XCOMMON2 (XADD, e, sz, reg, mem)
 
 #endif

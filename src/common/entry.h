@@ -13,6 +13,7 @@
 #define ERI_OP_SYSCALL		1
 #define ERI_OP_SYNC_ASYNC	2
 
+#define ERI_OP_ATOMIC_START	3
 #define ERI_OP_ATOMIC_LOAD	3
 #define ERI_OP_ATOMIC_STORE	4
 #define ERI_OP_ATOMIC_INC	5
@@ -23,6 +24,7 @@
 #define ERI_OP_ATOMIC_OR	10
 #define ERI_OP_ATOMIC_XOR	11
 #define ERI_OP_ATOMIC_XADD	12
+#define ERI_OP_ATOMIC_END	13
 
 #define ERI_FOREACH_PUB_OP(p, ...) \
   p (SYSCALL, ##__VA_ARGS__)						\
@@ -66,7 +68,7 @@
 
 #define eri_op_is_atomic(code) \
   ({ uint16_t _code = code;						\
-     _code >= ERI_OP_ATOMIC_LOAD && _code <= ERI_OP_ATOMIC_CMPXCHG; })
+     _code >= ERI_OP_ATOMIC_START && _code < ERI_OP_ATOMIC_END; })
 
 struct eri_access;
 

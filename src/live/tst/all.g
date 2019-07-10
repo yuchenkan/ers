@@ -9,7 +9,7 @@ tsts = tsts.concat ((await this.invoke (full ('diverge.g'))).map (t => `init-div
 let commons = await this.invoke (full ('replay.g'));
 
 let entries = [ 'syscall', 'sync-async' ];
-entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp' ].map (x => `atomic-${x}`));
+entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp', 'and', 'or', 'xor', 'xadd' ].map (x => `atomic-${x}`));
 
 commons = commons.concat (entries.map (t => `entry-${t}`));
 

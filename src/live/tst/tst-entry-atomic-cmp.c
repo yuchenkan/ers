@@ -7,24 +7,12 @@
 #include <live/tst/tst-registers.h>
 #include <live/tst/tst-entry-atomic.h>
 
-#define OP(reg, mem, sz) \
-  ERI_PASTE (ERI_PASTE2 (cmp_, reg, _), ERI_PASTE2 (mem, _, sz))
+#define ERS_LOAD_CMP(sz, res, reg)	ERI_PASTE (cmp, sz)	reg, res
 
-#define ERI_LOAD_CMP(sz, res, reg)	ERI_PASTE (cmp, sz)	reg, res
+#define ERS_ATOMIC_CMP(e, sz, reg, mem) \
+  ERS_ATOMIC_COMMON_LOAD (e, sz, mem, ERS_LOAD_CMP, reg)
 
-#define ERI_ATOMIC_CMP(e, sz, reg, mem) \
-  ERS_ATOMIC_COMMON_LOAD (e, sz, mem, ERI_LOAD_CMP, reg)
-
-#define ASM_SIZE(sz, creg, reg, mem) \
-TST_LIVE_ENTRY_ATOMIC_ASM (OP (reg, mem, sz),				\
-	ERI_EVAL (ERI_PASTE (cmp, sz)	%ERI_PASTE (ERI_, creg) (sz),	\
-					(%mem)),			\
-	ERI_ATOMIC_CMP (0, sz, %ERI_PASTE (ERI_, creg) (sz), (%mem)))
-
-#define ASM(creg, reg, cmem, mem) \
-ERI_FOREACH_REG_SIZE (ASM_SIZE, creg, reg, mem)
-
-TST_FOREACH_GENERAL_REG2 (ASM)
+TST_LIVE_ENTRY_ATOMIC_COMMON2_TEXT (CMP, cmp)
 
 struct caze
 {
@@ -39,17 +27,20 @@ init (struct tst_live_entry_mcontext *tctx, uint64_t *val,
   *val = *(uint64_t *) ((uint8_t *) tctx + caze->reg_off);
 }
 
+#define NAME(reg, mem, sz) \
+  TST_LIVE_ENTRY_ATOMIC_COMMON2_TEXT_NAME (cmp, reg, mem, sz)
+
 static struct caze cases[] = {
 
 #define INFO	0 // tst_live_entry_atomic_common_info
 
 #define CASE_SIZE(sz, reg, mem) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (NAME (reg, mem, sz),		\
 				     mem, INFO, init),			\
     __builtin_offsetof (struct tst_live_entry_mcontext, reg) },		\
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (NAME (reg, mem, sz),		\
 				     mem, INFO, 0) },			\
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (reg, mem, sz),		\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (NAME (reg, mem, sz),		\
 					   mem, INFO) },
 
 #define CASE(creg, reg, cmem, mem) \

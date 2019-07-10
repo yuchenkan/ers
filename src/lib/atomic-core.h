@@ -18,6 +18,15 @@
 #define __eri_atomic_and(e, sz, __r, __m) \
   lock ERI_PASTE (and, sz)	__r, __m
 
+#define __eri_atomic_or(e, sz, __r, __m) \
+  lock ERI_PASTE (or, sz)	__r, __m
+
+#define __eri_atomic_xor(e, sz, __r, __m) \
+  lock ERI_PASTE (xor, sz)	__r, __m
+
+#define __eri_atomic_xadd(e, sz, __r, __m) \
+  lock ERI_PASTE (xadd, sz)	__r, __m
+
 #define __eri_atomic_bts(e, sz, __off, __m) \
   lock ERI_PASTE (bts, sz)	__off, __m
 

@@ -7,19 +7,7 @@
 #include <live/tst/tst-registers.h>
 #include <live/tst/tst-entry-atomic.h>
 
-#define OP(reg, mem, sz) \
-  ERI_PASTE (ERI_PASTE2 (cmpxchg_, reg, _), ERI_PASTE2 (mem, _, sz))
-
-#define ASM_SIZE(sz, creg, reg, mem) \
-TST_LIVE_ENTRY_ATOMIC_ASM (OP (reg, mem, sz),				\
-	ERI_EVAL (ERI_PASTE (cmpxchg, sz)				\
-			%ERI_PASTE (ERI_, creg) (sz), (%mem)),		\
-	ERS_ATOMIC_CMPXCHG (0, sz, %ERI_PASTE (ERI_, creg) (sz), (%mem)))
-
-#define ASM(creg, reg, cmem, mem) \
-ERI_FOREACH_REG_SIZE (ASM_SIZE, creg, reg, mem)
-
-TST_FOREACH_GENERAL_REG2 (ASM)
+TST_LIVE_ENTRY_ATOMIC_COMMON2_TEXT (CMPXCHG, cmpxchg)
 
 struct caze
 {
@@ -75,8 +63,11 @@ static struct caze cases[] = {
 
 #define REG_IS_NOT_RAX(mem) ERI_PASTE (_REG_IS_NOT_RAX_, mem)
 
+#define NAME(reg, mem, sz) \
+  TST_LIVE_ENTRY_ATOMIC_COMMON2_TEXT_NAME (cmpxchg, reg, mem, sz)
+
 #define DO_CASE_SIZE(sz, reg, mem, val) \
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (NAME (reg, mem, sz),		\
 				     mem, INFO, init),			\
     ERI_PASTE (MASK_, sz), 0x123456789abcdef0, val }
 
@@ -84,9 +75,9 @@ static struct caze cases[] = {
   ERI_PP_IF (REG_IS_NOT_RAX (mem),					\
 	     DO_CASE_SIZE (sz, reg, mem, 0x123456789abcdef0),		\
 	     DO_CASE_SIZE (sz, reg, mem, 0x123456789abcdef1),)		\
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (OP (reg, mem, sz),			\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT (NAME (reg, mem, sz),		\
 				     mem, INFO, 0) },			\
-  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (OP (reg, mem, sz),		\
+  { TST_LIVE_ENTRY_ATOMIC_CASE_INIT_FAULT (NAME (reg, mem, sz),		\
 					   mem, INFO) },
 
 #define CASE(creg, reg, cmem, mem) \

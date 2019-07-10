@@ -652,6 +652,8 @@ ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
   if (code == ERI_OP_ATOMIC_LOAD) return eri_atomic_load (mem, 0);	\
   else if (code == ERI_OP_ATOMIC_XCHG)					\
     return eri_atomic_exchange (mem, val, 0);				\
+  else if (code == ERI_OP_ATOMIC_XADD)					\
+    return eri_atomic_xadd_x (mem, val, &regs->rflags, 0);		\
   else if (code == ERI_OP_ATOMIC_STORE)					\
     eri_atomic_store (mem, val, 0);					\
   else if (code == ERI_OP_ATOMIC_INC)					\
@@ -660,6 +662,12 @@ ERI_PASTE (atomic_, type) (uint16_t code, type *mem, uint64_t val,	\
     eri_atomic_dec_x (mem, &regs->rflags, 0);				\
   else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
     eri_atomic_cmpxchg_x (mem, &regs->rax, val, &regs->rflags, 0);	\
+  else if (code == ERI_OP_ATOMIC_AND)					\
+    eri_atomic_and_x (mem, val, &regs->rflags, 0);			\
+  else if (code == ERI_OP_ATOMIC_OR)					\
+    eri_atomic_or_x (mem, val, &regs->rflags, 0);			\
+  else if (code == ERI_OP_ATOMIC_XOR)					\
+    eri_atomic_xor_x (mem, val, &regs->rflags, 0);			\
   else eri_assert_unreachable ();					\
   return 0;								\
 }
@@ -699,7 +707,7 @@ do_atomic (struct eri_live_thread *th, uint16_t code, void *mem,
     *(uint32_t *) old_val = atomic_uint32_t (code, mem, val, regs);
   else if (size == 8)
     *(uint64_t *) old_val = atomic_uint64_t (code, mem, val, regs);
-  else eri_assert_unreachable ();
+  else eri_assert_unreachable (); /* XXX: invalid argument from user */
 
   eri_entry__reset_test_access (entry);
 
@@ -2503,7 +2511,8 @@ atomic (struct eri_live_thread *th)
 
   eri_live_thread_recorder__rec_atomic (th->rec, &rec);
 
-  if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG)
+  if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG
+      || code == ERI_OP_ATOMIC_XADD)
     eri_entry__atomic_interleave (entry, old_val);
 
   eri_entry__leave (entry);
