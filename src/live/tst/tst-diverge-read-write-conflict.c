@@ -5,7 +5,6 @@
 
 #include <common/debug.h>
 #include <tst/tst-atomic.h>
-#include <live/tst/tst-util.h>
 #include <live/tst/tst-diverge.h>
 
 static uint8_t a;

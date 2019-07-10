@@ -8,7 +8,6 @@
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
-#include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
 #define TST_LIVE_SIG_RACE_DEFINE_TST(init, what, seed, debug) \

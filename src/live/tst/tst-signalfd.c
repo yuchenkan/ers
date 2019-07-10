@@ -7,7 +7,6 @@
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
-#include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
 static eri_aligned16 uint8_t stack[1024 * 1024];

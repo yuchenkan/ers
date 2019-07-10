@@ -3,6 +3,14 @@
 
 #include <tst/tst-syscall.h>
 
+#define tst_yield(n) \
+  do {									\
+    typeof (n) _i;							\
+    typeof (n) _n = n;							\
+    for (_i = 0; _i < _n; ++_i) tst_assert_syscall (sched_yield);	\
+  } while (0)
+
+
 /* ~(SIGKILL_MASK | SIGSTOP_MASK) */
 #define TST_SIGSET_MASK			0xfffffffffffbfeff
 

@@ -4,15 +4,6 @@
 #include <lib/util.h>
 #include <lib/cpu.h>
 
-#include <tst/tst-syscall.h>
-
-#define tst_yield(n) \
-  do {									\
-    typeof (n) _i;							\
-    typeof (n) _n = n;							\
-    for (_i = 0; _i < _n; ++_i) tst_assert_syscall (sched_yield);	\
-  } while (0)
-
 #define tst_get_tls() \
   ({ void *_tls; asm ("movq\t%%fs:0, %0" : "=r" (_tls)); _tls; })
 

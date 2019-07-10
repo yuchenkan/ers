@@ -1,5 +1,4 @@
 #include <tst/tst-syscall.h>
-#include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
 static eri_noreturn void

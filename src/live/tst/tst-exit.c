@@ -7,7 +7,6 @@
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
-#include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
 
 static struct tst_rand rand;
