@@ -48,8 +48,10 @@ tst_live_start (void)
   eri_assert (v == 1);
   tst_atomic_dec (&v, 1);
   eri_assert (v == 0);
-  eri_assert (tst_atomic_xchg (&v, 0xf, 1) == 0);
+  tst_atomic_xchg (&v, &a, 1);
   eri_assert (v == 0xf);
+  eri_assert (a == 0);
+  a = 0xf;
   eri_assert (tst_atomic_cmpxchg (&v, &a, 0xff, 1));
   eri_assert (v == 0xff);
   eri_assert (a == 0xf);
@@ -59,8 +61,10 @@ tst_live_start (void)
   eri_assert (v == 0xff);
   tst_atomic_xor (&v, 0xff, 1);
   eri_assert (v == 0);
-  eri_assert (tst_atomic_xadd (&v, 0xff, 1) == 0);
+  a = 0xff;
+  tst_atomic_xadd (&v, &a, 1);
   eri_assert (v == 0xff);
+  eri_assert (a == 0);
 
   tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
   tst_assert_sys_exit (0);

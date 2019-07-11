@@ -45,20 +45,23 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_xcommon, _)(sz, _m, op, _r, b) \
   asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 0), %1))	\
-		: "+r" (_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
+		: "+r" (*_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
 
-#define m4_ns(atomic_xcommon)(op, m, v, b) \
-  ({ typeof (m) _m = m;							\
-     typeof (*_m) _r = (typeof (*_m)) (v);				\
-     _eri_atomic_switch_size (_m, m4_ns(atomic_xcommon, _), op, _r, b);	\
-     _r; })
+#define m4_ns(atomic_xcommon)(op, m, r, b) \
+  do {									\
+    typeof (m) _m = m;							\
+    typeof (_m) _r = (typeof (_m)) (r);				\
+    _eri_atomic_switch_size (_m, m4_ns(atomic_xcommon, _), op, _r, b);	\
+  } while (0)
 
-#define m4_ns(atomic_xadd)(m, v, b) \
-  m4_ns(atomic_xcommon) (xadd, m, v, b)
+#define m4_ns(atomic_xadd)(m, r, b) \
+  m4_ns(atomic_xcommon) (xadd, m, r, b)
 
 #define m4_ns(atomic_add_fetch)(m, v, b) \
   ({ typeof (*(m)) _v = (typeof (_v)) (v);				\
-     (typeof (_v)) (m4_ns(atomic_xadd) (m, _v, b) + _v); })
+     typeof (_v) _o = _v;						\
+     m4_ns(atomic_xadd) (m, &_v, b);					\
+     (typeof (_v)) (_o + _v); })
 
 #define m4_ns(atomic_inc_fetch)(m, b)	m4_ns(atomic_add_fetch) (m, 1, b)
 #define m4_ns(atomic_dec_fetch)(m, b)	m4_ns(atomic_add_fetch) (m, -1, b)
@@ -103,10 +106,12 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_bit_test_set)(m, off, b) \
   m4_ns(atomic_bts)(m, off, b) \
 
-#define m4_ns(atomic_xchg)(m, v, b) \
-  m4_ns(atomic_xcommon) (xchg, m, v, b)
+#define m4_ns(atomic_xchg)(m, r, b) \
+  m4_ns(atomic_xcommon) (xchg, m, r, b)
 
-#define m4_ns(atomic_exchange)(m, v, b)	m4_ns(atomic_xchg) (m, v, b)
+#define m4_ns(atomic_exchange)(m, v, b)	\
+  ({ typeof (*(m)) _v = (typeof (_v)) (v);				\
+     m4_ns(atomic_xchg) (m, &_v, b); _v; })
 
 #define m4_ns(atomic_cmpxchg, _)(sz, _m, _z, _a, _r, b) \
   asm volatile (ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
@@ -196,17 +201,16 @@ m4_include(`m4/util.m4')
 		ERI_STR (m4_ns(atomic_xadd, __) (1, sz,			\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 1), %2))	\
 		"; pushfq; popq\t%q0"					\
-		: "+r" (*_f), "+r" (_r), "+m" (*_m)			\
+		: "+r" (*_f), "+r" (*_r), "+m" (*_m)			\
 		: : "cc" ERI_PP_IF (b, m "memory"))
 
 #define m4_ns(atomic_xadd_x)(m, r, f, b) \
-  ({									\
+  do {									\
     typeof (m) _m = m;							\
-    typeof (*_m) _r = r;						\
+    typeof (_m) _r = r;							\
     uint64_t *_f = f;							\
     _eri_atomic_switch_size (_m, m4_ns(atomic_xadd_x, _),		\
 			     _r, _f, b);				\
-    _r;									\
-  })
+  } while (0);
 
 #endif

@@ -133,6 +133,13 @@ void eri_mkdir (const char *path);
 
 #define eri_atomic_hash(aligned, size)	(eri_hash (aligned) % (size))
 
+#define _eri_do_atomic_x(op, rflags, ...) \
+  do {									\
+    uint64_t *_rflags = rflags;						\
+    if (! _rflags) ERI_PASTE (eri_atomic_, op) (__VA_ARGS__, 0);	\
+    else ERI_PASTE2 (eri_atomic_, op, _x) (__VA_ARGS__, _rflags, 0);	\
+  } while (0)
+
 #define _ERI_DEFINE_DO_ATOMIC_TYPE(type) \
 static uint8_t								\
 ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
@@ -143,21 +150,24 @@ ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
   else if (code == ERI_OP_ATOMIC_XCHG)					\
     *(type *) old = eri_atomic_exchange (mem, val, 0);			\
   else if (code == ERI_OP_ATOMIC_XADD)					\
-    *(type *) old = eri_atomic_xadd_x (mem, val, rflags, 0);		\
+    {									\
+      *(type *) old = val;						\
+      _eri_do_atomic_x (xadd, rflags, mem, old);			\
+    }									\
   else if (code == ERI_OP_ATOMIC_STORE)					\
     eri_atomic_store (mem, val, 0);					\
   else if (code == ERI_OP_ATOMIC_INC)					\
-    eri_atomic_inc_x (mem, rflags, 0);					\
+    _eri_do_atomic_x (inc, rflags, mem);				\
   else if (code == ERI_OP_ATOMIC_DEC)					\
-    eri_atomic_dec_x (mem, rflags, 0);					\
+    _eri_do_atomic_x (dec, rflags, mem);				\
   else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
-    eri_atomic_cmpxchg_x (mem, old, val, rflags, 0);			\
+    _eri_do_atomic_x (cmpxchg, rflags, mem, old, val);			\
   else if (code == ERI_OP_ATOMIC_AND)					\
-    eri_atomic_and_x (mem, val, rflags, 0);				\
+    _eri_do_atomic_x (and, rflags, mem, val);				\
   else if (code == ERI_OP_ATOMIC_OR)					\
-    eri_atomic_or_x (mem, val, rflags, 0);				\
+    _eri_do_atomic_x (or, rflags, mem, val);				\
   else if (code == ERI_OP_ATOMIC_XOR)					\
-    eri_atomic_xor_x (mem, val, rflags, 0);				\
+    _eri_do_atomic_x (xor, rflags, mem, val);				\
   else return 0;							\
   return 1;								\
 }
