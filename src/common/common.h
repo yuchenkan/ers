@@ -10,6 +10,67 @@
 #include <lib/lock.h>
 #include <lib/syscall.h>
 
+#define ERI_OP_NOP		0
+#define ERI_OP_SYSCALL		1
+#define ERI_OP_SYNC_ASYNC	2
+
+#define ERI_OP_ATOMIC_START	3
+#define ERI_OP_ATOMIC_LOAD	3
+#define ERI_OP_ATOMIC_STORE	4
+#define ERI_OP_ATOMIC_INC	5
+#define ERI_OP_ATOMIC_DEC	6
+#define ERI_OP_ATOMIC_XCHG	7
+#define ERI_OP_ATOMIC_CMPXCHG	8
+#define ERI_OP_ATOMIC_AND	9
+#define ERI_OP_ATOMIC_OR	10
+#define ERI_OP_ATOMIC_XOR	11
+#define ERI_OP_ATOMIC_XADD	12
+#define ERI_OP_ATOMIC_END	13
+
+#define ERI_FOREACH_PUB_OP(p, ...) \
+  p (SYSCALL, ##__VA_ARGS__)						\
+  p (SYNC_ASYNC, ##__VA_ARGS__)						\
+									\
+  p (ATOMIC_LOAD, ##__VA_ARGS__)					\
+  p (ATOMIC_STORE ##__VA_ARGS__)					\
+  p (ATOMIC_INC, ##__VA_ARGS__)						\
+  p (ATOMIC_DEC, ##__VA_ARGS__)						\
+  p (ATOMIC_XCHG, ##__VA_ARGS__)					\
+  p (ATOMIC_CMPXCHG, ##__VA_ARGS__)					\
+  p (ATOMIC_AND, ##__VA_ARGS__)						\
+  p (ATOMIC_OR, ##__VA_ARGS__)						\
+  p (ATOMIC_XOR, ##__VA_ARGS__)						\
+  p (ATOMIC_XADD, ##__VA_ARGS__)
+
+#if 0
+#define ERI_ATOMIC_LOAD	0x1000
+#define ERI_ATOMIC_STORE	0x1001
+
+#define ERI_ATOMIC_INC		0x1002
+#define ERI_ATOMIC_DEC		0x1003
+#define ERI_ATOMIC_ADD		0x1004
+#define ERI_ATOMIC_SUB		0x1005
+#define ERI_ATOMIC_ADC		0x1006
+#define ERI_ATOMIC_SBB		0x1007
+#define ERI_ATOMIC_NEG		0x1008
+#define ERI_ATOMIC_AND		0x1009
+#define ERI_ATOMIC_OR		0x100a
+#define ERI_ATOMIC_XOR		0x100b
+#define ERI_ATOMIC_NOT		0x100c
+#define ERI_ATOMIC_BTC		0x100d
+#define ERI_ATOMIC_BTR		0x100e
+#define ERI_ATOMIC_BTS		0x100f
+#define ERI_ATOMIC_XCHG	0x1010
+#define ERI_ATOMIC_XADD	0x1011
+#define ERI_ATOMIC_CMPXCHG	0x1012
+#define ERI_ATOMIC_XCHG8B	0x1013
+#define ERI_ATOMIC_XCHG16B	0x1014
+#endif
+
+#define eri_op_is_atomic(code) \
+  ({ uint16_t _code = code;						\
+     _code >= ERI_OP_ATOMIC_START && _code < ERI_OP_ATOMIC_END; })
+
 struct eri_mtpool;
 
 #define eri_build_path_len(path, name, id) \
@@ -71,6 +132,59 @@ void eri_mkdir (const char *path);
      eri_atomic_aligned (_mem) != eri_atomic_aligned2 (_mem, size); })
 
 #define eri_atomic_hash(aligned, size)	(eri_hash (aligned) % (size))
+
+#define _ERI_DEFINE_DO_ATOMIC_TYPE(type) \
+static uint8_t								\
+ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
+			uint64_t val, void *old, uint64_t *rflags)	\
+{									\
+  if (code == ERI_OP_ATOMIC_LOAD)					\
+    *(type *) old = eri_atomic_load (mem, 0);				\
+  else if (code == ERI_OP_ATOMIC_XCHG)					\
+    *(type *) old = eri_atomic_exchange (mem, val, 0);			\
+  else if (code == ERI_OP_ATOMIC_XADD)					\
+    *(type *) old = eri_atomic_xadd_x (mem, val, rflags, 0);		\
+  else if (code == ERI_OP_ATOMIC_STORE)					\
+    eri_atomic_store (mem, val, 0);					\
+  else if (code == ERI_OP_ATOMIC_INC)					\
+    eri_atomic_inc_x (mem, rflags, 0);					\
+  else if (code == ERI_OP_ATOMIC_DEC)					\
+    eri_atomic_dec_x (mem, rflags, 0);					\
+  else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
+    eri_atomic_cmpxchg_x (mem, old, val, rflags, 0);			\
+  else if (code == ERI_OP_ATOMIC_AND)					\
+    eri_atomic_and_x (mem, val, rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_OR)					\
+    eri_atomic_or_x (mem, val, rflags, 0);				\
+  else if (code == ERI_OP_ATOMIC_XOR)					\
+    eri_atomic_xor_x (mem, val, rflags, 0);				\
+  else return 0;							\
+  return 1;								\
+}
+
+_ERI_DEFINE_DO_ATOMIC_TYPE (uint8_t)
+_ERI_DEFINE_DO_ATOMIC_TYPE (uint16_t)
+_ERI_DEFINE_DO_ATOMIC_TYPE (uint32_t)
+_ERI_DEFINE_DO_ATOMIC_TYPE (uint64_t)
+
+static eri_unused uint8_t
+eri_do_atomic (uint16_t code, void *mem, uint8_t size,
+	       uint64_t val, void *old, uint64_t *rflags)
+{
+  uint64_t dummy = 0;
+  old = old ? : &dummy;
+
+  /* XXX: cmpxchg16b */
+  if (size == 1)
+    return _eri_do_atomic_uint8_t (code, mem, val, old, rflags);
+  else if (size == 2)
+    return _eri_do_atomic_uint16_t (code, mem, val, old, rflags);
+  else if (size == 4)
+    return _eri_do_atomic_uint32_t (code, mem, val, old, rflags);
+  else if (size == 8)
+    return _eri_do_atomic_uint64_t (code, mem, val, old, rflags);
+  return 0;
+}
 
 #define ERI_FOREACH_SIG_ACT_TYPE(p, ...) \
   p (IGNORE, ##__VA_ARGS__)						\
@@ -259,6 +373,5 @@ eri_syscall_futex_check_wake2 (uint32_t op, uint32_t mask,
   return eri_syscall_futex_check_wake (op, mask, user_addr, page_size)
 	? : eri_syscall_futex_check_user_addr (user_addr2, page_size);
 }
-
 
 #endif

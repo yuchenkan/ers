@@ -19,7 +19,7 @@ sig_handler (int32_t sig)
   eri_info ("sig\n");
 }
 
-static int32_t v;
+static int32_t v, a = 0xf;
 
 eri_noreturn void
 tst_live_start (void)
@@ -50,8 +50,9 @@ tst_live_start (void)
   eri_assert (v == 0);
   eri_assert (tst_atomic_xchg (&v, 0xf, 1) == 0);
   eri_assert (v == 0xf);
-  eri_assert (tst_atomic_cmpxchg (&v, 0xf, 0xff, 1));
+  eri_assert (tst_atomic_cmpxchg (&v, &a, 0xff, 1));
   eri_assert (v == 0xff);
+  eri_assert (a == 0xf);
   tst_atomic_and (&v, 0xf, 1);
   eri_assert (v == 0xf);
   tst_atomic_or (&v, 0xff, 1);

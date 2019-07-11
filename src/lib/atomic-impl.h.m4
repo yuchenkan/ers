@@ -42,17 +42,23 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_inc)(m, b)	m4_ns(atomic_inc_dec, _) (m, b, INC, inc)
 #define m4_ns(atomic_dec)(m, b)	m4_ns(atomic_inc_dec, _) (m, b, DEC, dec)
 
-#define m4_ns(atomic_xadd, _)(sz, _m, _v, b) \
-  asm volatile (ERI_STR (m4_ns(atomic_xadd, __) (1, sz,			\
+#define m4_ns(atomic_xcommon, _)(sz, _m, op, _r, b) \
+  asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 0), %1))	\
-		: "+r" (_v), "+m" (*_m) : : "cc" ERI_PP_IF (b, , "memory"))
+		: "+r" (_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
+
+#define m4_ns(atomic_xcommon)(op, m, v, b) \
+  ({ typeof (m) _m = m;							\
+     typeof (*_m) _r = (typeof (*_m)) (v);				\
+     _eri_atomic_switch_size (_m, m4_ns(atomic_xcommon, _), op, _r, b);	\
+     _r; })
+
+#define m4_ns(atomic_xadd)(m, v, b) \
+  m4_ns(atomic_xcommon) (xadd, m, v, b)
 
 #define m4_ns(atomic_add_fetch)(m, v, b) \
-  ({ typeof (m) _m = m;							\
-     typeof (*_m) _v = (typeof (*_m)) (v);				\
-     typeof (*_m) _r = _v;						\
-     _eri_atomic_switch_size (_m, m4_ns(atomic_xadd, _), _v, b);	\
-     (typeof (*_m)) (_r + _v); })
+  ({ typeof (*(m)) _v = (typeof (_v)) (v);				\
+     (typeof (_v)) (m4_ns(atomic_xadd) (m, _v, b) + _v); })
 
 #define m4_ns(atomic_inc_fetch)(m, b)	m4_ns(atomic_add_fetch) (m, 1, b)
 #define m4_ns(atomic_dec_fetch)(m, b)	m4_ns(atomic_add_fetch) (m, -1, b)
@@ -97,20 +103,6 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_bit_test_set)(m, off, b) \
   m4_ns(atomic_bts)(m, off, b) \
 
-#define m4_ns(atomic_xcommon, _)(sz, _m, op, _r, b) \
-  asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
-				%_ERI_ASM_TEMPLATE_SIZE (sz, 0), %1))	\
-		: "+r" (_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
-
-#define m4_ns(atomic_xcommon)(op, m, v, b) \
-  ({ typeof (m) _m = m;							\
-     typeof (*_m) _r = (typeof (*_m)) (v);				\
-     _eri_atomic_switch_size (_m, m4_ns(atomic_xcommon, _), op, _r, b);	\
-     _r; })
-
-#define m4_ns(atomic_xadd)(m, v, b) \
-  m4_ns(atomic_xcommon) (xadd, m, v, b)
-
 #define m4_ns(atomic_xchg)(m, v, b) \
   m4_ns(atomic_xcommon) (xchg, m, v, b)
 
@@ -119,12 +111,12 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_cmpxchg, _)(sz, _m, _z, _a, _r, b) \
   asm volatile (ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %1))	\
-		: "=@ccz" (_z), "+m" (*_m), "+a" (_a) : "r" (_r)	\
+		: "=@ccz" (_z), "+m" (*_m), "+a" (*_a) : "r" (_r)	\
 		ERI_PP_IF (b, : "memory"))
 
 #define m4_ns(atomic_cmpxchg)(m, a, r, b) \
   ({ typeof (m) _m = m;							\
-     typeof (*_m) _a = (typeof (*_m)) (a);				\
+     typeof (_m) _a = (typeof (_m)) (a);				\
      typeof (*_m) _r = (typeof (*_m)) (r);				\
      uint8_t _z;							\
      _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg, _),		\
@@ -132,7 +124,8 @@ m4_include(`m4/util.m4')
      _z; })
 
 #define m4_ns(atomic_compare_exchange)(m, e, d, b) \
-  m4_ns(atomic_cmpxchg)(m, e, d, b) \
+  ({ typeof (m) _e = (typeof (_e)) (e);					\
+     m4_ns(atomic_cmpxchg)(m, &_e, d, b); })
 
 #define m4_ns(atomic_inc_dec_x, __)(sz, _m, _f, b, cinc, inc) \
   asm volatile ("pushq\t%q0; popfq; "					\
@@ -154,22 +147,22 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_dec_x)(m, f, b) \
   m4_ns(atomic_inc_dec_x, _) (m, f, b, DEC, dec)
 
-#define m4_ns(atomic_cmpxchg_x, _)(sz, _m, _a, _s, _f, b) \
+#define m4_ns(atomic_cmpxchg_x, _)(sz, _m, _a, _r, _f, b) \
   asm volatile ("pushq\t%q0; popfq; "					\
 		ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %1))	\
 		";pushfq; popq\t%q0"					\
-		: "+r" (*_f), "+m" (*_m), "+a" (*_a) : "r" (_s)		\
+		: "+r" (*_f), "+m" (*_m), "+a" (*_a) : "r" (_r)		\
 		: "cc" ERI_PP_IF (b, , "memory"))
 
-#define m4_ns(atomic_cmpxchg_x)(m, a, s, f, b) \
+#define m4_ns(atomic_cmpxchg_x)(m, a, r, f, b) \
   do {									\
     typeof (m) _m = m;							\
     uint64_t *_a = a;							\
-    typeof (*_m) _s = (typeof (*_m)) (s);				\
+    typeof (*_m) _r = (typeof (*_m)) (r);				\
     uint64_t *_f = f;							\
     _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg_x, _),		\
-			     _a, _s, _f, b);				\
+			     _a, _r, _f, b);				\
   } while (0)
 
 #define m4_ns(atomic_common2_x, _)(sz, _m, op, _v, _f, b) \

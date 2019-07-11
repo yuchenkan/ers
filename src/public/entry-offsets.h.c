@@ -1,6 +1,7 @@
 #include <lib/util.h>
 #include <lib/offset.h>
 
+#include <common/common.h>
 #include <common/entry.h>
 
 #define EN_OFFSET(name, member) \

@@ -121,12 +121,29 @@ atomic_post_interleave (struct eri_entry *entry)
   eri_entry__leave (entry);
 }
 
-eri_noreturn void
-eri_entry__atomic_interleave (struct eri_entry *entry, uint64_t val)
+static eri_noreturn void
+atomic_interleave (struct eri_entry *entry, uint64_t val)
 {
   entry->_atomic.val = val;
   entry->_entry = atomic_post_interleave;
   eri_entry__do_leave (entry);
+}
+
+eri_noreturn void
+eri_entry__atomic_leave (struct eri_entry *entry, uint64_t val)
+{
+  uint16_t code = entry->_op.code;
+  uint8_t size = eri_entry__get_atomic_size (entry);
+  struct eri_registers *regs = &entry->_regs;
+
+  if (code == ERI_OP_ATOMIC_CMPXCHG && size == 4
+      && ! (regs->rflags & ERI_RFLAGS_ZF)) regs->rax &= (uint32_t) -1;
+
+  if (code == ERI_OP_ATOMIC_LOAD || code == ERI_OP_ATOMIC_XCHG
+      || code == ERI_OP_ATOMIC_XADD)
+    atomic_interleave (entry, val);
+
+  eri_entry__leave (entry);
 }
 
 static void

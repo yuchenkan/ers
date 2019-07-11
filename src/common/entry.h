@@ -9,67 +9,6 @@
 #include <lib/syscall.h>
 #include <lib/malloc.h>
 
-#define ERI_OP_NOP		0
-#define ERI_OP_SYSCALL		1
-#define ERI_OP_SYNC_ASYNC	2
-
-#define ERI_OP_ATOMIC_START	3
-#define ERI_OP_ATOMIC_LOAD	3
-#define ERI_OP_ATOMIC_STORE	4
-#define ERI_OP_ATOMIC_INC	5
-#define ERI_OP_ATOMIC_DEC	6
-#define ERI_OP_ATOMIC_XCHG	7
-#define ERI_OP_ATOMIC_CMPXCHG	8
-#define ERI_OP_ATOMIC_AND	9
-#define ERI_OP_ATOMIC_OR	10
-#define ERI_OP_ATOMIC_XOR	11
-#define ERI_OP_ATOMIC_XADD	12
-#define ERI_OP_ATOMIC_END	13
-
-#define ERI_FOREACH_PUB_OP(p, ...) \
-  p (SYSCALL, ##__VA_ARGS__)						\
-  p (SYNC_ASYNC, ##__VA_ARGS__)						\
-									\
-  p (ATOMIC_LOAD, ##__VA_ARGS__)					\
-  p (ATOMIC_STORE ##__VA_ARGS__)					\
-  p (ATOMIC_INC, ##__VA_ARGS__)						\
-  p (ATOMIC_DEC, ##__VA_ARGS__)						\
-  p (ATOMIC_XCHG, ##__VA_ARGS__)					\
-  p (ATOMIC_CMPXCHG, ##__VA_ARGS__)					\
-  p (ATOMIC_AND, ##__VA_ARGS__)						\
-  p (ATOMIC_OR, ##__VA_ARGS__)						\
-  p (ATOMIC_XOR, ##__VA_ARGS__)						\
-  p (ATOMIC_XADD, ##__VA_ARGS__)
-
-#if 0
-#define ERI_ATOMIC_LOAD	0x1000
-#define ERI_ATOMIC_STORE	0x1001
-
-#define ERI_ATOMIC_INC		0x1002
-#define ERI_ATOMIC_DEC		0x1003
-#define ERI_ATOMIC_ADD		0x1004
-#define ERI_ATOMIC_SUB		0x1005
-#define ERI_ATOMIC_ADC		0x1006
-#define ERI_ATOMIC_SBB		0x1007
-#define ERI_ATOMIC_NEG		0x1008
-#define ERI_ATOMIC_AND		0x1009
-#define ERI_ATOMIC_OR		0x100a
-#define ERI_ATOMIC_XOR		0x100b
-#define ERI_ATOMIC_NOT		0x100c
-#define ERI_ATOMIC_BTC		0x100d
-#define ERI_ATOMIC_BTR		0x100e
-#define ERI_ATOMIC_BTS		0x100f
-#define ERI_ATOMIC_XCHG	0x1010
-#define ERI_ATOMIC_XADD	0x1011
-#define ERI_ATOMIC_CMPXCHG	0x1012
-#define ERI_ATOMIC_XCHG8B	0x1013
-#define ERI_ATOMIC_XCHG16B	0x1014
-#endif
-
-#define eri_op_is_atomic(code) \
-  ({ uint16_t _code = code;						\
-     _code >= ERI_OP_ATOMIC_START && _code < ERI_OP_ATOMIC_END; })
-
 struct eri_access;
 
 struct eri_entry
@@ -180,7 +119,7 @@ eri_noreturn void eri_entry__syscall_leave (
     if (eri_syscall_is_error (_res))					\
       eri_entry__syscall_leave (_entry, _res);				\
   } while (0)
-eri_noreturn void eri_entry__atomic_interleave (
+eri_noreturn void eri_entry__atomic_leave (
 			struct eri_entry *entry, uint64_t val);
 #define eri_entry__restart(entry) \
   do { struct eri_entry *_entry = entry;				\
