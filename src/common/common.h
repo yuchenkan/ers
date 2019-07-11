@@ -14,7 +14,7 @@
 #define ERI_OP_SYSCALL		1
 #define ERI_OP_SYNC_ASYNC	2
 
-#define ERI_OP_ATOMIC_START	3
+#define ERI_OP_ATOMIC_PUB_START	3
 #define ERI_OP_ATOMIC_LOAD	3
 #define ERI_OP_ATOMIC_STORE	4
 #define ERI_OP_ATOMIC_INC	5
@@ -25,7 +25,11 @@
 #define ERI_OP_ATOMIC_OR	10
 #define ERI_OP_ATOMIC_XOR	11
 #define ERI_OP_ATOMIC_XADD	12
-#define ERI_OP_ATOMIC_END	13
+#define ERI_OP_ATOMIC_PUB_END	13
+
+#define ERI_OP_ATOMIC_XAND	256
+#define ERI_OP_ATOMIC_X_OR	257
+#define ERI_OP_ATOMIC_XXOR	258
 
 #define ERI_FOREACH_PUB_OP(p, ...) \
   p (SYSCALL, ##__VA_ARGS__)						\
@@ -67,9 +71,9 @@
 #define ERI_ATOMIC_XCHG16B	0x1014
 #endif
 
-#define eri_op_is_atomic(code) \
+#define eri_op_is_pub_atomic(code) \
   ({ uint16_t _code = code;						\
-     _code >= ERI_OP_ATOMIC_START && _code < ERI_OP_ATOMIC_END; })
+     _code >= ERI_OP_ATOMIC_PUB_START && _code < ERI_OP_ATOMIC_PUB_END; })
 
 struct eri_mtpool;
 
@@ -140,35 +144,52 @@ void eri_mkdir (const char *path);
     else ERI_PASTE2 (eri_atomic_, op, _x) (__VA_ARGS__, _rflags, 0);	\
   } while (0)
 
+#define _eri_do_atomic_cas(type, mem, op, val) \
+  ({									\
+    type *_mem = mem;							\
+    type _t = eri_atomic_load (_mem, 0);				\
+    while (! eri_atomic_compare_exchange (_mem, _t, _t op (val), 0))	\
+      _t = eri_atomic_load (_mem, 0);					\
+    _t;									\
+  })
+
 #define _ERI_DEFINE_DO_ATOMIC_TYPE(type) \
 static uint8_t								\
 ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
 			uint64_t val, void *old, uint64_t *rflags)	\
 {									\
-  if (code == ERI_OP_ATOMIC_LOAD)					\
-    *(type *) old = eri_atomic_load (mem, 0);				\
-  else if (code == ERI_OP_ATOMIC_XCHG)					\
-    *(type *) old = eri_atomic_exchange (mem, val, 0);			\
-  else if (code == ERI_OP_ATOMIC_XADD)					\
+  switch (code)								\
     {									\
+    case ERI_OP_ATOMIC_LOAD:						\
+      *(type *) old = eri_atomic_load (mem, 0); break;			\
+    case ERI_OP_ATOMIC_XCHG:						\
+      *(type *) old = eri_atomic_exchange (mem, val, 0); break;		\
+    case ERI_OP_ATOMIC_XADD:						\
       *(type *) old = val;						\
       _eri_do_atomic_x (xadd, rflags, mem, old);			\
+      break;								\
+    case ERI_OP_ATOMIC_STORE:						\
+      eri_atomic_store (mem, val, 0); break;				\
+    case ERI_OP_ATOMIC_INC:						\
+      _eri_do_atomic_x (inc, rflags, mem); break;			\
+    case ERI_OP_ATOMIC_DEC:						\
+      _eri_do_atomic_x (dec, rflags, mem); break;			\
+    case ERI_OP_ATOMIC_CMPXCHG:						\
+      _eri_do_atomic_x (cmpxchg, rflags, mem, old, val); break;		\
+    case ERI_OP_ATOMIC_AND:						\
+      _eri_do_atomic_x (and, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_OR:						\
+      _eri_do_atomic_x (or, rflags, mem, val); break;			\
+    case ERI_OP_ATOMIC_XOR:						\
+      _eri_do_atomic_x (xor, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_XAND:						\
+      *(type *) old = _eri_do_atomic_cas (type, mem, &, val); break;	\
+    case ERI_OP_ATOMIC_X_OR:						\
+      *(type *) old = _eri_do_atomic_cas (type, mem, |, val); break;	\
+    case ERI_OP_ATOMIC_XXOR:						\
+      *(type *) old = _eri_do_atomic_cas (type, mem, ^, val); break;	\
+    default: return 0;							\
     }									\
-  else if (code == ERI_OP_ATOMIC_STORE)					\
-    eri_atomic_store (mem, val, 0);					\
-  else if (code == ERI_OP_ATOMIC_INC)					\
-    _eri_do_atomic_x (inc, rflags, mem);				\
-  else if (code == ERI_OP_ATOMIC_DEC)					\
-    _eri_do_atomic_x (dec, rflags, mem);				\
-  else if (code == ERI_OP_ATOMIC_CMPXCHG)				\
-    _eri_do_atomic_x (cmpxchg, rflags, mem, old, val);			\
-  else if (code == ERI_OP_ATOMIC_AND)					\
-    _eri_do_atomic_x (and, rflags, mem, val);				\
-  else if (code == ERI_OP_ATOMIC_OR)					\
-    _eri_do_atomic_x (or, rflags, mem, val);				\
-  else if (code == ERI_OP_ATOMIC_XOR)					\
-    _eri_do_atomic_x (xor, rflags, mem, val);				\
-  else return 0;							\
   return 1;								\
 }
 
@@ -361,7 +382,7 @@ static eri_unused uint64_t
 eri_syscall_futex_check_user_addr (uint64_t user_addr, uint64_t page_size)
 {
   if (user_addr % sizeof (int32_t)) return ERI_EINVAL;
-  /* XXX */
+  /* XXX: limit */
   if (user_addr + sizeof (int32_t) > ((1l << 47) - page_size))
     return ERI_EFAULT;
   return 0;
@@ -382,6 +403,20 @@ eri_syscall_futex_check_wake2 (uint32_t op, uint32_t mask,
 {
   return eri_syscall_futex_check_wake (op, mask, user_addr, page_size)
 	? : eri_syscall_futex_check_user_addr (user_addr2, page_size);
+}
+
+static eri_unused uint16_t
+eri_syscall_futex_atomic_code_from_wake_op (uint16_t op)
+{
+  switch (op)
+    {
+    case ERI_FUTEX_OP_SET: return ERI_OP_ATOMIC_XCHG;
+    case ERI_FUTEX_OP_ADD: return ERI_OP_ATOMIC_XADD;
+    case ERI_FUTEX_OP_OR: return ERI_OP_ATOMIC_X_OR;
+    case ERI_FUTEX_OP_ANDN: return ERI_OP_ATOMIC_XAND; /* &= ~op_arg */
+    case ERI_FUTEX_OP_XOR: return ERI_OP_ATOMIC_XXOR;
+    default: eri_assert_unreachable ();
+    }
 }
 
 #endif

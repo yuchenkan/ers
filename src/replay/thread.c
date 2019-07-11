@@ -906,7 +906,7 @@ syscall_leave_if_error (struct thread *th, uint8_t next, uint64_t res)
 #define SYSCALL_TO_IMPL(name) \
 DEFINE_SYSCALL (name) { syscall_leave (th, 0, ERI_ENOSYS); }
 
-static uint64_t
+static eri_unused uint64_t
 syscall_fetch_result (struct thread *th)
 {
   uint64_t res;
@@ -2100,7 +2100,7 @@ DEFINE_SYSCALL (futex)
     {
       syscall_leave_if_error (th, 0,
 	eri_syscall_futex_check_user_addr (user_addr, page_size));
-      syscall_leave (th, 1, syscall_fetch_result (th));
+      syscall_do_res_in (th);
     }
 
   syscall_leave (th, 0, ERI_ENOSYS);
@@ -2260,7 +2260,7 @@ main_entry (struct eri_entry *entry)
 	   hash_regs (th->log.file, eri_entry__get_regs (entry)));
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
-  else if (eri_op_is_atomic (code)) atomic (th);
+  else if (eri_op_is_pub_atomic (code)) atomic (th);
   else eri_assert_unreachable ();
 }
 
@@ -2386,7 +2386,7 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
 
   if (eri_entry__sig_is_access_fault (entry, info))
     {
-      if (eri_op_is_atomic (code))
+      if (eri_op_is_pub_atomic (code))
 	eri_entry__set_signal (entry, info, ctx);
 
       eri_entry__sig_access_fault (entry, &ctx->mctx, info->fault.addr);

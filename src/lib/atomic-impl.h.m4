@@ -129,7 +129,7 @@ m4_include(`m4/util.m4')
      _z; })
 
 #define m4_ns(atomic_compare_exchange)(m, e, d, b) \
-  ({ typeof (m) _e = (typeof (_e)) (e);					\
+  ({ typeof (*(m)) _e = (typeof (_e)) (e);				\
      m4_ns(atomic_cmpxchg)(m, &_e, d, b); })
 
 #define m4_ns(atomic_inc_dec_x, __)(sz, _m, _f, b, cinc, inc) \
