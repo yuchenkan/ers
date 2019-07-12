@@ -2115,18 +2115,14 @@ syscall_futex_check_wait (struct eri_live_thread *th, uint64_t user_addr,
 }
 
 static struct futex *
-syscall_get_or_create_futex (struct eri_mtpool *pool,
-			     struct futex_slot *slot, uint64_t user_addr)
+syscall_create_futex (struct eri_mtpool *pool,
+		      struct futex_slot *slot, uint64_t user_addr)
 {
-  struct futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
-  if (! futex)
-    {
-      futex = eri_assert_mtmalloc (pool, sizeof *futex);
-      futex->user_addr = user_addr;
-      ERI_LST_INIT_LIST (futex_waiter, futex);
-      ERI_LST_INIT_LIST (futex_pi_waiter, futex);
-      futex_rbt_insert (slot, futex);
-    }
+  struct futex *futex = eri_assert_mtmalloc (pool, sizeof *futex);
+  futex->user_addr = user_addr;
+  ERI_LST_INIT_LIST (futex_waiter, futex);
+  ERI_LST_INIT_LIST (futex_pi_waiter, futex);
+  futex_rbt_insert (slot, futex);
   return futex;
 }
 
@@ -2160,6 +2156,7 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
 
   struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
 
+  // TODO
   int32_t cur;
   if (! syscall_futex_load_user (th, user_addr, &cur))
     {
@@ -2172,8 +2169,19 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
       eri_assert_unlock (&slot->lock);
       eri_entry__syscall_leave (entry, ERI_EAGAIN);
     }
-  struct futex *futex = syscall_get_or_create_futex (group->pool,
-						     slot, user_addr);
+
+  struct futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
+
+  uint64_t res;
+  if (futex && futex_pi_waiter_lst_get_size (futex))
+    {
+      res = ERI_EINVAL;
+      eri_assert_unlock (&slot->lock);
+      goto record;
+    }
+
+   if (! futex) futex = syscall_create_futex (group->pool, slot, user_addr);
+
   th->futex_waiter.lock = 1;
   th->futex_waiter.mask = mask;
   futex_waiter_lst_append (futex, &th->futex_waiter);
@@ -2185,7 +2193,7 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
       ERI_FUTEX_WAIT_PRIVATE | (op & ERI_FUTEX_CLOCK_REALTIME), 1,
       user_timeout ? (uint64_t) &timeout : 0 }
   };
-  uint64_t res = eri_entry__sys_syscall_interruptible (entry, &args);
+  res = eri_entry__sys_syscall_interruptible (entry, &args);
   if (res == ERI_EAGAIN) res = 0;
   else if (eri_syscall_is_error (res))
     {
@@ -2202,6 +2210,7 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
 
   if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
 
+record:
   syscall_record_res_in (th, res);
   eri_entry__syscall_leave (entry, res);
 }
@@ -2287,16 +2296,20 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 
   struct futex *futex = futex_rbt_get (slots[0], &user_addr, ERI_RBT_EQ);
 
-  uint64_t res = 0;
-  if (! futex) goto out;
+  uint64_t res;
+  if (! futex) { res = 0; goto out; }
 
   res = syscall_futex_do_wake (th->log.file, futex, val, -1);
   if (syscall_may_remove_free_futex (pool, slots[0], futex)
       || eri_syscall_is_error (res) || slots[0] == slots[1] || val2 == 0)
     goto out;
 
-  struct futex *futex2 = syscall_get_or_create_futex (pool,
-						      slots[1], user_addr2);
+  struct futex *futex2 = futex_rbt_get (slots[1], &user_addr2, ERI_RBT_EQ);
+  if (futex2 && futex_pi_waiter_lst_get_size (futex2))
+    { res = ERI_EINVAL; goto out; }
+
+  if (! futex2) futex2 = syscall_create_futex (pool, slots[1], user_addr2);
+
   struct futex_waiter *w, *nw;
   int32_t i = val2;
   ERI_LST_FOREACH_SAFE (futex_waiter, futex, w, nw)
@@ -2404,15 +2417,20 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
     syscall_futex_check_wait (th, user_addr, user_timeout, &timeout));
 
   struct eri_live_thread_group *group = th->group;
+  struct eri_mtpool *pool;
 
   struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
 
-  // TODO
+  struct futex *futex = futex_rbt_get (slot, &user_addr2, ERI_RBT_EQ);
+  if (futex && futex_waiter_lst_get_size (futex))
+    { res = ERI_EINVAL; goto out; }
 
-  struct futex *futex = syscall_get_or_create_futex (pool, slot, user_addr2);
-  if (futex_waiter_lst_get_size (futex)) goto out;
+  if (! futex) futex = syscall_create_futex (pool, slot, user_addr);
+
+
 
 out:
+  eri_assert_unlock (slot->futex);
 #endif
   eri_assert_unreachable ();
 }
