@@ -957,8 +957,7 @@ syscall_fetch_res_io (struct thread *th)
       || ! try_unserialize (syscall_res_io_record, th, &rec)
       || ! io_out (th, rec.out)) diverged (th);
 
-  struct eri_syscall_res_in_record res = { rec.result, rec.in };
-  return res;
+  return rec.res;
 }
 
 static eri_noreturn void
@@ -1093,14 +1092,14 @@ DEFINE_SYSCALL (uname)
 
   if (! check_magic (th, ERI_SYSCALL_UNAME_MAGIC)
       || ! try_unserialize (syscall_uname_record, th, &rec)
-      || eri_syscall_is_non_fault_error (rec.result)) diverged (th);
+      || eri_syscall_is_non_fault_error (rec.res.result)) diverged (th);
 
   struct eri_utsname *user_utsname = (void *) regs->rdi;
   if (copy_obj_to_user (th, user_utsname, &rec.utsname)
-	!= (rec.result != ERI_EFAULT)
-      || ! io_in (th, rec.in)) diverged (th);
+	!= (rec.res.result != ERI_EFAULT)
+      || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.result);
+  syscall_leave (th, 1, rec.res.result);
 }
 
 SYSCALL_TO_IMPL (sysinfo)
@@ -1280,10 +1279,10 @@ DEFINE_SYSCALL (rt_sigpending)
   if (! check_magic (th, ERI_SYSCALL_RT_SIGPENDING_MAGIC)
       || ! try_unserialize (syscall_rt_sigpending_record, th, &rec)
       || copy_to_user (th, (void *) regs->rdi, &rec.set, ERI_SIG_SETSIZE)
-		!= (rec.result != ERI_EFAULT)
-      || ! io_in (th, rec.in)) diverged (th);
+		!= (rec.res.result != ERI_EFAULT)
+      || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.result);
+  syscall_leave (th, 1, rec.res.result);
 }
 
 static eri_noreturn void
@@ -1324,12 +1323,12 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   struct eri_syscall_rt_sigtimedwait_record rec;
   if (! check_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
       || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec)
-      || (user_info && eri_syscall_is_fault_or_ok (rec.result)
+      || (user_info && eri_syscall_is_fault_or_ok (rec.res.result)
 	  && copy_obj_to_user (th, user_info, &rec.info)
-		!= (rec.result != ERI_EFAULT))
-      || ! io_in (th, rec.in)) diverged (th);
+		!= (rec.res.result != ERI_EFAULT))
+      || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.result);
+  syscall_leave (th, 1, rec.res.result);
 }
 
 DEFINE_SYSCALL (kill) { syscall_do_res_io (th); }
@@ -1662,30 +1661,30 @@ syscall_do_write (SYSCALL_PARAMS)
   if (! io_out (th, rec.out)) { div = 1; goto out; };
 
   struct eri_access acc;
-  if (rec.result == ERI_EFAULT)
+  if (rec.res.result == ERI_EFAULT)
     {
       eri_set_write (&acc, writev ? (uint64_t) iov->base : buf, 1);
       update_access (th, &acc, 1);
       goto out;
     }
 
-  if (eri_syscall_is_error (rec.result) || ! rec.result) goto out;
+  if (eri_syscall_is_error (rec.res.result) || ! rec.res.result) goto out;
 
-  if (rec.result > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
+  if (rec.res.result > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
     { div = 1; goto out; }
 
   if (! writev)
     {
-      eri_set_write (&acc, buf, rec.result);
+      eri_set_write (&acc, buf, rec.res.result);
       update_access (th, &acc, 1);
     }
   else
     {
       uint64_t c = 0;
       struct eri_iovec *v = iov;
-      while (c < rec.result)
+      while (c < rec.res.result)
 	{
-	  uint64_t s = eri_min (v->len, rec.result - c);
+	  uint64_t s = eri_min (v->len, rec.res.result - c);
 	  eri_set_write (&acc, (uint64_t) (v++)->base, s);
 	  update_access (th, &acc, 1);
 	  c += s;
@@ -1694,7 +1693,7 @@ syscall_do_write (SYSCALL_PARAMS)
 
 out:
   if (writev) eri_entry__syscall_free_rw_iov (th->entry, iov);
-  syscall_div_in_leave (th, div, rec.in, rec.result);
+  syscall_div_in_leave (th, div, rec.res.in, rec.res.result);
 }
 
 DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
@@ -1738,7 +1737,7 @@ syscall_do_stat (SYSCALL_PARAMS)
   if (! check_magic (th, ERI_SYSCALL_STAT_MAGIC)
       || ! try_unserialize (syscall_stat_record, th, &rec)) diverged (th);
 
-  uint64_t res = rec.result;
+  uint64_t res = rec.res.result;
   if (nr != __NR_fstat)
     {
       const char *user_path = (void *) (nr == __NR_newfstatat
@@ -1752,7 +1751,7 @@ syscall_do_stat (SYSCALL_PARAMS)
 		!= (res != ERI_EFAULT))) diverged (th);
 
 err:
-  if (! io_in (th, rec.in)) diverged (th);
+  if (! io_in (th, rec.res.in)) diverged (th);
 
   syscall_leave (th, 1, res);
 }

@@ -619,8 +619,7 @@ eri_serialize_syscall_res_io_record (eri_file_t file,
 			const struct eri_syscall_res_io_record *rec)
 {
   eri_serialize_uint64 (file, rec->out);
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
+  eri_serialize_syscall_res_in_record (file, &rec->res);
 }
 
 uint8_t
@@ -628,8 +627,7 @@ eri_try_unserialize_syscall_res_io_record (eri_file_t file,
 			struct eri_syscall_res_io_record *rec)
 {
   return eri_try_unserialize_uint64 (file, &rec->out)
-	 && eri_try_unserialize_uint64 (file, &rec->result)
-	 && eri_try_unserialize_uint64 (file, &rec->in);
+	 && eri_try_unserialize_syscall_res_in_record (file, &rec->res);
 }
 
 void
@@ -693,8 +691,7 @@ void
 eri_serialize_syscall_rt_sigpending_record (eri_file_t file,
 			const struct eri_syscall_rt_sigpending_record *rec)
 {
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
+  eri_serialize_syscall_res_in_record (file, &rec->res);
   eri_serialize_sigset (file, &rec->set);
 }
 
@@ -702,8 +699,7 @@ uint8_t
 eri_try_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 			struct eri_syscall_rt_sigpending_record *rec)
 {
-  return eri_try_unserialize_uint64 (file, &rec->result)
-	 && eri_try_unserialize_uint64 (file, &rec->in)
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
 	 && eri_try_unserialize_sigset (file, &rec->set);
 }
 
@@ -718,9 +714,8 @@ void
 eri_serialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			const struct eri_syscall_rt_sigtimedwait_record *rec)
 {
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
-  if (eri_syscall_is_fault_or_ok (rec->result))
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
     eri_serialize_siginfo (file, &rec->info);
 }
 
@@ -728,10 +723,9 @@ uint8_t
 eri_try_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 			struct eri_syscall_rt_sigtimedwait_record *rec)
 {
-  if (! eri_try_unserialize_uint64 (file, &rec->result)
-      || ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
-  return (eri_syscall_is_non_fault_error (rec->result))
-	 || eri_try_unserialize_siginfo (file, &rec->info);
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_siginfo (file, &rec->info));
 }
 
 void
@@ -745,9 +739,8 @@ void
 eri_serialize_syscall_stat_record (eri_file_t file,
 			const struct eri_syscall_stat_record *rec)
 {
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
-  if (eri_syscall_is_fault_or_ok (rec->result))
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
     eri_serialize_stat (file, &rec->stat);
 }
 
@@ -755,10 +748,9 @@ uint8_t
 eri_try_unserialize_syscall_stat_record (eri_file_t file,
 			struct eri_syscall_stat_record *rec)
 {
-  if (! eri_try_unserialize_uint64 (file, &rec->result)
-      || ! eri_try_unserialize_uint64 (file, &rec->in)) return 0;
-  return eri_syscall_is_non_fault_error (rec->result)
-	 || eri_try_unserialize_stat (file, &rec->stat);
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_stat (file, &rec->stat));
 }
 
 void
@@ -772,8 +764,7 @@ void
 eri_serialize_syscall_uname_record (eri_file_t file,
 			const struct eri_syscall_uname_record *rec)
 {
-  eri_serialize_uint64 (file, rec->result);
-  eri_serialize_uint64 (file, rec->in);
+  eri_serialize_syscall_res_in_record (file, &rec->res);
   eri_serialize_utsname (file, &rec->utsname);
 }
 
@@ -781,8 +772,7 @@ uint8_t
 eri_try_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec)
 {
-  return eri_try_unserialize_uint64 (file, &rec->result)
-	 && eri_try_unserialize_uint64 (file, &rec->in)
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
 	 && eri_try_unserialize_utsname (file, &rec->utsname);
 }
 

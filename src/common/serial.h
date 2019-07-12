@@ -262,8 +262,7 @@ void eri_unserialize_syscall_res_in_record (eri_file_t file,
 struct eri_syscall_res_io_record
 {
   uint64_t out;
-  uint64_t result;
-  uint64_t in;
+  struct eri_syscall_res_in_record res;
 };
 
 void eri_serialize_syscall_res_io_record (eri_file_t file,
@@ -306,8 +305,7 @@ void eri_unserialize_syscall_exit_record (eri_file_t file,
 
 struct eri_syscall_rt_sigpending_record
 {
-  uint64_t result;
-  uint64_t in;
+  struct eri_syscall_res_in_record res;
   struct eri_sigset set;
 };
 
@@ -320,8 +318,7 @@ void eri_unserialize_syscall_rt_sigpending_record (eri_file_t file,
 
 struct eri_syscall_rt_sigtimedwait_record
 {
-  uint64_t result;
-  uint64_t in;
+  struct eri_syscall_res_in_record res;
   struct eri_siginfo info;
 };
 
@@ -334,8 +331,7 @@ void eri_unserialize_syscall_rt_sigtimedwait_record (eri_file_t file,
 
 struct eri_syscall_stat_record
 {
-  uint64_t result;
-  uint64_t in;
+  struct eri_syscall_res_in_record res;
   struct eri_stat stat;
 };
 
@@ -348,8 +344,7 @@ void eri_unserialize_syscall_stat_record (eri_file_t file,
 
 struct eri_syscall_uname_record
 {
-  uint64_t result;
-  uint64_t in;
+  struct eri_syscall_res_in_record res;
   struct eri_utsname utsname;
 };
 

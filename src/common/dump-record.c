@@ -96,7 +96,7 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_res_io_record rec;
 	    eri_unserialize_syscall_res_io_record (file, &rec);
 	    printf ("  syscall.out: %lu, .result: %ld, .in: %lu\n",
-		    rec.out, rec.result, rec.in);
+		    rec.out, rec.res.result, rec.res.in);
 	  }
 	else if (magic == ERI_SYSCALL_CLONE_MAGIC)
 	  {
@@ -131,19 +131,19 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_rt_sigpending_record rec;
 	    eri_unserialize_syscall_rt_sigpending_record (file, &rec);
-	    printf ("  syscall.rt_sigpending.result: %ld", rec.result);
-	    if (eri_syscall_is_ok (rec.result))
-	      printf (", ..in: %lu, ..set: 0x%lx\n", rec.in, rec.set.val[0]);
+	    printf ("  syscall.rt_sigpending.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_ok (rec.res.result))
+	      printf (", ..set: 0x%lx\n", rec.set.val[0]);
 	    else printf ("\n");
 	  }
 	else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
 	  {
 	    struct eri_syscall_rt_sigtimedwait_record rec;
 	    eri_unserialize_syscall_rt_sigtimedwait_record (file, &rec);
-	    printf ("  syscall.rt_sigtimedwait.result: %ld", rec.result);
-	    if (eri_syscall_is_ok (rec.result)
-		|| rec.result == ERI_EINTR) printf (", ..in: %lu", rec.in);
-	    if (eri_syscall_is_ok (rec.result) && rec.info.sig)
+	    printf ("  syscall.rt_sigtimedwait.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_ok (rec.res.result) && rec.info.sig)
 	      printf (", ..code: %d\n", rec.info.code);
 	    else printf ("\n");
 	  }
@@ -152,7 +152,7 @@ main (int32_t argc, const char **argv)
 	    struct eri_syscall_stat_record rec;
 	    eri_unserialize_syscall_stat_record (file, &rec);
 	    printf ("  syscall.stat.result: %ld, ..in: %lu\n",
-		    rec.result, rec.in);
+		    rec.res.result, rec.res.in);
 	  }
 	else if (magic == ERI_SYSCALL_UNAME_MAGIC)
 	  {
@@ -162,7 +162,7 @@ main (int32_t argc, const char **argv)
 		    "..utsname.sysname: %s, ...nodename: %s, "
 		    "...release: %s, ...version: %s, ...machine: %s, "
 		    "...domainname: %s\n",
-		    rec.result, rec.in, rec.utsname.sysname,
+		    rec.res.result, rec.res.in, rec.utsname.sysname,
 		    rec.utsname.nodename, rec.utsname.release,
 		    rec.utsname.version, rec.utsname.machine,
 		    rec.utsname.domainname);
