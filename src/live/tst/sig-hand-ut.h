@@ -20,6 +20,7 @@ struct eri_live_signal_thread
   struct eri_live_thread *th;
 
   uint8_t sig_alt_stack_installed;
+  uint8_t init_sig_stack_enable_trace;
   uint8_t sig_reset;
 };
 

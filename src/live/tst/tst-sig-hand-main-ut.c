@@ -53,14 +53,6 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   ctx->mctx.rflags |= ERI_RFLAGS_TF;
 
-  if (! sig_th.sig_alt_stack_installed) return;
-
-  if (eri_assert_syscall (gettid) == sig_th.tid)
-    {
-      ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
-      return;
-    }
-
   if (! unblocked)
     {
       struct eri_sigset mask;
@@ -115,11 +107,11 @@ tst_main (void)
       handled = 0;
       step_count = 0;
       sig_th.sig_alt_stack_installed = 0;
+      sig_th.init_sig_stack_enable_trace = 1;
       unblocked = 0;
 
       sig_th.th = eri_live_thread__create_main (group, &sig_th, &rtld_args);
 
-      tst_enable_trace ();
       eri_live_thread__clone_main (sig_th.th);
       eri_live_thread__join (sig_th.th);
       eri_live_thread__destroy (sig_th.th);

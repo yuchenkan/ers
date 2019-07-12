@@ -53,7 +53,7 @@ sig_int (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
       raise_args.args.delay = 0;
       tst_assert_live_clone_raise (&raise_args);
 
-      while (1) sync_async_loop (64 * 1024);
+      while (1) sync_async_loop (1024);
     }
   else tst_assert_sys_exit (0);
 }

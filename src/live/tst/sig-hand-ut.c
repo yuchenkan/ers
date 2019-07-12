@@ -20,6 +20,9 @@ eri_live_signal_thread__init_thread_sig_stack (
   eri_assert_syscall (sigaltstack, &st, 0);
   *(struct eri_live_signal_thread **) stack = sig_th;
   eri_atomic_store (&sig_th->sig_alt_stack_installed, 1, 0);
+
+  if (sig_th->init_sig_stack_enable_trace)
+    tst_enable_trace ();
 }
 
 uint8_t
