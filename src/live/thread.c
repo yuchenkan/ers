@@ -47,6 +47,8 @@ struct futex_waiter
   int32_t lock;
   int32_t mask;
   ERI_LST_NODE_FIELDS (futex_waiter)
+
+  ERI_LST_NODE_FIELDS (futex_pi_waiter)
 };
 
 struct eri_live_thread
@@ -100,10 +102,13 @@ struct futex
   uint64_t user_addr;
 
   ERI_LST_LIST_FIELDS (futex_waiter)
+  ERI_LST_LIST_FIELDS (futex_pi_waiter)
+
   ERI_RBT_NODE_FIELDS (futex, struct futex)
 };
 
 ERI_DEFINE_LIST (static, futex_waiter, struct futex, struct futex_waiter)
+ERI_DEFINE_LIST (static, futex_pi_waiter, struct futex, struct futex_waiter)
 
 struct futex_slot
 {
@@ -866,10 +871,12 @@ syscall_may_remove_free_futex (struct eri_mtpool *pool,
   return 1;
 }
 
-static uint32_t
+static uint64_t
 syscall_futex_do_wake (eri_file_t log, struct futex *futex,
 		       int32_t max, uint32_t mask)
 {
+  if (futex_pi_waiter_lst_get_size (futex)) return ERI_EINVAL;
+
   int32_t i = max;
   struct futex_waiter *w, *nw;
   ERI_LST_FOREACH_SAFE (futex_waiter, futex, w, nw)
@@ -889,6 +896,18 @@ syscall_futex_do_wake (eri_file_t log, struct futex *futex,
 }
 
 static uint64_t
+syscall_futex_do_wake_free (struct eri_live_thread *th,
+			    struct futex_slot *slot, struct futex *futex,
+			    int32_t max, uint32_t mask)
+{
+  if (! futex) return 0;
+
+  uint64_t res = syscall_futex_do_wake (th->log.file, futex, max, mask);
+  syscall_may_remove_free_futex (th->group->pool, slot, futex);
+  return res;
+}
+
+static uint64_t
 syscall_common_futex_wake (struct eri_live_thread *th,
 			   uint64_t user_addr, int32_t max, uint32_t mask)
 {
@@ -896,12 +915,7 @@ syscall_common_futex_wake (struct eri_live_thread *th,
 
   struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
   struct futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
-  uint64_t res = 0;
-  if (futex)
-    {
-      res = syscall_futex_do_wake (th->log.file, futex, max, mask);
-      syscall_may_remove_free_futex (group->pool, slot, futex);
-    }
+  uint64_t res = syscall_futex_do_wake_free (th, slot, futex, max, mask);
   eri_assert_unlock (&slot->lock);
   return res;
 }
@@ -2109,6 +2123,7 @@ syscall_get_or_create_futex (struct eri_mtpool *pool,
       futex = eri_assert_mtmalloc (pool, sizeof *futex);
       futex->user_addr = user_addr;
       ERI_LST_INIT_LIST (futex_waiter, futex);
+      ERI_LST_INIT_LIST (futex_pi_waiter, futex);
       futex_rbt_insert (slot, futex);
     }
   return futex;
@@ -2276,7 +2291,8 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 
   res = syscall_futex_do_wake (th->log.file, futex, val, -1);
   if (syscall_may_remove_free_futex (pool, slots[0], futex)
-      || slots[0] == slots[1] || val2 == 0) goto out;
+      || eri_syscall_is_error (res) || slots[0] == slots[1] || val2 == 0)
+    goto out;
 
   struct futex *futex2 = syscall_get_or_create_futex (pool,
 						      slots[1], user_addr2);
@@ -2294,8 +2310,8 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 
 out:
   syscall_unlock_futex_slot2 (slots);
-  syscall_record_res_in (th, 0);
-  eri_entry__syscall_leave (entry, 0);
+  syscall_record_res_in (th, res);
+  eri_entry__syscall_leave (entry, res);
 }
 
 static uint8_t
@@ -2324,7 +2340,6 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
   int32_t val3 = regs->r9;
 
   struct eri_live_thread_group *group = th->group;
-  struct eri_mtpool *pool = group->pool;
 
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, user_addr2,
@@ -2355,23 +2370,15 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
       eri_entry__syscall_leave (entry, ERI_EFAULT);
     }
 
-  uint64_t res = 0;
-
   struct futex *futex = futex_rbt_get (slots[0], &user_addr, ERI_RBT_EQ);
-  if (futex)
-    {
-      res = syscall_futex_do_wake (th->log.file, futex, val, -1);
-      syscall_may_remove_free_futex (pool, slots[0], futex);
-    }
+  uint64_t res = syscall_futex_do_wake_free (th, slots[0], futex, val, -1);
 
-  if (! syscall_futex_wake_pass_cmp (old, op_cmp, op_cmp_arg)) goto out;
+  if (eri_syscall_is_error (res)
+      || ! syscall_futex_wake_pass_cmp (old, op_cmp, op_cmp_arg)) goto out;
 
   futex = futex_rbt_get (slots[1], &user_addr2, ERI_RBT_EQ);
-  if (futex)
-    {
-      res += syscall_futex_do_wake (th->log.file, futex, val2, -1);
-      syscall_may_remove_free_futex (pool, slots[1], futex);
-    }
+  uint64_t res2 = syscall_futex_do_wake_free (th, slots[1], futex, val2, -1);
+  res = eri_syscall_is_error (res2) ? res2 : res + res2;
 
 out:
   syscall_unlock_futex_slot2 (slots);
@@ -2379,10 +2386,10 @@ out:
   eri_entry__syscall_leave (entry, res);
 }
 
-#if 0
 static eri_noreturn void
 syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 {
+#if 0
   uint64_t user_addr = regs->rdi;
   uint32_t op = regs->rsi;
   int32_t val = regs->rdx;
@@ -2393,9 +2400,13 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
     syscall_futex_check_wait (th, user_addr, user_timeout, &timeout));
 
-  // TODO
-}
+  struct eri_live_thread_group *group = th->group;
+
+  struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
+
 #endif
+  eri_assert_unreachable ();
+}
 
 DEFINE_SYSCALL (futex)
 {
@@ -2415,15 +2426,14 @@ DEFINE_SYSCALL (futex)
 
   switch (op & ERI_FUTEX_CMD_MASK)
     {
-    case ERI_FUTEX_WAIT: syscall_do_futex_wait (SYSCALL_ARGS);
-    case ERI_FUTEX_WAKE: syscall_do_futex_wake (SYSCALL_ARGS);
-    case ERI_FUTEX_FD: eri_entry__syscall_leave (entry, ERI_ENOSYS);
-    case ERI_FUTEX_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
+    case ERI_FUTEX_WAIT:
+    case ERI_FUTEX_WAIT_BITSET: syscall_do_futex_wait (SYSCALL_ARGS);
+    case ERI_FUTEX_WAKE:
+    case ERI_FUTEX_WAKE_BITSET: syscall_do_futex_wake (SYSCALL_ARGS);
+    case ERI_FUTEX_REQUEUE:
     case ERI_FUTEX_CMP_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
     case ERI_FUTEX_WAKE_OP: syscall_do_futex_wake_op (SYSCALL_ARGS);
-    case ERI_FUTEX_WAIT_BITSET: syscall_do_futex_wait (SYSCALL_ARGS);
-    case ERI_FUTEX_WAKE_BITSET: syscall_do_futex_wake (SYSCALL_ARGS);
-    case ERI_FUTEX_LOCK_PI: // syscall_do_futex_lock_pi (SYSCALL_ARGS);
+    case ERI_FUTEX_LOCK_PI: syscall_do_futex_lock_pi (SYSCALL_ARGS);
     case ERI_FUTEX_UNLOCK_PI:
     case ERI_FUTEX_TRYLOCK_PI:
     case ERI_FUTEX_WAIT_REQUEUE_PI:
