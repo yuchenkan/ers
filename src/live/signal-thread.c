@@ -26,7 +26,7 @@ struct watch
 
 struct sig_act
 {
-  struct eri_lock lock;
+  eri_lock_t lock;
   struct eri_sigaction act;
   uint64_t ver;
 };
@@ -50,7 +50,7 @@ struct signal_thread_group
   int32_t exit_group_lock;
 
   uint32_t thread_count;
-  struct eri_lock thread_lock;
+  eri_lock_t thread_lock;
   ERI_LST_LIST_FIELDS (thread)
 
   struct watch watch;
@@ -227,7 +227,7 @@ init_group_signal (struct signal_thread_group *group)
       if (! eri_sig_catchable (sig)) continue;
 
       struct sig_act *sig_act = group->sig_acts + sig - 1;
-      eri_init_lock (&sig_act->lock, 0);
+      sig_act->lock = 0;
 
       struct eri_sigaction act = {
 	sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
@@ -330,7 +330,7 @@ init_group (struct eri_live_rtld_args *rtld_args)
   group->exit_group_lock = 0;
 
   group->thread_count = 1;
-  eri_init_lock (&group->thread_lock, 0);
+  group->thread_lock = 0;
   ERI_LST_INIT_LIST (thread, group);
 
   return init_main (group, rtld_args);
@@ -363,7 +363,7 @@ restore_sig_mask (struct eri_live_signal_thread *sig_th)
 }
 
 static eri_noreturn void
-start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
+start_watch (struct eri_live_signal_thread *sig_th, eri_lock_t *lock)
 {
   eri_debug ("\n");
 
@@ -397,7 +397,7 @@ start_watch (struct eri_live_signal_thread *sig_th, struct eri_lock *lock)
 static void
 watch (struct eri_live_signal_thread *sig_th)
 {
-  struct eri_lock lock = ERI_INIT_LOCK (1);
+  eri_lock_t lock = 1;
   struct watch *watch = &sig_th->group->watch;
   watch->alive = 1;
   struct eri_sys_clone_args args = {
@@ -475,10 +475,10 @@ remove_from_group (struct eri_live_signal_thread *sig_th)
 struct event_type
 {
   uint32_t type;
-  struct eri_lock lock;
+  eri_lock_t lock;
 };
 
-#define INIT_EVENT_TYPE(type)	{ type, ERI_INIT_LOCK (1) }
+#define INIT_EVENT_TYPE(type)	{ type, 1 }
 
 static void
 release_event (void *event)
@@ -657,10 +657,10 @@ struct clone_event {
   struct event_type type;
   struct eri_live_signal_thread__clone_args *args;
 
-  struct eri_lock clone_thread_return;
-  struct eri_lock clone_start_call;
-  struct eri_lock clone_start_return;
-  struct eri_lock clone_done;
+  eri_lock_t clone_thread_return;
+  eri_lock_t clone_start_call;
+  eri_lock_t clone_start_return;
+  eri_lock_t clone_done;
 
   struct eri_live_signal_thread *sig_cth;
 };
@@ -675,7 +675,7 @@ start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
   eri_assert_lock (&event->clone_start_call);
   if (eri_syscall_is_error (event->args->result))
     {
-      eri_assert_syscall (set_tid_address, &event->clone_start_return.lock);
+      eri_assert_syscall (set_tid_address, &event->clone_start_return);
       eri_assert_sys_exit (0);
     }
 
@@ -756,8 +756,7 @@ eri_live_signal_thread__clone (struct eri_live_signal_thread *sig_th,
 			       struct eri_live_signal_thread__clone_args *args)
 {
   struct clone_event event = {
-    INIT_EVENT_TYPE (CLONE_EVENT), args,
-    ERI_INIT_LOCK (1), ERI_INIT_LOCK (1), ERI_INIT_LOCK (1), ERI_INIT_LOCK (1)
+    INIT_EVENT_TYPE (CLONE_EVENT), args, 1, 1, 1, 1
   };
   proc_event (sig_th, &event);
 

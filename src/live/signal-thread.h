@@ -5,10 +5,10 @@
 
 #include <lib/compiler.h>
 #include <lib/printf.h>
+#include <lib/lock-common.h>
 #include <lib/syscall-common.h>
 
 struct eri_mtpool;
-struct eri_lock;
 
 struct eri_live_rtld_args;
 struct eri_sig_act;
@@ -82,7 +82,7 @@ struct eri_live_signal_thread__sig_fd_read_args
   struct eri_sys_syscall_args *args;
 
   int32_t flags;
-  struct eri_lock *mask_lock;
+  eri_lock_t *mask_lock;
   const struct eri_sigset *mask;
 };
 

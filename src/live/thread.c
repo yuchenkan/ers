@@ -61,7 +61,7 @@ struct eri_live_thread
   struct eri_buf_file sig_log;
 
   int32_t alive;
-  struct eri_lock start_lock;
+  eri_lock_t start_lock;
   int32_t *clear_user_tid;
 
   struct futex_waiter futex_waiter;
@@ -84,7 +84,7 @@ struct eri_live_thread
 struct fdf_sig_mask
 {
   uint64_t ref_count;
-  struct eri_lock lock;
+  eri_lock_t lock;
   struct eri_sigset mask;
 };
 
@@ -112,7 +112,7 @@ ERI_DEFINE_LIST (static, futex_pi_waiter, struct futex, struct futex_waiter)
 
 struct futex_slot
 {
-  struct eri_lock lock;
+  eri_lock_t lock;
 
   ERI_RBT_TREE_FIELDS (futex, struct futex)
 };
@@ -135,7 +135,7 @@ struct eri_live_thread_group
 
   int32_t pid;
 
-  struct eri_lock fdf_lock;
+  eri_lock_t fdf_lock;
   ERI_RBT_TREE_FIELDS (fdf, struct fdf)
 
   uint64_t *atomic_table;
@@ -150,7 +150,7 @@ struct eri_live_thread_group
 
   uint64_t *io;
 
-  struct eri_lock mm_lock;
+  eri_lock_t mm_lock;
   uint64_t mm;
 };
 
@@ -169,7 +169,7 @@ fdf_alloc_insert (struct eri_live_thread_group *group, int32_t fd,
     {
       fdf->sig_mask = eri_assert_mtmalloc (pool, sizeof *fdf->sig_mask);
       fdf->sig_mask->ref_count = 1;
-      eri_init_lock (&fdf->sig_mask->lock, 0);
+      fdf->sig_mask->lock = 0;
       fdf->sig_mask->mask = *sig_mask;
     }
   fdf_rbt_insert (group, fdf);
@@ -293,7 +293,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->init_user_stack_size = init_user_stack_size;
   group->pid = 0;
 
-  eri_init_lock (&group->fdf_lock, 0);
+  group->fdf_lock = 0;
   ERI_RBT_INIT_TREE (fdf, group);
   init_fdf (group);
 
@@ -310,7 +310,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 
   group->io = args->io;
 
-  eri_init_lock (&group->mm_lock, 0);
+  group->mm_lock = 0;
   group->mm = 0;
   return group;
 }
@@ -351,7 +351,7 @@ create (struct eri_live_thread_group *group,
   open_log (th, &th->sig_log, "ls");
   eri_log (th->log.file, "%lx %lx\n", th, sig_th);
   th->alive = 1;
-  eri_init_lock (&th->start_lock, 1);
+  th->start_lock = 1;
   th->clear_user_tid = clear_user_tid;
 
   struct eri_entry__create_args args = {

@@ -6,22 +6,22 @@ m4_include(`m4/util.m4')
 #include <m4_atomic_h>
 
 void
-m4_ns(assert_lock, _) (struct eri_lock *lock)
+m4_ns(assert_lock, _) (eri_lock_t *lock)
 {
-  m4_ns(atomic_inc) (&lock->wait, 1);
+  m4_ns(atomic_inc) ((uint32_t *) lock + 1, 1);
   do
     {
-      uint64_t res = m4_ns(syscall) (futex, &lock->lock,
+      uint64_t res = m4_ns(syscall) (futex, lock,
 				     ERI_FUTEX_WAIT, 1, 0);
       eri_assert (eri_syscall_is_ok (res)
 		  || res == ERI_EAGAIN || res == ERI_EINTR);
     }
-  while (m4_ns(atomic_exchange) (&lock->lock, 1, 0));
-  m4_ns(atomic_dec) (&lock->wait, 1);
+  while (m4_ns(atomic_exchange) ((uint32_t *) lock, 1, 0));
+  m4_ns(atomic_dec) ((uint32_t *) lock + 1, 1);
 }
 
 void
-m4_ns(assert_unlock, _) (struct eri_lock *lock)
+m4_ns(assert_unlock, _) (eri_lock_t *lock)
 {
-  m4_ns(assert_syscall) (futex, &lock->lock, ERI_FUTEX_WAKE, 1);
+  m4_ns(assert_syscall) (futex, lock, ERI_FUTEX_WAKE, 1);
 }

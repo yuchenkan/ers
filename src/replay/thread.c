@@ -28,8 +28,7 @@
 
 struct version_waiter
 {
-  uint64_t ref_count;
-  struct eri_lock lock;
+  eri_lock_t lock;
   uint64_t ver;
   uint8_t dead_locked;
   ERI_LST_NODE_FIELDS (version_waiter)
@@ -37,7 +36,7 @@ struct version_waiter
 
 struct version
 {
-  struct eri_lock lock;
+  eri_lock_t lock;
   uint64_t ver;
 
   ERI_LST_NODE_FIELDS (version)
@@ -48,7 +47,7 @@ struct version_activity
 {
   uint64_t count;
 
-  struct eri_lock lock;
+  eri_lock_t lock;
   ERI_LST_LIST_FIELDS (version)
 };
 
@@ -59,7 +58,7 @@ ERI_DEFINE_LIST (static, version, struct version_activity, struct version)
 static void
 version_init (struct version *ver)
 {
-  eri_init_lock (&ver->lock, 0);
+  ver->lock = 0;
   ver->ver = 0;
   ERI_LST_INIT_LIST (version_waiter, ver);
 }
@@ -68,7 +67,7 @@ static void
 version_activity_init (struct version_activity *act)
 {
   act->count = 1;
-  eri_init_lock (&act->lock, 0);
+  act->lock = 0;
   ERI_LST_INIT_LIST (version, act);
 }
 
@@ -79,23 +78,7 @@ version_activity_inc (struct version_activity *act)
 }
 
 static void
-version_release_waiter (struct eri_mtpool *pool,
-			struct version_waiter *waiter)
-{
-  if (! eri_atomic_dec_fetch (&waiter->ref_count, 1))
-    eri_assert_mtfree (pool, waiter);
-}
-
-static void
-version_unlock_waiter (struct eri_mtpool *pool,
-		       struct version_waiter *waiter)
-{
-  eri_assert_unlock (&waiter->lock);
-  version_release_waiter (pool, waiter);
-}
-
-static void
-version_activity_dec (struct eri_mtpool *pool, struct version_activity *act)
+version_activity_dec (struct version_activity *act)
 {
   if (eri_atomic_dec_fetch (&act->count, 1)) return;
 
@@ -105,7 +88,7 @@ version_activity_dec (struct eri_mtpool *pool, struct version_activity *act)
     ERI_LST_FOREACH_SAFE (version_waiter, v, w, nw)
       {
 	w->dead_locked = 1;
-	version_unlock_waiter (pool, w);
+	eri_assert_unlock (&w->lock);
       }
 }
 
@@ -133,7 +116,7 @@ struct thread_group
   struct version *atomic_table;
   uint64_t atomic_table_size;
 
-  struct eri_lock exit_lock;
+  eri_lock_t exit_lock;
   uint64_t thread_count;
 
   int32_t user_pid;
@@ -189,15 +172,10 @@ version_do_wait (struct thread *th, struct version *ver, uint64_t exp)
     }
 
   struct version_activity *act = &th->group->ver_act;
-  struct eri_mtpool *pool = th->group->pool;
 
-  struct version_waiter *waiter = eri_assert_mtmalloc (pool, sizeof *waiter);
-  waiter->ref_count = 2;
-  eri_init_lock (&waiter->lock, 1);
-  waiter->ver = exp;
-  waiter->dead_locked = 0;
+  struct version_waiter waiter = { 1, exp, 0 };
 
-  version_waiter_lst_append (ver, waiter);
+  version_waiter_lst_append (ver, &waiter);
   if (version_waiter_lst_get_size (ver) == 1)
     {
       eri_assert_lock (&act->lock);
@@ -205,12 +183,11 @@ version_do_wait (struct thread *th, struct version *ver, uint64_t exp)
       eri_assert_unlock (&act->lock);
     }
   /* After insertion so to mark dead lock in the same way.  */
-  version_activity_dec (pool, act);
+  version_activity_dec (act);
   eri_assert_unlock (&ver->lock);
 
-  eri_assert_lock (&waiter->lock);
-  uint8_t dead_locked = waiter->dead_locked;
-  version_release_waiter (pool, waiter);
+  eri_assert_lock (&waiter.lock);
+  uint8_t dead_locked = waiter.dead_locked;
   if (dead_locked)
     eri_log_info (th->log.file, "dead lock detected\n");
   return ! dead_locked;
@@ -249,7 +226,7 @@ version_update (struct thread *th, struct version *ver)
 	  }
 
 	version_activity_inc (act);
-	version_unlock_waiter (th->group->pool, w);
+	eri_assert_unlock (&w->lock);
       }
   eri_assert_unlock (&ver->lock);
 }
@@ -353,7 +330,7 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
       version_init (group->sig_acts + sig - 1);
     }
 
-  eri_init_lock (&group->exit_lock, 0);
+  group->exit_lock = 0;
   group->thread_count = 1;
 
   version_init (&group->io);
@@ -464,7 +441,7 @@ exit (struct thread *th)
 {
   eri_log (th->log.file, "\n");
   struct thread_group *group = th->group;
-  version_activity_dec (group->pool, &group->ver_act);
+  version_activity_dec (&group->ver_act);
   eri_assert_lock (&group->exit_lock);
   if (eri_atomic_dec_fetch (&group->thread_count, 1))
     {

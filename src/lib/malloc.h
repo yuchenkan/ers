@@ -55,7 +55,7 @@ void eri_preserve (struct eri_pool *pool);
 
 struct eri_mtpool
 {
-  struct eri_lock lock;
+  eri_lock_t lock;
   struct eri_pool pool;
 };
 
@@ -65,8 +65,7 @@ int32_t eri_mtfree (struct eri_mtpool *pool, void *p);
 #define eri_assert_init_mtpool(mtp, b, s) \
   do {									\
     struct eri_mtpool *_mtp = mtp;					\
-    _mtp->lock.wait = 0;						\
-    _mtp->lock.lock = 0;						\
+    _mtp->lock = 0;							\
     eri_assert_init_pool (&_mtp->pool, b, s);				\
   } while (0)
 

@@ -337,7 +337,7 @@ struct race_ref
 struct race_group
 {
   struct eri_mtpool *pool;
-  struct eri_lock lock;
+  eri_lock_t lock;
 
   uint64_t race_id;
   uint64_t block_id;
@@ -369,7 +369,7 @@ static void
 race_init_group (struct race_group *group, struct eri_mtpool *pool)
 {
   group->pool = pool;
-  eri_init_lock (&group->lock, 0);
+  group->lock = 0;
   group->race_id = 0;
   group->block_id = 0;
   group->unit_id = 0;
@@ -1087,10 +1087,10 @@ struct eri_analyzer_group
 
   void *error;
 
-  struct eri_lock trans_lock;
+  eri_lock_t trans_lock;
   ERI_RBT_TREE_FIELDS (trans, struct trans)
 
-  struct eri_lock mm_prot_lock;
+  eri_lock_t mm_prot_lock;
   struct interval_tree read_perms;
   struct interval_tree write_perms;
 
@@ -1144,10 +1144,10 @@ eri_analyzer_group__create (struct eri_analyzer_group__create_args *args)
   group->pid = args->pid;
   group->error = args->error;
 
-  eri_init_lock (&group->trans_lock, 0);
+  group->trans_lock = 0;
   ERI_RBT_INIT_TREE (trans, group);
 
-  eri_init_lock (&group->mm_prot_lock, 0);
+  group->mm_prot_lock = 0;
   ERI_RBT_INIT_TREE (interval, &group->read_perms);
   ERI_RBT_INIT_TREE (interval, &group->write_perms);
 
