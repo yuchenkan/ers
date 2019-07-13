@@ -851,7 +851,7 @@ do_atomic (struct thread *th, uint16_t code, void *mem, uint8_t size,
   if (! eri_entry__test_access (entry, mem, 0)) return 0;
 
   eri_lassert (th->log.file,
-	       eri_do_atomic (code, mem, size, val, old, rflags));
+	       eri_atomic (code, mem, size, val, old, rflags));
 
   eri_entry__reset_test_access (entry);
 

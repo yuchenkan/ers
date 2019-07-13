@@ -137,14 +137,14 @@ void eri_mkdir (const char *path);
 
 #define eri_atomic_hash(aligned, size)	(eri_hash (aligned) % (size))
 
-#define _eri_do_atomic_x(op, rflags, ...) \
+#define _eri_atomic_x(op, rflags, ...) \
   do {									\
     uint64_t *_rflags = rflags;						\
     if (! _rflags) ERI_PASTE (eri_atomic_, op) (__VA_ARGS__, 0);	\
     else ERI_PASTE2 (eri_atomic_, op, _x) (__VA_ARGS__, _rflags, 0);	\
   } while (0)
 
-#define _eri_do_atomic_cas(type, mem, op, val) \
+#define _eri_atomic_cas(type, mem, op, val) \
   ({									\
     type *_mem = mem;							\
     type _t = eri_atomic_load (_mem, 0);				\
@@ -155,7 +155,7 @@ void eri_mkdir (const char *path);
 
 #define _ERI_DEFINE_DO_ATOMIC_TYPE(type) \
 static uint8_t								\
-ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
+ERI_PASTE (_eri_atomic_, type) (uint16_t code, type *mem,		\
 			uint64_t val, void *old, uint64_t *rflags)	\
 {									\
   switch (code)								\
@@ -166,28 +166,28 @@ ERI_PASTE (_eri_do_atomic_, type) (uint16_t code, type *mem,		\
       *(type *) old = eri_atomic_exchange (mem, val, 0); break;		\
     case ERI_OP_ATOMIC_XADD:						\
       *(type *) old = val;						\
-      _eri_do_atomic_x (xadd, rflags, mem, old);			\
+      _eri_atomic_x (xadd, rflags, mem, old);				\
       break;								\
     case ERI_OP_ATOMIC_STORE:						\
       eri_atomic_store (mem, val, 0); break;				\
     case ERI_OP_ATOMIC_INC:						\
-      _eri_do_atomic_x (inc, rflags, mem); break;			\
+      _eri_atomic_x (inc, rflags, mem); break;				\
     case ERI_OP_ATOMIC_DEC:						\
-      _eri_do_atomic_x (dec, rflags, mem); break;			\
+      _eri_atomic_x (dec, rflags, mem); break;				\
     case ERI_OP_ATOMIC_CMPXCHG:						\
-      _eri_do_atomic_x (cmpxchg, rflags, mem, old, val); break;		\
+      _eri_atomic_x (cmpxchg, rflags, mem, old, val); break;		\
     case ERI_OP_ATOMIC_AND:						\
-      _eri_do_atomic_x (and, rflags, mem, val);	break;			\
+      _eri_atomic_x (and, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_OR:						\
-      _eri_do_atomic_x (or, rflags, mem, val); break;			\
+      _eri_atomic_x (or, rflags, mem, val); break;			\
     case ERI_OP_ATOMIC_XOR:						\
-      _eri_do_atomic_x (xor, rflags, mem, val);	break;			\
+      _eri_atomic_x (xor, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_XAND:						\
-      *(type *) old = _eri_do_atomic_cas (type, mem, &, val); break;	\
+      *(type *) old = _eri_atomic_cas (type, mem, &, val); break;	\
     case ERI_OP_ATOMIC_X_OR:						\
-      *(type *) old = _eri_do_atomic_cas (type, mem, |, val); break;	\
+      *(type *) old = _eri_atomic_cas (type, mem, |, val); break;	\
     case ERI_OP_ATOMIC_XXOR:						\
-      *(type *) old = _eri_do_atomic_cas (type, mem, ^, val); break;	\
+      *(type *) old = _eri_atomic_cas (type, mem, ^, val); break;	\
     default: return 0;							\
     }									\
   return 1;								\
@@ -199,7 +199,7 @@ _ERI_DEFINE_DO_ATOMIC_TYPE (uint32_t)
 _ERI_DEFINE_DO_ATOMIC_TYPE (uint64_t)
 
 static eri_unused uint8_t
-eri_do_atomic (uint16_t code, void *mem, uint8_t size,
+eri_atomic (uint16_t code, void *mem, uint8_t size,
 	       uint64_t val, void *old, uint64_t *rflags)
 {
   uint64_t dummy = 0;
@@ -207,13 +207,13 @@ eri_do_atomic (uint16_t code, void *mem, uint8_t size,
 
   /* XXX: cmpxchg16b */
   if (size == 1)
-    return _eri_do_atomic_uint8_t (code, mem, val, old, rflags);
+    return _eri_atomic_uint8_t (code, mem, val, old, rflags);
   else if (size == 2)
-    return _eri_do_atomic_uint16_t (code, mem, val, old, rflags);
+    return _eri_atomic_uint16_t (code, mem, val, old, rflags);
   else if (size == 4)
-    return _eri_do_atomic_uint32_t (code, mem, val, old, rflags);
+    return _eri_atomic_uint32_t (code, mem, val, old, rflags);
   else if (size == 8)
-    return _eri_do_atomic_uint64_t (code, mem, val, old, rflags);
+    return _eri_atomic_uint64_t (code, mem, val, old, rflags);
   return 0;
 }
 

@@ -668,7 +668,7 @@ do_atomic (struct eri_live_thread *th, uint16_t code, void *mem,
 
   /* XXX: invalid argument from user */
   eri_lassert (th->log.file,
-	       eri_do_atomic (code, mem, size, val, old, rflags));
+	       eri_atomic (code, mem, size, val, old, rflags));
 
   eri_entry__reset_test_access (entry);
 
@@ -2156,7 +2156,7 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
 
   struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
 
-  // TODO
+  // TODO: move down
   int32_t cur;
   if (! syscall_futex_load_user (th, user_addr, &cur))
     {
@@ -2427,7 +2427,12 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 
   if (! futex) futex = syscall_create_futex (pool, slot, user_addr);
 
-
+  int32_t pid = 
+  uint64_t old;
+  struct eri_atomic_record rec;
+  eri_atomic_futex_lock_pi (th, (void *) user_addr,
+			       eri_live_signal_thread__get_tid (sig_th),
+	     &rec, &old);
 
 out:
   eri_assert_unlock (slot->futex);
