@@ -835,12 +835,13 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   if (! event->group
       && eri_atomic_dec_fetch (&group->thread_count, 1))
     {
+      remove_from_group (sig_th);
+
       event->done = 1;
       release_event (event);
       eri_live_thread__join (th);
 
       eri_live_thread__destroy (th);
-      remove_from_group (sig_th);
 
       fini_event (sig_th);
       eri_helper__invoke (group->helper, cleanup, sig_th);
