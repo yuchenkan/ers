@@ -43,7 +43,7 @@ rtld (void **args, uint64_t rdx)
   eri_assert_sys_sigprocmask (&set, &rtld_args.sig_mask);
 
   const char *live = "/work/ers/live";
-  uint64_t buf_size = 512 * 1024 * 1024;
+  uint64_t buf_size = 1024 * 1024 * 1024;
   uint64_t page_size = 4096;
 
   rtld_args.envp = eri_get_envp_from_args (args);

@@ -32,23 +32,23 @@ uint8_t eri_try_unserialize_int64 (eri_file_t file, int64_t *v);
 int64_t eri_unserialize_int64 (eri_file_t file);
 
 void eri_serialize_uint8_array (eri_file_t file,
-				const uint8_t *a, uint64_t size);
+				const uint8_t *a, uint64_t len);
 uint8_t eri_try_unserialize_uint8_array (eri_file_t file,
-					 uint8_t *a, uint64_t size);
+					 uint8_t *a, uint64_t len);
 void eri_unserialize_uint8_array (eri_file_t file,
-				  uint8_t *a, uint64_t size);
-void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t size);
+				  uint8_t *a, uint64_t len);
+void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t len);
 
 void eri_serialize_uint64_array (eri_file_t file,
-				 const uint64_t *a, uint64_t size);
+				 const uint64_t *a, uint64_t len);
 uint8_t eri_try_unserialize_uint64_array (eri_file_t file,
-					  uint64_t *a, uint64_t size);
+					  uint64_t *a, uint64_t len);
 void eri_unserialize_uint64_array (eri_file_t file,
-				   uint64_t *a, uint64_t size);
+				   uint64_t *a, uint64_t len);
 
-void eri_serialize_str (eri_file_t file, const char *s, uint64_t size);
-uint8_t eri_try_unserialize_str (eri_file_t file, char *s, uint64_t size);
-void eri_unserialize_str (eri_file_t file, char *s, uint64_t size);
+void eri_serialize_str (eri_file_t file, const char *s, uint64_t len);
+uint8_t eri_try_unserialize_str (eri_file_t file, char *s, uint64_t len);
+void eri_unserialize_str (eri_file_t file, char *s, uint64_t len);
 
 void eri_serialize_pair (eri_file_t file, struct eri_pair pair);
 uint8_t eri_try_unserialize_pair (eri_file_t file, struct eri_pair *pair);
@@ -200,6 +200,9 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
   p (SYSCALL_STAT, ##__VA_ARGS__)					\
   p (SYSCALL_UNAME, ##__VA_ARGS__)					\
+  p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
+  p (SYSCALL_FUTEX_UNLOCK_PI, ##__VA_ARGS__)				\
+  p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
   p (SYSCALL_READLINK, ##__VA_ARGS__)					\
@@ -354,5 +357,75 @@ uint8_t eri_try_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
 void eri_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
+
+// TODO
+struct eri_syscall_futex_record
+{
+  struct eri_syscall_res_in_record res;
+  uint8_t access;
+  struct eri_atomic_record atomic;
+};
+
+void eri_serialize_syscall_futex_record (eri_file_t file,
+			const struct eri_syscall_futex_record *rec);
+uint8_t eri_try_unserialize_syscall_futex_record (eri_file_t file,
+			struct eri_syscall_futex_record *rec);
+void eri_unserialize_syscall_futex_record (eri_file_t file,
+			struct eri_syscall_futex_record *rec);
+
+struct eri_syscall_futex_unlock_pi_record
+{
+  struct eri_syscall_res_in_record res;
+  uint8_t access;
+  int32_t next;
+  uint8_t wait;
+  struct eri_atomic_record atomic;
+};
+
+void eri_serialize_syscall_futex_unlock_pi_record (eri_file_t file,
+			const struct eri_syscall_futex_unlock_pi_record *rec);
+uint8_t eri_try_unserialize_syscall_futex_unlock_pi_record (eri_file_t file,
+			struct eri_syscall_futex_unlock_pi_record *rec);
+void eri_unserialize_syscall_futex_unlock_pi_record (eri_file_t file,
+			struct eri_syscall_futex_unlock_pi_record *rec);
+
+struct eri_syscall_futex_requeue_record
+{
+  struct eri_syscall_res_in_record res;
+  uint8_t access;
+  struct eri_atomic_record atomic;
+  uint64_t pi;
+};
+
+void eri_serialize_syscall_futex_requeue_record (eri_file_t file,
+			const struct eri_syscall_futex_requeue_record *rec);
+uint8_t eri_try_unserialize_syscall_futex_requeue_record (eri_file_t file,
+			struct eri_syscall_futex_requeue_record *rec);
+void eri_unserialize_syscall_futex_requeue_record (eri_file_t file,
+			struct eri_syscall_futex_requeue_record *rec);
+
+struct eri_syscall_futex_requeue_pi_record
+{
+  int32_t next;
+  struct eri_atomic_record atomic;
+};
+
+void eri_serialize_syscall_futex_requeue_pi_record (eri_file_t file,
+		const struct eri_syscall_futex_requeue_pi_record *rec);
+uint8_t eri_try_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
+		struct eri_syscall_futex_requeue_pi_record *rec);
+void eri_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
+		struct eri_syscall_futex_requeue_pi_record *rec);
+
+void eri_serialize_syscall_futex_requeue_pi_record_array (
+	eri_file_t file,
+	const struct eri_syscall_futex_requeue_pi_record *recs,
+	uint64_t len);
+uint8_t eri_try_unserialize_syscall_futex_requeue_pi_record_array (
+	eri_file_t file,
+	struct eri_syscall_futex_requeue_pi_record *recs, uint64_t len);
+void eri_unserialize_syscall_futex_requeue_pi_record_array (
+	eri_file_t file,
+	struct eri_syscall_futex_requeue_pi_record *recs, uint64_t len);
 
 #endif

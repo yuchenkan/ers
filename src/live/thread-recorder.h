@@ -42,15 +42,19 @@ struct eri_live_thread_recorder__rec_read_args
   void *dst;
 };
 
-void eri_live_thread_recorder__rec_read (
+void eri_live_thread_recorder__rec_syscall_read (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__rec_read_args *args);
-void eri_live_thread_recorder__rec_mmap (
+void eri_live_thread_recorder__rec_syscall_mmap (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec, uint64_t len);
-void eri_live_thread_recorder__rec_readlink (
+void eri_live_thread_recorder__rec_syscall_readlink (
 	struct eri_live_thread_recorder *th_rec,
 	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len);
+void eri_live_thread_recorder__rec_syscall_futex_requeue (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_syscall_futex_requeue_record *rec,
+		struct eri_syscall_futex_requeue_pi_record *pi);
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

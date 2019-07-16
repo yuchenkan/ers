@@ -237,7 +237,7 @@ syscall_start_record (struct eri_live_thread_recorder *th_rec,
 }
 
 void
-eri_live_thread_recorder__rec_read (
+eri_live_thread_recorder__rec_syscall_read (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__rec_read_args *args)
 {
@@ -298,7 +298,7 @@ out:
 }
 
 void
-eri_live_thread_recorder__rec_mmap (
+eri_live_thread_recorder__rec_syscall_mmap (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec, uint64_t len)
 {
@@ -319,7 +319,7 @@ eri_live_thread_recorder__rec_mmap (
 }
 
 void
-eri_live_thread_recorder__rec_readlink (
+eri_live_thread_recorder__rec_syscall_readlink (
 	struct eri_live_thread_recorder *th_rec,
 	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len)
 {
@@ -332,6 +332,21 @@ eri_live_thread_recorder__rec_readlink (
       eri_serialize_uint64 (th_rec->file, len);
       eri_serialize_uint8_array (th_rec->file, (void *) buf, len);
     }
+}
+
+void
+eri_live_thread_recorder__rec_syscall_futex_requeue (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_syscall_futex_requeue_record *rec,
+		struct eri_syscall_futex_requeue_pi_record *pi)
+{
+  if (! th_rec) return;
+
+  syscall_start_record (th_rec, ERI_SYSCALL_FUTEX_REQUEUE_MAGIC);
+
+  eri_serialize_syscall_futex_requeue_record (th_rec->file, rec);
+  eri_serialize_syscall_futex_requeue_pi_record_array (th_rec->file, pi,
+						       rec->pi);
 }
 
 void
@@ -369,6 +384,10 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_stat_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_UNAME_MAGIC)
     eri_serialize_syscall_uname_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
+    eri_serialize_syscall_futex_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
+    eri_serialize_syscall_futex_unlock_pi_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 

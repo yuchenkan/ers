@@ -167,6 +167,57 @@ main (int32_t argc, const char **argv)
 		    rec.utsname.version, rec.utsname.machine,
 		    rec.utsname.domainname);
 	  }
+	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
+	  {
+	    struct eri_syscall_futex_record rec;
+	    eri_unserialize_syscall_futex_record (file, &rec);
+	    printf ("  syscall.futex.result: %ld, ..in: %lu, ..access: %u\n",
+		    rec.res.result, rec.res.in, rec.access);
+	    if (rec.access && rec.atomic.ok)
+	      printf (" syscall.futex.atomic.ver: %lu %lu\n",
+		      rec.atomic.ver.first, rec.atomic.ver.second);
+	  }
+	else if (magic == ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
+	  {
+	    struct eri_syscall_futex_unlock_pi_record rec;
+	    eri_unserialize_syscall_futex_unlock_pi_record (file, &rec);
+	    printf ("  syscall.futex_unlock_pi.result: %ld, ..in: %lu, "
+		    "..access: %u", rec.res.result, rec.res.in, rec.access);
+	    if (rec.access)
+	      {
+		printf (", ..next: %d, ..wait: %u\n", rec.next, rec.wait);
+		if (rec.atomic.ok)
+		  printf (", .syscall.futex_unlock_pi.atomic.ver: %lu %lu\n",
+			  rec.atomic.ver.first, rec.atomic.ver.second);
+	      }
+	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)
+	  {
+	    struct eri_syscall_futex_requeue_record rec;
+	    eri_unserialize_syscall_futex_requeue_record (file, &rec);
+	    printf ("  syscall.futex_requeue.result: %ld, ..in: %lu, "
+		    "..acccess: %u\n",
+		    rec.res.result, rec.res.in, rec.access);
+	    if (rec.access && rec.access)
+	      {
+		printf (", .syscall.futex_requeue.atomic.ver: %lu %lu\n",
+			rec.atomic.ver.first, rec.atomic.ver.second);
+		uint64_t j;
+		for (j = 0; j < rec.pi; ++j)
+		  {
+		    struct eri_syscall_futex_requeue_pi_record pi;
+		    eri_unserialize_syscall_futex_requeue_pi_record (file,
+								     &pi);
+		    printf ("  syscall.futex_requeue_pi.next: %d\n",
+			    pi.next);
+		    if (pi.atomic.ok)
+		      printf ("  syscall.futex_requeue_pi.atomic.ver: "
+			      "%lx %lx\n",
+			      pi.atomic.ver.first, pi.atomic.ver.second);
+		  }
+	      }
+	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
 	    struct eri_syscall_res_in_record rec;
@@ -218,7 +269,7 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_atomic_record (file, &rec);
 	    printf ("  atomic.ok: %u\n", rec.ok);
 	    if (rec.ok)
-	      printf ("  atomic..ver: %lu %lu\n",
+	      printf ("  atomic.ver: %lu %lu\n",
 		      rec.ver.first, rec.ver.second);
 	  }
       }

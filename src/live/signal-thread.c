@@ -518,7 +518,7 @@ proc_event (struct eri_live_signal_thread *sig_th, void *event)
 #define SIG_FD_READ_EVENT		11
 #define SYSCALL_EVENT			12
 
-#define SIG_EXIT_GROUP_EVENT		32
+#define SIG_EXIT_GROUP_EVENT		64
 
 struct clone_event;
 static void clone (struct eri_live_signal_thread *sig_th,
@@ -648,6 +648,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
 	}
       else eri_assert_unreachable ();
 
+      /* These events have more than one place release_event.  */
       if (type != CLONE_EVENT && type != SIG_RESET_EVENT)
 	release_event (event_type);
     }
@@ -996,23 +997,20 @@ eri_live_signal_thread__sig_tmp_mask_async (
 }
 
 uint8_t
-eri_live_signal_thread__sig_mask_all (
-			struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__sig_mask_all (struct eri_live_signal_thread *sig_th)
 {
   return thread_do_sig_mask (sig_th, SIG_MASK_ALL_EVENT, 0);
 }
 
 void
-eri_live_signal_thread__sig_reset (
-			struct eri_live_signal_thread *sig_th,
-			const struct eri_sigset *mask)
+eri_live_signal_thread__sig_reset (struct eri_live_signal_thread *sig_th,
+				   const struct eri_sigset *mask)
 {
   thread_do_sig_mask (sig_th, SIG_RESET_EVENT, mask);
 }
 
 void
-eri_live_signal_thread__sig_prepare (
-			struct eri_live_signal_thread *sig_th,
+eri_live_signal_thread__sig_prepare (struct eri_live_signal_thread *sig_th,
 			struct eri_siginfo *info, struct eri_sig_act *act)
 {
   if (eri_live_signal_thread__sig_mask_all (sig_th))
@@ -1062,10 +1060,10 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
     { sig_th->event_pipe[0], ERI_POLLIN }
   };
 
+  event->done = 1;
+
   do
     {
-      event->done = 1;
-
       struct eri_sigset mask = sig_th->sig_mask;
       eri_assert_lock (args->mask_lock);
       eri_sig_union_set (&mask, args->mask);
@@ -1089,8 +1087,7 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
 }
 
 uint8_t
-eri_live_signal_thread__sig_fd_read (
-			struct eri_live_signal_thread *sig_th,
+eri_live_signal_thread__sig_fd_read (struct eri_live_signal_thread *sig_th,
 			struct eri_live_signal_thread__sig_fd_read_args *args)
 {
   struct sig_fd_read_event event
@@ -1100,18 +1097,38 @@ eri_live_signal_thread__sig_fd_read (
 }
 
 uint64_t
-eri_live_signal_thread__syscall (
-			struct eri_live_signal_thread *sig_th,
-			struct eri_sys_syscall_args *args)
+eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
+				 struct eri_sys_syscall_args *args)
 {
   struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
   proc_event (sig_th, &event);
   return args->result;
 }
 
+uint64_t
+eri_live_signal_thread__set_futex_pi_owner (
+		struct eri_live_signal_thread *sig_th,
+		int32_t owner, struct eri_live_futex *futex)
+{
+  struct signal_thread_group *group = sig_th->group;
+
+  eri_assert_lock (&group->thread_lock);
+
+  struct eri_live_signal_thread *it;
+  ERI_LST_FOREACH (thread, group, it)
+    if (owner == it->tid)
+      {
+	eri_live_thread__set_futex_pi_owner (it->th, futex);
+	eri_assert_unlock (&group->thread_lock);
+	return 0;
+      }
+
+  eri_assert_unlock (&group->thread_lock);
+  return ERI_ESRCH;
+}
+
 uint8_t
-eri_live_signal_thread__signaled (
-			struct eri_live_signal_thread *sig_th)
+eri_live_signal_thread__signaled (struct eri_live_signal_thread *sig_th)
 {
   return !! eri_atomic_load (&sig_th->sig_info, 0);
 }

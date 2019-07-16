@@ -20,6 +20,9 @@ attr eri_unused void pfx##_lst_append (					\
 			list_type *list, node_type *node);		\
 attr eri_unused void pfx##_lst_remove (					\
 			list_type *list, node_type *node);		\
+attr eri_unused node_type *pfx##_lst_get_first (list_type *list);	\
+attr eri_unused node_type *pfx##_lst_get_next (				\
+			list_type *list, node_type *node);		\
 attr eri_unused uint64_t pfx##_lst_get_size (list_type *list);
 
 #define ERI_DEFINE_LIST(attr, pfx, list_type, node_type) \
@@ -58,6 +61,24 @@ pfx##_lst_remove (list_type *list, node_type *node)			\
   ((void **) n[1])[0] = n[0];	/* n->next->prev = n->prev; */		\
 }									\
 									\
+attr node_type *							\
+pfx##_lst_get_first (list_type *list)					\
+{									\
+  uint8_t *n = list->pfx##_lst[1];					\
+  return n == (uint8_t *) list->pfx##_lst				\
+	? 0 : (node_type *) (						\
+			n - __builtin_offsetof (node_type, pfx##_lst));	\
+}									\
+									\
+attr node_type *							\
+pfx##_lst_get_next (list_type *list, node_type *node)			\
+{									\
+  uint8_t *n = node->pfx##_lst[1];					\
+  return n == (uint8_t *) list->pfx##_lst				\
+	? 0 : (node_type *) (						\
+			n - __builtin_offsetof (node_type, pfx##_lst));	\
+}									\
+									\
 attr uint64_t								\
 pfx##_lst_get_size (list_type *list)					\
 {									\
@@ -65,18 +86,12 @@ pfx##_lst_get_size (list_type *list)					\
 }
 
 #define ERI_LST_FOREACH(pfx, list, iter) \
-  for (iter = (typeof (iter)) (list)->pfx##_lst[1];			\
-       iter != (typeof (iter)) (list)->pfx##_lst			\
-       && (iter = (typeof (iter)) ((uint8_t *) iter			\
-		    - __builtin_offsetof (typeof (*iter), pfx##_lst)));	\
-       iter = (typeof (iter)) iter->pfx##_lst[1])
+  for (iter = pfx##_lst_get_first (list);				\
+       iter; iter = pfx##_lst_get_next (list, iter))
 
 #define ERI_LST_FOREACH_SAFE(pfx, list, iter, next) \
-  for (iter = (typeof (iter)) (list)->pfx##_lst[1];			\
-       iter != (typeof (iter)) (list)->pfx##_lst			\
-       && (iter = (typeof (iter)) ((uint8_t *) iter			\
-		    - __builtin_offsetof (typeof (*iter), pfx##_lst)))	\
-       && ({ next = (typeof (iter)) iter->pfx##_lst[1]; 1; });		\
+  for (iter = pfx##_lst_get_first (list);				\
+       iter && ({ next = pfx##_lst_get_next (list, iter); 1; });	\
        iter = next)
 
 #endif

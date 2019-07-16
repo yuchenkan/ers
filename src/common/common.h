@@ -371,6 +371,13 @@ eri_set_access (struct eri_access *acc, uint64_t addr,
   eri_set_access (acc, addr, size, ERI_ACCESS_WRITE)
 
 static eri_unused void
+eri_set_read_write (struct eri_access *acc, uint64_t addr, uint64_t size)
+{
+  eri_set_read (acc, addr, size);
+  eri_set_write (acc + 1, addr, size);
+}
+
+static eri_unused void
 eri_append_access (struct eri_buf *buf, uint64_t addr,
 		   uint64_t size, uint8_t type)
 {
@@ -399,10 +406,10 @@ eri_syscall_futex_check_wake (uint32_t op, uint32_t mask,
 
 static eri_unused uint64_t
 eri_syscall_futex_check_wake2 (uint32_t op, uint32_t mask,
-		uint64_t user_addr, uint64_t user_addr2, uint64_t page_size)
+			       uint64_t *user_addr, uint64_t page_size)
 {
-  return eri_syscall_futex_check_wake (op, mask, user_addr, page_size)
-	? : eri_syscall_futex_check_user_addr (user_addr2, page_size);
+  return eri_syscall_futex_check_wake (op, mask, user_addr[0], page_size)
+	? : eri_syscall_futex_check_user_addr (user_addr[1], page_size);
 }
 
 static eri_unused uint16_t
@@ -417,6 +424,30 @@ eri_syscall_futex_atomic_code_from_wake_op (uint16_t op)
     case ERI_FUTEX_OP_XOR: return ERI_OP_ATOMIC_XXOR;
     default: eri_assert_unreachable ();
     }
+}
+
+static eri_unused int32_t
+eri_atomic_futex_lock_pi (int32_t *user_addr, int32_t next)
+{
+  int32_t old = eri_atomic_load (user_addr, 0);
+  while (! eri_atomic_compare_exchange (user_addr, old,
+		old & ~ERI_FUTEX_OWNER_DIED
+			? (old | ((old & ERI_FUTEX_TID_MASK) != next
+					? ERI_FUTEX_WAITERS : 0))
+			: next, 0))
+    old = eri_atomic_load (user_addr, 0);
+  return old;
+}
+
+static eri_unused uint8_t
+eri_atomic_futex_unlock_pi (int32_t *user_addr, int32_t tid,
+			    int32_t next, uint8_t wait)
+{
+  int32_t old = eri_atomic_load (user_addr, 0);
+  if (next && ! (old & ERI_FUTEX_WAITERS)) return 0;
+  if ((old & ERI_FUTEX_TID_MASK) != tid) return 0;
+  return eri_atomic_compare_exchange (user_addr, old,
+			next | (wait ? ERI_FUTEX_WAITERS : 0), 0);
 }
 
 #endif
