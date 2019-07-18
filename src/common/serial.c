@@ -696,7 +696,7 @@ eri_serialize_syscall_exit_futex_pi_record (eri_file_t file,
 			const struct eri_syscall_exit_futex_pi_record *rec)
 {
   eri_serialize_uint64 (file, rec->user_addr);
-  eri_serialize_int32 (file, rec->user_tid);
+  eri_serialize_int32 (file, rec->user_next);
   eri_serialize_uint8 (file, rec->wait);
   eri_serialize_atomic_record (file, &rec->atomic);
 }
@@ -706,7 +706,7 @@ eri_try_unserialize_syscall_exit_futex_pi_record (eri_file_t file,
 			struct eri_syscall_exit_futex_pi_record *rec)
 {
   return eri_try_unserialize_uint64 (file, &rec->user_addr)
-	 && eri_try_unserialize_int32 (file, &rec->user_tid)
+	 && eri_try_unserialize_int32 (file, &rec->user_next)
 	 && eri_try_unserialize_uint8 (file, &rec->wait)
 	 && eri_try_unserialize_atomic_record (file, &rec->atomic);
 }
@@ -963,7 +963,7 @@ eri_serialize_syscall_futex_unlock_pi_record (eri_file_t file,
   eri_serialize_uint8 (file, rec->access);
   if (rec->access)
     {
-      eri_serialize_int32 (file, rec->user_tid);
+      eri_serialize_int32 (file, rec->user_next);
       eri_serialize_uint8 (file, rec->wait);
       eri_serialize_atomic_record (file, &rec->atomic);
     }
@@ -976,7 +976,7 @@ eri_try_unserialize_syscall_futex_unlock_pi_record (eri_file_t file,
   return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
 	 && eri_try_unserialize_uint8 (file, &rec->access)
 	 && (! rec->access
-	     || (eri_try_unserialize_int32 (file, &rec->user_tid)
+	     || (eri_try_unserialize_int32 (file, &rec->user_next)
 		 && eri_try_unserialize_uint8 (file, &rec->wait)
 		 && eri_try_unserialize_atomic_record (file, &rec->atomic)));
 }
@@ -1026,7 +1026,7 @@ void
 eri_serialize_syscall_futex_requeue_pi_record (eri_file_t file,
 		const struct eri_syscall_futex_requeue_pi_record *rec)
 {
-  eri_serialize_int32 (file, rec->user_tid);
+  eri_serialize_int32 (file, rec->user_next);
   eri_serialize_atomic_record (file, &rec->atomic);
 }
 
@@ -1034,7 +1034,7 @@ uint8_t
 eri_try_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
 		struct eri_syscall_futex_requeue_pi_record *rec)
 {
-  return eri_try_unserialize_int32 (file, &rec->user_tid)
+  return eri_try_unserialize_int32 (file, &rec->user_next)
 	 && eri_try_unserialize_atomic_record (file, &rec->atomic);
 }
 

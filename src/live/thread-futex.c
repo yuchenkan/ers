@@ -545,7 +545,7 @@ out:
 
 static uint64_t
 try_lock_pi (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
-	     int32_t user_tid, uint8_t try, int32_t *user_owner,
+	     int32_t user_next, uint8_t try, int32_t *user_owner,
 	     struct eri_atomic_record *rec)
 {
   struct eri_live_atomic *atomic = th_ftx->group->atomic;
@@ -560,7 +560,7 @@ try_lock_pi (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
       return ERI_EFAULT;
     }
 
-  int32_t old = eri_atomic_futex_lock_pi ((void *) user_addr, user_tid, try);
+  int32_t old = eri_atomic_futex_lock_pi ((void *) user_addr, user_next, try);
 
   eri_entry__reset_test_access (entry);
 
@@ -644,13 +644,13 @@ retry:
     }
 
 out:
-  eri_assert_unlock (&slot->lock); 
+  eri_assert_unlock (&slot->lock);
   rec->res.result = res;
 }
 
 static uint64_t
 unlock (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
-	int32_t user_tid, uint8_t wait, struct eri_atomic_record *rec)
+	int32_t user_next, uint8_t wait, struct eri_atomic_record *rec)
 {
   struct eri_live_atomic *atomic = th_ftx->group->atomic;
   struct eri_pair idx = eri_live_atomic_lock (atomic, user_addr,
@@ -663,7 +663,7 @@ unlock (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
     }
 
   uint8_t valid = eri_atomic_futex_unlock_pi ((void *) user_addr,
-				th_ftx->user_tid, user_tid, wait);
+				th_ftx->user_tid, user_next, wait);
   eri_entry__reset_test_access (th_ftx->entry);
 
   rec->ok = 1;
@@ -712,10 +712,10 @@ eri_live_thread_futex__unlock_pi (struct eri_live_thread_futex *th_ftx,
 
   struct waiter *waiter = futex ? waiter_lst_get_first (futex) : 0;
 
-  rec->user_tid = waiter ? waiter->pi->user_tid : 0;
+  rec->user_next = waiter ? waiter->pi->user_tid : 0;
   rec->wait = futex ? waiter_lst_get_size (futex) > 1 : 0;
 
-  if ((res = unlock (th_ftx, user_addr, rec->user_tid,
+  if ((res = unlock (th_ftx, user_addr, rec->user_next,
 		     rec->wait, &rec->atomic))) goto out;
 
   if (waiter) wake_pi (th_ftx, slot, futex, waiter);
