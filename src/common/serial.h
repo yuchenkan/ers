@@ -314,7 +314,7 @@ void eri_unserialize_syscall_exit_record (eri_file_t file,
 struct eri_syscall_exit_futex_pi_record
 {
   uint64_t user_addr;
-  int32_t next;
+  int32_t user_tid;
   uint8_t wait;
   struct eri_atomic_record atomic;
 };
@@ -439,7 +439,7 @@ struct eri_syscall_futex_unlock_pi_record
 {
   struct eri_syscall_res_in_record res;
   uint8_t access;
-  int32_t next;
+  int32_t user_tid;
   uint8_t wait;
   struct eri_atomic_record atomic;
 };
@@ -468,7 +468,7 @@ void eri_unserialize_syscall_futex_requeue_record (eri_file_t file,
 
 struct eri_syscall_futex_requeue_pi_record
 {
-  int32_t next;
+  int32_t user_tid;
   struct eri_atomic_record atomic;
 };
 

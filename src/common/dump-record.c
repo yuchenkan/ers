@@ -121,8 +121,8 @@ main (int32_t argc, const char **argv)
 		struct eri_syscall_exit_futex_pi_record pi;
 		eri_unserialize_syscall_exit_futex_pi_record (file, &pi);
 		printf ("  syscall.exit_futex_pi.user_addr: %lx, "
-			"..next: %d, ..wait: %u\n",
-			pi.user_addr, pi.next, pi.wait);
+			"..user_tid: %d, ..wait: %u\n",
+			pi.user_addr, pi.user_tid, pi.wait);
 		if (pi.atomic.ok)
 		  printf ("  syscall.exit_futex_pi.atomic.ver: %lx %lx\n",
 			  pi.atomic.ver.first, pi.atomic.ver.second);
@@ -223,7 +223,8 @@ main (int32_t argc, const char **argv)
 		    "..access: %u", rec.res.result, rec.res.in, rec.access);
 	    if (rec.access)
 	      {
-		printf (", ..next: %d, ..wait: %u\n", rec.next, rec.wait);
+		printf (", ..user_tid: %d, ..wait: %u\n",
+			rec.user_tid, rec.wait);
 		if (rec.atomic.ok)
 		  printf (", .syscall.futex_unlock_pi.atomic.ver: %lu %lu\n",
 			  rec.atomic.ver.first, rec.atomic.ver.second);
@@ -247,8 +248,8 @@ main (int32_t argc, const char **argv)
 		    struct eri_syscall_futex_requeue_pi_record pi;
 		    eri_unserialize_syscall_futex_requeue_pi_record (file,
 								     &pi);
-		    printf ("  syscall.futex_requeue_pi.next: %d\n",
-			    pi.next);
+		    printf ("  syscall.futex_requeue_pi.user_tid: %d\n",
+			    pi.user_tid);
 		    if (pi.atomic.ok)
 		      printf ("  syscall.futex_requeue_pi.atomic.ver: "
 			      "%lx %lx\n",

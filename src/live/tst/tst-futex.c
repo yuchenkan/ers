@@ -167,7 +167,6 @@ tst_live_start (void)
   eri_assert (tst_syscall (futex, &a,
 			ERI_FUTEX_CMP_REQUEUE_PRIVATE, 1, 1, 0) == ERI_EAGAIN);
 
-#if 0
   eri_info ("1 pi\n");
 
   a = 0;
@@ -180,6 +179,7 @@ tst_live_start (void)
 		ERI_FUTEX_TRYLOCK_PI_PRIVATE, 0, &to) == ERI_EDEADLK);
 
   eri_assert (! tst_syscall (futex, &a, ERI_FUTEX_UNLOCK_PI_PRIVATE));
+#if 0
   eri_assert (a == 0);
 #endif
 

@@ -15,9 +15,7 @@ struct eri_sig_act;
 struct eri_helper;
 struct eri_live_signal_thread;
 
-#if 0
 struct eri_live_futex;
-#endif
 
 struct eri_live_thread;
 struct eri_live_thread_group;
@@ -59,10 +57,8 @@ void eri_live_thread__destroy (struct eri_live_thread *th);
 
 void eri_live_thread__join (struct eri_live_thread *th);
 
-#if 0
-int32_t eri_live_thread__set_futex_pi_owner (struct eri_live_thread *th,
-					     struct eri_live_futex *futex);
-#endif
+struct eri_live_futex *eri_live_thread__create_futex_pi (
+			struct eri_live_thread *th, uint64_t user_addr);
 
 void eri_live_thread__sig_handler (struct eri_live_thread *th,
 		struct eri_sigframe *frame, struct eri_sig_act *act);

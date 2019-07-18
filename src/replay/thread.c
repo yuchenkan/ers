@@ -1047,7 +1047,7 @@ check_exit (struct thread *th)
 
 static uint8_t
 syscall_unlock_futex (struct thread *th, uint64_t user_addr,
-	uint64_t next, uint8_t wait, const struct eri_atomic_record *rec)
+	uint64_t user_tid, uint8_t wait, const struct eri_atomic_record *rec)
 {
   if (rec->ok
       && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
@@ -1064,7 +1064,7 @@ syscall_unlock_futex (struct thread *th, uint64_t user_addr,
     }
 
   uint8_t valid = eri_atomic_futex_unlock_pi ((void *) user_addr,
-					      th->user_tid, next, wait);
+					      th->user_tid, user_tid, wait);
 
   eri_entry__reset_test_access (th->entry);
   if (! rec->ok) diverged (th);
@@ -1140,7 +1140,7 @@ syscall_do_exit (SYSCALL_PARAMS)
       if (! try_unserialize (syscall_exit_futex_pi_record, th, &pi))
 	diverged (th);
       syscall_unlock_futex (th, pi.user_addr,
-		pi.next | ERI_FUTEX_OWNER_DIED, pi.wait, &pi.atomic);
+		pi.user_tid | ERI_FUTEX_OWNER_DIED, pi.wait, &pi.atomic);
     }
 
   if (th->user_robust_list
@@ -2210,7 +2210,8 @@ syscall_do_futex_wake (SYSCALL_PARAMS)
 
 static uint8_t
 syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
-			   int32_t next, const struct eri_atomic_record *rec)
+			   int32_t user_tid, uint8_t try,
+			   const struct eri_atomic_record *rec)
 {
   if (rec->ok
       && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
@@ -2223,7 +2224,7 @@ syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
   if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
     return ! rec->ok;
 
-  eri_atomic_futex_lock_pi ((void *) user_addr, next);
+  eri_atomic_futex_lock_pi ((void *) user_addr, user_tid, try);
 
   eri_entry__reset_test_access (th->entry);
   if (! rec->ok) return 0;
@@ -2273,7 +2274,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 	    diverged (th);
 
 	  if (! syscall_futex_try_lock_pi (th, user_addr[1],
-					   r.next, &r.atomic))
+					   r.user_tid, 0, &r.atomic))
 	    diverged (th);
 	}
     }
@@ -2338,7 +2339,8 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 
   if (! rec.access) goto out;
 
-  if (! syscall_futex_try_lock_pi (th, user_addr, th->user_tid, rec.atomic))
+  if (! syscall_futex_try_lock_pi (th, user_addr, th->user_tid,
+	(op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_TRYLOCK_PI, rec.atomic))
     diverged (th);
 
   if (rec.access == 2
@@ -2369,7 +2371,7 @@ syscall_do_futex_unlock_pi (SYSCALL_PARAMS)
   if (! rec.access) goto out;
 
   if (! syscall_unlock_futex (th, user_addr,
-			      rec.next, rec.wait, &rec.atomic)
+			      rec.user_tid, rec.wait, &rec.atomic)
       && res != ERI_EINVAL) diverged (th);
 
 out:

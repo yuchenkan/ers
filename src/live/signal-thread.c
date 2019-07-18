@@ -1104,11 +1104,11 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
   return args->result;
 }
 
-#if 0
 uint64_t
-eri_live_signal_thread__set_futex_pi_owner (
+eri_live_signal_thread__create_futex_pi (
 		struct eri_live_signal_thread *sig_th,
-		int32_t owner, struct eri_live_futex *futex, int32_t *tid)
+		int32_t user_tid, uint64_t user_addr,
+		struct eri_live_futex **futex)
 {
   struct signal_thread_group *group = sig_th->group;
 
@@ -1116,18 +1116,17 @@ eri_live_signal_thread__set_futex_pi_owner (
 
   struct eri_live_signal_thread *it;
   ERI_LST_FOREACH (thread, group, it)
-    if (owner == it->tid)
+    if (user_tid == it->tid)
       {
-	*tid = eri_live_thread__set_futex_pi_owner (it->th, futex);
+	*futex = eri_live_thread__create_futex_pi (it->th, user_addr);
 	eri_assert_unlock (&group->thread_lock);
 	return 0;
       }
 
   eri_assert_unlock (&group->thread_lock);
-  eri_log (sig_th->log.file, "can't find %lx\n", owner);
+  eri_log (sig_th->log.file, "can't find %lx\n", user_tid);
   return ERI_ESRCH;
 }
-#endif
 
 uint8_t
 eri_live_signal_thread__signaled (struct eri_live_signal_thread *sig_th)
