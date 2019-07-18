@@ -48,6 +48,9 @@ m4_pub_exp_nl
 m4_atomic(CMPXCHG, `reg, mem')
 m4_pub_exp_nl
 
+m4_atomic(ADD, `reg, mem')
+m4_pub_exp_nl
+
 m4_atomic(AND, `reg, mem')
 m4_pub_exp_nl
 

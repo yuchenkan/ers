@@ -12,6 +12,9 @@
 #define ___tst_atomic_inc_dec(e, sz, __m, cinc, inc) \
   ERI_PASTE (ERS_ATOMIC_, cinc) (e, sz, __m)
 
+#define __tst_atomic_add(e, sz, __r, __m) \
+  ERS_ATOMIC_ADD (e, sz, __r, __m)
+
 #define __tst_atomic_and(e, sz, __r, __m) \
   ERS_ATOMIC_AND (e, sz, __r, __m)
 

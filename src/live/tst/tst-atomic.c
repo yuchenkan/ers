@@ -66,6 +66,9 @@ tst_live_start (void)
   eri_assert (v == 0xff);
   eri_assert (a == 0);
 
+  tst_atomic_add (&v, 0xff00, 1);
+  eri_assert (v == 0xffff);
+
   tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
   tst_assert_sys_exit (0);
 }

@@ -15,6 +15,9 @@
 #define __eri_atomic_xadd(e, sz, __r, __m) \
   lock ERI_PASTE (xadd, sz)	__r, __m
 
+#define __eri_atomic_add(e, sz, __r, __m) \
+  lock ERI_PASTE (add, sz)	__r, __m
+
 #define __eri_atomic_and(e, sz, __r, __m) \
   lock ERI_PASTE (and, sz)	__r, __m
 

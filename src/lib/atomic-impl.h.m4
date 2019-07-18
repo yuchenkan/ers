@@ -81,6 +81,9 @@ m4_include(`m4/util.m4')
     _eri_atomic_switch_size (_m, m4_ns(atomic_common2, _), op, _v, b);	\
   } while (0)
 
+#define m4_ns(atomic_add)(m, v, b) \
+  m4_ns(atomic_common2)(add, m, v, b)
+
 #define m4_ns(atomic_and)(m, v, b) \
   m4_ns(atomic_common2)(and, m, v, b)
 
@@ -186,6 +189,9 @@ m4_include(`m4/util.m4')
     _eri_atomic_switch_size (_m, m4_ns(atomic_common2_x, _),		\
 			     op, _v, _f, b);				\
   } while (0)
+
+#define m4_ns(atomic_add_x)(m, v, f, b) \
+  m4_ns(atomic_common2_x) (add, m, v, f, b)
 
 #define m4_ns(atomic_and_x)(m, v, f, b) \
   m4_ns(atomic_common2_x) (and, m, v, f, b)

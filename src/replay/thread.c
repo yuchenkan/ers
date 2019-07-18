@@ -148,9 +148,12 @@ struct thread
 
   int32_t tid;
   int32_t alive;
+  eri_lock_t start_lock;
 
   int32_t *clear_user_tid;
   int32_t user_tid;
+
+  struct eri_robust_list_head *user_robust_list;
 
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
@@ -306,17 +309,17 @@ create_group (const struct eri_replay_rtld_args *rtld_args)
   group->stack_size = rtld_args->stack_size;
   group->file_buf_size = rtld_args->file_buf_size;
 
+  group->pid = eri_assert_syscall (getpid);
+
   if (eri_enable_analyzer)
     {
       /* XXX: parameterize */
       struct eri_analyzer_group__create_args args = {
         group->pool, &group->map_range, group->log, group->page_size,
-	group->file_buf_size, 64, 1024 * 1024, &group->pid, error
+	group->file_buf_size, 64, 1024 * 1024, group->pid, error
       };
       group->analyzer_group = eri_analyzer_group__create (&args);
     }
-
-  group->pid = eri_assert_syscall (getpid);
 
   int32_t sig;
   for (sig = 1; sig < ERI_NSIG; ++sig)
@@ -400,8 +403,7 @@ create (struct thread_group *group, struct thread *pth,
   if (eri_enable_analyzer)
     {
       struct eri_analyzer__create_args args = {
-	group->analyzer_group, pth ? pth->analyzer : 0,
-	id, th->entry, &th->tid, th
+	group->analyzer_group, pth ? pth->analyzer : 0, id, th->entry, th
       };
       th->analyzer = eri_analyzer__create (&args);
     }
@@ -411,6 +413,7 @@ create (struct thread_group *group, struct thread *pth,
   th->marks = 0;
 
   th->alive = 1;
+  th->start_lock = !! pth;
   th->clear_user_tid = clear_user_tid;
 
   *(void **) th->sig_stack = th;
@@ -520,6 +523,10 @@ start (struct thread *th, uint8_t next)
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
   eri_assert_syscall (sigaltstack, &st, 0);
+
+  eri_assert_lock (&th->start_lock);
+
+  if (eri_enable_analyzer) eri_analyzer__set_tid (th->analyzer, th->tid);
 
   struct eri_sigset mask;
   eri_sig_empty_set (&mask);
@@ -1007,6 +1014,7 @@ DEFINE_SYSCALL (clone)
   };
 
   eri_assert_sys_clone (&args);
+  eri_assert_unlock (&cth->start_lock);
 
   eri_sig_empty_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
@@ -1037,16 +1045,114 @@ check_exit (struct thread *th)
   exit (th);
 }
 
+static uint8_t
+syscall_unlock_futex (struct thread *th, uint64_t user_addr,
+	uint64_t next, uint8_t wait, const struct eri_atomic_record *rec)
+{
+  if (rec->ok
+      && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
+    diverged (th);
+
+  struct eri_access acc[2];
+  eri_set_read_write (acc, user_addr, sizeof (int32_t));
+  update_access (th, acc, eri_length_of (acc));
+
+  if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
+    {
+      if (rec->ok) diverged (th);
+      return 1;
+    }
+
+  uint8_t valid = eri_atomic_futex_unlock_pi ((void *) user_addr,
+					      th->user_tid, next, wait);
+
+  eri_entry__reset_test_access (th->entry);
+  if (! rec->ok) diverged (th);
+
+  atomic_update (th, user_addr, sizeof (int32_t));
+  return valid;
+}
+
+static struct eri_robust_list *
+syscall_exit_robust_futex_node (struct thread *th,
+				struct eri_robust_list_head *list,
+				struct eri_robust_list *user_robust,
+				uint64_t *nr)
+{
+  struct eri_robust_list robust;
+  if (! copy_obj_from_user (th, &robust, user_robust)) return 0;
+
+  if (user_robust == list->list_op_pending) return robust.next;
+
+  uint64_t user_addr;
+  if (! copy_obj_from_user (th, &user_addr,
+	(void *) ((uint8_t *) user_robust + list->futex_offset)))
+    return robust.next;
+
+  if (! eri_syscall_futex_check_user_addr (user_addr, page_size (th)))
+    return robust.next;
+
+  struct eri_syscall_exit_robust_futex_record rec;
+  if (! try_unserialize (syscall_exit_robust_futex_record, th, &rec))
+    diverged (th);
+
+  syscall_unlock_futex (th, user_addr, ERI_FUTEX_OWNER_DIED,
+			rec.wait, &rec.atomic);
+  return robust.next;
+}
+
+static uint8_t
+syscall_exit_robust_futex_list (struct thread *th, uint64_t robust_futex)
+{
+  struct eri_robust_list_head list;
+  if (! copy_obj_from_user (th, &list, th->user_robust_list)
+      && robust_futex) return 0;
+
+  struct eri_robust_list *cur = list.list.next;
+  while (cur && cur != &th->user_robust_list->list)
+    cur = syscall_exit_robust_futex_node (th, &list, cur, &robust_futex);
+
+  if (list.list_op_pending)
+    {
+      cur = list.list_op_pending;
+      list.list_op_pending = 0;
+      syscall_exit_robust_futex_node (th, &list, cur, &robust_futex);
+    }
+  return ! robust_futex;
+}
+
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
   struct eri_syscall_exit_record rec;
   if (! check_magic (th, ERI_SYSCALL_EXIT_MAGIC)
-      || ! try_unserialize (syscall_exit_record, th, &rec)
-      || ! do_atomic (th, ERI_OP_ATOMIC_STORE, th->clear_user_tid,
-		      sizeof (int32_t), 0, &rec.clear_tid, 0, 0)
-      || ! io_out (th, rec.out)) diverged (th);
+      || ! try_unserialize (syscall_exit_record, th, &rec))
+    diverged (th);
 
+  uint8_t exit_group = (int32_t) regs->rax == __NR_exit_group;
+
+  if (exit_group) goto out;
+
+  uint64_t i;
+  for (i = 0; i < rec.futex_pi; ++i)
+    {
+      struct eri_syscall_exit_futex_pi_record pi;
+      if (! try_unserialize (syscall_exit_futex_pi_record, th, &pi))
+	diverged (th);
+      syscall_unlock_futex (th, pi.user_addr,
+		pi.next | ERI_FUTEX_OWNER_DIED, pi.wait, &pi.atomic);
+    }
+
+  if (th->user_robust_list
+      ? ! syscall_exit_robust_futex_list (th, rec.robust_futex)
+      : rec.robust_futex) diverged (th);
+
+  if (! do_atomic (th, ERI_OP_ATOMIC_STORE, th->clear_user_tid,
+		   sizeof (int32_t), 0, &rec.clear_tid, 0, 0))
+    diverged (th);
+
+out:
+  if (! io_out (th, rec.out)) diverged (th);
   check_exit (th);
 }
 
@@ -2106,13 +2212,13 @@ static uint8_t
 syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
 			   int32_t next, const struct eri_atomic_record *rec)
 {
-  struct eri_access acc[2];
-  eri_set_read_write (acc, user_addr, sizeof (int32_t));
-  update_access (th, acc, eri_length_of (acc));
-
   if (rec->ok
       && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
     return 0;
+
+  struct eri_access acc[2];
+  eri_set_read_write (acc, user_addr, sizeof (int32_t));
+  update_access (th, acc, eri_length_of (acc));
 
   if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
     return ! rec->ok;
@@ -2224,16 +2330,20 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
   syscall_leave_if_error (th, 0,
 	syscall_futex_check_wait (th, user_addr, user_timeout));
 
-  struct eri_syscall_futex_record rec;
-  uint64_t res = syscall_fetch_futex_record (th, &rec);
+  struct eri_syscall_futex_lock_pi_record rec;
+  if (! check_magic (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
+      || ! try_unserialize (syscall_futex_lock_pi_record, th, &rec))
+    diverged (th);
+  uint64_t res = rec.res.result;
 
   if (! rec.access) goto out;
 
-  struct eri_access acc[2];
-  eri_set_read_write (acc, user_addr, sizeof (int32_t));
-  update_access (th, acc, eri_length_of (acc));
+  if (! syscall_futex_try_lock_pi (th, user_addr, th->user_tid, rec.atomic))
+    diverged (th);
 
-  if (! syscall_futex_try_lock_pi (th, user_addr, th->user_tid, &rec.atomic))
+  if (rec.access == 2
+      && ! do_atomic (th, ERI_OP_ATOMIC_AND, (void *) user_addr,
+		sizeof (int32_t), ~ERI_FUTEX_WAITERS, rec.atomic + 1, 0, 0))
     diverged (th);
 
 out:
@@ -2258,27 +2368,9 @@ syscall_do_futex_unlock_pi (SYSCALL_PARAMS)
 
   if (! rec.access) goto out;
 
-  struct eri_access acc[2];
-  eri_set_read_write (acc, user_addr, sizeof (int32_t));
-  update_access (th, acc, eri_length_of (acc));
-
-  if (rec.atomic.ok
-      && ! atomic_wait (th, user_addr, sizeof (int32_t), rec.atomic.ver))
-    diverged (th);
-
-  if (! eri_entry__test_access (entry, (void *) user_addr, 0))
-    {
-      if (rec.atomic.ok) diverged (th);
-      goto out;
-    }
-
-  if (! eri_atomic_futex_unlock_pi ((void *) user_addr, th->user_tid,
-				    rec.next, rec.wait)
+  if (! syscall_unlock_futex (th, user_addr,
+			      rec.next, rec.wait, &rec.atomic)
       && res != ERI_EINVAL) diverged (th);
-
-  eri_entry__reset_test_access (entry);
-
-  if (! rec.atomic.ok) diverged (th);
 
 out:
   if (! io_in (th, rec.res.in)) diverged (th);

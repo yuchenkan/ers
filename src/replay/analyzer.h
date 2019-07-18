@@ -32,7 +32,7 @@ struct eri_analyzer_group__create_args
   uint32_t max_inst_count;
   uint64_t max_race_enter;
 
-  int32_t *pid;
+  int32_t pid;
   void *error; /* noreturn void (*) (void *) */
 };
 
@@ -48,13 +48,12 @@ struct eri_analyzer__create_args
   uint64_t id;
   struct eri_entry *entry;
 
-  int32_t *tid;
-
   void *args;
 };
 
 eri_analyzer_type *eri_analyzer__create (
 			struct eri_analyzer__create_args *args);
+void eri_analyzer__set_tid (eri_analyzer_type *analyzer, int32_t tid);
 void eri_analyzer__destroy (eri_analyzer_type *analyzer);
 
 eri_noreturn void eri_analyzer__enter (eri_analyzer_type *analyzer,

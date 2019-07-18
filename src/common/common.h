@@ -21,11 +21,12 @@
 #define ERI_OP_ATOMIC_DEC	6
 #define ERI_OP_ATOMIC_XCHG	7
 #define ERI_OP_ATOMIC_CMPXCHG	8
-#define ERI_OP_ATOMIC_AND	9
-#define ERI_OP_ATOMIC_OR	10
-#define ERI_OP_ATOMIC_XOR	11
-#define ERI_OP_ATOMIC_XADD	12
-#define ERI_OP_ATOMIC_PUB_END	13
+#define ERI_OP_ATOMIC_ADD	9
+#define ERI_OP_ATOMIC_AND	10
+#define ERI_OP_ATOMIC_OR	11
+#define ERI_OP_ATOMIC_XOR	12
+#define ERI_OP_ATOMIC_XADD	13
+#define ERI_OP_ATOMIC_PUB_END	14
 
 #define ERI_OP_ATOMIC_XAND	256
 #define ERI_OP_ATOMIC_X_OR	257
@@ -41,6 +42,7 @@
   p (ATOMIC_DEC, ##__VA_ARGS__)						\
   p (ATOMIC_XCHG, ##__VA_ARGS__)					\
   p (ATOMIC_CMPXCHG, ##__VA_ARGS__)					\
+  p (ATOMIC_ADD, ##__VA_ARGS__)						\
   p (ATOMIC_AND, ##__VA_ARGS__)						\
   p (ATOMIC_OR, ##__VA_ARGS__)						\
   p (ATOMIC_XOR, ##__VA_ARGS__)						\
@@ -176,6 +178,8 @@ ERI_PASTE (_eri_atomic_, type) (uint16_t code, type *mem,		\
       _eri_atomic_x (dec, rflags, mem); break;				\
     case ERI_OP_ATOMIC_CMPXCHG:						\
       _eri_atomic_x (cmpxchg, rflags, mem, old, val); break;		\
+    case ERI_OP_ATOMIC_ADD:						\
+      _eri_atomic_x (add, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_AND:						\
       _eri_atomic_x (and, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_OR:						\
@@ -444,7 +448,7 @@ eri_atomic_futex_unlock_pi (int32_t *user_addr, int32_t tid,
 			    int32_t next, uint8_t wait)
 {
   int32_t old = eri_atomic_load (user_addr, 0);
-  if (next && ! (old & ERI_FUTEX_WAITERS)) return 0;
+  if ((next & ERI_FUTEX_TID_MASK) && ! (old & ERI_FUTEX_WAITERS)) return 0;
   if ((old & ERI_FUTEX_TID_MASK) != tid) return 0;
   return eri_atomic_compare_exchange (user_addr, old,
 			next | (wait ? ERI_FUTEX_WAITERS : 0), 0);

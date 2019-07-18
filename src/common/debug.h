@@ -175,7 +175,7 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
   eri_assert_syscall (kill, eri_assert_syscall (getpid), ERI_SIGSTOP)
 
 #define eri_log_assert(expr, log) \
-  eri_log_info (log, "assert failed: " expr)
+  eri_log_info (log, "assert failed: %s", expr)
 #define eri_lassert(log, exp) \
   eri_xassert (exp, eri_log_assert, log)
 

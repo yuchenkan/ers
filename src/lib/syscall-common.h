@@ -559,6 +559,11 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_FUTEX_OP_CMP_GE	5	/* if (oldval >= CMPARG) wake */
 #define ERI_FUTEX_OP_CMP_NUM	6
 
+#define ERI_FUTEX_OP(op, op_arg, cmp, cmp_arg) \
+  (((op & 0xf) << 28) | ((cmp & 0xf) << 24)				\
+   | ((op_arg & 0xfff) << 12) | (cmp_arg & 0xfff))
+
+
 #define ERI_PROT_READ		0x1
 #define ERI_PROT_WRITE		0x2
 #define ERI_PROT_EXEC		0x4
@@ -745,6 +750,18 @@ eri_futex_op_get_cmp_arg (int32_t op)
 {
   return (op << 20) >> 20;
 }
+
+struct eri_robust_list
+{
+  struct eri_robust_list *next;
+};
+
+struct eri_robust_list_head
+{
+  struct eri_robust_list list;
+  uint64_t futex_offset;
+  struct eri_robust_list *list_op_pending;
+};
 
 struct eri_timespec
 {

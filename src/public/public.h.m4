@@ -16,6 +16,7 @@ m4_define(`m4_pub_atomic_inc', `ATOMIC_INC')m4_dnl
 m4_define(`m4_pub_atomic_dec', `ATOMIC_DEC')m4_dnl
 m4_define(`m4_pub_atomic_xchg', `ATOMIC_XCHG')m4_dnl
 m4_define(`m4_pub_atomic_cmpxchg', `ATOMIC_CMPXCHG')m4_dnl
+m4_define(`m4_pub_atomic_add', `ATOMIC_ADD')m4_dnl
 m4_define(`m4_pub_atomic_and', `ATOMIC_AND')m4_dnl
 m4_define(`m4_pub_atomic_or', `ATOMIC_OR')m4_dnl
 m4_define(`m4_pub_atomic_xor', `ATOMIC_XOR')m4_dnl

@@ -1083,7 +1083,7 @@ struct eri_analyzer_group
   uint32_t max_inst_count;
   uint64_t max_race_enter;
 
-  int32_t *pid;
+  int32_t pid;
 
   void *error;
 
@@ -1113,7 +1113,7 @@ struct eri_analyzer
   struct eri_buf_file log;
 
   struct eri_entry *entry;
-  int32_t *tid;
+  int32_t tid;
 
   void *args;
 
@@ -1186,7 +1186,6 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   eri_open_log (group->pool, &al->log, group->log, "a", args->id,
 		eri_enabled_debug () ? 0 : group->file_buf_size);
   al->entry = args->entry;
-  al->tid = args->tid;
   al->args = args->args;
   al->sig_info = 0;
   al->act = 0;
@@ -1198,6 +1197,12 @@ eri_analyzer__create (struct eri_analyzer__create_args *args)
   al->race = pal ? race_clone (pal->race, args->id, log)
 		 : race_create (&group->race, log);
   return al;
+}
+
+void
+eri_analyzer__set_tid (struct eri_analyzer *al, int32_t tid)
+{
+  al->tid = tid;
 }
 
 void
@@ -1320,7 +1325,7 @@ raise (struct eri_analyzer *al,
   al->act_sig_info = *info;
   eri_mcontext_from_registers (&al->act_sig_mctx, regs);
   al->act_sig_mctx.rflags |= 0x202; /* IF & 0x2 */
-  eri_assert_syscall (tgkill, *al->group->pid, *al->tid, ERI_SIGRTMIN + 1);
+  eri_assert_syscall (tgkill, al->group->pid, al->tid, ERI_SIGRTMIN + 1);
 }
 
 static void
@@ -1461,7 +1466,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
       eri_lassert (log, ! al->act && ! al->act_sig_info.sig);
     }
 
-  if (info->code == ERI_SI_TKILL && info->kill.pid == *al->group->pid
+  if (info->code == ERI_SI_TKILL && info->kill.pid == al->group->pid
       && al->act_sig_info.sig)
     {
       struct eri_mcontext saved = *mctx;

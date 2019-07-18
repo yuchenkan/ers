@@ -34,17 +34,15 @@ void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t async, void *rec);
 
-struct eri_live_thread_recorder__rec_read_args
-{
-  struct eri_syscall_res_in_record rec;
-
-  uint8_t readv;
-  void *dst;
-};
-
+void eri_live_thread_recorder__rec_syscall_exit (
+		struct eri_live_thread_recorder *th_rec,
+		struct eri_syscall_exit_record *rec,
+		struct eri_syscall_exit_futex_pi_record *futex_pi,
+		struct eri_syscall_exit_robust_futex_record *robust_futex);
 void eri_live_thread_recorder__rec_syscall_read (
 		struct eri_live_thread_recorder *th_rec,
-		struct eri_live_thread_recorder__rec_read_args *args);
+		struct eri_syscall_res_in_record *rec,
+		uint8_t readv, void *dst);
 void eri_live_thread_recorder__rec_syscall_mmap (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec, uint64_t len);

@@ -98,7 +98,7 @@ uint64_t eri_live_signal_thread__syscall (
 
 uint64_t eri_live_signal_thread__set_futex_pi_owner (
 		struct eri_live_signal_thread *sig_th,
-		int32_t owner, struct eri_live_futex *futex);
+		int32_t owner, struct eri_live_futex *futex, int32_t *tid);
 
 uint8_t eri_live_signal_thread__signaled (
 		struct eri_live_signal_thread *sig_th);

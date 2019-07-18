@@ -1109,7 +1109,7 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
 uint64_t
 eri_live_signal_thread__set_futex_pi_owner (
 		struct eri_live_signal_thread *sig_th,
-		int32_t owner, struct eri_live_futex *futex)
+		int32_t owner, struct eri_live_futex *futex, int32_t *tid)
 {
   struct signal_thread_group *group = sig_th->group;
 
@@ -1119,12 +1119,13 @@ eri_live_signal_thread__set_futex_pi_owner (
   ERI_LST_FOREACH (thread, group, it)
     if (owner == it->tid)
       {
-	eri_live_thread__set_futex_pi_owner (it->th, futex);
+	*tid = eri_live_thread__set_futex_pi_owner (it->th, futex);
 	eri_assert_unlock (&group->thread_lock);
 	return 0;
       }
 
   eri_assert_unlock (&group->thread_lock);
+  eri_log (sig_th->log.file, "can't find %lx\n", owner);
   return ERI_ESRCH;
 }
 

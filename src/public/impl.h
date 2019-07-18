@@ -141,6 +141,9 @@
 #define _ERS_ATOMIC_CMPXCHG(e, sz, reg, mem) \
   _ERS_ATOMIC_COMMON2 (CMPXCHG, e, sz, reg, mem)
 
+#define _ERS_ATOMIC_ADD(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (ADD, e, sz, reg, mem)
+
 #define _ERS_ATOMIC_AND(e, sz, reg, mem) \
   _ERS_ATOMIC_COMMON2 (AND, e, sz, reg, mem)
 
