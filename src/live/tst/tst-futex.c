@@ -104,18 +104,30 @@ static void
 pi (void *p)
 {
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_LOCK_PI, 0, 0));
-  tst_yield (128);
+  tst_yield (64);
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
 }
+
+static uint64_t try_pi_failed;
 
 static void
 try_pi (void *p)
 {
+  uint64_t res = tst_syscall (futex, p, ERI_FUTEX_TRYLOCK_PI, 0, 0);
+  eri_assert (res == 0 || res == ERI_EAGAIN);
+  if (res == 0)
+    {
+      tst_yield (8);
+      eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
+    }
+  else tst_atomic_inc (&try_pi_failed, 0);
 }
 
 static void
 tst_pi (struct tst_rand *rand, uint8_t try)
 {
+  eri_info ("pi try: %u\n", try);
+
   int32_t x = ERI_FUTEX_OWNER_DIED;
   void *a[] = { &x, &x };
   struct tst_live_clone_args args[eri_length_of (a)];
@@ -133,7 +145,7 @@ tst_live_start (void)
   eri_info ("start\n");
 
   struct tst_rand rand;
-  tst_rand_init (&rand, 0);
+  tst_rand_init (&rand, 30043);
 
   struct eri_timespec to = { 0, 500 };
   int32_t a = 1;
@@ -187,6 +199,8 @@ tst_live_start (void)
   tst_requeue (&rand, 1);
 
   tst_pi (&rand, 0);
+  //tst_pi (&rand, 1);
+  //eri_info ("pi try lock failed: %lu\n", try_pi_failed);
 
   eri_info ("futex requeue pi\n");
   // TODO

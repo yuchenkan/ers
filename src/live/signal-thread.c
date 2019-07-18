@@ -678,9 +678,9 @@ start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
     }
 
   restore_sig_mask (sig_th);
+  append_to_group (sig_th);
   eri_assert_unlock (&event->clone_start_return);
 
-  append_to_group (sig_th);
   unhold_exit_group (&sig_th->group->exit_group_lock);
 
   event_loop (sig_th);
@@ -1124,7 +1124,6 @@ eri_live_signal_thread__create_futex_pi (
       }
 
   eri_assert_unlock (&group->thread_lock);
-  eri_log (sig_th->log.file, "can't find %lx\n", user_tid);
   return ERI_ESRCH;
 }
 

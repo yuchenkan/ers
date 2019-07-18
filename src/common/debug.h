@@ -180,7 +180,9 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
   eri_xassert (exp, eri_log_assert, log)
 
 #define eri_lassert_syscall(log, name, ...) \
-  eri_xassert_syscall (eri_log_assert, (log), name, ##__VA_ARGS__)
+  ({ uint64_t _r = eri_syscall (name, ##__VA_ARGS__);			\
+     if (eri_syscall_is_error (_r))					\
+       eri_log (log, "syscall failed: %s %lx\n", ERI_STR (name), _r); })
 
 #define eri_dump_maps() \
   do {									\

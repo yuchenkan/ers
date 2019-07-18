@@ -1064,7 +1064,7 @@ syscall_unlock_futex (struct thread *th, uint64_t user_addr,
     }
 
   uint8_t valid = eri_atomic_futex_unlock_pi ((void *) user_addr,
-					      th->user_tid, user_next, wait);
+					th->user_tid, user_next, wait, 0);
 
   eri_entry__reset_test_access (th->entry);
   if (! rec->ok) diverged (th);

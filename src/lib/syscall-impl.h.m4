@@ -39,14 +39,6 @@ m4_include(`m4/util.m4')
     _res;								\
   })
 
-#define m4_ns(xassert_syscall)(log, arg, ...) \
-  ({									\
-    uint64_t _res = m4_ns(syscall) (__VA_ARGS__);			\
-    ERI_EVAL (eri_xassert ERI_PP_CONCAT (				\
-		(eri_syscall_is_ok (_res), log), arg));			\
-    _res;								\
-  })
-
 #define m4_ns(assert_syscall_nr)(...) \
   ({									\
     uint64_t _res = m4_ns(syscall_nr) (__VA_ARGS__);			\

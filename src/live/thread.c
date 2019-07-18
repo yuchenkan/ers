@@ -370,13 +370,14 @@ start (struct eri_live_thread *th)
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 
   eri_assert_lock (&th->start_lock);
+  eri_log (th->log.file, "tid = %u, user_tid = %u\n",
+	   th->tid, th->user_tid);
   eri_live_thread_futex__set_tid (th->futex, th->tid, th->user_tid);
 
   struct eri_sigset mask;
   eri_sig_empty_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
-  eri_log (th->log.file, "tid = %u\n", th->tid);
   eri_entry__leave (th->entry);
 }
 
