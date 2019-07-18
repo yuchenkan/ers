@@ -179,16 +179,14 @@ tst_live_start (void)
 		ERI_FUTEX_TRYLOCK_PI_PRIVATE, 0, &to) == ERI_EDEADLK);
 
   eri_assert (! tst_syscall (futex, &a, ERI_FUTEX_UNLOCK_PI_PRIVATE));
-#if 0
   eri_assert (a == 0);
-#endif
 
   tst_wake_op (&rand);
 
   tst_requeue (&rand, 0);
   tst_requeue (&rand, 1);
 
-  //tst_pi (&rand, 0);
+  tst_pi (&rand, 0);
 
   eri_info ("futex requeue pi\n");
   // TODO
