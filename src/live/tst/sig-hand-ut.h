@@ -14,9 +14,6 @@ struct eri_live_signal_thread
 
   struct eri_sigset mask;
 
-  int32_t pid;
-  int32_t tid;
-
   struct eri_live_thread *th;
 
   uint8_t sig_alt_stack_installed;

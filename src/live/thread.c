@@ -83,6 +83,7 @@ struct eri_live_thread
 
   int32_t alive;
   eri_lock_t start_lock;
+  int32_t user_tid;
   int32_t *clear_user_tid;
 
   eri_lock_t futex_pi_lock;
@@ -148,6 +149,7 @@ struct eri_live_thread_group
   uint64_t init_user_stack_size;
 
   int32_t pid;
+  int32_t user_pid;
 
   eri_lock_t fdf_lock;
   ERI_RBT_TREE_FIELDS (fdf, struct fdf)
@@ -308,7 +310,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->log = args->log;
   group->file_buf_size = args->file_buf_size;
   group->init_user_stack_size = init_user_stack_size;
-  group->pid = 0;
+  group->user_pid = args->user_pid;
 
   group->fdf_lock = 0;
   ERI_RBT_INIT_TREE (fdf, group);
@@ -392,11 +394,13 @@ create (struct eri_live_thread_group *group,
 struct eri_live_thread *
 eri_live_thread__create_main (struct eri_live_thread_group *group,
 			      struct eri_live_signal_thread *sig_th,
-			      struct eri_live_rtld_args *rtld_args)
+			      struct eri_live_rtld_args *rtld_args,
+			      int32_t user_tid)
 {
   if (rtld_args->auxv) disable_vdso (rtld_args->auxv);
 
   struct eri_live_thread *th = create (group, sig_th, 0);
+  th->user_tid = user_tid;
   eri_log (th->log.file, "base = %lx\n", group->base);
   struct eri_entry *entry = th->entry;
 
@@ -415,8 +419,7 @@ start (struct eri_live_thread *th)
 {
   eri_log (th->log.file, "%lx\n", th);
   eri_assert_syscall (prctl, ERI_PR_SET_PDEATHSIG, ERI_SIGKILL);
-  eri_assert (eri_assert_syscall (getppid)
-	      == eri_live_signal_thread__get_pid (th->sig_th));
+  eri_assert (eri_assert_syscall (getppid) == th->group->user_pid);
 
   eri_live_signal_thread__init_thread_sig_stack (
 	th->sig_th, th->sig_stack, THREAD_SIG_STACK_SIZE);
@@ -517,8 +520,7 @@ start_main (struct eri_live_thread *th)
     0, regs->rdx, regs->rsp, regs->rip,
     group->page_size, eri_assert_syscall (brk, 0),
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
-    eri_live_signal_thread__get_pid (th->sig_th),
-    group->map_range, group->atomic_table_size
+    group->user_pid, group->map_range, group->atomic_table_size
   };
   eri_live_thread_recorder__rec_init (th->rec, &rec);
 
@@ -574,6 +576,13 @@ eri_live_thread__create (struct eri_live_signal_thread *sig_th,
 
   th->sig_alt_stack = pth->sig_alt_stack;
   return th;
+}
+
+void
+eri_live_thread__set_user_tid (struct eri_live_thread *th,
+			       int32_t user_tid)
+{
+  th->user_tid = user_tid;
 }
 
 uint64_t
@@ -1042,7 +1051,7 @@ syscall_unlock_futex (struct eri_live_thread *th, uint64_t user_addr,
 		uint64_t next, uint8_t wait, struct eri_atomic_record *rec)
 {
   struct eri_live_thread_group *group = th->group;
-  int32_t tid = eri_live_signal_thread__get_tid (th->sig_th);
+  int32_t tid = th->user_tid;
 
   struct eri_pair idx = lock_atomic (group, user_addr, sizeof (int32_t));
   if (! eri_entry__test_access (th->entry, user_addr, 0))
@@ -1071,8 +1080,7 @@ syscall_exit_futex_pi (struct eri_live_thread *th, uint64_t user_addr,
 			? futex_pi_waiter_lst_get_first (futex) : 0;
   struct eri_syscall_exit_futex_pi_record rec = {
     user_addr,
-    (waiter ?  eri_live_signal_thread__get_tid (waiter->pi->sig_th) : 0)
-	| ERI_FUTEX_OWNER_DIED,
+    (waiter ?  waiter->pi->user_tid : 0) | ERI_FUTEX_OWNER_DIED,
     futex ? futex_pi_waiter_lst_get_size (futex) > 1 : 0
   };
 
@@ -1291,12 +1299,12 @@ SYSCALL_TO_IMPL (getegid)
 
 DEFINE_SYSCALL (gettid)
 {
-  eri_entry__syscall_leave (entry, eri_live_signal_thread__get_tid (sig_th));
+  eri_entry__syscall_leave (entry, th->user_tid);
 }
 
 DEFINE_SYSCALL (getpid)
 {
-  eri_entry__syscall_leave (entry, eri_live_signal_thread__get_pid (sig_th));
+  eri_entry__syscall_leave (entry, th->group->user_pid);
 }
 
 DEFINE_SYSCALL (getppid)
@@ -2693,7 +2701,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 	futex_waiter_lst_append (futex[1], w);
       else
 	{
-	  int32_t next = eri_live_signal_thread__get_tid (w->pi->sig_th);
+	  int32_t next = w->pi->user_tid;
 
 	  struct eri_syscall_futex_requeue_pi_record r = { next };
 	  int32_t owner;
@@ -2871,7 +2879,7 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
     }
 
   rec.access = 1;
-  int32_t next = eri_live_signal_thread__get_tid (sig_th);
+  int32_t next = th->user_tid;
   int32_t owner;
   rec.res.result = syscall_futex_try_lock_pi (th, user_addr, next,
 					      &owner, rec.atomic);
@@ -2970,7 +2978,7 @@ syscall_do_futex_unlock_pi (SYSCALL_PARAMS)
   struct futex_waiter *waiter = futex
 		? futex_pi_waiter_lst_get_first (futex) : 0;
 
-  rec.next = waiter ? eri_live_signal_thread__get_tid (waiter->pi->sig_th) : 0;
+  rec.next = waiter ? waiter->pi->user_tid : 0;
   rec.wait = futex ? futex_pi_waiter_lst_get_size (futex) > 1 : 0;
 
   eri_log (th->log.file, "pre unlock pi: %lx\n", waiter);

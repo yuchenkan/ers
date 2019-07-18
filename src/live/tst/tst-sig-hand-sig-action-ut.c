@@ -139,9 +139,6 @@ tst_main (void)
 {
   tst_live_sig_hand_init_mtpool (&sig_th.pool);
 
-  sig_th.pid = eri_assert_syscall (getpid);
-  sig_th.tid = eri_assert_syscall (gettid);
-
   extern uint8_t tst_main_map_start[];
   extern uint8_t tst_main_map_end[];
 
@@ -153,7 +150,9 @@ tst_main (void)
   };
 
   uint64_t io;
-  struct eri_live_thread__create_group_args args = { &rtld_args, 0, 0, &io };
+  struct eri_live_thread__create_group_args args = {
+    &rtld_args, 0, 0, eri_assert_syscall (getpid), &io
+  };
 
   struct eri_live_thread_group *group
 	= eri_live_thread__create_group (&sig_th.pool, &args);
@@ -168,7 +167,8 @@ tst_main (void)
   act.act = int_hand;
   eri_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
-  sig_th.th = eri_live_thread__create_main (group, &sig_th, &rtld_args);
+  sig_th.th = eri_live_thread__create_main (group, &sig_th,
+			&rtld_args, eri_assert_syscall (gettid));
   eri_live_thread__clone_main (sig_th.th);
   eri_live_thread__join (sig_th.th);
   eri_live_thread__destroy (sig_th.th);

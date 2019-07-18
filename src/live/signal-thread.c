@@ -206,13 +206,12 @@ create_group (struct eri_live_rtld_args *rtld_args)
     }
 
   group->th_id = 0;
-
+  group->pid = eri_assert_syscall (getpid);
   group->exit_helper = 0;
-
   group->io = 0;
 
   struct eri_live_thread__create_group_args args = {
-    rtld_args, group->log, file_buf_size, &group->io
+    rtld_args, group->log, file_buf_size, group->pid, &group->io
   };
   group->thread_group = eri_live_thread__create_group (pool, &args);
   return group;
@@ -306,12 +305,12 @@ init_main (struct signal_thread_group *group,
 
   init_event (sig_th, &rtld_args->sig_mask);
 
-  sig_th->th = eri_live_thread__create_main (group->thread_group,
-					     sig_th, rtld_args);
-
   eri_log (sig_th->log.file, "sig_th %lx\n", sig_th);
   eri_assert_syscall (set_tid_address, &sig_th->alive);
   sig_th->tid = eri_assert_syscall (gettid);
+
+  sig_th->th = eri_live_thread__create_main (group->thread_group,
+					     sig_th, rtld_args, sig_th->tid);
 
   thread_lst_append (group, sig_th);
   return sig_th;
@@ -321,8 +320,6 @@ struct eri_live_signal_thread *
 init_group (struct eri_live_rtld_args *rtld_args)
 {
   struct signal_thread_group *group = create_group (rtld_args);
-
-  group->pid = eri_assert_syscall (getpid);
 
   init_group_signal (group);
 
@@ -741,6 +738,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
       destroy (sig_cth);
       unhold_exit_group (&group->exit_group_lock);
     }
+  else eri_live_thread__set_user_tid (sig_cth->th, sig_cth->tid);
 
   restore_sig_mask (sig_th);
   eri_log (sig_th->log.file, "clone done %lx %lu\n", event, args->result);
@@ -1152,16 +1150,4 @@ struct eri_buf_file *
 eri_live_signal_thread__get_log (struct eri_live_signal_thread *sig_th)
 {
   return &sig_th->log;
-}
-
-int32_t
-eri_live_signal_thread__get_pid (const struct eri_live_signal_thread *sig_th)
-{
-  return sig_th->group->pid;
-}
-
-int32_t
-eri_live_signal_thread__get_tid (const struct eri_live_signal_thread *sig_th)
-{
-  return sig_th->tid;
 }

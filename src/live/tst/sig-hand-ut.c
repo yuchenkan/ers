@@ -47,20 +47,6 @@ eri_live_signal_thread__get_sig_mask (
   return &sig_th->mask;
 }
 
-int32_t
-eri_live_signal_thread__get_pid (
-		const struct eri_live_signal_thread *sig_th)
-{
-  return sig_th->pid;
-}
-
-int32_t
-eri_live_signal_thread__get_tid (
-		const struct eri_live_signal_thread *sig_th)
-{
-  return sig_th->tid;
-}
-
 #define ZERO(func) \
 TST_WEAK_BLANK_ZERO (ERI_PASTE (eri_live_signal_thread__, func))
 
