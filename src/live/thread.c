@@ -35,42 +35,11 @@
 #include <live/common.h>
 #include <live/rtld.h>
 #include <live/signal-thread.h>
+#include <live/thread-futex.h>
 #include <live/thread-recorder.h>
 #include <live/thread.h>
 
 #define THREAD_SIG_STACK_SIZE	(2 * 4096)
-
-struct futex_waiter
-{
-  int32_t lock;
-  int32_t mask;
-
-  int32_t lock_pi;
-  struct eri_live_thread *pi;
-
-  ERI_LST_NODE_FIELDS (futex_waiter)
-  ERI_LST_NODE_FIELDS (futex_pi_waiter)
-};
-
-struct eri_live_futex
-{
-  uint64_t user_addr;
-
-  /* TODO: priority */
-  ERI_LST_LIST_FIELDS (futex_waiter)
-  ERI_LST_LIST_FIELDS (futex_pi_waiter)
-
-  struct eri_live_thread *owner;
-  ERI_LST_NODE_FIELDS (futex_pi)
-
-  ERI_RBT_NODE_FIELDS (futex, struct eri_live_futex)
-};
-
-ERI_DEFINE_LIST (static, futex_waiter,
-		 struct eri_live_futex, struct futex_waiter)
-ERI_DEFINE_LIST (static, futex_pi_waiter,
-		 struct eri_live_futex, struct futex_waiter)
-
 
 struct eri_live_thread
 {
@@ -86,12 +55,13 @@ struct eri_live_thread
   int32_t user_tid;
   int32_t *clear_user_tid;
 
+#if 0
   eri_lock_t futex_pi_lock;
   ERI_LST_LIST_FIELDS (futex_pi)
-
-  struct eri_robust_list_head *user_robust_list;
+#endif
 
   struct eri_entry *entry;
+  struct eri_live_thread_futex *futex;
   struct eri_live_thread_recorder *rec;
 
   struct eri_sig_act sig_act;
@@ -106,8 +76,10 @@ struct eri_live_thread
   eri_aligned16 uint8_t stack[0];
 };
 
+#if 0
 ERI_DEFINE_LIST (static, futex_pi,
 		 struct eri_live_thread, struct eri_live_futex)
+#endif
 
 struct fdf_sig_mask
 {
@@ -124,16 +96,6 @@ struct fdf
 
   ERI_RBT_NODE_FIELDS (fdf, struct fdf)
 };
-
-struct futex_slot
-{
-  eri_lock_t lock;
-
-  ERI_RBT_TREE_FIELDS (futex, struct eri_live_futex)
-};
-
-ERI_DEFINE_RBTREE (static, futex, struct futex_slot,
-		   struct eri_live_futex, uint64_t, eri_less_than)
 
 struct eri_live_thread_group
 {
@@ -154,11 +116,8 @@ struct eri_live_thread_group
   eri_lock_t fdf_lock;
   ERI_RBT_TREE_FIELDS (fdf, struct fdf)
 
-  uint64_t *atomic_table;
-  uint64_t atomic_table_size;
-
-  struct futex_slot *futex_table;
-  uint64_t futex_table_size;
+  struct eri_live_atomic *atomic;
+  struct eri_live_thread_futex_group *futex_group;
 
   uint64_t stack_size;
 
@@ -298,10 +257,8 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 
   if (! path && (args->log || eri_global_enable_debug)) path = "ers-data";
 
-  struct eri_live_thread_group *group = eri_assert_mtmalloc_struct (
-	pool, typeof (*group),
-	(atomic_table, atomic_table_size * sizeof *group->atomic_table),
-        (futex_table, futex_table_size * sizeof *group->futex_table));
+  struct eri_live_thread_group *group = eri_assert_mtmalloc (
+						pool, sizeof *group);
   group->pool = pool;
   group->page_size = rtld_args->page_size;
   group->map_range.start = rtld_args->map_start;
@@ -316,12 +273,10 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   ERI_RBT_INIT_TREE (fdf, group);
   init_fdf (group);
 
-  eri_memset (group->atomic_table, 0,
-	      atomic_table_size * sizeof *group->atomic_table);
-  group->atomic_table_size = atomic_table_size;
-  eri_memset (group->futex_table, 0,
-	      futex_table_size * sizeof *group->futex_table);
-  group->futex_table_size = futex_table_size;
+  group->atomic = eri_live_create_atomic (group->pool, atomic_table_size);
+  group->futex_group = eri_live_thread_futex__create_group (
+			group->pool, futex_table_size, group->atomic);
+
   group->stack_size = stack_size;
 
   group->rec_group = eri_live_thread_recorder__create_group (
@@ -341,6 +296,8 @@ eri_live_thread__destroy_group (struct eri_live_thread_group *group)
   ERI_RBT_FOREACH_SAFE (fdf, group, fd, nfd)
     fdf_remove_free (group, fd);
 
+  eri_live_destroy_atomic (group->atomic);
+  eri_live_thread_futex__destroy_group (group->futex_group);
   eri_live_thread_recorder__destroy_group (group->rec_group);
   eri_assert_mtfree (group->pool, group);
 }
@@ -373,17 +330,18 @@ create (struct eri_live_thread_group *group,
   th->start_lock = 1;
   th->clear_user_tid = clear_user_tid;
 
+#if 0
   th->futex_pi_lock = 0;
   ERI_LST_INIT_LIST (futex_pi, th);
-
-  th->user_robust_list = 0;
+#endif
 
   struct eri_entry__create_args args = {
     group->pool, &group->map_range, th, th->stack + group->stack_size,
     main_entry, sig_action
   };
   th->entry = eri_entry__create (&args);
-
+  th->futex = eri_live_thread_futex__create (
+			group->futex_group, th->entry, th->log.file);
   th->rec = eri_live_thread_recorder__create (
 			group->rec_group, th->entry, th->id, th->log.file);
 
@@ -520,7 +478,8 @@ start_main (struct eri_live_thread *th)
     0, regs->rdx, regs->rsp, regs->rip,
     group->page_size, eri_assert_syscall (brk, 0),
     *eri_live_signal_thread__get_sig_mask (th->sig_th), th->sig_alt_stack,
-    group->user_pid, group->map_range, group->atomic_table_size
+    group->user_pid, group->map_range,
+    eri_live_atomic_get_table_size (group->atomic)
   };
   eri_live_thread_recorder__rec_init (th->rec, &rec);
 
@@ -619,6 +578,7 @@ void
 eri_live_thread__destroy (struct eri_live_thread *th)
 {
   eri_live_thread_recorder__destroy (th->rec);
+  eri_live_thread_futex__destroy (th->futex);
   eri_entry__destroy (th->entry);
 
   struct eri_mtpool *pool = th->group->pool;
@@ -631,80 +591,6 @@ void
 eri_live_thread__join (struct eri_live_thread *th)
 {
   eri_assert_sys_futex_wait (&th->alive, 1, 0);
-}
-
-static uint64_t
-do_lock_atomic (struct eri_live_thread_group *group, uint64_t aligned)
-{
-  uint64_t idx = eri_atomic_hash (aligned, group->atomic_table_size);
-
-  uint32_t i = 0;
-  while (eri_atomic_bit_test_set (group->atomic_table + idx, 0, 1))
-    if (++i % 16 == 0) eri_assert_syscall (sched_yield);
-  return idx;
-}
-
-static struct eri_pair
-lock_atomic (struct eri_live_thread_group *group, uint64_t mem, uint8_t size)
-{
-  struct eri_pair idx = { do_lock_atomic (group, eri_atomic_aligned (mem)) };
-  idx.second = eri_atomic_cross_aligned (mem, size)
-	? do_lock_atomic (group, eri_atomic_aligned2 (mem, size)) : idx.first;
-  return idx;
-}
-
-static void
-do_unlock_atomic (struct eri_live_thread_group *group, uint64_t idx)
-{
-  eri_atomic_and (group->atomic_table + idx, -2, 1);
-}
-
-static struct eri_pair
-unlock_atomic (struct eri_live_thread_group *group, struct eri_pair *idx,
-	       uint8_t ok)
-{
-  uint8_t cross = idx->first != idx->second;
-  struct eri_pair ver = {
-    group->atomic_table[idx->first] >> 1,
-    group->atomic_table[idx->second] >> 1
-  };
-
-  if (ok)
-    {
-      group->atomic_table[idx->first] += 2;
-      if (cross) group->atomic_table[idx->second] += 2;
-    }
-
-  do_unlock_atomic (group, idx->first);
-  if (cross) do_unlock_atomic (group, idx->second);
-  return ver;
-}
-
-static void
-do_atomic (struct eri_live_thread *th, uint16_t code, void *mem,
-	   uint8_t size, uint64_t val, struct eri_atomic_record *rec,
-	   void *old, uint64_t *rflags)
-{
-  struct eri_live_thread_group *group = th->group;
-  struct eri_entry *entry = th->entry;
-
-  struct eri_pair idx = lock_atomic (group, (uint64_t) mem, size);
-
-  if (! eri_entry__test_access (entry, mem, 0))
-    {
-      unlock_atomic (group, &idx, 0);
-      rec->ok = 0;
-      return;
-    }
-
-  /* XXX: invalid argument from user */
-  eri_lassert (th->log.file,
-	       eri_atomic (code, mem, size, val, old, rflags));
-
-  eri_entry__reset_test_access (entry);
-
-  rec->ok = 1;
-  rec->ver = unlock_atomic (group, &idx, 1);
 }
 
 /*
@@ -876,32 +762,7 @@ DEFINE_SYSCALL (set_tid_address)
   eri_entry__syscall_leave (entry, 0);
 }
 
-static struct futex_slot *
-syscall_get_futex_slot (struct eri_live_thread_group *group,
-		        uint64_t user_addr)
-{
-  return group->futex_table + eri_hash (user_addr) % group->futex_table_size;
-}
-
-static struct futex_slot *
-syscall_lock_futex_slot (struct eri_live_thread_group *group,
-			 uint64_t user_addr)
-{
-  struct futex_slot *slot = syscall_get_futex_slot (group, user_addr);
-  eri_assert_lock (&slot->lock);
-  return slot;
-}
-
-static uint8_t
-syscall_may_remove_free_futex (struct eri_mtpool *pool,
-		struct futex_slot *slot, struct eri_live_futex *futex)
-{
-  if (futex_waiter_lst_get_size (futex)) return 0;
-  futex_rbt_remove (slot, futex);
-  eri_assert_mtfree (pool, futex);
-  return 1;
-}
-
+#if 0
 static void
 own_futex_pi (struct eri_live_thread *th, struct eri_live_futex *futex)
 {
@@ -929,16 +790,9 @@ syscall_may_remove_free_futex_pi (struct eri_mtpool *pool,
   eri_assert_mtfree (pool, futex);
   return 1;
 }
+#endif
 
-static uint8_t
-syscall_remove_futex_waiter (struct eri_mtpool *pool,
-		struct futex_slot *slot, struct eri_live_futex *futex,
-		struct futex_waiter *waiter)
-{
-  futex_waiter_lst_remove (futex, waiter);
-  return syscall_may_remove_free_futex (pool, slot, futex);
-}
-
+#if 0
 static uint8_t
 syscall_remove_futex_pi_waiter (struct eri_mtpool *pool,
 		struct futex_slot *slot, struct eri_live_futex *futex,
@@ -947,41 +801,9 @@ syscall_remove_futex_pi_waiter (struct eri_mtpool *pool,
   futex_pi_waiter_lst_remove (futex, waiter);
   return syscall_may_remove_free_futex_pi (pool, slot, futex);
 }
+#endif
 
-static uint64_t
-syscall_futex_do_wake (eri_file_t log, struct eri_live_futex *futex,
-		       int32_t max, uint32_t mask)
-{
-  int32_t i = max;
-  struct futex_waiter *w, *nw;
-  ERI_LST_FOREACH_SAFE (futex_waiter, futex, w, nw)
-    {
-      /* XXX: seems kernel may wake up at least one waiter */
-      if (i <= 0) break;
-
-      if ((mask & w->mask) == 0) continue;
-
-      futex_waiter_lst_remove (futex, w);
-      eri_atomic_store (&w->lock, 0, 1);
-      eri_lassert_syscall (log, futex, &w->lock,
-			   ERI_FUTEX_WAKE_PRIVATE, 1);
-      --i;
-    }
-  return max - i;
-}
-
-static uint64_t
-syscall_futex_do_wake_free (struct eri_live_thread *th,
-		struct futex_slot *slot, struct eri_live_futex *futex,
-		int32_t max, uint32_t mask)
-{
-  if (! futex) return 0;
-
-  uint64_t res = syscall_futex_do_wake (th->log.file, futex, max, mask);
-  syscall_may_remove_free_futex (th->group->pool, slot, futex);
-  return res;
-}
-
+#if 0
 static uint64_t
 syscall_futex_check (struct eri_live_futex *futex)
 {
@@ -999,21 +821,9 @@ syscall_futex_check_pi (struct eri_live_futex *futex)
 {
   return futex && ! futex->owner ? ERI_EINVAL : 0;
 }
+#endif
 
-static uint64_t
-syscall_common_futex_wake (struct eri_live_thread *th,
-			   uint64_t user_addr, int32_t max, uint32_t mask)
-{
-  struct eri_live_thread_group *group = th->group;
-
-  struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
-  struct eri_live_futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
-  uint64_t res = syscall_futex_check (futex)
-		? : syscall_futex_do_wake_free (th, slot, futex, max, mask);
-  eri_assert_unlock (&slot->lock);
-  return res;
-}
-
+#if 0
 static void
 syscall_futex_wake_pi (struct eri_live_thread *th, struct futex_slot *slot,
 		struct eri_live_futex *futex, struct futex_waiter *waiter)
@@ -1091,7 +901,6 @@ syscall_exit_futex_pi (struct eri_live_thread *th, uint64_t user_addr,
   eri_assert_buf_append (buf, &rec, 1);
 }
 
-/* FUTEX-PI */
 static void
 syscall_exit_futex_pi_list (struct eri_live_thread *th, struct eri_buf *buf)
 {
@@ -1209,6 +1018,7 @@ syscall_exit_robust_futex_list (struct eri_live_thread *th,
       syscall_exit_robust_futex_node (th, &list, cur, buf, &first);
     }
 }
+#endif
 
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
@@ -1226,16 +1036,21 @@ syscall_do_exit (SYSCALL_PARAMS)
 
   if (exit_group) goto out;
 
+#if 0
   syscall_exit_futex_pi_list (th, &futex_pi);
   if (th->user_robust_list)
     syscall_exit_robust_futex_list (th, &robust_futex);
+#endif
 
   uint64_t user_tid = (uint64_t) th->clear_user_tid;
-  do_atomic (th, ERI_OP_ATOMIC_STORE, (void *) user_tid,
-	     sizeof (int32_t), 0, &rec.clear_tid, 0, 0);
+  struct eri_live_atomic_args args = {
+    th->log.file, entry, ERI_OP_ATOMIC_STORE,
+    (void *) user_tid, sizeof (int32_t), &rec.clear_tid
+  };
+  eri_live_atomic (th->group->atomic, &args);
   if (rec.clear_tid.ok
       && ! eri_syscall_futex_check_user_addr (user_tid, page_size (th)))
-    syscall_common_futex_wake (th, user_tid, 1, -1);
+    eri_live_thread_futex__wake (th->futex, user_tid, 1, -1);
 
   rec.futex_pi = futex_pi.n;
   rec.robust_futex = robust_futex.n;
@@ -2416,6 +2231,7 @@ syscall_futex_check_wait (struct eri_live_thread *th, uint64_t user_addr,
 	   ? : syscall_futex_get_timeout (th->entry, user_timeout, timeout);
 }
 
+/*
 static struct eri_live_futex *
 syscall_create_futex (struct eri_mtpool *pool,
 		      struct futex_slot *slot, uint64_t user_addr)
@@ -2438,6 +2254,7 @@ syscall_futex_load_user (struct eri_live_thread *th, uint64_t user_addr,
 	     (void *) user_addr, sizeof (int32_t), 0, rec, &cur, 0);
   return cur;
 }
+*/
 
 static eri_noreturn void
 syscall_do_futex_record_leave (struct eri_live_thread *th,
@@ -2448,6 +2265,7 @@ syscall_do_futex_record_leave (struct eri_live_thread *th,
   eri_entry__syscall_leave (th->entry, rec->res.result);
 }
 
+/*
 static uint64_t
 syscall_futex_load_test_user (struct eri_live_thread *th,
 			struct eri_live_futex *futex, uint64_t user_addr,
@@ -2461,6 +2279,7 @@ syscall_futex_load_test_user (struct eri_live_thread *th,
 
   return cur != val ? ERI_EAGAIN :  0;
 }
+*/
 
 static eri_noreturn void
 syscall_do_futex_wait (SYSCALL_PARAMS)
@@ -2469,7 +2288,8 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
   uint32_t op = regs->rsi;
   int32_t val = regs->rdx;
   const struct eri_timespec *user_timeout = (void *) regs->r10;
-  uint32_t mask = (op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_WAIT ? -1 : regs->r9;
+  uint32_t cmd = op & ERI_FUTEX_CMD_MASK;
+  uint32_t mask = cmd == ERI_FUTEX_WAIT ? -1 : regs->r9;
 
   struct eri_timespec timeout;
   eri_entry__syscall_leave_if_error (entry,
@@ -2477,50 +2297,14 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
 
   if (! mask) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  struct eri_live_thread_group *group = th->group;
-
-  struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr);
-
-  struct eri_syscall_futex_record rec = { 0 };
-
-  struct eri_live_futex *futex = futex_rbt_get (slot, &user_addr, ERI_RBT_EQ);
-  if ((rec.res.result
-	= syscall_futex_load_test_user (th, futex, user_addr, &rec, val)))
-    {
-      eri_assert_unlock (&slot->lock);
-      goto record;
-    }
-
-   if (! futex) futex = syscall_create_futex (group->pool, slot, user_addr);
-
-  struct futex_waiter waiter = { 1, mask };
-  futex_waiter_lst_append (futex, &waiter);
-  eri_assert_unlock (&slot->lock);
-
-  struct eri_sys_syscall_args args = {
-    __NR_futex,
-    { (uint64_t) &waiter.lock,
-      ERI_FUTEX_WAIT_PRIVATE | (op & ERI_FUTEX_CLOCK_REALTIME), 1,
-      user_timeout ? (uint64_t) &timeout : 0 }
+  struct eri_syscall_futex_record rec;
+  struct eri_live_thread_futex__wait_args args = {
+    user_addr, val, mask, cmd != ERI_FUTEX_WAIT,
+    !! (op & ERI_FUTEX_CLOCK_REALTIME), user_timeout ? &timeout : 0, &rec
   };
-  do
-    rec.res.result = eri_entry__sys_syscall_interruptible (entry, &args);
-  while (rec.res.result == 0 && eri_atomic_load (&waiter.lock, 1));
-
-  if (rec.res.result == ERI_EAGAIN) rec.res.result = 0;
-  else if (eri_syscall_is_error (rec.res.result))
-    {
-      eri_lassert (th->log.file, rec.res.result == ERI_EINTR
-				 || rec.res.result == ERI_ETIMEDOUT);
-      eri_assert_lock (&slot->lock);
-      if (! waiter.lock) rec.res.result = 0;
-      else syscall_remove_futex_waiter (group->pool, slot, futex, &waiter);
-      eri_assert_unlock (&slot->lock);
-    }
+  eri_live_thread_futex__wait (th->futex, &args);
 
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
-
-record:
   syscall_do_futex_record_leave (th, &rec);
 }
 
@@ -2535,11 +2319,13 @@ syscall_do_futex_wake (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake (op, mask, user_addr, page_size (th)));
 
-  uint64_t res = syscall_common_futex_wake (th, user_addr, max, mask);
+  uint64_t res = eri_live_thread_futex__wake (th->futex,
+					      user_addr, max, mask);
   syscall_record_res_in (th, res);
   eri_entry__syscall_leave (entry, res);
 }
 
+/*
 static void
 syscall_lock_futex_slot2 (struct eri_live_thread_group *group,
 			  uint64_t *user_addr, struct futex_slot **slot)
@@ -2566,7 +2352,9 @@ syscall_unlock_futex_slot2 (struct futex_slot **slot)
   if (slot[0] != slot[1])
     eri_assert_unlock (&slot[1]->lock);
 }
+*/
 
+#if 0
 /* XXX: pi is not very useful as all our locks are not priority inherited.  */
 static uint64_t
 syscall_futex_try_lock_pi (struct eri_live_thread *th, uint64_t user_addr,
@@ -2620,6 +2408,7 @@ create_set_futex_pi_owner (struct eri_live_thread *th,
     }
   return res;
 }
+#endif
 
 static eri_noreturn void
 syscall_do_futex_requeue (SYSCALL_PARAMS)
@@ -2639,124 +2428,14 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, page_size (th)));
 
-  struct eri_live_thread_group *group = th->group;
-  struct eri_mtpool *pool = group->pool;
+  struct eri_buf pi = { 0 }; // TODO
+  struct eri_syscall_futex_requeue_record rec;
 
-  struct futex_slot *slot[2];
-  syscall_lock_futex_slot2 (group, user_addr, slot);
-
-  struct eri_syscall_futex_requeue_record rec = { 0 };
-
-  struct eri_live_futex *futex[] = {
-    futex_rbt_get (slot[0], user_addr, ERI_RBT_EQ),
-    futex_rbt_get (slot[1], user_addr + 1, ERI_RBT_EQ)
+  struct eri_live_thread_futex__requeue_args args = {
+    { user_addr[0], user_addr[1] }, val, val2, cmd != ERI_FUTEX_REQUEUE,
+    val3, &rec
   };
-
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI)
-    {
-      if ((rec.res.result = syscall_futex_check (futex[0]))) goto out;
-      if ((rec.res.result = syscall_futex_check_pi (futex[1]))) goto out;
-    }
-  else if ((rec.res.result = syscall_futex_check2 (futex))) goto out;
-
-  uint8_t cmp = cmd != ERI_FUTEX_REQUEUE;
-  if (cmp)
-    {
-      rec.access = 1;
-      int32_t cur = syscall_futex_load_user (th, user_addr[0], &rec.atomic);
-      if (! rec.atomic.ok)
-	{
-	  rec.res.result = ERI_EFAULT;
-	  goto out;
-	}
-      if (cur != val3)
-	{
-	  rec.res.result = ERI_EAGAIN;
-	  goto out;
-	}
-    }
-
-  if (! futex[0]) goto out;
-
-  rec.res.result = syscall_futex_do_wake (th->log.file, futex[0], val, -1);
-  if (syscall_may_remove_free_futex (pool, slot[0], futex[0])
-      || eri_syscall_is_error (rec.res.result)
-      || slot[0] == slot[1] || val2 <= 0)
-    goto out;
-
-  if (! futex[1] && cmd != ERI_FUTEX_CMP_REQUEUE_PI)
-    futex[1] = syscall_create_futex (pool, slot[1], user_addr[1]);
-
-  struct eri_buf pi;
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI)
-    eri_assert_buf_mtpool_init (&pi, pool, eri_min (val2, 32),
-			sizeof (struct eri_syscall_futex_requeue_pi_record));
-
-  int32_t i = val2;
-  struct futex_waiter *w, *nw;
-  ERI_LST_FOREACH_SAFE (futex_waiter, futex[0], w, nw)
-    {
-      futex_waiter_lst_remove (futex[0], w);
-      if (cmd != ERI_FUTEX_CMP_REQUEUE_PI)
-	futex_waiter_lst_append (futex[1], w);
-      else
-	{
-	  int32_t next = w->pi->user_tid;
-
-	  struct eri_syscall_futex_requeue_pi_record r = { next };
-	  int32_t owner;
-	  uint64_t res = syscall_futex_try_lock_pi (th, user_addr[1], next,
-						    &owner, &r.atomic);
-	  eri_assert_buf_append (&pi, &r, 1);
-	  if (eri_syscall_is_error (res) || (res == 1 && futex[1]))
-	    {
-	      rec.res.result = res == 1 ? ERI_EINVAL : res;
-	      break;
-	    }
-	  else if (res == 1)
-	    {
-	      if (futex[1])
-		{
-		  rec.res.result = ERI_EINVAL;
-		  break;
-		}
-
-	      w->lock_pi = w->pi->tid;
-	      eri_lassert_syscall (th->log.file, futex, &w->lock,
-				   ERI_FUTEX_WAKE_PRIVATE, 1);
-	    }
-	  else
-	    {
-	      int32_t tid;
-	      if ((res = create_set_futex_pi_owner (th, slot[1],
-				user_addr[1], owner, futex + 1, &tid)))
-		{
-		  rec.res.result = res;
-		  break;
-		}
-
-	      w->lock_pi = tid;
-	      futex_pi_waiter_lst_append (futex[1], w);
-	      res = eri_syscall (futex, &w->lock, ERI_FUTEX_CMP_REQUEUE_PI,
-				 1, 1, &w->lock_pi, 1);
-	      if (eri_syscall_is_error (res))
-		{
-		  rec.res.result = res;
-		  break;
-		}
-	    }
-	}
-      if (--i == 0) break;
-    }
-  syscall_may_remove_free_futex (pool, slot[0], futex[0]);
-
-  if (cmp && ! eri_syscall_is_error (rec.res.result))
-    rec.res.result += val2 - i;
-
-out:
-  syscall_unlock_futex_slot2 (slot);
-
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI) rec.pi = pi.n;
+  eri_live_thread_futex__requeue (th->futex, &args);
 
   rec.res.in = io_in (th);
   eri_live_thread_recorder__rec_syscall_futex_requeue (th->rec,
@@ -2764,21 +2443,6 @@ out:
 
   if (cmd == ERI_FUTEX_CMP_REQUEUE_PI) eri_assert_buf_fini (&pi);
   eri_entry__syscall_leave (entry, rec.res.result);
-}
-
-static uint8_t
-syscall_futex_wake_pass_cmp (int32_t old, uint8_t op, int32_t arg)
-{
-  switch (op)
-    {
-    case ERI_FUTEX_OP_CMP_EQ: return old == arg;
-    case ERI_FUTEX_OP_CMP_NE: return old != arg;
-    case ERI_FUTEX_OP_CMP_LT: return old < arg;
-    case ERI_FUTEX_OP_CMP_LE: return old <= arg;
-    case ERI_FUTEX_OP_CMP_GT: return old > arg;
-    case ERI_FUTEX_OP_CMP_GE: return old >= arg;
-    default: eri_assert_unreachable ();
-    }
 }
 
 static eri_noreturn void
@@ -2789,8 +2453,6 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
   int32_t val = regs->rdx;
   int32_t val2 = regs->r10;
   int32_t val3 = regs->r9;
-
-  struct eri_live_thread_group *group = th->group;
 
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, page_size (th)));
@@ -2803,45 +2465,17 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
   if (op_op >= ERI_FUTEX_OP_NUM || op_cmp >= ERI_FUTEX_OP_CMP_NUM)
     eri_entry__syscall_leave (entry, ERI_ENOSYS);
 
-  struct eri_syscall_futex_record rec = { 0 };
-
-  struct futex_slot *slot[2];
-  syscall_lock_futex_slot2 (group, user_addr, slot);
-
-  struct eri_live_futex *futex[] = {
-    futex_rbt_get (slot[0], user_addr, ERI_RBT_EQ),
-    futex_rbt_get (slot[1], user_addr + 1, ERI_RBT_EQ)
+  struct eri_syscall_futex_record rec;
+  struct eri_live_thread_futex__wake_op_args args = {
+    { user_addr[0], user_addr[1] }, { val, val2 },
+    op_op, op_cmp, op_arg, op_cmp_arg, &rec
   };
+  eri_live_thread_futex__wake_op (th->futex, &args);
 
-  if ((rec.res.result = syscall_futex_check2 (futex))) goto out;
-
-  rec.access = 1;
-  int32_t old;
-  do_atomic (th, eri_syscall_futex_atomic_code_from_wake_op (op_op),
-	     (void *) user_addr[1], sizeof (int32_t),
-	     op_op == ERI_FUTEX_OP_ANDN ? ~op_arg : op_arg,
-	     &rec.atomic, &old, 0);
-
-  if (! rec.atomic.ok)
-    {
-      rec.res.result = ERI_EFAULT;
-      goto out;
-    }
-
-  rec.res.result = syscall_futex_do_wake_free (th, slot[0],
-					       futex[0], val, -1);
-
-  if (eri_syscall_is_error (rec.res.result)
-      || ! syscall_futex_wake_pass_cmp (old, op_cmp, op_cmp_arg)) goto out;
-
-  uint64_t res = syscall_futex_do_wake_free (th, slot[1], futex[1], val2, -1);
-  rec.res.result = eri_syscall_is_error (res) ? res : rec.res.result + res;
-
-out:
-  syscall_unlock_futex_slot2 (slot);
   syscall_do_futex_record_leave (th, &rec);
 }
 
+#if 0
 int32_t
 eri_live_thread__set_futex_pi_owner (struct eri_live_thread *th,
 				     struct eri_live_futex *futex)
@@ -3063,6 +2697,7 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
 record:
   syscall_do_futex_record_leave (th, &rec);
 }
+#endif
 
 DEFINE_SYSCALL (futex)
 {
@@ -3088,14 +2723,14 @@ DEFINE_SYSCALL (futex)
     case ERI_FUTEX_WAKE:
     case ERI_FUTEX_WAKE_BITSET: syscall_do_futex_wake (SYSCALL_ARGS);
     case ERI_FUTEX_REQUEUE:
-    case ERI_FUTEX_CMP_REQUEUE:
-    case ERI_FUTEX_CMP_REQUEUE_PI: syscall_do_futex_requeue (SYSCALL_ARGS);
+    case ERI_FUTEX_CMP_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
     case ERI_FUTEX_WAKE_OP: syscall_do_futex_wake_op (SYSCALL_ARGS);
+    case ERI_FUTEX_CMP_REQUEUE_PI: // syscall_do_futex_requeue (SYSCALL_ARGS);
     case ERI_FUTEX_LOCK_PI:
-    case ERI_FUTEX_TRYLOCK_PI: syscall_do_futex_lock_pi (SYSCALL_ARGS);
-    case ERI_FUTEX_UNLOCK_PI: syscall_do_futex_unlock_pi (SYSCALL_ARGS);
+    case ERI_FUTEX_TRYLOCK_PI: // syscall_do_futex_lock_pi (SYSCALL_ARGS);
+    case ERI_FUTEX_UNLOCK_PI: // syscall_do_futex_unlock_pi (SYSCALL_ARGS);
     case ERI_FUTEX_WAIT_REQUEUE_PI:
-      syscall_do_futex_wait_requeue_pi (SYSCALL_ARGS);
+      // syscall_do_futex_wait_requeue_pi (SYSCALL_ARGS);
     default: eri_entry__syscall_leave (entry, ERI_ENOSYS);
     }
 }
@@ -3197,11 +2832,14 @@ atomic (struct eri_live_thread *th)
 
   uint64_t old;
   struct eri_atomic_record rec;
-  do_atomic (th, code, (void *) eri_entry__get_atomic_mem (entry),
-	     eri_entry__get_atomic_size (entry),
-	     eri_entry__get_atomic_val (entry), &rec,
-	     code == ERI_OP_ATOMIC_CMPXCHG ? &regs->rax : &old,
-	     &regs->rflags);
+
+  struct eri_live_atomic_args args = {
+    th->log.file, entry, code, (void *) eri_entry__get_atomic_mem (entry),
+    eri_entry__get_atomic_size (entry),
+    &rec, code == ERI_OP_ATOMIC_CMPXCHG ? &regs->rax : &old,
+    eri_entry__get_atomic_val (entry), &regs->rflags
+  };
+  eri_live_atomic (th->group->atomic, &args);
 
   if (! rec.ok)
     {

@@ -1104,6 +1104,7 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
   return args->result;
 }
 
+#if 0
 uint64_t
 eri_live_signal_thread__set_futex_pi_owner (
 		struct eri_live_signal_thread *sig_th,
@@ -1126,6 +1127,7 @@ eri_live_signal_thread__set_futex_pi_owner (
   eri_log (sig_th->log.file, "can't find %lx\n", owner);
   return ERI_ESRCH;
 }
+#endif
 
 uint8_t
 eri_live_signal_thread__signaled (struct eri_live_signal_thread *sig_th)
