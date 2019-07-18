@@ -104,7 +104,7 @@ static void
 pi (void *p)
 {
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_LOCK_PI, 0, 0));
-  tst_yield (64);
+  tst_yield (1024);
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
 }
 
@@ -117,7 +117,7 @@ try_pi (void *p)
   eri_assert (res == 0 || res == ERI_EAGAIN);
   if (res == 0)
     {
-      tst_yield (8);
+      tst_yield (1024);
       eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
     }
   else tst_atomic_inc (&try_pi_failed, 0);
@@ -199,8 +199,8 @@ tst_live_start (void)
   tst_requeue (&rand, 1);
 
   tst_pi (&rand, 0);
-  //tst_pi (&rand, 1);
-  //eri_info ("pi try lock failed: %lu\n", try_pi_failed);
+  tst_pi (&rand, 1);
+  eri_info ("pi try lock failed: %lu\n", try_pi_failed);
 
   eri_info ("futex requeue pi\n");
   // TODO

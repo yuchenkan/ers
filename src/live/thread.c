@@ -2895,9 +2895,11 @@ eri_live_thread__sig_handler (
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
   eri_log (th->sig_log.file, "sig = %u, frame = %lx, rip = %lx, "
-	   "rip - base = %lx, rax = %lx, r15 = %lx\n",
+	   "rip - base = %lx, rax = %lx, rcx = %lx, rdx = %lx, "
+	   "r14 = %lx, r15 = %lx\n",
 	   info->sig, frame, ctx->mctx.rip, ctx->mctx.rip - th->group->base,
-	   ctx->mctx.rax, ctx->mctx.r15);
+	   ctx->mctx.rax, ctx->mctx.rcx, ctx->mctx.rdx,
+	   ctx->mctx.r14, ctx->mctx.r15);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)
