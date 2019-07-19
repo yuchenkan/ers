@@ -576,6 +576,8 @@ eri_try_unserialize_atomic_record (eri_file_t file,
   if (! eri_try_unserialize_uint8 (file, &rec->ok)) return 0;
   if (! rec->ok) return 1;
 
+  if (rec->ok != 1) return 0;
+
   uint8_t flags;
   if (! eri_try_unserialize_uint8 (file, &flags)) return 0;
   if (! eri_try_unserialize_uint64 (file, &rec->ver.first)) return 0;

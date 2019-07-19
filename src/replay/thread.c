@@ -2320,7 +2320,6 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 	  if (! try_unserialize (syscall_futex_requeue_pi_record, th, &r))
 	    diverged (th);
 
-// eri_log (th->log.file, "requeu pi %lx %u\n", user_addr[1], r.atomic.ok);
 	  if (! syscall_futex_try_lock_pi (th, user_addr[1],
 					   r.user_next, 0, &r.atomic))
 	    diverged (th);

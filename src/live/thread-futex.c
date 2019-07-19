@@ -425,6 +425,7 @@ wait_pi (struct eri_live_thread_futex *th_ftx, struct eri_live_futex **futex,
 	 int32_t user_next, uint8_t try, struct waiter *waiter,
 	 uint8_t *access, struct eri_atomic_record *rec)
 {
+  *access = 0;
   if (! *futex)
     {
       *access = 1;
@@ -542,7 +543,7 @@ eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
 
   if (pi)
     eri_assert_buf_mtpool_init (pi, pool, eri_min (requeue_num, 32),
-			sizeof (struct eri_syscall_futex_requeue_pi_record));
+				struct eri_syscall_futex_requeue_pi_record);
 
   int32_t i = requeue_num;
   struct waiter *w, *nw;
