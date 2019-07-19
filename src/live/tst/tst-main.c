@@ -1,4 +1,5 @@
 #include <lib/compiler.h>
+#include <lib/elf.h>
 #include <lib/syscall.h>
 
 #include <live/rtld.h>
@@ -28,7 +29,8 @@ tst_main (void **args)
     .map_start = (uint64_t) tst_main_map_start,
     .map_end = (uint64_t) tst_main_map_end,
     .buf = (uint64_t) tst_main_buf_start,
-    .buf_size = tst_main_buf_end - tst_main_buf_start
+    .buf_size = tst_main_buf_end - tst_main_buf_start,
+    .envp = eri_get_envp_from_args (args)
   };
 
   eri_live_signal_thread__init_main (&rtld_args);

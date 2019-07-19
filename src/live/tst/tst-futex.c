@@ -249,11 +249,9 @@ requeue_pi (void *p)
     }
   else if (res == ERI_EAGAIN)
     tst_atomic_inc (&requeue_pi_req_again, 0);
-  else
-    {
-      tst_atomic_inc (&requeue_pi_timedout, 0);
-      tst_atomic_inc (&requeue_pi_woken, 0);
-    }
+  else tst_atomic_inc (&requeue_pi_timedout, 0);
+
+  tst_atomic_inc (&requeue_pi_woken, 0);
 }
 
 static void
@@ -263,8 +261,7 @@ tst_requeue_pi (struct tst_rand *rand)
 
   int32_t x = 1, y = tst_assert_syscall (gettid);
   struct requeue_pi r = { &x, &y };
-  //void *a[] = { &r, &r, &r, &r, &r, &r };
-  void *a[] = { &r, &r };
+  void *a[] = { &r, &r, &r, &r, &r, &r };
 
   struct tst_live_clone_args args[eri_length_of (a)];
   clone (args, eri_length_of (a), rand, requeue_pi, a);
@@ -273,13 +270,15 @@ tst_requeue_pi (struct tst_rand *rand)
   do
     {
       tst_yield (32);
-      res = tst_assert_syscall (futex, r.x, ERI_FUTEX_CMP_REQUEUE_PI,
-				1, 1, r.y, 1);
-      eri_assert (res <= 2);
-      if (res == 2) tst_syscall (futex, r.y, ERI_FUTEX_UNLOCK_PI);
+      res = tst_syscall (futex, r.x, ERI_FUTEX_CMP_REQUEUE_PI,
+			 1, 1, r.y, 1);
+      if (eri_syscall_is_ok (res))
+	{
+	  eri_assert (res <= 2);
+	  if (res == 2) tst_syscall (futex, r.y, ERI_FUTEX_UNLOCK_PI);
+	}
     }
-  while (tst_atomic_add_fetch (&requeue_pi_woken, res, 0)
-					!= eri_length_of (a));
+  while (tst_atomic_load (&requeue_pi_woken, 0) != eri_length_of (a));
 
   join (args, eri_length_of (a));
 }
