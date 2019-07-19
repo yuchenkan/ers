@@ -145,7 +145,7 @@ tst_live_start (void)
   eri_info ("start\n");
 
   struct tst_rand rand;
-  tst_rand_init (&rand, 30043);
+  tst_rand_init (&rand, 0);
 
   struct eri_timespec to = { 0, 500 };
   int32_t a = 1;

@@ -930,9 +930,9 @@ eri_serialize_syscall_futex_lock_pi_record (eri_file_t file,
 {
   eri_serialize_syscall_res_in_record (file, &rec->res);
   eri_serialize_uint8 (file, rec->access);
-  if (rec->access)
+  if (rec->access & 1)
     eri_serialize_atomic_record (file, rec->atomic);
-  if (rec->access == 2)
+  if (rec->access & 2)
     eri_serialize_atomic_record (file, rec->atomic + 1);
 }
 
@@ -942,9 +942,9 @@ eri_try_unserialize_syscall_futex_lock_pi_record (eri_file_t file,
 {
   return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
 	 && eri_try_unserialize_uint8 (file, &rec->access)
-	 && (! rec->access
+	 && (! (rec->access & 1)
 	     || eri_try_unserialize_atomic_record (file, rec->atomic))
-	 && (rec->access != 2
+	 && (! (rec->access & 2)
 	     || eri_try_unserialize_atomic_record (file, rec->atomic + 1));
 }
 

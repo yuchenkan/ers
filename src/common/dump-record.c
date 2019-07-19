@@ -226,7 +226,7 @@ main (int32_t argc, const char **argv)
 		printf (", ..user_next: %d, ..wait: %u\n",
 			rec.user_next, rec.wait);
 		if (rec.atomic.ok)
-		  printf (", .syscall.futex_unlock_pi.atomic.ver: %lu %lu\n",
+		  printf ("  .syscall.futex_unlock_pi.atomic.ver: %lu %lu\n",
 			  rec.atomic.ver.first, rec.atomic.ver.second);
 	      }
 	    else printf ("\n");

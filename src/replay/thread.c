@@ -2339,11 +2339,12 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 
   if (! rec.access) goto out;
 
-  if (! syscall_futex_try_lock_pi (th, user_addr, th->user_tid,
+  if ((rec.access & 1)
+      && ! syscall_futex_try_lock_pi (th, user_addr, th->user_tid,
 	(op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_TRYLOCK_PI, rec.atomic))
     diverged (th);
 
-  if (rec.access == 2
+  if ((rec.access & 2)
       && ! do_atomic (th, ERI_OP_ATOMIC_AND, (void *) user_addr,
 		sizeof (int32_t), ~ERI_FUTEX_WAITERS, rec.atomic + 1, 0, 0))
     diverged (th);

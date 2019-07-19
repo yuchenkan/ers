@@ -660,7 +660,7 @@ retry:
 
   if (remove_waiter (th_ftx->log, group->pool, slot, futex, &waiter))
     {
-      rec->access = 2;
+      rec->access |= 2;
       struct eri_live_atomic_args at_args = {
 	th_ftx->log, th_ftx->entry, ERI_OP_ATOMIC_AND, (void *) user_addr,
 	sizeof (int32_t), rec->atomic + 1, 0, ~ERI_FUTEX_WAITERS
