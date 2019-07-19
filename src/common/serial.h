@@ -200,6 +200,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
   p (SYSCALL_STAT, ##__VA_ARGS__)					\
   p (SYSCALL_UNAME, ##__VA_ARGS__)					\
+  p (SYSCALL_CLOCK_GETTIME, ##__VA_ARGS__)				\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_LOCK_PI, ##__VA_ARGS__)				\
   p (SYSCALL_FUTEX_UNLOCK_PI, ##__VA_ARGS__)				\
@@ -406,6 +407,19 @@ uint8_t eri_try_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
 void eri_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
+
+struct eri_syscall_clock_gettime_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_timespec time;
+};
+
+void eri_serialize_syscall_clock_gettime_record (eri_file_t file,
+			const struct eri_syscall_clock_gettime_record *rec);
+uint8_t eri_try_unserialize_syscall_clock_gettime_record (eri_file_t file,
+			struct eri_syscall_clock_gettime_record *rec);
+void eri_unserialize_syscall_clock_gettime_record (eri_file_t file,
+			struct eri_syscall_clock_gettime_record *rec);
 
 struct eri_syscall_futex_record
 {

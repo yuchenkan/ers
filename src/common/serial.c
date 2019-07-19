@@ -898,6 +898,31 @@ eri_unserialize_syscall_uname_record (eri_file_t file,
 }
 
 void
+eri_serialize_syscall_clock_gettime_record (eri_file_t file,
+			const struct eri_syscall_clock_gettime_record *rec)
+{
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_timespec (file, &rec->time);
+}
+
+uint8_t
+eri_try_unserialize_syscall_clock_gettime_record (eri_file_t file,
+			struct eri_syscall_clock_gettime_record *rec)
+{
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_timespec (file, &rec->time));
+}
+
+void
+eri_unserialize_syscall_clock_gettime_record (eri_file_t file,
+			struct eri_syscall_clock_gettime_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_clock_gettime_record (file, rec));
+}
+
+void
 eri_serialize_syscall_futex_record (eri_file_t file,
 			const struct eri_syscall_futex_record *rec)
 {

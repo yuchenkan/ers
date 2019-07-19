@@ -1142,9 +1142,56 @@ SYSCALL_TO_IMPL (time)
 SYSCALL_TO_IMPL (times)
 SYSCALL_TO_IMPL (adjtimex)
 
-SYSCALL_TO_IMPL (clock_settime)
-SYSCALL_TO_IMPL (clock_gettime)
-SYSCALL_TO_IMPL (clock_getres)
+DEFINE_SYSCALL (clock_settime)
+{
+  int32_t id = regs->rdi;
+  const struct eri_timespec *user_time = (void *) regs->rsi;
+
+  eri_entry__syscall_leave_if_error (entry,
+				     eri_syscall_check_clock_id (id));
+
+  struct eri_timespec time;
+  if (! eri_entry__copy_obj_from_user (entry, &time, user_time, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs);
+  args.a[1] = (uint64_t) &time;
+  rec.res.result = eri_sys_syscall (&args);
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+static eri_noreturn void
+syscall_do_clock_gettime (SYSCALL_PARAMS)
+{
+  int32_t id = regs->rdi;
+  struct eri_timespec *user_time = (void *) regs->rsi;
+
+  eri_entry__syscall_leave_if_error (entry,
+				     eri_syscall_check_clock_id (id));
+
+  struct eri_syscall_clock_gettime_record rec;
+
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs);
+  args.a[1] = (uint64_t) &rec.time;
+  rec.res.result = eri_sys_syscall (&args);
+
+  if (eri_syscall_is_ok (rec.res.result)
+      && ! eri_entry__copy_obj_to_user (entry, user_time, &rec.time, 0))
+    rec.res.result = ERI_EFAULT;
+
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_CLOCK_GETTIME_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (clock_gettime) { syscall_do_clock_gettime (SYSCALL_ARGS); }
+DEFINE_SYSCALL (clock_getres) { syscall_do_clock_gettime (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (clock_nanosleep)
 SYSCALL_TO_IMPL (clock_adjtime)
 

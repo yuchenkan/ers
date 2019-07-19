@@ -183,7 +183,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_uname_record rec;
 	    eri_unserialize_syscall_uname_record (file, &rec);
-	    printf ("  syscall.stat.result: %ld, ..in: %lu, "
+	    printf ("  syscall.uname.result: %ld, ..in: %lu, "
 		    "..utsname.sysname: %s, ...nodename: %s, "
 		    "...release: %s, ...version: %s, ...machine: %s, "
 		    "...domainname: %s\n",
@@ -191,6 +191,17 @@ main (int32_t argc, const char **argv)
 		    rec.utsname.nodename, rec.utsname.release,
 		    rec.utsname.version, rec.utsname.machine,
 		    rec.utsname.domainname);
+	  }
+        else if (magic == ERI_SYSCALL_CLOCK_GETTIME_MAGIC)
+	  {
+	    struct eri_syscall_clock_gettime_record rec;
+	    eri_unserialize_syscall_clock_gettime_record (file, &rec);
+	    printf ("  syscall.clock_gettime.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      printf ("..time.sec: %lu, ...nsec: %lu\n",
+		      rec.time.sec, rec.time.nsec);
+	    else printf ("\n");
 	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {

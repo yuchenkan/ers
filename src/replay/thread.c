@@ -475,8 +475,8 @@ exit (struct thread *th)
 #define diverged(th) \
   do {									\
     struct thread *_th = th;						\
-    if (! eri_enable_analyzer) eri_assert_unreachable ();		\
     eri_log_info (_th->log.file, "diverged\n");				\
+    if (! eri_enable_analyzer) eri_assert_unreachable ();		\
     exit (_th);								\
   } while (0)
 
@@ -1228,9 +1228,43 @@ SYSCALL_TO_IMPL (time)
 SYSCALL_TO_IMPL (times)
 SYSCALL_TO_IMPL (adjtimex)
 
-SYSCALL_TO_IMPL (clock_settime)
-SYSCALL_TO_IMPL (clock_gettime)
-SYSCALL_TO_IMPL (clock_getres)
+DEFINE_SYSCALL (clock_settime)
+{
+  int32_t id = regs->rdi;
+  const struct eri_timespec *user_time = (void *) regs->rsi;
+
+  syscall_leave_if_error (th, 0, eri_syscall_check_clock_id (id));
+
+  if (! read_obj_from_user (th, user_time)) syscall_leave (th, 0, ERI_EFAULT);
+
+  syscall_do_res_io (th);
+}
+
+static eri_noreturn void
+syscall_do_clock_gettime (SYSCALL_PARAMS)
+{
+  int32_t id = regs->rdi;
+  struct eri_timespec *user_time = (void *) regs->rsi;
+
+  syscall_leave_if_error (th, 0, eri_syscall_check_clock_id (id));
+
+  struct eri_syscall_clock_gettime_record rec;
+
+  if (! check_magic (th, ERI_SYSCALL_CLOCK_GETTIME_MAGIC)
+      || ! try_unserialize (syscall_clock_gettime_record, th, &rec))
+    diverged (th);
+
+  if ((eri_syscall_is_fault_or_ok (rec.res.result)
+       && copy_obj_to_user (th, user_time, &rec.time)
+		!= (rec.res.result != ERI_EFAULT))
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, rec.res.result);
+}
+
+DEFINE_SYSCALL (clock_gettime) { syscall_do_clock_gettime (SYSCALL_ARGS); }
+DEFINE_SYSCALL (clock_getres) { syscall_do_clock_gettime (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (clock_nanosleep)
 SYSCALL_TO_IMPL (clock_adjtime)
 

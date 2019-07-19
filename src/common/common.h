@@ -458,4 +458,12 @@ eri_atomic_futex_unlock_pi (int32_t *user_addr, int32_t user_owner,
 			user_next | (wait ? ERI_FUTEX_WAITERS : 0), 0);
 }
 
+static eri_unused uint64_t
+eri_syscall_check_clock_id (int32_t id)
+{
+  return id == ERI_CLOCK_REALTIME || id == ERI_CLOCK_MONOTONIC
+	 || id == ERI_CLOCK_PROCESS_CPUTIME_ID
+	 || id == ERI_CLOCK_THREAD_CPUTIME_ID ? 0 : ERI_EINVAL;
+}
+
 #endif
