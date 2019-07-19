@@ -220,10 +220,10 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.futex.result: %ld, ..in: %lu, ..access: %u\n",
 		    rec.res.result, rec.res.in, rec.access);
 	    if (rec.access && rec.atomic[0].ok)
-	      printf (" syscall.futex.atomic[0].ver: %lu %lu\n",
+	      printf ("  syscall.futex.atomic[0].ver: %lu %lu\n",
 		      rec.atomic[0].ver.first, rec.atomic[0].ver.second);
 	    if (rec.access == 2 && rec.atomic[1].ok)
-	      printf (" syscall.futex.atomic[1].ver: %lu %lu\n",
+	      printf ("  syscall.futex.atomic[1].ver: %lu %lu\n",
 		      rec.atomic[1].ver.first, rec.atomic[1].ver.second);
 	  }
 	else if (magic == ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
@@ -251,7 +251,7 @@ main (int32_t argc, const char **argv)
 		    rec.res.result, rec.res.in, rec.access);
 	    if (rec.access && rec.access)
 	      {
-		printf (", .syscall.futex_requeue.atomic.ver: %lu %lu\n",
+		printf ("  .syscall.futex_requeue.atomic.ver: %lu %lu\n",
 			rec.atomic.ver.first, rec.atomic.ver.second);
 		uint64_t j;
 		for (j = 0; j < rec.pi; ++j)

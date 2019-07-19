@@ -737,6 +737,28 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 
 #include <lib/compiler.h>
 
+struct eri_timespec
+{
+  uint64_t sec;
+  uint64_t nsec;
+};
+
+static eri_unused void
+eri_timespec_add (struct eri_timespec *a, struct eri_timespec *b)
+{
+  a->nsec += b->nsec;
+  a->sec += b->sec + a->nsec / 1000000000;
+  a->nsec %= 1000000000;
+}
+
+static eri_unused void
+eri_timespec_add_nsec (struct eri_timespec *t, uint64_t n)
+{
+  t->nsec += n;
+  t->sec += t->nsec / 1000000000;
+  t->nsec %= 1000000000;
+}
+
 static eri_unused uint8_t
 eri_futex_op_get_op (int32_t op)
 {
@@ -772,12 +794,6 @@ struct eri_robust_list_head
   struct eri_robust_list list;
   uint64_t futex_offset;
   struct eri_robust_list *list_op_pending;
-};
-
-struct eri_timespec
-{
-  uint64_t sec;
-  uint64_t nsec;
 };
 
 struct eri_stat

@@ -2307,6 +2307,8 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
       && ! syscall_futex_load_user (th, user_addr[0], &rec.atomic, res))
     diverged (th);
 
+  if (! rec.atomic.ok) goto out;
+
   if (cmd == ERI_FUTEX_CMP_REQUEUE_PI)
     {
       if (rec.pi > val2) diverged (th);
@@ -2450,7 +2452,7 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
   if (! syscall_futex_load_user (th, user_addr[0], rec.atomic, res))
     diverged (th);
 
-  if (rec.access != 2) goto out;
+  if (! (rec.access & 2)) goto out;
 
   if (! syscall_futex_clear_user_waiters (th, user_addr[1], rec.atomic + 1))
     diverged (th);

@@ -2474,7 +2474,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, page_size (th)));
 
-  struct eri_buf pi = { 0 }; // TODO
+  struct eri_buf pi = { 0 };
   struct eri_syscall_futex_requeue_record rec;
 
   struct eri_live_thread_futex__requeue_args args = {
@@ -2589,7 +2589,7 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
   struct eri_syscall_futex_lock_pi_record rec;
   struct eri_live_thread_futex__wait_requeue_pi_args args = {
     { user_addr[0], user_addr[1] }, val, !! (op & ERI_FUTEX_CLOCK_REALTIME),
-    &timeout, &rec
+    user_timeout ? &timeout : 0, &rec
   };
 
   eri_live_thread_futex__wait_requeue_pi (th->futex, &args);
@@ -2909,11 +2909,11 @@ eri_live_thread__sig_handler (
   struct eri_siginfo *info = &frame->info;
   struct eri_ucontext *ctx = &frame->ctx;
   eri_log (th->sig_log.file, "sig = %u, frame = %lx, rip = %lx, "
-	   "rip - base = %lx, rax = %lx, rcx = %lx, rdx = %lx, "
-	   "r14 = %lx, r15 = %lx\n",
+	   "rip - base = %lx, rax = %lx, rcx = %lx, rdx = %lx, rdi = %lx, "
+	   "rsi = %lx, r14 = %lx, r15 = %lx\n",
 	   info->sig, frame, ctx->mctx.rip, ctx->mctx.rip - th->group->base,
-	   ctx->mctx.rax, ctx->mctx.rcx, ctx->mctx.rdx,
-	   ctx->mctx.r14, ctx->mctx.r15);
+	   ctx->mctx.rax, ctx->mctx.rcx, ctx->mctx.rdx, ctx->mctx.rdi,
+	   ctx->mctx.rsi, ctx->mctx.r14, ctx->mctx.r15);
 
   struct eri_entry *entry = th->entry;
   if (eri_si_single_step (info)
