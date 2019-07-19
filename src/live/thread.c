@@ -2420,7 +2420,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 
   struct eri_live_thread_futex__requeue_args args = {
     { user_addr[0], user_addr[1] }, val, val2, cmd != ERI_FUTEX_REQUEUE,
-    val3, &rec
+    val3, &rec, sig_th, cmd == ERI_FUTEX_CMP_REQUEUE_PI ? &pi : 0
   };
   eri_live_thread_futex__requeue (th->futex, &args);
 

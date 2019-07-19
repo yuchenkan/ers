@@ -248,12 +248,17 @@ main (int32_t argc, const char **argv)
 		    struct eri_syscall_futex_requeue_pi_record pi;
 		    eri_unserialize_syscall_futex_requeue_pi_record (file,
 								     &pi);
-		    printf ("  syscall.futex_requeue_pi.user_next: %d\n",
-			    pi.user_next);
-		    if (pi.atomic.ok)
-		      printf ("  syscall.futex_requeue_pi.atomic.ver: "
-			      "%lx %lx\n",
-			      pi.atomic.ver.first, pi.atomic.ver.second);
+		    printf ("  syscall.futex_requeue_pi.access: %u",
+			    pi.access);
+		    if (pi.access)
+		      {
+			printf (", ..next: %d\n", pi.user_next);
+			if (pi.atomic.ok)
+			  printf ("  syscall.futex_requeue_pi.atomic.ver: "
+				  "%lx %lx\n",
+				  pi.atomic.ver.first, pi.atomic.ver.second);
+		      }
+		    else printf ("\n");
 		  }
 	      }
 	  }

@@ -63,6 +63,9 @@ struct eri_live_thread_futex__requeue_args
   int32_t cmp_arg;
 
   struct eri_syscall_futex_requeue_record *rec;
+
+  struct eri_live_signal_thread *sig_th;
+  struct eri_buf *pi;
 };
 
 void eri_live_thread_futex__requeue (
@@ -80,6 +83,7 @@ struct eri_live_thread_futex__wake_op_args
   int32_t cmp_arg;
 
   struct eri_syscall_futex_record *rec;
+  struct eri_buf *pi;
 };
 
 void eri_live_thread_futex__wake_op (

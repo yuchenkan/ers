@@ -416,6 +416,8 @@ create (struct thread_group *group, struct thread *pth,
   th->start_lock = !! pth;
   th->clear_user_tid = clear_user_tid;
 
+  th->user_robust_list = 0;
+
   *(void **) th->sig_stack = th;
   return th;
 }
@@ -2273,8 +2275,9 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 	  if (! try_unserialize (syscall_futex_requeue_pi_record, th, &r))
 	    diverged (th);
 
-	  if (! syscall_futex_try_lock_pi (th, user_addr[1],
-					   r.user_next, 0, &r.atomic))
+	  if (r.access
+	      && ! syscall_futex_try_lock_pi (th, user_addr[1],
+					      r.user_next, 0, &r.atomic))
 	    diverged (th);
 	}
     }

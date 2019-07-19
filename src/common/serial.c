@@ -1026,16 +1026,22 @@ void
 eri_serialize_syscall_futex_requeue_pi_record (eri_file_t file,
 		const struct eri_syscall_futex_requeue_pi_record *rec)
 {
-  eri_serialize_int32 (file, rec->user_next);
-  eri_serialize_atomic_record (file, &rec->atomic);
+  eri_serialize_uint8 (file, rec->access);
+  if (rec->access)
+    {
+      eri_serialize_int32 (file, rec->user_next);
+      eri_serialize_atomic_record (file, &rec->atomic);
+    }
 }
 
 uint8_t
 eri_try_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
 		struct eri_syscall_futex_requeue_pi_record *rec)
 {
-  return eri_try_unserialize_int32 (file, &rec->user_next)
-	 && eri_try_unserialize_atomic_record (file, &rec->atomic);
+  return eri_try_unserialize_uint8 (file, &rec->access)
+	 && (! rec->access
+	     || (eri_try_unserialize_int32 (file, &rec->user_next)
+		 && eri_try_unserialize_atomic_record (file, &rec->atomic)));
 }
 
 void

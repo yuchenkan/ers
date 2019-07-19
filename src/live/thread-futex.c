@@ -373,6 +373,98 @@ eri_live_thread_futex__wake (struct eri_live_thread_futex *th_ftx,
   return res;
 }
 
+static uint64_t
+try_lock (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
+	  int32_t user_next, uint8_t try, int32_t *user_owner,
+	  struct eri_atomic_record *rec)
+{
+  struct eri_live_atomic *atomic = th_ftx->group->atomic;
+  struct eri_entry *entry = th_ftx->entry;
+
+  struct eri_pair idx = eri_live_atomic_lock (atomic, user_addr,
+					      sizeof (int32_t));
+  if (! eri_entry__test_access (entry, user_addr, 0))
+    {
+      eri_live_atomic_unlock (atomic, &idx, 0);
+      rec->ok = 0;
+      return ERI_EFAULT;
+    }
+
+  int32_t old = eri_atomic_futex_lock_pi ((void *) user_addr, user_next, try);
+
+  eri_entry__reset_test_access (entry);
+
+  eri_log (th_ftx->log, "try lock pi: %u\n", old);
+  rec->ok = 1;
+  rec->ver = eri_live_atomic_unlock (atomic, &idx, 1);
+
+  if ((old & ~ERI_FUTEX_OWNER_DIED) == 0) return 1;
+
+  *user_owner = old & ERI_FUTEX_TID_MASK;
+  return 0;
+}
+
+static uint64_t
+wait_pi (struct eri_live_thread_futex *th_ftx, struct eri_live_futex **futex,
+	 struct eri_live_signal_thread *sig_th,
+	 uint64_t user_addr, int32_t user_next, uint8_t try,
+	 struct waiter *waiter,
+	 uint8_t *access, struct eri_atomic_record *rec)
+{
+  if (! *futex)
+    {
+      *access = 1;
+
+      int32_t user_owner;
+      /* Access user, check, and set tid (or waiters).  */
+      uint64_t res = try_lock (th_ftx, user_addr, user_next, try,
+			       &user_owner, rec);
+
+      if (res) return res;
+      else if (user_owner == user_next) return ERI_EDEADLK;
+      else if (try) return ERI_EAGAIN;
+
+      eri_log3 (th_ftx->log, "create futex %u\n", user_owner);
+      if ((res = eri_live_signal_thread__create_futex_pi (sig_th,
+					user_owner, user_addr, futex)))
+	return res;
+      eri_log (th_ftx->log, "post create futex %lx\n", *futex);
+    }
+  else if ((*futex)->owner == th_ftx) return ERI_EDEADLK;
+  else if (try) return ERI_EAGAIN;
+
+  waiter->lock = (*futex)->owner->tid;
+  waiter->mask = -1;
+  waiter->pi = th_ftx;
+  return 0;
+}
+
+static uint64_t
+requeue_pi (struct eri_live_thread_futex *th_ftx,
+	struct eri_live_futex **futex, struct eri_live_signal_thread *sig_th,
+	uint64_t user_addr, struct waiter *waiter, struct eri_buf *pi)
+{
+  int32_t user_next = waiter->pi->user_tid;
+
+  struct eri_syscall_futex_requeue_pi_record rec = { user_next };
+
+  uint64_t res = wait_pi (th_ftx, futex + 1, sig_th, user_addr, user_next,
+			  0, waiter, &rec.access, &rec.atomic);
+  if (eri_syscall_is_error (res)) return res;
+
+  waiter_lst_remove (futex[0], waiter);
+  if (res == 0)
+    {
+      waiter_lst_append (futex[1], waiter);
+      waiter->lock = (*futex)->owner->tid;
+    }
+  else waiter->lock = 0;
+
+  eri_lassert_syscall (th_ftx->log, futex, &waiter->lock,
+		       ERI_FUTEX_WAKE_PRIVATE, 1);
+  return 0;
+}
+
 void
 eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
 			struct eri_live_thread_futex__requeue_args *args)
@@ -380,6 +472,7 @@ eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
   struct eri_live_thread_futex_group *group = th_ftx->group;
   uint64_t *user_addr = args->user_addr;
   struct eri_syscall_futex_requeue_record *rec = args->rec;
+  struct eri_buf *pi = args->pi;
 
   rec->access = 0;
   rec->pi = 0;
@@ -393,15 +486,12 @@ eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
   };
 
   uint64_t res;
-#if 0
-  if (cmd != ERI_FUTEX_CMP_REQUEUE_PI)
+  if (pi)
     {
-      if ((rec.res.result = syscall_futex_check (futex[0]))) goto out;
-      if ((rec.res.result = syscall_futex_check_pi (futex[1]))) goto out;
+      if ((res = check (futex[0]))) goto out;
+      if ((res = check_pi (futex[1]))) goto out;
     }
-  else if ((rec.res.result = syscall_futex_check2 (futex))) goto out;
-#endif
-  if ((res = check2 (futex))) goto out;
+  else if ((res = check2 (futex))) goto out;
 
   if (args->cmp)
     {
@@ -422,86 +512,37 @@ eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
       || slot[0] == slot[1] || requeue_num <= 0)
     goto out;
 
-  if (! futex[1]/* && cmd != ERI_FUTEX_CMP_REQUEUE_PI */)
+  if (! futex[1] && ! pi)
     futex[1] = create (pool, slot[1], user_addr[1], 0);
 
-#if 0
-  struct eri_buf pi;
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI)
-    eri_assert_buf_mtpool_init (&pi, pool, eri_min (val2, 32),
+  if (pi)
+    eri_assert_buf_mtpool_init (pi, pool, eri_min (requeue_num, 32),
 			sizeof (struct eri_syscall_futex_requeue_pi_record));
-#endif
 
   int32_t i = requeue_num;
   struct waiter *w, *nw;
   ERI_LST_FOREACH_SAFE (waiter, futex[0], w, nw)
     {
-      waiter_lst_remove (futex[0], w);
-      waiter_lst_append (futex[1], w);
-#if 0
-      if (cmd != ERI_FUTEX_CMP_REQUEUE_PI)
-	futex_waiter_lst_append (futex[1], w);
-      else
+      if (! pi != ! w->pi) { res = ERI_EINVAL; break; }
+
+      if (! pi)
 	{
-	  int32_t next = w->pi->user_tid;
-
-	  struct eri_syscall_futex_requeue_pi_record r = { next };
-	  int32_t owner;
-	  uint64_t res = syscall_futex_try_lock_pi (th, user_addr[1], next,
-						    &owner, &r.atomic);
-	  eri_assert_buf_append (&pi, &r, 1);
-	  if (eri_syscall_is_error (res) || (res == 1 && futex[1]))
-	    {
-	      rec.res.result = res == 1 ? ERI_EINVAL : res;
-	      break;
-	    }
-	  else if (res == 1)
-	    {
-	      if (futex[1])
-		{
-		  rec.res.result = ERI_EINVAL;
-		  break;
-		}
-
-	      w->lock_pi = w->pi->tid;
-	      eri_lassert_syscall (th->log.file, futex, &w->lock,
-				   ERI_FUTEX_WAKE_PRIVATE, 1);
-	    }
-	  else
-	    {
-	      int32_t tid;
-	      if ((res = create_set_futex_pi_owner (th, slot[1],
-				user_addr[1], owner, futex + 1, &tid)))
-		{
-		  rec.res.result = res;
-		  break;
-		}
-
-	      w->lock_pi = tid;
-	      futex_pi_waiter_lst_append (futex[1], w);
-	      res = eri_syscall (futex, &w->lock, ERI_FUTEX_CMP_REQUEUE_PI,
-				 1, 1, &w->lock_pi, 1);
-	      if (eri_syscall_is_error (res))
-		{
-		  rec.res.result = res;
-		  break;
-		}
-	    }
+	  waiter_lst_remove (futex[0], w);
+	  waiter_lst_append (futex[1], w);
 	}
-#endif
+      else if ((res = requeue_pi (th_ftx, futex, args->sig_th,
+				  user_addr[1], w, pi))) break;
+
       if (--i == 0) break;
     }
   may_remove_free (th_ftx->log, pool, slot[0], futex[0]);
 
-  if (args->cmp/* && ! eri_syscall_is_error (res) */) res += requeue_num - i;
+  if (args->cmp && ! eri_syscall_is_error (res)) res += requeue_num - i;
 
 out:
   unlock_slot2 (slot);
+  if (pi) rec->pi = pi->n;
   rec->res.result = res;
-
-#if 0
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI) rec.pi = pi.n;
-#endif
 }
 
 static uint8_t
@@ -563,37 +604,6 @@ out:
   rec->res.result = res;
 }
 
-static uint64_t
-try_lock_pi (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
-	     int32_t user_next, uint8_t try, int32_t *user_owner,
-	     struct eri_atomic_record *rec)
-{
-  struct eri_live_atomic *atomic = th_ftx->group->atomic;
-  struct eri_entry *entry = th_ftx->entry;
-
-  struct eri_pair idx = eri_live_atomic_lock (atomic, user_addr,
-					      sizeof (int32_t));
-  if (! eri_entry__test_access (entry, user_addr, 0))
-    {
-      eri_live_atomic_unlock (atomic, &idx, 0);
-      rec->ok = 0;
-      return ERI_EFAULT;
-    }
-
-  int32_t old = eri_atomic_futex_lock_pi ((void *) user_addr, user_next, try);
-
-  eri_entry__reset_test_access (entry);
-
-  eri_log (th_ftx->log, "try lock pi: %u\n", old);
-  rec->ok = 1;
-  rec->ver = eri_live_atomic_unlock (atomic, &idx, 1);
-
-  if ((old & ~ERI_FUTEX_OWNER_DIED) == 0) return 1;
-
-  *user_owner = old & ERI_FUTEX_TID_MASK;
-  return 0;
-}
-
 void
 eri_live_thread_futex__lock_pi (struct eri_live_thread_futex *th_ftx,
 			struct eri_live_thread_futex__lock_pi_args *args)
@@ -610,31 +620,15 @@ eri_live_thread_futex__lock_pi (struct eri_live_thread_futex *th_ftx,
   uint64_t res;
   if ((res = check_pi (futex))) goto out;
 
-  if (! futex)
+  struct waiter waiter;
+  res = wait_pi (th_ftx, &futex, args->sig_th, user_addr, th_ftx->user_tid,
+		 args->try, &waiter, &rec->access, rec->atomic);
+  switch (res)
     {
-      rec->access = 1;
-
-      int32_t user_owner;
-      res = try_lock_pi (th_ftx, user_addr, th_ftx->user_tid, args->try,
-			 &user_owner, rec->atomic);
-
-      if (res == 1) { res = 0; goto out; }
-      else if (eri_syscall_is_error (res)) goto out;
-      else if (user_owner == th_ftx->user_tid)
-	{ res = ERI_EDEADLK; goto out; }
-      else if (args->try) { res = ERI_EAGAIN; goto out; }
-
-      eri_log3 (th_ftx->log, "create futex %u\n", user_owner);
-      if ((res = eri_live_signal_thread__create_futex_pi (args->sig_th,
-					user_owner, user_addr, &futex)))
-	goto out;
-      eri_log (th_ftx->log, "post create futex %lx\n", futex);
+    case 0: waiter_lst_append (futex, &waiter); break;
+    case 1: res = 0; goto out;
+    default: goto out;
     }
-  else if (futex->owner == th_ftx) { res = ERI_EDEADLK; goto out; }
-  else if (args->try) { res = ERI_EAGAIN; goto out; }
-
-  struct waiter waiter = { futex->owner->tid, -1, th_ftx };
-  waiter_lst_append (futex, &waiter);
 
 retry:
   eri_assert_unlock (&slot->lock);
@@ -665,6 +659,7 @@ retry:
 	th_ftx->log, th_ftx->entry, ERI_OP_ATOMIC_AND, (void *) user_addr,
 	sizeof (int32_t), rec->atomic + 1, 0, ~ERI_FUTEX_WAITERS
       };
+      /* Access user & clear waiters.  */
       eri_live_atomic (group->atomic, &at_args);
     }
 
@@ -699,19 +694,13 @@ unlock (struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
   rec->ok = 1;
   rec->ver = eri_live_atomic_unlock (atomic, &idx, 1);
   return valid ? 0 : ERI_EINVAL;
-
 }
 
 static void
 wake_pi (struct eri_live_thread_futex *th_ftx, struct slot *slot,
-	 struct eri_live_futex *futex, struct waiter *waiter)
+	   struct eri_live_futex *futex, struct waiter *waiter)
 {
   own_pi (waiter->pi, futex);
-#if 0
-eri_log (th_ftx->log, "append %lx %lx\n", futex->owner, futex);
-eri_log (th_ftx->log, "%lx %lx %lx\n", futex->owner->pi_lst, futex->owner->pi_lst[0], futex->owner->pi_lst[1]);
-eri_log (th_ftx->log, "%lx %lx %lx\n", futex->pi_lst, futex->pi_lst[0], futex->pi_lst[1]);
-#endif
 
   struct waiter *w;
   ERI_LST_FOREACH (waiter, futex, w)
@@ -749,6 +738,7 @@ eri_live_thread_futex__unlock_pi (struct eri_live_thread_futex *th_ftx,
   eri_log (th_ftx->log, "unlock pi addr %lx next %u wait %u\n",
 	   user_addr, rec->user_next, rec->wait);
 
+  /* Access user, check & set new owner (& waiters).  */
   if ((res = unlock (th_ftx, user_addr, rec->user_next,
 		     rec->wait, &rec->atomic))) goto out;
 
