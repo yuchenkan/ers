@@ -2190,6 +2190,15 @@ syscall_fetch_futex_record (struct thread *th,
       || ! try_unserialize (syscall_futex_record, th, rec)) diverged (th);
   return rec->res.result;
 }
+static uint64_t
+syscall_fetch_futex_lock_pi_record (struct thread *th,
+				struct eri_syscall_futex_lock_pi_record *rec)
+{
+  if (! check_magic (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
+      || ! try_unserialize (syscall_futex_lock_pi_record, th, rec))
+    diverged (th);
+  return rec->res.result;
+}
 
 static uint8_t
 syscall_futex_load_user (struct thread *th, uint64_t user_addr,
@@ -2355,6 +2364,14 @@ out:
   syscall_leave (th, 1, res);
 }
 
+static uint8_t
+syscall_futex_clear_user_waiters (struct thread *th, uint64_t user_addr,
+				  struct eri_atomic_record *rec)
+{
+  return do_atomic (th, ERI_OP_ATOMIC_AND, (void *) user_addr,
+		sizeof (int32_t), ~ERI_FUTEX_WAITERS, rec, 0, 0);
+}
+
 static eri_noreturn void
 syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 {
@@ -2368,10 +2385,7 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 	syscall_futex_check_wait (th, user_addr, user_timeout));
 
   struct eri_syscall_futex_lock_pi_record rec;
-  if (! check_magic (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
-      || ! try_unserialize (syscall_futex_lock_pi_record, th, &rec))
-    diverged (th);
-  uint64_t res = rec.res.result;
+  uint64_t res = syscall_fetch_futex_lock_pi_record (th, &rec);
 
   if (! rec.access) goto out;
 
@@ -2381,8 +2395,7 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
     diverged (th);
 
   if ((rec.access & 2)
-      && ! do_atomic (th, ERI_OP_ATOMIC_AND, (void *) user_addr,
-		sizeof (int32_t), ~ERI_FUTEX_WAITERS, rec.atomic + 1, 0, 0))
+      && ! syscall_futex_clear_user_waiters (th, user_addr, rec.atomic + 1))
     diverged (th);
 
 out:
@@ -2429,12 +2442,17 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
   syscall_leave_if_error (th, 0,
 	eri_syscall_futex_check_user_addr (user_addr[1], page_size (th)));
 
-  struct eri_syscall_futex_record rec;
-  uint64_t res = syscall_fetch_futex_record (th, &rec);
+  struct eri_syscall_futex_lock_pi_record rec;
+  uint64_t res = syscall_fetch_futex_lock_pi_record (th, &rec);
 
   if (! rec.access) goto out;
 
-  if (! syscall_futex_load_user (th, user_addr[0], &rec.atomic, res))
+  if (! syscall_futex_load_user (th, user_addr[0], rec.atomic, res))
+    diverged (th);
+
+  if (rec.access != 2) goto out;
+
+  if (! syscall_futex_clear_user_waiters (th, user_addr[1], rec.atomic + 1))
     diverged (th);
 
 out:
