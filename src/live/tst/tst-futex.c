@@ -108,7 +108,7 @@ pi (void *p)
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
 }
 
-static uint64_t try_pi_failed;
+static uint64_t try_pi_failed_num;
 
 static void
 try_pi (void *p)
@@ -120,18 +120,38 @@ try_pi (void *p)
       tst_yield (1024);
       eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
     }
-  else tst_atomic_inc (&try_pi_failed, 0);
+  else tst_atomic_inc (&try_pi_failed_num, 0);
+}
+
+static uint64_t pi_timedout_nsec;
+static uint64_t pi_timedout_num;
+
+static void
+pi_timedout (void *p)
+{
+  struct eri_timespec time;
+  tst_assert_syscall (clock_gettime, ERI_CLOCK_MONOTONIC, &time);
+  time.nsec += pi_timedout_nsec;
+
+  uint64_t res = tst_syscall (futex, p, ERI_FUTEX_LOCK_PI, 0, &time);;
+  eri_assert (res == 0 || res == ERI_ETIMEDOUT);
+  if (res == 0)
+    {
+      tst_yield (256);
+      eri_assert (! tst_syscall (futex, p, ERI_FUTEX_UNLOCK_PI));
+    }
+  else tst_atomic_inc (&pi_timedout_num, 0);
 }
 
 static void
-tst_pi (struct tst_rand *rand, uint8_t try)
+tst_pi (struct tst_rand *rand, void *fn)
 {
-  eri_info ("pi try: %u\n", try);
+  eri_info ("pi\n");
 
   int32_t x = ERI_FUTEX_OWNER_DIED;
-  void *a[] = { &x, &x };
+  void *a[] = { &x, &x, &x, &x };
   struct tst_live_clone_args args[eri_length_of (a)];
-  clone (args, eri_length_of (a), rand, try ? try_pi : pi, a);
+  clone (args, eri_length_of (a), rand, fn, a);
 
   pi (&x);
 
@@ -145,7 +165,7 @@ tst_live_start (void)
   eri_info ("start\n");
 
   struct tst_rand rand;
-  tst_rand_init (&rand, 369);
+  tst_rand_init (&rand, 0);
 
   struct eri_timespec to = { 0, 500 };
   int32_t a = 1;
@@ -198,9 +218,14 @@ tst_live_start (void)
   tst_requeue (&rand, 0);
   tst_requeue (&rand, 1);
 
-  tst_pi (&rand, 0);
-  tst_pi (&rand, 1);
-  eri_info ("pi try lock failed: %lu\n", try_pi_failed);
+  tst_pi (&rand, pi);
+  tst_pi (&rand, try_pi);
+  eri_info ("pi try lock failed: %lu\n", try_pi_failed_num);
+
+  pi_timedout_nsec = tst_rand (&rand, 100000, 3000000);
+  tst_pi (&rand, pi_timedout);
+  eri_info ("pi timedout nesc: %lu, %lu\n",
+	    pi_timedout_nsec, pi_timedout_num);
 
   eri_info ("futex requeue pi\n");
   // TODO
