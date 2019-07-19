@@ -2299,6 +2299,18 @@ syscall_do_futex_record_leave (struct eri_live_thread *th,
   eri_entry__syscall_leave (th->entry, rec->res.result);
 }
 
+static eri_noreturn void
+syscall_do_futex_lock_pi_record_leave (struct eri_live_thread *th,
+				struct eri_syscall_futex_lock_pi_record *rec)
+{
+  if (rec->res.result == ERI_EINTR)
+    eri_entry__sig_wait_pending (th->entry, 0);
+
+  rec->res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC, rec);
+  eri_entry__syscall_leave (th->entry, rec->res.result);
+}
+
 /*
 static uint64_t
 syscall_futex_load_test_user (struct eri_live_thread *th,
@@ -2537,11 +2549,7 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
   };
   eri_live_thread_futex__lock_pi (th->futex, &args);
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
-
-  rec.res.in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC, &rec);
-  eri_entry__syscall_leave (th->entry, rec.res.result);
+  syscall_do_futex_lock_pi_record_leave (th, &rec);
 }
 
 static eri_noreturn void
@@ -2561,7 +2569,6 @@ syscall_do_futex_unlock_pi (SYSCALL_PARAMS)
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
-#if 0
 static eri_noreturn void
 syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
 {
@@ -2579,56 +2586,16 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_user_addr (user_addr[1], page_size (th)));
 
-  struct eri_live_thread_group *group = th->group;
-
-  struct futex_slot *slot = syscall_lock_futex_slot (group, user_addr[0]);
-
-  struct eri_syscall_futex_record rec = { 0 };
-
-  struct eri_live_futex *futex = futex_rbt_get (slot, user_addr, ERI_RBT_EQ);
-  if ((rec.res.result
-	= syscall_futex_load_test_user (th, futex, user_addr[0], &rec, val)))
-    {
-      eri_assert_unlock (&slot->lock);
-      goto record;
-    }
-
-   if (! futex)
-     futex = syscall_create_futex (group->pool, slot, user_addr[0]);
-
-  struct futex_waiter waiter = { 1, -1, 0, th };
-  futex_waiter_lst_append (futex, &waiter);
-  eri_assert_unlock (&slot->lock);
-
-  struct eri_sys_syscall_args args = {
-    __NR_futex,
-    { (uint64_t) &waiter.lock,
-      ERI_FUTEX_WAIT_REQUEUE_PI_PRIVATE | (op & ERI_FUTEX_CLOCK_REALTIME), 1,
-      user_timeout ? (uint64_t) &timeout : 0, (uint64_t) &waiter.lock_pi }
+  struct eri_syscall_futex_lock_pi_record rec;
+  struct eri_live_thread_futex__wait_requeue_pi_args args = {
+    { user_addr[0], user_addr[1] }, val, !! (op & ERI_FUTEX_CLOCK_REALTIME),
+    &timeout, &rec
   };
-  rec.res.result = eri_entry__sys_syscall_interruptible (entry, &args);
 
-  if (eri_syscall_is_error (rec.res.result) && rec.res.result != ERI_EAGAIN)
-    {
-      eri_lassert (th->log.file, rec.res.result == ERI_EINTR
-	|| rec.res.result == ERI_ETIMEDOUT || rec.res.result == ERI_ENOMEM);
+  eri_live_thread_futex__wait_requeue_pi (th->futex, &args);
 
-      eri_assert_lock (&slot->lock);
-      int32_t owner = waiter.lock_pi & ERI_FUTEX_TID_MASK;
-      if (owner == th->tid) rec.res.result = 0;
-      else if (owner)
-	syscall_remove_futex_pi_waiter (group->pool, slot, futex, &waiter);
-      else if (! waiter.lock) rec.res.result = ERI_EAGAIN;
-      else syscall_remove_futex_waiter (group->pool, slot, futex, &waiter);
-      eri_assert_unlock (&slot->lock);
-    }
-
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
-
-record:
-  syscall_do_futex_record_leave (th, &rec);
+  syscall_do_futex_lock_pi_record_leave (th, &rec);
 }
-#endif
 
 DEFINE_SYSCALL (futex)
 {
@@ -2661,7 +2628,7 @@ DEFINE_SYSCALL (futex)
     case ERI_FUTEX_TRYLOCK_PI: syscall_do_futex_lock_pi (SYSCALL_ARGS);
     case ERI_FUTEX_UNLOCK_PI: syscall_do_futex_unlock_pi (SYSCALL_ARGS);
     case ERI_FUTEX_WAIT_REQUEUE_PI:
-      // syscall_do_futex_wait_requeue_pi (SYSCALL_ARGS);
+      syscall_do_futex_wait_requeue_pi (SYSCALL_ARGS);
     default: eri_entry__syscall_leave (entry, ERI_ENOSYS);
     }
 }
