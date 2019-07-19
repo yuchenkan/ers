@@ -561,7 +561,7 @@ eri_live_thread_futex__requeue (struct eri_live_thread_futex *th_ftx,
 	  waiter_lst_append (futex[1], w);
 	}
       else if ((r = requeue_pi (th_ftx, futex, args->sig_th,
-				  user_addr[1], w, pi)))
+				user_addr[1], w, pi)))
 	{ res = r; break; }
 
       if (--i == 0) break;
