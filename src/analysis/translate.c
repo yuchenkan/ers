@@ -3640,13 +3640,13 @@ ir_assign_hosts (struct ir_flat *flat, struct ir_node *node)
 	struct ir_assign *a = assigns + idx;
 	if (ras[i].dep)
 	  {
-	    eri_lassert (log, ! a->dep);
+	    eri_lassert (log, ! a->dep || a->dep == ras[i].dep);
 	    a->dep = ras[i].dep;
 	  }
 
 	if (ras[i].def)
 	  {
-	    eri_lassert (log, ! a->def);
+	    eri_lassert (log, ! a->def || a->def == ras[i].def);
 	    a->def = ras[i].def;
 	  }
 
@@ -3756,7 +3756,7 @@ ir_generate (struct ir_dag *dag, void *analysis)
   ir_mark_ref (dag, last);
   ir_flatten (&flat, last);
 
-  uint8_t local = TRANS_RBP;
+  uint8_t local = TRANS_R11;
   uint8_t i;
   for (i = 0; i < TRANS_REG_NUM; ++i)
     ir_init_host (&flat, i, i == local ? &flat.local : &flat.dummy);

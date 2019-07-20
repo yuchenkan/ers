@@ -270,7 +270,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
   group->stack_size = stack_size;
 
   group->rec_group = eri_live_thread_recorder__create_group (
-				pool, path, group->file_buf_size);
+		pool, path, group->file_buf_size, group->page_size);
 
   group->io = args->io;
 
@@ -659,6 +659,13 @@ syscall_record_res_io (struct eri_live_thread *th,
   struct eri_live_thread *th, struct eri_entry *entry,			\
   struct eri_registers *regs, struct eri_live_signal_thread *sig_th
 #define SYSCALL_ARGS	th, entry, regs, sig_th
+
+static eri_noreturn void
+syscall_do_no_sys (SYSCALL_PARAMS)
+{
+  /* XXX: inteneded not to impl for now.  */
+  eri_entry__syscall_leave (entry, ERI_ENOSYS);
+}
 
 static eri_noreturn void
 syscall_do_res_in (SYSCALL_PARAMS)
@@ -2025,7 +2032,8 @@ DEFINE_SYSCALL (mprotect)
 DEFINE_SYSCALL (munmap) { syscall_do_munmap (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (mremap)
-SYSCALL_TO_IMPL (madvise)
+
+DEFINE_SYSCALL (madvise) { syscall_do_res_io (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (brk) { syscall_do_munmap (SYSCALL_ARGS); }
 
@@ -2209,8 +2217,8 @@ DEFINE_SYSCALL (futex)
     }
 }
 
-SYSCALL_TO_IMPL (set_robust_list)
-SYSCALL_TO_IMPL (get_robust_list)
+DEFINE_SYSCALL (set_robust_list) { syscall_do_no_sys (SYSCALL_ARGS); }
+DEFINE_SYSCALL (get_robust_list) { syscall_do_no_sys (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (pkey_mprotect)
 SYSCALL_TO_IMPL (pkey_alloc)

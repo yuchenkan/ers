@@ -16,13 +16,14 @@ struct eri_live_thread_recorder_group
   struct eri_mtpool *pool;
   const char *path;
   uint64_t file_buf_size;
+  uint64_t page_size;
 
   uint64_t mmap;
 };
 
 struct eri_live_thread_recorder_group *
 eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
-				const char *path, uint64_t file_buf_size)
+	const char *path, uint64_t file_buf_size, uint64_t page_size)
 {
   if (! path) return 0;
 
@@ -33,6 +34,7 @@ eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
   group->pool = pool;
   eri_strcpy ((void *) group->path, path);
   group->file_buf_size = file_buf_size;
+  group->page_size = page_size;
   group->mmap = 0;
   return group;
 }
@@ -254,7 +256,8 @@ eri_live_thread_recorder__rec_syscall_read (
   uint64_t total = res;
   struct eri_live_thread_recorder_group *group = th_rec->group;
 
-  uint64_t buf_size = eri_min (total, group->file_buf_size * 2);
+  uint64_t buf_size = eri_min (total,
+		eri_max (group->file_buf_size, group->page_size) * 2);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
 		: eri_assert_mtmalloc (group->pool, buf_size);
   uint64_t off = 0, iov_off = 0;

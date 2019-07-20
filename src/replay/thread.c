@@ -1601,7 +1601,8 @@ syscall_get_read_data (struct thread *th, void *dst,
 {
   struct thread_group *group = th->group;
 
-  uint64_t buf_size = eri_min (total, 2 * group->file_buf_size);
+  uint64_t buf_size = eri_min (total,
+		eri_max (group->file_buf_size, group->page_size) * 2);
   uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
 		: eri_assert_mtmalloc (group->pool, buf_size);
 
@@ -2122,7 +2123,8 @@ out:
 }
 
 SYSCALL_TO_IMPL (mremap)
-SYSCALL_TO_IMPL (madvise)
+
+DEFINE_SYSCALL (madvise) { syscall_do_res_io (th); }
 
 DEFINE_SYSCALL (brk)
 {

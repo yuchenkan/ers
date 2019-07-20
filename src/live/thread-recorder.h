@@ -16,7 +16,8 @@ struct eri_live_thread_recorder;
 
 struct eri_live_thread_recorder_group *
 	eri_live_thread_recorder__create_group (struct eri_mtpool *pool,
-				const char *path, uint64_t file_buf_size);
+				const char *path, uint64_t file_buf_size,
+				uint64_t page_size);
 void eri_live_thread_recorder__destroy_group (
 		struct eri_live_thread_recorder_group *group);
 
