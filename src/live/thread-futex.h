@@ -63,9 +63,6 @@ struct eri_live_thread_futex__requeue_args
   int32_t cmp_arg;
 
   struct eri_syscall_futex_requeue_record *rec;
-
-  struct eri_live_signal_thread *sig_th;
-  struct eri_buf *pi;
 };
 
 void eri_live_thread_futex__requeue (
@@ -88,47 +85,5 @@ struct eri_live_thread_futex__wake_op_args
 void eri_live_thread_futex__wake_op (
 			struct eri_live_thread_futex *th_ftx,
 			struct eri_live_thread_futex__wake_op_args *args);
-
-struct eri_live_thread_futex__lock_pi_args
-{
-  uint64_t user_addr;
-  uint8_t try;
-  struct eri_timespec *timeout;
-  struct eri_live_signal_thread *sig_th;
-
-  struct eri_syscall_futex_lock_pi_record *rec;
-};
-
-void eri_live_thread_futex__lock_pi (
-			struct eri_live_thread_futex *th_ftx,
-			struct eri_live_thread_futex__lock_pi_args *args);
-
-struct eri_live_thread_futex__wait_requeue_pi_args
-{
-  uint64_t user_addr[2];
-  int32_t cmp_arg;
-  uint8_t clock_real_time;
-  struct eri_timespec *timeout;
-
-  struct eri_syscall_futex_lock_pi_record *rec;
-};
-
-void eri_live_thread_futex__wait_requeue_pi (
-		struct eri_live_thread_futex *th_ftx,
-		struct eri_live_thread_futex__wait_requeue_pi_args *args);
-
-void eri_live_thread_futex__unlock_pi (
-		struct eri_live_thread_futex *th_ftx, uint64_t user_addr,
-		struct eri_syscall_futex_unlock_pi_record *rec);
-
-#if 0
-void eri_live_thread_futex__exit_pi_list (
-				struct eri_live_thread_futex *th_ftx,
-				struct eri_buf *buf);
-
-void eri_live_thread_futex__exit_robust_list (
-				struct eri_live_thread_futex *th_ftx,
-				struct eri_buf *buf);
-#endif
 
 #endif

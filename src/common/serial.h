@@ -202,8 +202,6 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_UNAME, ##__VA_ARGS__)					\
   p (SYSCALL_CLOCK_GETTIME, ##__VA_ARGS__)				\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
-  p (SYSCALL_FUTEX_LOCK_PI, ##__VA_ARGS__)				\
-  p (SYSCALL_FUTEX_UNLOCK_PI, ##__VA_ARGS__)				\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
@@ -298,10 +296,6 @@ void eri_unserialize_syscall_clone_record (eri_file_t file,
 struct eri_syscall_exit_record
 {
   uint64_t out;
-
-  uint64_t futex_pi;
-  uint64_t robust_futex;
-
   struct eri_atomic_record clear_tid;
 };
 
@@ -311,50 +305,6 @@ uint8_t eri_try_unserialize_syscall_exit_record (eri_file_t file,
 			struct eri_syscall_exit_record *rec);
 void eri_unserialize_syscall_exit_record (eri_file_t file,
 			struct eri_syscall_exit_record *rec);
-
-struct eri_syscall_exit_futex_pi_record
-{
-  uint64_t user_addr;
-  int32_t user_next;
-  uint8_t wait;
-  struct eri_atomic_record atomic;
-};
-
-void eri_serialize_syscall_exit_futex_pi_record (eri_file_t file,
-			const struct eri_syscall_exit_futex_pi_record *rec);
-uint8_t eri_try_unserialize_syscall_exit_futex_pi_record (eri_file_t file,
-			struct eri_syscall_exit_futex_pi_record *rec);
-void eri_unserialize_syscall_exit_futex_pi_record (eri_file_t file,
-			struct eri_syscall_exit_futex_pi_record *rec);
-
-void eri_serialize_syscall_exit_futex_pi_record_array (eri_file_t file,
-	const struct eri_syscall_exit_futex_pi_record *recs, uint64_t len);
-uint8_t eri_try_unserialize_syscall_exit_futex_pi_record_array (
-		eri_file_t file,
-		struct eri_syscall_exit_futex_pi_record *recs, uint64_t len);
-void eri_unserialize_syscall_exit_futex_pi_record_array (eri_file_t file,
-		struct eri_syscall_exit_futex_pi_record *recs, uint64_t len);
-
-struct eri_syscall_exit_robust_futex_record
-{
-  uint8_t wait;
-  struct eri_atomic_record atomic;
-};
-
-void eri_serialize_syscall_exit_robust_futex_record (eri_file_t file,
-		const struct eri_syscall_exit_robust_futex_record *rec);
-uint8_t eri_try_unserialize_syscall_exit_robust_futex_record (eri_file_t file,
-			struct eri_syscall_exit_robust_futex_record *rec);
-void eri_unserialize_syscall_exit_robust_futex_record (eri_file_t file,
-			struct eri_syscall_exit_robust_futex_record *rec);
-
-void eri_serialize_syscall_exit_robust_futex_record_array (eri_file_t file,
-	const struct eri_syscall_exit_robust_futex_record *recs, uint64_t len);
-uint8_t eri_try_unserialize_syscall_exit_robust_futex_record_array (
-	eri_file_t file,
-	struct eri_syscall_exit_robust_futex_record *recs, uint64_t len);
-void eri_unserialize_syscall_exit_robust_futex_record_array (eri_file_t file,
-	struct eri_syscall_exit_robust_futex_record *recs, uint64_t len);
 
 struct eri_syscall_rt_sigpending_record
 {
@@ -424,7 +374,6 @@ void eri_unserialize_syscall_clock_gettime_record (eri_file_t file,
 struct eri_syscall_futex_record
 {
   struct eri_syscall_res_in_record res;
-  uint8_t access;
   struct eri_atomic_record atomic;
 };
 
@@ -435,42 +384,11 @@ uint8_t eri_try_unserialize_syscall_futex_record (eri_file_t file,
 void eri_unserialize_syscall_futex_record (eri_file_t file,
 			struct eri_syscall_futex_record *rec);
 
-struct eri_syscall_futex_lock_pi_record
-{
-  struct eri_syscall_res_in_record res;
-  uint8_t access;
-  struct eri_atomic_record atomic[2];
-};
-
-void eri_serialize_syscall_futex_lock_pi_record (eri_file_t file,
-			const struct eri_syscall_futex_lock_pi_record *rec);
-uint8_t eri_try_unserialize_syscall_futex_lock_pi_record (eri_file_t file,
-			struct eri_syscall_futex_lock_pi_record *rec);
-void eri_unserialize_syscall_futex_lock_pi_record (eri_file_t file,
-			struct eri_syscall_futex_lock_pi_record *rec);
-
-struct eri_syscall_futex_unlock_pi_record
-{
-  struct eri_syscall_res_in_record res;
-  uint8_t access;
-  int32_t user_next;
-  uint8_t wait;
-  struct eri_atomic_record atomic;
-};
-
-void eri_serialize_syscall_futex_unlock_pi_record (eri_file_t file,
-			const struct eri_syscall_futex_unlock_pi_record *rec);
-uint8_t eri_try_unserialize_syscall_futex_unlock_pi_record (eri_file_t file,
-			struct eri_syscall_futex_unlock_pi_record *rec);
-void eri_unserialize_syscall_futex_unlock_pi_record (eri_file_t file,
-			struct eri_syscall_futex_unlock_pi_record *rec);
-
 struct eri_syscall_futex_requeue_record
 {
   struct eri_syscall_res_in_record res;
-  uint8_t access;
+  uint8_t cmp;
   struct eri_atomic_record atomic;
-  uint64_t pi;
 };
 
 void eri_serialize_syscall_futex_requeue_record (eri_file_t file,
@@ -479,30 +397,5 @@ uint8_t eri_try_unserialize_syscall_futex_requeue_record (eri_file_t file,
 			struct eri_syscall_futex_requeue_record *rec);
 void eri_unserialize_syscall_futex_requeue_record (eri_file_t file,
 			struct eri_syscall_futex_requeue_record *rec);
-
-struct eri_syscall_futex_requeue_pi_record
-{
-  int32_t user_next;
-  uint8_t access;
-  struct eri_atomic_record atomic;
-};
-
-void eri_serialize_syscall_futex_requeue_pi_record (eri_file_t file,
-		const struct eri_syscall_futex_requeue_pi_record *rec);
-uint8_t eri_try_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
-		struct eri_syscall_futex_requeue_pi_record *rec);
-void eri_unserialize_syscall_futex_requeue_pi_record (eri_file_t file,
-		struct eri_syscall_futex_requeue_pi_record *rec);
-
-void eri_serialize_syscall_futex_requeue_pi_record_array (
-	eri_file_t file,
-	const struct eri_syscall_futex_requeue_pi_record *recs,
-	uint64_t len);
-uint8_t eri_try_unserialize_syscall_futex_requeue_pi_record_array (
-	eri_file_t file,
-	struct eri_syscall_futex_requeue_pi_record *recs, uint64_t len);
-void eri_unserialize_syscall_futex_requeue_pi_record_array (
-	eri_file_t file,
-	struct eri_syscall_futex_requeue_pi_record *recs, uint64_t len);
 
 #endif

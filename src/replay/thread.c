@@ -153,8 +153,6 @@ struct thread
   int32_t *clear_user_tid;
   int32_t user_tid;
 
-  struct eri_robust_list_head *user_robust_list;
-
   struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
 
@@ -415,8 +413,6 @@ create (struct thread_group *group, struct thread *pth,
   th->alive = 1;
   th->start_lock = !! pth;
   th->clear_user_tid = clear_user_tid;
-
-  th->user_robust_list = 0;
 
   *(void **) th->sig_stack = th;
   return th;
@@ -1047,82 +1043,6 @@ check_exit (struct thread *th)
   exit (th);
 }
 
-static uint8_t
-syscall_unlock_futex (struct thread *th, uint64_t user_addr,
-	uint64_t user_next, uint8_t wait, const struct eri_atomic_record *rec)
-{
-  if (rec->ok
-      && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
-    diverged (th);
-
-  struct eri_access acc[2];
-  eri_set_read_write (acc, user_addr, sizeof (int32_t));
-  update_access (th, acc, eri_length_of (acc));
-
-  if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
-    {
-      if (rec->ok) diverged (th);
-      return 1;
-    }
-
-  uint8_t valid = eri_atomic_futex_unlock_pi ((void *) user_addr,
-					th->user_tid, user_next, wait, 0);
-
-  eri_entry__reset_test_access (th->entry);
-  if (! rec->ok) diverged (th);
-
-  atomic_update (th, user_addr, sizeof (int32_t));
-  return valid;
-}
-
-static struct eri_robust_list *
-syscall_exit_robust_futex_node (struct thread *th,
-				struct eri_robust_list_head *list,
-				struct eri_robust_list *user_robust,
-				uint64_t *nr)
-{
-  struct eri_robust_list robust;
-  if (! copy_obj_from_user (th, &robust, user_robust)) return 0;
-
-  if (user_robust == list->list_op_pending) return robust.next;
-
-  uint64_t user_addr;
-  if (! copy_obj_from_user (th, &user_addr,
-	(void *) ((uint8_t *) user_robust + list->futex_offset)))
-    return robust.next;
-
-  if (! eri_syscall_futex_check_user_addr (user_addr, page_size (th)))
-    return robust.next;
-
-  struct eri_syscall_exit_robust_futex_record rec;
-  if (! try_unserialize (syscall_exit_robust_futex_record, th, &rec))
-    diverged (th);
-
-  syscall_unlock_futex (th, user_addr, ERI_FUTEX_OWNER_DIED,
-			rec.wait, &rec.atomic);
-  return robust.next;
-}
-
-static uint8_t
-syscall_exit_robust_futex_list (struct thread *th, uint64_t robust_futex)
-{
-  struct eri_robust_list_head list;
-  if (! copy_obj_from_user (th, &list, th->user_robust_list)
-      && robust_futex) return 0;
-
-  struct eri_robust_list *cur = list.list.next;
-  while (cur && cur != &th->user_robust_list->list)
-    cur = syscall_exit_robust_futex_node (th, &list, cur, &robust_futex);
-
-  if (list.list_op_pending)
-    {
-      cur = list.list_op_pending;
-      list.list_op_pending = 0;
-      syscall_exit_robust_futex_node (th, &list, cur, &robust_futex);
-    }
-  return ! robust_futex;
-}
-
 static eri_noreturn void
 syscall_do_exit (SYSCALL_PARAMS)
 {
@@ -1134,20 +1054,6 @@ syscall_do_exit (SYSCALL_PARAMS)
   uint8_t exit_group = (int32_t) regs->rax == __NR_exit_group;
 
   if (exit_group) goto out;
-
-  uint64_t i;
-  for (i = 0; i < rec.futex_pi; ++i)
-    {
-      struct eri_syscall_exit_futex_pi_record pi;
-      if (! try_unserialize (syscall_exit_futex_pi_record, th, &pi))
-	diverged (th);
-      syscall_unlock_futex (th, pi.user_addr,
-		pi.user_next | ERI_FUTEX_OWNER_DIED, pi.wait, &pi.atomic);
-    }
-
-  if (th->user_robust_list
-      ? ! syscall_exit_robust_futex_list (th, rec.robust_futex)
-      : rec.robust_futex) diverged (th);
 
   if (! do_atomic (th, ERI_OP_ATOMIC_STORE, th->clear_user_tid,
 		   sizeof (int32_t), 0, &rec.clear_tid, 0, 0))
@@ -2195,15 +2101,6 @@ syscall_fetch_futex_record (struct thread *th,
       || ! try_unserialize (syscall_futex_record, th, rec)) diverged (th);
   return rec->res.result;
 }
-static uint64_t
-syscall_fetch_futex_lock_pi_record (struct thread *th,
-				struct eri_syscall_futex_lock_pi_record *rec)
-{
-  if (! check_magic (th, ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
-      || ! try_unserialize (syscall_futex_lock_pi_record, th, rec))
-    diverged (th);
-  return rec->res.result;
-}
 
 static uint8_t
 syscall_futex_load_user (struct thread *th, uint64_t user_addr,
@@ -2235,12 +2132,9 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
   struct eri_syscall_futex_record rec;
   uint64_t res = syscall_fetch_futex_record (th, &rec);
 
-  if (! rec.access) goto out;
-
   if (! syscall_futex_load_user (th, user_addr, &rec.atomic, res))
     diverged (th);
 
-out:
   if (! io_in (th, rec.res.in)) diverged (th);
   syscall_leave (th, 1, res);
 }
@@ -2258,60 +2152,11 @@ syscall_do_futex_wake (SYSCALL_PARAMS)
   syscall_do_res_in (th);
 }
 
-static uint8_t
-syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
-			   int32_t user_next, uint8_t try, uint8_t access,
-			   const struct eri_atomic_record *rec)
-{
-  if (rec->ok
-      && ! atomic_wait (th, user_addr, sizeof (int32_t), rec->ver))
-    return 0;
-
-  struct eri_access acc[2];
-  eri_set_read_write (acc, user_addr, sizeof (int32_t));
-  update_access (th, acc, eri_length_of (acc));
-
-  if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
-    return ! rec->ok;
-
-  int32_t old = eri_atomic_load ((int32_t *) user_addr, 0);
-  int32_t user_owner = old & ERI_FUTEX_TID_MASK;
-  if (user_owner)
-    {
-      if (access == 2
-	  && ! eri_atomic_compare_exchange ((int32_t *) user_addr,
-				old, user_owner | ERI_FUTEX_WAITERS, 0))
-	{
-	  eri_entry__reset_test_access (th->entry);
-	  return 0;
-	}
-    }
-  else if (! eri_atomic_compare_exchange ((int32_t *) user_addr,
-						old, user_next, 0))
-    {
-      eri_entry__reset_test_access (th->entry);
-      return 0;
-    }
-
-  if (! rec->ok) return 0;
-
-  atomic_update (th, user_addr, sizeof (int32_t));
-  return 1;
-}
-
 static eri_noreturn void
 syscall_do_futex_requeue (SYSCALL_PARAMS)
 {
   uint64_t user_addr[] = { regs->rdi, regs->r8 };
   uint32_t op = regs->rsi;
-  int32_t val = regs->rdx;
-  int32_t val2 = regs->r10;
-
-  int32_t cmd = op & ERI_FUTEX_CMD_MASK;
-
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI
-      && (user_addr[0] == user_addr[1] || val != 1))
-    syscall_leave (th, 0, ERI_EINVAL);
 
   syscall_leave_if_error (th, 0,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, page_size (th)));
@@ -2322,32 +2167,11 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
     diverged (th);
 
   uint64_t res = rec.res.result;
-  if (cmd != ERI_FUTEX_REQUEUE && ! rec.access) goto out;
 
-  if (rec.access
+  if (rec.cmp
       && ! syscall_futex_load_user (th, user_addr[0], &rec.atomic, res))
     diverged (th);
 
-  if (! rec.atomic.ok) goto out;
-
-  if (cmd == ERI_FUTEX_CMP_REQUEUE_PI)
-    {
-      if (rec.pi > val2) diverged (th);
-
-      uint64_t i;
-      for (i = 0; i < rec.pi; ++i)
-	{
-	  struct eri_syscall_futex_requeue_pi_record r;
-	  if (! try_unserialize (syscall_futex_requeue_pi_record, th, &r))
-	    diverged (th);
-
-	  if (! syscall_futex_try_lock_pi (th, user_addr[1],
-				r.user_next, 0, r.access, &r.atomic))
-	    diverged (th);
-	}
-    }
-
-out:
   if (! io_in (th, rec.res.in)) diverged (th);
   syscall_leave (th, 1, res);
 }
@@ -2372,8 +2196,6 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
   struct eri_syscall_futex_record rec;
   uint64_t res = syscall_fetch_futex_record (th, &rec);
 
-  if (! rec.access) goto out;
-
   int32_t old;
   if (! do_atomic (th, eri_syscall_futex_atomic_code_from_wake_op (op_op),
 		   (void *) user_addr[1], sizeof (int32_t),
@@ -2382,104 +2204,6 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
 
   if (! rec.atomic.ok && res != ERI_EFAULT) diverged (th);
 
-out:
-  if (! io_in (th, rec.res.in)) diverged (th);
-  syscall_leave (th, 1, res);
-}
-
-static uint8_t
-syscall_futex_clear_user_waiters (struct thread *th, uint64_t user_addr,
-				  struct eri_atomic_record *rec)
-{
-  return do_atomic (th, ERI_OP_ATOMIC_AND, (void *) user_addr,
-		sizeof (int32_t), ~ERI_FUTEX_WAITERS, rec, 0, 0);
-}
-
-static eri_noreturn void
-syscall_do_futex_lock_pi (SYSCALL_PARAMS)
-{
-  uint64_t user_addr = regs->rdi;
-  uint32_t op = regs->rsi;
-  const struct eri_timespec *user_timeout = (void *) regs->r10;
-
-  if (op & ERI_FUTEX_CLOCK_REALTIME) syscall_leave (th, 0, ERI_ENOSYS);
-
-  syscall_leave_if_error (th, 0,
-	syscall_futex_check_wait (th, user_addr, user_timeout));
-
-  struct eri_syscall_futex_lock_pi_record rec;
-  uint64_t res = syscall_fetch_futex_lock_pi_record (th, &rec);
-
-  if (! rec.access) goto out;
-
-  if ((rec.access & 3)
-      && ! syscall_futex_try_lock_pi (th, user_addr, th->user_tid,
-		(op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_TRYLOCK_PI,
-		rec.access & 3, rec.atomic))
-    diverged (th);
-
-  if ((rec.access & 4)
-      && ! syscall_futex_clear_user_waiters (th, user_addr, rec.atomic + 1))
-    diverged (th);
-
-out:
-  if (! io_in (th, rec.res.in)) diverged (th);
-  syscall_leave (th, 1, res);
-}
-
-static eri_noreturn void
-syscall_do_futex_unlock_pi (SYSCALL_PARAMS)
-{
-  uint64_t user_addr = regs->rdi;
-  uint32_t op = regs->rsi;
-
-  syscall_leave_if_error (th, 0,
-	eri_syscall_futex_check_wake (op, -1, user_addr, page_size (th)));
-
-  struct eri_syscall_futex_unlock_pi_record rec;
-  if (! check_magic (th, ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
-      || ! try_unserialize (syscall_futex_unlock_pi_record, th, &rec))
-    diverged (th);
-  uint64_t res = rec.res.result;
-
-  if (! rec.access) goto out;
-
-  if (! syscall_unlock_futex (th, user_addr,
-			      rec.user_next, rec.wait, &rec.atomic)
-      && res != ERI_EINVAL) diverged (th);
-
-out:
-  if (! io_in (th, rec.res.in)) diverged (th);
-  syscall_leave (th, 1, res);
-}
-
-static eri_noreturn void
-syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
-{
-  uint64_t user_addr[] = { regs->rdi, regs->r8 };
-  const struct eri_timespec *user_timeout = (void *) regs->r10;
-
-  if (user_addr[0] == user_addr[1]) syscall_leave (th, 0, ERI_EINVAL);
-
-  syscall_leave_if_error (th, 0,
-	syscall_futex_check_wait (th, user_addr[0], user_timeout));
-  syscall_leave_if_error (th, 0,
-	eri_syscall_futex_check_user_addr (user_addr[1], page_size (th)));
-
-  struct eri_syscall_futex_lock_pi_record rec;
-  uint64_t res = syscall_fetch_futex_lock_pi_record (th, &rec);
-
-  if (! rec.access) goto out;
-
-  if (! syscall_futex_load_user (th, user_addr[0], rec.atomic, res))
-    diverged (th);
-
-  if (! (rec.access & 4)) goto out;
-
-  if (! syscall_futex_clear_user_waiters (th, user_addr[1], rec.atomic + 1))
-    diverged (th);
-
-out:
   if (! io_in (th, rec.res.in)) diverged (th);
   syscall_leave (th, 1, res);
 }
@@ -2495,14 +2219,13 @@ DEFINE_SYSCALL (futex)
     case ERI_FUTEX_WAKE:
     case ERI_FUTEX_WAKE_BITSET: syscall_do_futex_wake (SYSCALL_ARGS);
     case ERI_FUTEX_REQUEUE:
-    case ERI_FUTEX_CMP_REQUEUE:
-    case ERI_FUTEX_CMP_REQUEUE_PI: syscall_do_futex_requeue (SYSCALL_ARGS);
+    case ERI_FUTEX_CMP_REQUEUE: syscall_do_futex_requeue (SYSCALL_ARGS);
     case ERI_FUTEX_WAKE_OP: syscall_do_futex_wake_op (SYSCALL_ARGS);
     case ERI_FUTEX_LOCK_PI:
-    case ERI_FUTEX_TRYLOCK_PI: syscall_do_futex_lock_pi (SYSCALL_ARGS);
-    case ERI_FUTEX_UNLOCK_PI: syscall_do_futex_unlock_pi (SYSCALL_ARGS);
+    case ERI_FUTEX_TRYLOCK_PI:
+    case ERI_FUTEX_UNLOCK_PI:
     case ERI_FUTEX_WAIT_REQUEUE_PI:
-      syscall_do_futex_wait_requeue_pi (SYSCALL_ARGS);
+    case ERI_FUTEX_CMP_REQUEUE_PI:
     default: syscall_leave (th, 0, ERI_ENOSYS);
     }
 }

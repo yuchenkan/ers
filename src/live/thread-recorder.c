@@ -237,23 +237,6 @@ syscall_start_record (struct eri_live_thread_recorder *th_rec,
 }
 
 void
-eri_live_thread_recorder__rec_syscall_exit (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_exit_record *rec,
-		struct eri_syscall_exit_futex_pi_record *futex_pi,
-		struct eri_syscall_exit_robust_futex_record *robust_futex)
-{
-  if (! th_rec) return;
-
-  syscall_start_record (th_rec, ERI_SYSCALL_EXIT_MAGIC);
-  eri_serialize_syscall_exit_record (th_rec->file, rec);
-  eri_serialize_syscall_exit_futex_pi_record_array (th_rec->file, futex_pi,
-						    rec->futex_pi);
-  eri_serialize_syscall_exit_robust_futex_record_array (th_rec->file,
-					robust_futex, rec->robust_futex);
-}
-
-void
 eri_live_thread_recorder__rec_syscall_read (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec,
@@ -353,21 +336,6 @@ eri_live_thread_recorder__rec_syscall_readlink (
 }
 
 void
-eri_live_thread_recorder__rec_syscall_futex_requeue (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_futex_requeue_record *rec,
-		struct eri_syscall_futex_requeue_pi_record *pi)
-{
-  if (! th_rec) return;
-
-  syscall_start_record (th_rec, ERI_SYSCALL_FUTEX_REQUEUE_MAGIC);
-
-  eri_serialize_syscall_futex_requeue_record (th_rec->file, rec);
-  eri_serialize_syscall_futex_requeue_pi_record_array (th_rec->file, pi,
-						       rec->pi);
-}
-
-void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec)
@@ -386,6 +354,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_res_io_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_CLONE_MAGIC)
     eri_serialize_syscall_clone_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_EXIT_MAGIC)
+    eri_serialize_syscall_exit_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_RT_SIGACTION_MAGIC)
     {
       struct eri_sig_act *act = rec;
@@ -404,10 +374,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_clock_gettime_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
     eri_serialize_syscall_futex_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
-    eri_serialize_syscall_futex_lock_pi_record (th_rec->file, rec);
-  else if (magic == ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
-    eri_serialize_syscall_futex_unlock_pi_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)
+    eri_serialize_syscall_futex_requeue_record (th_rec->file, rec);
   else eri_assert_unreachable ();
 }
 

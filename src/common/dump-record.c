@@ -112,32 +112,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_exit_record rec;
 	    eri_unserialize_syscall_exit_record (file, &rec);
-	    printf ("  syscall.exit.out: %lu, ..futex_pi: %lu, "
-		    "..robust_futex: %lu\n",
-		    rec.out, rec.futex_pi, rec.robust_futex);
-	    uint64_t j;
-	    for (j = 0; j < rec.futex_pi; ++j)
-	      {
-		struct eri_syscall_exit_futex_pi_record pi;
-		eri_unserialize_syscall_exit_futex_pi_record (file, &pi);
-		printf ("  syscall.exit_futex_pi.user_addr: %lx, "
-			"..user_next: %d, ..wait: %u\n",
-			pi.user_addr, pi.user_next, pi.wait);
-		if (pi.atomic.ok)
-		  printf ("  syscall.exit_futex_pi.atomic.ver: %lx %lx\n",
-			  pi.atomic.ver.first, pi.atomic.ver.second);
-	      }
-	    for (j = 0; j < rec.robust_futex; ++j)
-	      {
-		struct eri_syscall_exit_robust_futex_record robust;
-		eri_unserialize_syscall_exit_robust_futex_record (
-							file, &robust);
-		printf (" syscall.exit_robust_futex.wait: %u\n",
-			robust.wait);
-		if (robust.atomic.ok)
-		  printf ("  syscall.exit_robust_futex.atomic.ver: %lx %lx\n",
-			  robust.atomic.ver.first, robust.atomic.ver.second);
-	      }
+	    printf ("  syscall.exit.out: %lu\n", rec.out);
 	    if (rec.clear_tid.ok)
 	      printf ("  syscall.exit.clear_tid.ver: %lu %lu\n",
 		      rec.clear_tid.ver.first, rec.clear_tid.ver.second);
@@ -207,67 +182,22 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_futex_record rec;
 	    eri_unserialize_syscall_futex_record (file, &rec);
-	    printf ("  syscall.futex.result: %ld, ..in: %lu, ..access: %u\n",
-		    rec.res.result, rec.res.in, rec.access);
-	    if (rec.access && rec.atomic.ok)
+	    printf ("  syscall.futex.result: %ld, ..in: %lu\n",
+		    rec.res.result, rec.res.in);
+	    if (rec.atomic.ok)
 	      printf (" syscall.futex.atomic.ver: %lu %lu\n",
 		      rec.atomic.ver.first, rec.atomic.ver.second);
-	  }
-	else if (magic == ERI_SYSCALL_FUTEX_LOCK_PI_MAGIC)
-	  {
-	    struct eri_syscall_futex_lock_pi_record rec;
-	    eri_unserialize_syscall_futex_lock_pi_record (file, &rec);
-	    printf ("  syscall.futex.result: %ld, ..in: %lu, ..access: %u\n",
-		    rec.res.result, rec.res.in, rec.access);
-	    if (rec.access && rec.atomic[0].ok)
-	      printf ("  syscall.futex.atomic[0].ver: %lu %lu\n",
-		      rec.atomic[0].ver.first, rec.atomic[0].ver.second);
-	    if (rec.access == 2 && rec.atomic[1].ok)
-	      printf ("  syscall.futex.atomic[1].ver: %lu %lu\n",
-		      rec.atomic[1].ver.first, rec.atomic[1].ver.second);
-	  }
-	else if (magic == ERI_SYSCALL_FUTEX_UNLOCK_PI_MAGIC)
-	  {
-	    struct eri_syscall_futex_unlock_pi_record rec;
-	    eri_unserialize_syscall_futex_unlock_pi_record (file, &rec);
-	    printf ("  syscall.futex_unlock_pi.result: %ld, ..in: %lu, "
-		    "..access: %u", rec.res.result, rec.res.in, rec.access);
-	    if (rec.access)
-	      {
-		printf (", ..user_next: %d, ..wait: %u\n",
-			rec.user_next, rec.wait);
-		if (rec.atomic.ok)
-		  printf ("  syscall.futex_unlock_pi.atomic.ver: %lu %lu\n",
-			  rec.atomic.ver.first, rec.atomic.ver.second);
-	      }
-	    else printf ("\n");
 	  }
 	else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)
 	  {
 	    struct eri_syscall_futex_requeue_record rec;
 	    eri_unserialize_syscall_futex_requeue_record (file, &rec);
 	    printf ("  syscall.futex_requeue.result: %ld, ..in: %lu, "
-		    "..acccess: %u\n",
-		    rec.res.result, rec.res.in, rec.access);
-	    if (rec.access)
-	      {
-		printf ("  syscall.futex_requeue.atomic.ver: %lu %lu, "
-			"..pi %lu\n",
-			rec.atomic.ver.first, rec.atomic.ver.second, rec.pi);
-		uint64_t j;
-		for (j = 0; j < rec.pi; ++j)
-		  {
-		    struct eri_syscall_futex_requeue_pi_record pi;
-		    eri_unserialize_syscall_futex_requeue_pi_record (file,
-								     &pi);
-		    printf ("  syscall.futex_requeue_pi.user_next: %u\n",
-			    pi.user_next);
-		    if (pi.atomic.ok)
-		      printf ("  syscall.futex_requeue_pi.atomic.ver: "
-			      "%lx %lx\n",
-			      pi.atomic.ver.first, pi.atomic.ver.second);
-		  }
-	      }
+		    "..cmp: %u\n",
+		    rec.res.result, rec.res.in, rec.cmp);
+	    if (rec.cmp && rec.atomic.ok)
+	      printf ("  syscall.futex_requeue.atomic.ver: %lu %lu\n",
+		      rec.atomic.ver.first, rec.atomic.ver.second);
 	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {

@@ -430,20 +430,6 @@ eri_syscall_futex_atomic_code_from_wake_op (uint16_t op)
     }
 }
 
-static eri_unused uint8_t
-eri_atomic_futex_unlock_pi (int32_t *user_addr, int32_t user_owner,
-			    int32_t user_next, uint8_t wait, int32_t *old)
-{
-  int32_t dummy;
-  old = old ? : &dummy;
-  *old = eri_atomic_load (user_addr, 0);
-  if ((user_next & ERI_FUTEX_TID_MASK) && ! (*old & ERI_FUTEX_WAITERS))
-    return 0;
-  if ((*old & ERI_FUTEX_TID_MASK) != user_owner) return 0;
-  return eri_atomic_compare_exchange (user_addr, *old,
-			user_next | (wait ? ERI_FUTEX_WAITERS : 0), 0);
-}
-
 static eri_unused uint64_t
 eri_syscall_check_clock_id (int32_t id)
 {

@@ -1104,29 +1104,6 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
   return args->result;
 }
 
-uint64_t
-eri_live_signal_thread__create_futex_pi (
-		struct eri_live_signal_thread *sig_th,
-		int32_t user_tid, uint64_t user_addr,
-		struct eri_live_futex **futex)
-{
-  struct signal_thread_group *group = sig_th->group;
-
-  eri_assert_lock (&group->thread_lock);
-
-  struct eri_live_signal_thread *it;
-  ERI_LST_FOREACH (thread, group, it)
-    if (user_tid == it->tid)
-      {
-	*futex = eri_live_thread__create_futex_pi (it->th, user_addr);
-	eri_assert_unlock (&group->thread_lock);
-	return 0;
-      }
-
-  eri_assert_unlock (&group->thread_lock);
-  return ERI_ESRCH;
-}
-
 uint8_t
 eri_live_signal_thread__signaled (struct eri_live_signal_thread *sig_th)
 {
