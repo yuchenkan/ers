@@ -483,6 +483,7 @@ void eri_unserialize_syscall_futex_requeue_record (eri_file_t file,
 struct eri_syscall_futex_requeue_pi_record
 {
   int32_t user_next;
+  uint8_t access;
   struct eri_atomic_record atomic;
 };
 

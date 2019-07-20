@@ -1810,7 +1810,12 @@ syscall_do_write (SYSCALL_PARAMS)
     }
 
 out:
-  if (writev) eri_entry__syscall_free_rw_iov (th->entry, iov);
+#if 1
+  if (eri_syscall_is_ok (rec.res.result) && regs->rdi == 1)
+    eri_entry__syscall (entry);
+#endif
+
+  if (writev) eri_entry__syscall_free_rw_iov (entry, iov);
   syscall_div_in_leave (th, div, rec.res.in, rec.res.result);
 }
 
@@ -2255,7 +2260,7 @@ syscall_do_futex_wake (SYSCALL_PARAMS)
 
 static uint8_t
 syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
-			   int32_t user_next, uint8_t try,
+			   int32_t user_next, uint8_t try, uint8_t access,
 			   const struct eri_atomic_record *rec)
 {
   if (rec->ok
@@ -2269,9 +2274,25 @@ syscall_futex_try_lock_pi (struct thread *th, uint64_t user_addr,
   if (! eri_entry__test_access (th->entry, (void *) user_addr, 0))
     return ! rec->ok;
 
-  eri_atomic_futex_lock_pi ((void *) user_addr, user_next, try);
+  int32_t old = eri_atomic_load ((int32_t *) user_addr, 0);
+  int32_t user_owner = old & ERI_FUTEX_TID_MASK;
+  if (user_owner)
+    {
+      if (access == 2
+	  && ! eri_atomic_compare_exchange ((int32_t *) user_addr,
+				old, user_owner | ERI_FUTEX_WAITERS, 0))
+	{
+	  eri_entry__reset_test_access (th->entry);
+	  return 0;
+	}
+    }
+  else if (! eri_atomic_compare_exchange ((int32_t *) user_addr,
+						old, user_next, 0))
+    {
+      eri_entry__reset_test_access (th->entry);
+      return 0;
+    }
 
-  eri_entry__reset_test_access (th->entry);
   if (! rec->ok) return 0;
 
   atomic_update (th, user_addr, sizeof (int32_t));
@@ -2321,7 +2342,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
 	    diverged (th);
 
 	  if (! syscall_futex_try_lock_pi (th, user_addr[1],
-					   r.user_next, 0, &r.atomic))
+				r.user_next, 0, r.access, &r.atomic))
 	    diverged (th);
 	}
     }
@@ -2391,12 +2412,13 @@ syscall_do_futex_lock_pi (SYSCALL_PARAMS)
 
   if (! rec.access) goto out;
 
-  if ((rec.access & 1)
+  if ((rec.access & 3)
       && ! syscall_futex_try_lock_pi (th, user_addr, th->user_tid,
-	(op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_TRYLOCK_PI, rec.atomic))
+		(op & ERI_FUTEX_CMD_MASK) == ERI_FUTEX_TRYLOCK_PI,
+		rec.access & 3, rec.atomic))
     diverged (th);
 
-  if ((rec.access & 2)
+  if ((rec.access & 4)
       && ! syscall_futex_clear_user_waiters (th, user_addr, rec.atomic + 1))
     diverged (th);
 
@@ -2452,7 +2474,7 @@ syscall_do_futex_wait_requeue_pi (SYSCALL_PARAMS)
   if (! syscall_futex_load_user (th, user_addr[0], rec.atomic, res))
     diverged (th);
 
-  if (! (rec.access & 2)) goto out;
+  if (! (rec.access & 4)) goto out;
 
   if (! syscall_futex_clear_user_waiters (th, user_addr[1], rec.atomic + 1))
     diverged (th);
