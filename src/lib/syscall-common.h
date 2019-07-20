@@ -574,7 +574,6 @@ eri_syscall_is_fault_or_ok (uint64_t val)
   (((op & 0xf) << 28) | ((cmp & 0xf) << 24)				\
    | ((op_arg & 0xfff) << 12) | (cmp_arg & 0xfff))
 
-
 #define ERI_PROT_READ		0x1
 #define ERI_PROT_WRITE		0x2
 #define ERI_PROT_EXEC		0x4
@@ -661,7 +660,27 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_P_PGID		2
 #define ERI_WEXITED		4
 
+#define ERI_RLIMIT_CPU		0
+#define ERI_RLIMIT_FSIZE	1
+#define ERI_RLIMIT_DATA		2
 #define ERI_RLIMIT_STACK	3
+#define ERI_RLIMIT_CORE		4
+#define ERI_RLIMIT_RSS		5
+#define ERI_RLIMIT_NPROC	6
+#define ERI_RLIMIT_NOFILE	7
+#define ERI_RLIMIT_MEMLOCK	8
+#define ERI_RLIMIT_AS		9
+#define ERI_RLIMIT_LOCKS	10
+#define ERI_RLIMIT_SIGPENDING	11
+#define ERI_RLIMIT_MSGQUEUE	12
+#define ERI_RLIMIT_NICE		13
+#define ERI_RLIMIT_RTPRIO	14
+#define ERI_RLIMIT_RTTIME	15
+#define ERI_RLIMIT_NLIMITS	16
+
+#define ERI_RUSAGE_SELF		0
+#define ERI_RUSAGE_CHILDREN	-1	/* XXX: children? */
+#define ERI_RUSAGE_THREAD	1
 
 #define ERI_SA_SIGINFO		4
 #define ERI_SA_RESTORER		0x04000000
@@ -739,8 +758,14 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 
 struct eri_timespec
 {
-  uint64_t sec;
-  uint64_t nsec;
+  int64_t sec;
+  int64_t nsec;
+};
+
+struct eri_timeval
+{
+  int64_t sec;
+  int64_t usec;
 };
 
 static eri_unused void
@@ -752,7 +777,7 @@ eri_timespec_add (struct eri_timespec *a, struct eri_timespec *b)
 }
 
 static eri_unused void
-eri_timespec_add_nsec (struct eri_timespec *t, uint64_t n)
+eri_timespec_add_nsec (struct eri_timespec *t, int64_t n)
 {
   t->nsec += n;
   t->sec += t->nsec / 1000000000;
@@ -849,6 +874,26 @@ struct eri_rlimit
 {
   uint64_t cur;
   uint64_t max;
+};
+
+struct eri_rusage
+{
+  struct eri_timeval utime;
+  struct eri_timeval stime;
+  int64_t maxrss;
+  int64_t ixrss;
+  int64_t idrss;
+  int64_t isrss;
+  int64_t minflt;
+  int64_t majflt;
+  int64_t nswap;
+  int64_t inblock;
+  int64_t oublock;
+  int64_t msgsnd;
+  int64_t msgrcv;
+  int64_t nsignals;
+  int64_t nvcsw;
+  int64_t nivcsw;
 };
 
 #define ERI_SIG_DFL		((void *) 0)

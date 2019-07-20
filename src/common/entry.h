@@ -158,10 +158,10 @@ uint8_t eri_entry__copy_to_user (struct eri_entry *entry,
 #define eri_entry__copy_obj_to_user(entry, dst, src, acc) \
   eri_entry__copy_to_user (entry, dst, src, sizeof *(dst), acc)
 
-#define eri_entry__syscall(entry) \
+#define eri_entry__syscall(entry, ...) \
   ({ struct eri_sys_syscall_args _args;					\
      eri_init_sys_syscall_args_from_registers (&_args,			\
-					       &(entry)->_regs);	\
+				&(entry)->_regs, ##__VA_ARGS__);	\
      eri_sys_syscall (&_args); })
 uint64_t eri_entry__sys_syscall_interruptible (
 	struct eri_entry *entry, struct eri_sys_syscall_args *args);

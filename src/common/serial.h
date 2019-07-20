@@ -85,6 +85,13 @@ uint8_t eri_try_unserialize_timespec (eri_file_t file,
 void eri_unserialize_timespec (eri_file_t file,
 			       struct eri_timespec *timespec);
 
+void eri_serialize_timeval (eri_file_t file,
+			     const struct eri_timeval *timeval);
+uint8_t eri_try_unserialize_timeval (eri_file_t file,
+				      struct eri_timeval *timeval);
+void eri_unserialize_timeval (eri_file_t file,
+			       struct eri_timeval *timeval);
+
 void eri_serialize_stat (eri_file_t file, const struct eri_stat *stat);
 uint8_t eri_try_unserialize_stat (eri_file_t file, struct eri_stat *stat);
 void eri_unserialize_stat (eri_file_t file, struct eri_stat *stat);
@@ -94,6 +101,18 @@ void eri_serialize_utsname (eri_file_t file,
 uint8_t eri_try_unserialize_utsname (eri_file_t file,
 				     struct eri_utsname *utsname);
 void eri_unserialize_utsname (eri_file_t file, struct eri_utsname *utsname);
+
+void eri_serialize_rlimit (eri_file_t file,
+			   const struct eri_rlimit *rlimit);
+uint8_t eri_try_unserialize_rlimit (eri_file_t file,
+				    struct eri_rlimit *rlimit);
+void eri_unserialize_rlimit (eri_file_t file, struct eri_rlimit *rlimit);
+
+void eri_serialize_rusage (eri_file_t file,
+			   const struct eri_rusage *rusage);
+uint8_t eri_try_unserialize_rusage (eri_file_t file,
+				    struct eri_rusage *rusage);
+void eri_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage);
 
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
@@ -201,6 +220,9 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_STAT, ##__VA_ARGS__)					\
   p (SYSCALL_UNAME, ##__VA_ARGS__)					\
   p (SYSCALL_CLOCK_GETTIME, ##__VA_ARGS__)				\
+  p (SYSCALL_GETRLIMIT,	##__VA_ARGS__)					\
+  p (SYSCALL_PRLIMIT64,	##__VA_ARGS__)					\
+  p (SYSCALL_GETRUSAGE,	##__VA_ARGS__)					\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
@@ -370,6 +392,46 @@ uint8_t eri_try_unserialize_syscall_clock_gettime_record (eri_file_t file,
 			struct eri_syscall_clock_gettime_record *rec);
 void eri_unserialize_syscall_clock_gettime_record (eri_file_t file,
 			struct eri_syscall_clock_gettime_record *rec);
+
+struct eri_syscall_getrlimit_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_rlimit rlimit;
+};
+
+void eri_serialize_syscall_getrlimit_record (eri_file_t file,
+			const struct eri_syscall_getrlimit_record *rec);
+uint8_t eri_try_unserialize_syscall_getrlimit_record (eri_file_t file,
+			struct eri_syscall_getrlimit_record *rec);
+void eri_unserialize_syscall_getrlimit_record (eri_file_t file,
+			struct eri_syscall_getrlimit_record *rec);
+
+struct eri_syscall_prlimit64_record
+{
+  uint64_t out;
+  struct eri_syscall_res_in_record res;
+  struct eri_rlimit rlimit;
+};
+
+void eri_serialize_syscall_prlimit64_record (eri_file_t file,
+			const struct eri_syscall_prlimit64_record *rec);
+uint8_t eri_try_unserialize_syscall_prlimit64_record (eri_file_t file,
+			struct eri_syscall_prlimit64_record *rec);
+void eri_unserialize_syscall_prlimit64_record (eri_file_t file,
+			struct eri_syscall_prlimit64_record *rec);
+
+struct eri_syscall_getrusage_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_rusage rusage;
+};
+
+void eri_serialize_syscall_getrusage_record (eri_file_t file,
+			const struct eri_syscall_getrusage_record *rec);
+uint8_t eri_try_unserialize_syscall_getrusage_record (eri_file_t file,
+			struct eri_syscall_getrusage_record *rec);
+void eri_unserialize_syscall_getrusage_record (eri_file_t file,
+			struct eri_syscall_getrusage_record *rec);
 
 struct eri_syscall_futex_record
 {

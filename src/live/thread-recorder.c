@@ -372,6 +372,12 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_uname_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_CLOCK_GETTIME_MAGIC)
     eri_serialize_syscall_clock_gettime_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_GETRLIMIT_MAGIC)
+    eri_serialize_syscall_getrlimit_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_PRLIMIT64_MAGIC)
+    eri_serialize_syscall_prlimit64_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_GETRUSAGE_MAGIC)
+    eri_serialize_syscall_getrusage_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
     eri_serialize_syscall_futex_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)

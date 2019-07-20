@@ -884,10 +884,7 @@ DEFINE_SYSCALL (clock_settime)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-  args.a[1] = (uint64_t) &time;
-  rec.res.result = eri_sys_syscall (&args);
+  rec.res.result = eri_entry__syscall (entry, (1, &time));
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -903,10 +900,7 @@ syscall_do_clock_gettime (SYSCALL_PARAMS)
 
   struct eri_syscall_clock_gettime_record rec;
 
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-  args.a[1] = (uint64_t) &rec.time;
-  rec.res.result = eri_sys_syscall (&args);
+  rec.res.result = eri_entry__syscall (entry, (1, &rec.time));
 
   if (eri_syscall_is_ok (rec.res.result)
       && ! eri_entry__copy_obj_to_user (entry, user_time, &rec.time, 0))
@@ -935,10 +929,95 @@ SYSCALL_TO_IMPL (timer_gettime)
 SYSCALL_TO_IMPL (timer_getoverrun)
 SYSCALL_TO_IMPL (timer_delete)
 
-SYSCALL_TO_IMPL (setrlimit)
-SYSCALL_TO_IMPL (getrlimit)
-SYSCALL_TO_IMPL (prlimit64)
-SYSCALL_TO_IMPL (getrusage)
+DEFINE_SYSCALL (setrlimit)
+{
+  int32_t resource = regs->rdi;
+  const struct eri_rlimit *user_rlimit = (void *) regs->rsi;
+
+  eri_entry__syscall_leave_if_error (entry,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  struct eri_rlimit rlimit;
+  if (! eri_entry__copy_obj_from_user (entry, &rlimit, user_rlimit, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  struct eri_syscall_res_in_record rec = {
+    eri_entry__syscall (entry, (1, &rlimit)), io_in (th)
+  };
+  syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
+DEFINE_SYSCALL (getrlimit)
+{
+  int32_t resource = regs->rdi;
+  struct eri_rlimit *user_rlimit = (void *) regs->rsi;
+
+  eri_entry__syscall_leave_if_error (entry,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  struct eri_syscall_getrlimit_record rec;
+  rec.res.result = eri_entry__syscall (entry, (1, &rec.rlimit));
+
+  if (eri_syscall_is_ok (rec.res.result)
+      && ! eri_entry__copy_obj_to_user (entry, user_rlimit, &rec.rlimit, 0))
+    rec.res.result = ERI_EFAULT;
+
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_GETRLIMIT_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (prlimit64)
+{
+  int32_t pid = eri_live_signal_thread__map_tid (sig_th, regs->rdi);
+  int32_t resource = regs->rsi;
+  const struct eri_rlimit *user_new_rlimit = (void *) regs->rdx;
+  struct eri_rlimit *user_old_rlimit = (void *) regs->r10;
+
+  eri_entry__syscall_leave_if_error (entry,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  struct eri_rlimit new_rlimit;
+  if (user_new_rlimit
+      && ! eri_entry__copy_obj_from_user (entry, &new_rlimit,
+					  user_new_rlimit, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  struct eri_syscall_prlimit64_record rec = { io_out (th) };
+
+  rec.res.result = eri_entry__syscall (entry, (0, pid),
+			(2, user_new_rlimit ? &new_rlimit : 0),
+			(3, user_old_rlimit ? &rec.rlimit : 0));
+
+  if (eri_syscall_is_ok (rec.res.result) && user_old_rlimit
+      && ! eri_entry__copy_obj_to_user (entry, user_old_rlimit,
+					&rec.rlimit, 0))
+    rec.res.result = ERI_EFAULT;
+
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_PRLIMIT64_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (getrusage)
+{
+  int32_t who = regs->rdi;
+  struct eri_rusage *user_rusage = (void *) regs->rsi;
+
+  eri_entry__syscall_leave_if_error (entry,
+		eri_syscall_check_getrusage_who (who));
+
+  struct eri_syscall_getrusage_record rec;
+  rec.res.result = eri_entry__syscall (entry, (1, &rec.rusage));
+  if (eri_syscall_is_ok (rec.res.result)
+      && ! eri_entry__copy_obj_to_user (entry, user_rusage,
+					&rec.rusage, 0))
+    rec.res.result = ERI_EFAULT;
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_GETRUSAGE_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
 
 SYSCALL_TO_IMPL (capset)
 SYSCALL_TO_IMPL (capget)
@@ -1709,12 +1788,8 @@ syscall_do_stat (SYSCALL_PARAMS)
   uint8_t at = (int32_t) regs->rax == __NR_newfstatat;
   struct eri_stat *user_stat = (void *) (at ? regs->rdx : regs->rsi);
 
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-
   struct eri_syscall_stat_record rec;
-  *(at ? args.a + 2 : args.a + 1) = (uint64_t) &rec.stat;
-  rec.res.result = eri_sys_syscall (&args);
+  rec.res.result = eri_entry__syscall (entry, (at ? 2 : 1, &rec.stat));
   if (eri_syscall_is_ok (rec.res.result)
       && ! eri_entry__copy_obj_to_user (entry, user_stat, &rec.stat, 0))
     rec.res.result = ERI_EFAULT;
@@ -1783,23 +1858,18 @@ DEFINE_SYSCALL (symlink) { syscall_do_res_io (SYSCALL_ARGS); }
 DEFINE_SYSCALL (symlinkat) { syscall_do_res_io (SYSCALL_ARGS); }
 
 static uint64_t
-syscall_do_readlink_buf (struct eri_live_thread *th,
-		struct eri_registers *regs, char *buf, uint64_t size)
+syscall_do_readlink_buf (struct eri_entry *entry, uint8_t at,
+			 char *buf, uint64_t size)
 {
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-  int32_t nr = regs->rax;
-  *(nr == __NR_readlink ? args.a + 1 : args.a + 2) = (uint64_t) buf;
-  *(nr == __NR_readlink ? args.a + 2 : args.a + 3) = size;
-  return eri_sys_syscall (&args);
+  return eri_entry__syscall (entry, (at ? 2 : 1, buf), (at ? 3 : 2, size));
 }
 
 static eri_noreturn void
 syscall_do_readlink (SYSCALL_PARAMS)
 {
-  int32_t nr = regs->rax;
-  char *user_buf = (void *) (nr == __NR_readlink ? regs->rsi : regs->rdx);
-  uint64_t buf_size = nr == __NR_readlink ? regs->rdx : regs->r10;
+  uint8_t at = (int32_t) regs->rax == __NR_readlinkat;
+  char *user_buf = (void *) (at ? regs->rdx : regs->rsi);
+  uint64_t buf_size = at ? regs->r10 : regs->rdx;
 
   char *buf = 0;
   uint64_t res;
@@ -1818,7 +1888,7 @@ syscall_do_readlink (SYSCALL_PARAMS)
       while (1)
 	{
 	  buf = eri_assert_mtmalloc (pool, size);
-	  res = syscall_do_readlink_buf (th, regs, buf, size);
+	  res = syscall_do_readlink_buf (entry, at, buf, size);
 	  if (res != size) break;
 	  eri_assert_mtfree (pool, buf);
 	  size = eri_min (size * 2, buf_size);
@@ -1827,7 +1897,7 @@ syscall_do_readlink (SYSCALL_PARAMS)
   else
     {
       buf = eri_assert_mtmalloc (pool, buf_size);
-      res = syscall_do_readlink_buf (th, regs, buf, buf_size);
+      res = syscall_do_readlink_buf (entry, at, buf, buf_size);
     }
 
   rec.result = eri_syscall_is_ok (res)

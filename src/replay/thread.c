@@ -759,7 +759,7 @@ out:
 #define read_write_user(th, mem, size) \
   access_user (th, (void *) mem, size, READ | WRITE)
 
-#define read_obj_from_user(th, obj)	read_user (th, obj, sizeof *(obj))
+#define read_user_obj(th, obj)	read_user (th, obj, sizeof *(obj))
 
 static uint8_t
 read_str_from_user (struct thread *th, const char *str,
@@ -1141,7 +1141,7 @@ DEFINE_SYSCALL (clock_settime)
 
   syscall_leave_if_error (th, 0, eri_syscall_check_clock_id (id));
 
-  if (! read_obj_from_user (th, user_time)) syscall_leave (th, 0, ERI_EFAULT);
+  if (! read_user_obj (th, user_time)) syscall_leave (th, 0, ERI_EFAULT);
 
   syscall_do_res_io (th);
 }
@@ -1186,10 +1186,86 @@ SYSCALL_TO_IMPL (timer_gettime)
 SYSCALL_TO_IMPL (timer_getoverrun)
 SYSCALL_TO_IMPL (timer_delete)
 
-SYSCALL_TO_IMPL (setrlimit)
-SYSCALL_TO_IMPL (getrlimit)
-SYSCALL_TO_IMPL (prlimit64)
-SYSCALL_TO_IMPL (getrusage)
+DEFINE_SYSCALL (setrlimit)
+{
+  int32_t resource = regs->rdi;
+  const struct eri_rlimit *user_rlimit = (void *) regs->rsi;
+
+  syscall_leave_if_error (th, 0,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  if (! read_user_obj (th, user_rlimit)) syscall_leave (th, 0, ERI_EFAULT);
+
+  syscall_do_res_in (th);
+}
+
+DEFINE_SYSCALL (getrlimit)
+{
+  int32_t resource = regs->rdi;
+  struct eri_rlimit *user_rlimit = (void *) regs->rsi;
+
+  syscall_leave_if_error (th, 0,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  struct eri_syscall_getrlimit_record rec;
+  if (! check_magic (th, ERI_SYSCALL_GETRLIMIT_MAGIC)
+      || ! try_unserialize (syscall_getrlimit_record, th, &rec))
+    diverged (th);
+
+  if ((eri_syscall_is_fault_or_ok (rec.res.result)
+       && copy_obj_to_user (th, user_rlimit, &rec.rlimit)
+		!= (rec.res.result != ERI_EFAULT))
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, rec.res.result);
+}
+
+DEFINE_SYSCALL (prlimit64)
+{
+  int32_t resource = regs->rsi;
+  const struct eri_rlimit *user_new_rlimit = (void *) regs->rdx;
+  struct eri_rlimit *user_old_rlimit = (void *) regs->r10;
+
+  syscall_leave_if_error (th, 0,
+		eri_syscall_check_prlimit64_resource (resource));
+
+  if (user_new_rlimit && ! read_user_obj (th, user_new_rlimit))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  struct eri_syscall_prlimit64_record rec;
+  if (! check_magic (th, ERI_SYSCALL_PRLIMIT64_MAGIC)
+      || ! try_unserialize (syscall_prlimit64_record, th, &rec)
+      || ! io_out (th, rec.out))
+    diverged (th);
+
+  if ((eri_syscall_is_fault_or_ok (rec.res.result) && user_old_rlimit
+       && copy_obj_to_user (th, user_old_rlimit, &rec.rlimit)
+		!= (rec.res.result != ERI_EFAULT))
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, rec.res.result);
+}
+
+DEFINE_SYSCALL (getrusage)
+{
+  int32_t who = regs->rdi;
+  struct eri_rusage *user_rusage = (void *) regs->rsi;
+
+  syscall_leave_if_error (th, 0,
+		eri_syscall_check_getrusage_who (who));
+
+  struct eri_syscall_getrusage_record rec;
+  if (! check_magic (th, ERI_SYSCALL_GETRUSAGE_MAGIC)
+      || ! try_unserialize (syscall_getrusage_record, th, &rec))
+    diverged (th);
+
+  if ((eri_syscall_is_fault_or_ok (rec.res.result)
+       && copy_obj_to_user (th, user_rusage, &rec.rusage)
+		!= (rec.res.result != ERI_EFAULT))
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, rec.res.result);
+}
 
 SYSCALL_TO_IMPL (capset)
 SYSCALL_TO_IMPL (capget)
@@ -1247,8 +1323,7 @@ DEFINE_SYSCALL (rt_sigaction)
 
   if (! user_act && ! user_old_act) syscall_leave (th, 0, 0);
 
-  if (! read_obj_from_user (th, user_act))
-    syscall_leave (th, 0, ERI_EFAULT);
+  if (! read_user_obj (th, user_act)) syscall_leave (th, 0, ERI_EFAULT);
 
   uint64_t res = 0;
   uint64_t act_ver;
@@ -1325,8 +1400,7 @@ DEFINE_SYSCALL (rt_sigsuspend)
 
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
 
-  if (! read_obj_from_user (th, user_mask))
-    syscall_leave (th, 0, ERI_EFAULT);
+  if (! read_user_obj (th, user_mask)) syscall_leave (th, 0, ERI_EFAULT);
 
   syscall_do_pause (th);
 }
@@ -1340,8 +1414,8 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
 
-  if (! read_obj_from_user (th, user_set)
-      || (user_timeout && ! read_obj_from_user (th, user_timeout)))
+  if (! read_user_obj (th, user_set)
+      || (user_timeout && ! read_user_obj (th, user_timeout)))
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_rt_sigtimedwait_record rec;
@@ -1366,7 +1440,7 @@ syscall_do_rt_sigqueueinfo (SYSCALL_PARAMS)
 
   struct eri_siginfo *user_info = (void *) (regs->rax
 			== __NR_rt_sigqueueinfo ? regs->rdx : regs->r10);
-  if (read_obj_from_user (th, user_info) != (rec.result != ERI_EFAULT)
+  if (read_user_obj (th, user_info) != (rec.result != ERI_EFAULT)
       || ! io_in (th, rec.in)) diverged (th);
   syscall_leave (th, 1, rec.result);
 }
@@ -1419,8 +1493,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
   int32_t flags;
   syscall_leave_if_error (th, 0,
 		eri_entry__syscall_get_signalfd (entry, &flags));
-  if (! read_obj_from_user (th, user_mask))
-    syscall_leave (th, 0, ERI_EINVAL);
+  if (! read_user_obj (th, user_mask)) syscall_leave (th, 0, ERI_EINVAL);
 
   syscall_do_res_io (th);
 }
@@ -2089,7 +2162,7 @@ syscall_futex_check_wait (struct thread *th, uint64_t user_addr,
 			  const struct eri_timespec *user_timeout)
 {
   return eri_syscall_futex_check_user_addr (user_addr, page_size (th))
-		? : (user_timeout && ! read_obj_from_user (th, user_timeout)
+		? : (user_timeout && ! read_user_obj (th, user_timeout)
 			? ERI_EFAULT : 0);
 }
 

@@ -50,9 +50,9 @@ eri_live_signal_thread__get_sig_mask (
 #define ZERO(func) \
 TST_WEAK_BLANK_ZERO (ERI_PASTE (eri_live_signal_thread__, func))
 
-ZERO (get_id)
-ZERO (get_log)
 ZERO (signaled)
+ZERO (get_id)
+ZERO (map_tid)
 
 #define UNUSED(func) \
 TST_UNUSED (ERI_PASTE (eri_live_signal_thread__, func))
@@ -66,4 +66,3 @@ UNUSED (sig_mask_async)
 UNUSED (sig_prepare)
 UNUSED (sig_tmp_mask_async)
 UNUSED (syscall)
-UNUSED (create_futex_pi)

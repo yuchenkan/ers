@@ -174,9 +174,60 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.clock_gettime.result: %ld, ..in: %lu",
 		    rec.res.result, rec.res.in);
 	    if (eri_syscall_is_fault_or_ok (rec.res.result))
-	      printf ("..time.sec: %lu, ...nsec: %lu\n",
+	      printf ("..time.sec: %ld, ...nsec: %ld\n",
 		      rec.time.sec, rec.time.nsec);
 	    else printf ("\n");
+	  }
+        else if (magic == ERI_SYSCALL_GETRLIMIT_MAGIC)
+	  {
+	    struct eri_syscall_getrlimit_record rec;
+	    eri_unserialize_syscall_getrlimit_record (file, &rec);
+	    printf ("  syscall.getrlimit.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      printf ("..rlimit.cur: %lu, ...max: %lu\n",
+		      rec.rlimit.cur, rec.rlimit.max);
+	    else printf ("\n");
+	  }
+        else if (magic == ERI_SYSCALL_PRLIMIT64_MAGIC)
+	  {
+	    struct eri_syscall_prlimit64_record rec;
+	    eri_unserialize_syscall_prlimit64_record (file, &rec);
+	    printf ("  syscall.prlimit64.out: %lu, ..result: %ld, ..in: %lu",
+		    rec.out, rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      printf ("..rlimit.cur: %lu, ...max: %lu\n",
+		      rec.rlimit.cur, rec.rlimit.max);
+	    else printf ("\n");
+	  }
+        else if (magic == ERI_SYSCALL_GETRUSAGE_MAGIC)
+	  {
+	    struct eri_syscall_getrusage_record rec;
+	    eri_unserialize_syscall_getrusage_record (file, &rec);
+	    printf ("  syscall.getrusage.result: %ld, ..in: %lu\n",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      {
+		printf ("  syscall.getrusage.rusage.utime.sec: %ld, "
+			"....usec: %ld\n",
+			rec.rusage.utime.sec, rec.rusage.utime.usec);
+		printf ("  syscall.getrusage.rusage.stime.sec: %ld, "
+			"....usec: %ld\n",
+			rec.rusage.stime.sec, rec.rusage.stime.usec);
+		printf ("  syscall.getrusage.rusage.maxrss: %ld, "
+			"...ixrss: %ld, ...idrss: %ld, ...isrss: %ld, "
+			"...minflt: %ld, ...majflt: %ld, ...nswap: %ld, "
+			"...inblock: %ld, ...oublock: %ld, ...msgsnd: %ld, "
+			"...msgrcv: %ld, ...nsignals: %ld, ...nvcsw: %ld, "
+			"...nivcsw: %ld\n",
+			rec.rusage.maxrss, rec.rusage.ixrss,
+			rec.rusage.idrss, rec.rusage.isrss,
+			rec.rusage.minflt, rec.rusage.majflt,
+			rec.rusage.nswap, rec.rusage.inblock,
+			rec.rusage.oublock, rec.rusage.msgsnd,
+			rec.rusage.msgrcv, rec.rusage.nsignals,
+			rec.rusage.nvcsw, rec.rusage.nivcsw);
+	      }
 	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {

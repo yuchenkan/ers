@@ -370,22 +370,44 @@ void
 eri_serialize_timespec (eri_file_t file,
 			const struct eri_timespec *timespec)
 {
-  eri_serialize_uint64 (file, timespec->sec);
-  eri_serialize_uint64 (file, timespec->nsec);
+  eri_serialize_int64 (file, timespec->sec);
+  eri_serialize_int64 (file, timespec->nsec);
 }
 
 uint8_t
 eri_try_unserialize_timespec (eri_file_t file,
 			      struct eri_timespec *timespec)
 {
-  return eri_try_unserialize_uint64 (file, &timespec->sec)
-	 && eri_try_unserialize_uint64 (file, &timespec->nsec);
+  return eri_try_unserialize_int64 (file, &timespec->sec)
+	 && eri_try_unserialize_int64 (file, &timespec->nsec);
 }
 
 void
 eri_unserialize_timespec (eri_file_t file, struct eri_timespec *timespec)
 {
   eri_assert (eri_try_unserialize_timespec (file, timespec));
+}
+
+void
+eri_serialize_timeval (eri_file_t file,
+		       const struct eri_timeval *timeval)
+{
+  eri_serialize_int64 (file, timeval->sec);
+  eri_serialize_int64 (file, timeval->usec);
+}
+
+uint8_t
+eri_try_unserialize_timeval (eri_file_t file,
+			     struct eri_timeval *timeval)
+{
+  return eri_try_unserialize_int64 (file, &timeval->sec)
+	 && eri_try_unserialize_int64 (file, &timeval->usec);
+}
+
+void
+eri_unserialize_timeval (eri_file_t file, struct eri_timeval *timeval)
+{
+  eri_assert (eri_try_unserialize_timeval (file, timeval));
 }
 
 void
@@ -462,6 +484,74 @@ void
 eri_unserialize_utsname (eri_file_t file, struct eri_utsname *utsname)
 {
   eri_assert (eri_try_unserialize_utsname (file, utsname));
+}
+
+void
+eri_serialize_rlimit (eri_file_t file, const struct eri_rlimit *rlimit)
+{
+  eri_serialize_uint64 (file, rlimit->cur);
+  eri_serialize_uint64 (file, rlimit->max);
+}
+
+uint8_t
+eri_try_unserialize_rlimit (eri_file_t file, struct eri_rlimit *rlimit)
+{
+  return eri_try_unserialize_uint64 (file, &rlimit->cur)
+	 && eri_try_unserialize_uint64 (file, &rlimit->max);
+}
+
+void
+eri_unserialize_rlimit (eri_file_t file, struct eri_rlimit *rlimit)
+{
+  eri_assert (eri_try_unserialize_rlimit (file, rlimit));
+}
+
+void
+eri_serialize_rusage (eri_file_t file, const struct eri_rusage *rusage)
+{
+  eri_serialize_timeval (file, &rusage->utime);
+  eri_serialize_timeval (file, &rusage->stime);
+  eri_serialize_int64 (file, rusage->maxrss);
+  eri_serialize_int64 (file, rusage->ixrss);
+  eri_serialize_int64 (file, rusage->idrss);
+  eri_serialize_int64 (file, rusage->isrss);
+  eri_serialize_int64 (file, rusage->minflt);
+  eri_serialize_int64 (file, rusage->majflt);
+  eri_serialize_int64 (file, rusage->nswap);
+  eri_serialize_int64 (file, rusage->inblock);
+  eri_serialize_int64 (file, rusage->oublock);
+  eri_serialize_int64 (file, rusage->msgsnd);
+  eri_serialize_int64 (file, rusage->msgrcv);
+  eri_serialize_int64 (file, rusage->nsignals);
+  eri_serialize_int64 (file, rusage->nvcsw);
+  eri_serialize_int64 (file, rusage->nivcsw);
+}
+
+uint8_t
+eri_try_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage)
+{
+  return eri_try_unserialize_timeval (file, &rusage->utime)
+	 && eri_try_unserialize_timeval (file, &rusage->stime)
+	 && eri_try_unserialize_int64 (file, &rusage->maxrss)
+	 && eri_try_unserialize_int64 (file, &rusage->ixrss)
+	 && eri_try_unserialize_int64 (file, &rusage->idrss)
+	 && eri_try_unserialize_int64 (file, &rusage->isrss)
+	 && eri_try_unserialize_int64 (file, &rusage->minflt)
+	 && eri_try_unserialize_int64 (file, &rusage->majflt)
+	 && eri_try_unserialize_int64 (file, &rusage->nswap)
+	 && eri_try_unserialize_int64 (file, &rusage->inblock)
+	 && eri_try_unserialize_int64 (file, &rusage->oublock)
+	 && eri_try_unserialize_int64 (file, &rusage->msgsnd)
+	 && eri_try_unserialize_int64 (file, &rusage->msgrcv)
+	 && eri_try_unserialize_int64 (file, &rusage->nsignals)
+	 && eri_try_unserialize_int64 (file, &rusage->nvcsw)
+	 && eri_try_unserialize_int64 (file, &rusage->nivcsw);
+}
+
+void
+eri_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage)
+{
+  eri_assert (eri_try_unserialize_rusage (file, rusage));
 }
 
 void
@@ -808,6 +898,83 @@ eri_unserialize_syscall_clock_gettime_record (eri_file_t file,
 			struct eri_syscall_clock_gettime_record *rec)
 {
   eri_assert (eri_try_unserialize_syscall_clock_gettime_record (file, rec));
+}
+
+void
+eri_serialize_syscall_getrlimit_record (eri_file_t file,
+			const struct eri_syscall_getrlimit_record *rec)
+{
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_rlimit (file, &rec->rlimit);
+}
+
+uint8_t
+eri_try_unserialize_syscall_getrlimit_record (eri_file_t file,
+			struct eri_syscall_getrlimit_record *rec)
+{
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_rlimit (file, &rec->rlimit));
+}
+
+void
+eri_unserialize_syscall_getrlimit_record (eri_file_t file,
+			struct eri_syscall_getrlimit_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_getrlimit_record (file, rec));
+}
+
+void
+eri_serialize_syscall_prlimit64_record (eri_file_t file,
+			const struct eri_syscall_prlimit64_record *rec)
+{
+  eri_serialize_uint64 (file, rec->out);
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_rlimit (file, &rec->rlimit);
+}
+
+uint8_t
+eri_try_unserialize_syscall_prlimit64_record (eri_file_t file,
+			struct eri_syscall_prlimit64_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->out)
+	 && eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_rlimit (file, &rec->rlimit));
+}
+
+void
+eri_unserialize_syscall_prlimit64_record (eri_file_t file,
+			struct eri_syscall_prlimit64_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_prlimit64_record (file, rec));
+}
+
+void
+eri_serialize_syscall_getrusage_record (eri_file_t file,
+			const struct eri_syscall_getrusage_record *rec)
+{
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_rusage (file, &rec->rusage);
+}
+
+uint8_t
+eri_try_unserialize_syscall_getrusage_record (eri_file_t file,
+			struct eri_syscall_getrusage_record *rec)
+{
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_rusage (file, &rec->rusage));
+}
+
+void
+eri_unserialize_syscall_getrusage_record (eri_file_t file,
+			struct eri_syscall_getrusage_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_getrusage_record (file, rec));
 }
 
 void

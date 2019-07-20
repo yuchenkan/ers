@@ -833,11 +833,11 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
   if (! event->group
       && eri_atomic_dec_fetch (&group->thread_count, 1))
     {
-      remove_from_group (sig_th);
-
       event->done = 1;
       release_event (event);
       eri_live_thread__join (th);
+
+      remove_from_group (sig_th);
 
       eri_live_thread__destroy (th);
 
@@ -1123,8 +1123,19 @@ eri_live_signal_thread__get_id (const struct eri_live_signal_thread *sig_th)
   return sig_th->id;
 }
 
-struct eri_buf_file *
-eri_live_signal_thread__get_log (struct eri_live_signal_thread *sig_th)
+int32_t
+eri_live_signal_thread__map_tid (struct eri_live_signal_thread *sig_th,
+				 int32_t tid)
 {
-  return &sig_th->log;
+  struct signal_thread_group *group = sig_th->group;
+  eri_assert_lock (&group->thread_lock);
+  struct eri_live_signal_thread *it;
+  ERI_LST_FOREACH (thread, group, it)
+    if (it->tid == tid)
+      {
+	tid = eri_live_thread__get_tid (it->th);
+	break;
+      }
+  eri_assert_unlock (&group->thread_lock);
+  return tid;
 }

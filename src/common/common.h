@@ -438,4 +438,17 @@ eri_syscall_check_clock_id (int32_t id)
 	 || id == ERI_CLOCK_THREAD_CPUTIME_ID ? 0 : ERI_EINVAL;
 }
 
+static eri_unused uint64_t
+eri_syscall_check_prlimit64_resource (int32_t resource)
+{
+  return resource < 0 || resource >= ERI_RLIMIT_NLIMITS ? ERI_EINVAL : 0;
+}
+
+static eri_unused uint64_t
+eri_syscall_check_getrusage_who (int32_t who)
+{
+  return who != ERI_RUSAGE_SELF && who != ERI_RUSAGE_CHILDREN
+	 && who != ERI_RUSAGE_THREAD ? ERI_EINVAL : 0;
+}
+
 #endif

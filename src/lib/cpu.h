@@ -122,7 +122,11 @@ struct eri_registers
   ERI_FOREACH_REG (_ERI_DECLARE_REG)
 };
 
-#define eri_init_sys_syscall_args_from_registers(args, regs) \
+#define __ERI_REPLACE_SYS_ARGS(args, r, v)	args->a[r] = (uint64_t) (v);
+#define _ERI_REPLACE_SYS_ARGS(i, rv, args) \
+  ERI_EVAL1 (__ERI_REPLACE_SYS_ARGS ERI_PP_CONCAT1 ((args), rv))
+
+#define eri_init_sys_syscall_args_from_registers(args, regs, ...) \
   do {									\
     struct eri_sys_syscall_args *__args = args;				\
     struct eri_registers *_regs = regs;					\
@@ -133,6 +137,7 @@ struct eri_registers
     __args->a[3] = _regs->r10;						\
     __args->a[4] = _regs->r8;						\
     __args->a[5] = _regs->r9;						\
+    ERI_PP_FOREACH (_ERI_REPLACE_SYS_ARGS, (__args), ##__VA_ARGS__)	\
   } while (0)
 
 #define _ERI_SET_MCTX_FROM_REGS(creg, reg)	_mctx->reg = _regs->reg;
