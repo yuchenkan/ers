@@ -161,6 +161,13 @@ fetch_inc_acc_opt (struct eri_access **acc)
   return *acc ? (*acc)++ : 0;
 }
 
+#define set_read(entry, acc, mem, size) \
+  eri_set_read (acc, (uint64_t) (mem), size, (entry)->_start)
+#define set_write(entry, acc, mem, size) \
+  eri_set_write (acc, (uint64_t) (mem), size, (entry)->_start)
+#define set_read_write(entry, acc, mem, size) \
+  eri_set_read_write (acc, (uint64_t) (mem), size, (entry)->_start)
+
 uint8_t
 eri_entry__copy_from_user (struct eri_entry *entry, void *dst,
 		const void *src, uint64_t size, struct eri_access *acc)
@@ -177,7 +184,7 @@ eri_entry__copy_from_user (struct eri_entry *entry, void *dst,
   eri_entry__reset_test_access (entry);
 
 out:
-  if (acc) eri_set_read (acc, (uint64_t) src, eri_min (done + 1, size));
+  if (acc) set_read (entry, acc, src, eri_min (done + 1, size));
   return done == size;
 }
 
@@ -194,7 +201,7 @@ eri_entry__copy_to_user (struct eri_entry *entry, void *dst,
   eri_entry__reset_test_access (entry);
 
 out:
-  if (acc) eri_set_write (acc, (uint64_t) dst, eri_min (done + 1, size));
+  if (acc) set_write (entry, acc, dst, eri_min (done + 1, size));
   return done == size;
 }
 

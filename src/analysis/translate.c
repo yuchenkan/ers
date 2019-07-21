@@ -73,6 +73,7 @@ struct access
 {
   uint8_t type;
   uint32_t size;
+  uint64_t guest_rip;
   uint8_t cond;
   uint8_t var;
   uint64_t addr;
@@ -452,6 +453,8 @@ struct ir_dag
   ERI_LST_LIST_FIELDS (ir_alloc)
   ERI_RBT_TREE_FIELDS (ir_redun, struct ir_redun)
 
+  uint64_t prev_guest_rip;
+
   uint64_t len;
 
   struct ir_def *map_start;
@@ -635,6 +638,13 @@ static struct ir_def *
 ir_get_sym (struct ir_dag *dag, uint64_t id)
 {
   return dag->syms[id];
+}
+
+static uint64_t
+ir_get_rip (struct ir_dag *dag)
+{
+  eri_assert (! ir_get_sym (dag, TRANS_RIP)->node);
+  return ir_get_sym (dag, TRANS_RIP)->imm;
 }
 
 static struct ir_def *
@@ -835,21 +845,21 @@ ir_redun_rec_mem (struct ir_rec_mem_args *a1, struct ir_rec_mem_args *a2)
 }
 
 static void
-ir_add_const_access (struct ir_accesses *acc,
-		     uint8_t read, uint64_t addr, uint32_t size)
+ir_add_inst_access (struct ir_accesses *acc,
+		    uint8_t read, uint64_t addr, uint32_t size)
 {
   struct access a = {
-    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, 0, 0, addr
+    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, addr, 0, 0, addr
   };
   eri_assert_buf_append (&acc->accesses, &a, 1);
 }
 
 static void
 ir_add_access (struct ir_accesses *acc,
-	       uint8_t read, uint32_t size, uint8_t cond)
+	       uint8_t read, uint32_t size, uint64_t rip, uint8_t cond)
 {
   struct access a = {
-    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, cond, 1
+    read ? ERI_ACCESS_READ : ERI_ACCESS_WRITE, size, rip, cond, 1
   };
   eri_assert_buf_append (&acc->accesses, &a, 1);
   if (cond) ++acc->conds_count;
@@ -865,7 +875,8 @@ ir_eval_rec_mem (struct ir_dag *dag, struct ir_rec_mem_args *args)
 		args->read ? ir_deps (1, 0) : ir_deps (3, 1));
   node->deps += ir_init_mem (node, &node->rec_mem.mem, mem);
   node->rec_mem.idx = dag->accesses.vars_count;
-  ir_add_access (&dag->accesses, args->read, mem->size, 0);
+  ir_add_access (&dag->accesses, args->read, mem->size,
+		 dag->prev_guest_rip, 0);
   ir_depand (node, &node->rec_mem.memory, dag->memory, 0);
   ir_depand (node, &node->rec_mem.prev, dag->prev, 0);
   ir_depand (node, &node->rec_mem.rec_mem, dag->rec_mem, 0);
@@ -1077,13 +1088,13 @@ ir_create_cond_str_op (struct ir_dag *dag, struct ir_cond_str_op_args *args)
     {
       node->cond_str_op.read_idx = dag->accesses.vars_count;
       node->cond_str_op.read_cond_idx = dag->accesses.conds_count;
-      ir_add_access (&dag->accesses, 1, size, 1);
+      ir_add_access (&dag->accesses, 1, size, dag->prev_guest_rip, 1);
     }
   if (ir_cond_str_op_rdi (iclass))
     {
       node->cond_str_op.write_idx = dag->accesses.vars_count;
       node->cond_str_op.write_cond_idx = dag->accesses.conds_count;
-      ir_add_access (&dag->accesses, 0, size, 1);
+      ir_add_access (&dag->accesses, 0, size, dag->prev_guest_rip, 1);
       ir_depand (node, &node->cond_str_op.map_start, dag->map_start, 1);
       ir_depand (node, &node->cond_str_op.map_end, dag->map_end, 1);
     }
@@ -1280,13 +1291,6 @@ ir_create_pop (struct ir_dag *dag, struct ir_def *rsp, struct ir_def *prim)
   return pair;
 }
 
-static uint64_t
-ir_get_rip (struct ir_dag *dag)
-{
-  eri_assert (! ir_get_sym (dag, TRANS_RIP)->node);
-  return ir_get_sym (dag, TRANS_RIP)->imm;
-}
-
 static void
 ir_dump_dis_dec (eri_file_t log, uint64_t rip, xed_decoded_inst_t *dec)
 {
@@ -1352,7 +1356,7 @@ ir_decode (struct eri_translate_args *args, struct ir_dag *dag,
 
 done:
   dag->len += inst_len;
-  ir_add_const_access (&dag->accesses, 1, rip, inst_len);
+  ir_add_inst_access (&dag->accesses, 1, rip, inst_len);
   return 1;
 }
 
@@ -1534,8 +1538,9 @@ ir_build_inst_operands (struct ir_dag *dag, struct ir_node *node)
 
   ir_init_inst_operands (node);
 
+  dag->prev_guest_rip = ir_get_rip (dag);
   node->next_guests[TRANS_RIP] = ir_get_load_imm (dag,
-			ir_get_rip (dag) + xed_decoded_inst_get_length (dec));
+		dag->prev_guest_rip + xed_decoded_inst_get_length (dec));
   ir_set_sym (dag, TRANS_RIP, node->next_guests[TRANS_RIP]);
 
   if (xed_decoded_inst_get_iclass (dec) == XED_ICLASS_NOP) return;
@@ -3986,7 +3991,7 @@ collect_accesses (eri_file_t log, struct eri_buf *buf,
       struct access *a = acc->accesses + i;
       uint64_t addr = a->var ? addrs[v++] : a->addr;
       if (! a->cond || conds[c++])
-	eri_append_access (buf, addr, a->size, a->type);
+	eri_append_access (buf, addr, a->size, a->guest_rip, a->type);
     }
   eri_lassert (log, v == acc->vars_count);
   eri_lassert (log, c == acc->conds_count);
@@ -4058,8 +4063,10 @@ sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
 	{
 	  uint64_t addr = a->var ? addrs[v++] : a->addr;
 	  if (! a->cond || conds[c++])
-	    eri_append_access (buf, addrs[i], a->rip_off <= rip_off
-		? a->size : info->fault.addr + 1 - addr, a->type);
+	    eri_append_access (buf, addrs[i],
+			a->rip_off <= rip_off
+				? a->size : info->fault.addr + 1 - addr,
+			a->guest_rip, a->type);
 	}
     }
 }

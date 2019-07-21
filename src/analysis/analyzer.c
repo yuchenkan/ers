@@ -151,7 +151,7 @@ struct race_access
   uint64_t addr;
   uint64_t size;
 
-  uint64_t rip; // TODO
+  uint64_t rip;
   uint64_t order;
 
   ERI_RBT_NODE_FIELDS (race_access, struct race_access);
@@ -720,9 +720,10 @@ race_get_conflicts (struct race_confirm_context *ctx, uint8_t type, uint8_t ref_
         if (i->addr || j->addr)
 	  {
 	    eri_log_info (ctx->log,
-		"conflict detected: %s %lx %lu u%lu, %s, %lx %lu u%lu\n",
-		eri_access_type_str (type), i->addr, i->size, id,
-		eri_access_type_str (ref_type), j->addr, j->size, ref_id);
+		"conflict detected: rip %lx, %s mem: %lx size: %lu u%lu, "
+		"rip %lx, %s, mem: %lx size :%lu u%lu\n",
+		i->rip, eri_access_type_str (type), i->addr, i->size, id,
+		j->rip, eri_access_type_str (ref_type), j->addr, j->size, ref_id);
 	    eri_atomic_store (&ctx->group->error, 1, 0); // TODO
 	  }
 	i = race_access_rbt_get_next (i);
@@ -939,7 +940,7 @@ race_do_access (struct race *ra, struct eri_access *acc)
 
   eri_log9 (ra->log, "[RACE] block: b%lu, addr: %lx, size: %lu, type: %s\n",
 	    ra->cur->id, acc->addr, acc->size, eri_access_type_str (t));
-  struct race_access a = { acc->addr, acc->size };
+  struct race_access a = { acc->addr, acc->size, acc->rip };
   if (! race_ranges_insert (ra->log, ra->group->pool,
 			    race_get_type (t, &ra->cur->cur), &a,
 			    race_get_type (t, &ra->cur->inc)))
@@ -1509,6 +1510,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 struct update_mm_prot_diff_args
 {
   struct eri_buf *accesses;
+  uint64_t rip;
   uint8_t type;
 };
 
@@ -1516,7 +1518,7 @@ static void
 update_mm_prot_diff (uint64_t start, uint64_t end, void *args)
 {
   struct update_mm_prot_diff_args *a = args;
-  eri_append_access (a->accesses, start, end - start, a->type);
+  eri_append_access (a->accesses, start, end - start, a->rip, a->type);
 }
 
 static void
@@ -1530,7 +1532,8 @@ update_mm_prot (struct eri_analyzer *al, uint8_t read,
   eri_assert_buf_mtpool_init (&accesses, pool, 16, struct eri_access);
 
   struct update_mm_prot_diff_args args = {
-    &accesses, read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE
+    &accesses, eri_entry__get_start (al->entry),
+    read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE
   };
 
   update_interval_tree (pool,

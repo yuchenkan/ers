@@ -98,6 +98,7 @@ struct eri_entry *eri_entry__create (struct eri_entry__create_args *args);
 void eri_entry__destroy (struct eri_entry *entry);
 
 #define eri_entry__get_op_code(entry)	((entry)->_op.code)
+#define eri_entry__get_start(entry)	((entry)->_start)
 
 #define eri_entry__get_regs(entry)	(&(entry)->_regs)
 #define eri_entry__get_th(entry)	((entry)->_th)

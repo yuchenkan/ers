@@ -33,7 +33,7 @@ m4_pub_exp_nl
 m4_atomic(LOAD, `mem, reg')
 m4_pub_exp_nl
 
-m4_atomic(STORE, `imm_or_reg, mem')
+m4_atomic(STORE, `reg, mem')
 m4_pub_exp_nl
 
 m4_atomic(INC, mem)
@@ -51,6 +51,18 @@ m4_pub_exp_nl
 m4_atomic(ADD, `reg, mem')
 m4_pub_exp_nl
 
+m4_atomic(SUB, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(ADC, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(SBB, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(NEG, `mem')
+m4_pub_exp_nl
+
 m4_atomic(AND, `reg, mem')
 m4_pub_exp_nl
 
@@ -58,6 +70,18 @@ m4_atomic(OR, `reg, mem')
 m4_pub_exp_nl
 
 m4_atomic(XOR, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(NOT, `mem')
+m4_pub_exp_nl
+
+m4_atomic(BTC, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(BTR, `reg, mem')
+m4_pub_exp_nl
+
+m4_atomic(BTS, `reg, mem')
 m4_pub_exp_nl
 
 m4_atomic(XADD, `reg, mem')
@@ -87,9 +111,18 @@ m4_atomic_impl(INC, m)
 m4_atomic_impl(DEC, m)
 m4_atomic_impl(XCHG, `r, m')
 m4_atomic_impl(CMPXCHG, `r, m')
+m4_atomic_impl(ADD, `r, m')
+m4_atomic_impl(SUB, `r, m')
+m4_atomic_impl(ADC, `r, m')
+m4_atomic_impl(SBB, `r, m')
+m4_atomic_impl(NEG, `m')
 m4_atomic_impl(AND, `r, m')
 m4_atomic_impl(OR, `r, m')
 m4_atomic_impl(XOR, `r, m')
+m4_atomic_impl(NOT, `m')
+m4_atomic_impl(BTC, `r, m')
+m4_atomic_impl(BTR, `r, m')
+m4_atomic_impl(BTS, `r, m')
 m4_atomic_impl(XADD, `r, m')
 m4_pub_exp_nl
 m4_pub_end

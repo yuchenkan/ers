@@ -22,11 +22,19 @@
 #define ERI_OP_ATOMIC_XCHG	7
 #define ERI_OP_ATOMIC_CMPXCHG	8
 #define ERI_OP_ATOMIC_ADD	9
-#define ERI_OP_ATOMIC_AND	10
-#define ERI_OP_ATOMIC_OR	11
-#define ERI_OP_ATOMIC_XOR	12
-#define ERI_OP_ATOMIC_XADD	13
-#define ERI_OP_ATOMIC_PUB_END	14
+#define ERI_OP_ATOMIC_SUB	10
+#define ERI_OP_ATOMIC_ADC	11 // TODO
+#define ERI_OP_ATOMIC_SBB	12 // TODO
+#define ERI_OP_ATOMIC_NEG	13 // TODO
+#define ERI_OP_ATOMIC_AND	14
+#define ERI_OP_ATOMIC_OR	15
+#define ERI_OP_ATOMIC_XOR	16
+#define ERI_OP_ATOMIC_NOT	17 // TODO
+#define ERI_OP_ATOMIC_BTC	18 // TODO
+#define ERI_OP_ATOMIC_BTR	19 // TODO
+#define ERI_OP_ATOMIC_BTS	20 // TODO
+#define ERI_OP_ATOMIC_XADD	21
+#define ERI_OP_ATOMIC_PUB_END	22
 
 #define ERI_OP_ATOMIC_XAND	256
 #define ERI_OP_ATOMIC_X_OR	257
@@ -43,32 +51,21 @@
   p (ATOMIC_XCHG, ##__VA_ARGS__)					\
   p (ATOMIC_CMPXCHG, ##__VA_ARGS__)					\
   p (ATOMIC_ADD, ##__VA_ARGS__)						\
+  p (ATOMIC_SUB, ##__VA_ARGS__)						\
+  p (ATOMIC_ADC, ##__VA_ARGS__)						\
+  p (ATOMIC_SBB, ##__VA_ARGS__)						\
+  p (ATOMIC_NEG, ##__VA_ARGS__)						\
   p (ATOMIC_AND, ##__VA_ARGS__)						\
   p (ATOMIC_OR, ##__VA_ARGS__)						\
   p (ATOMIC_XOR, ##__VA_ARGS__)						\
+  p (ATOMIC_NOT, ##__VA_ARGS__)						\
+  p (ATOMIC_BTC, ##__VA_ARGS__)						\
+  p (ATOMIC_BTR, ##__VA_ARGS__)						\
+  p (ATOMIC_BTS, ##__VA_ARGS__)						\
   p (ATOMIC_XADD, ##__VA_ARGS__)
 
 #if 0
-#define ERI_ATOMIC_LOAD	0x1000
-#define ERI_ATOMIC_STORE	0x1001
 
-#define ERI_ATOMIC_INC		0x1002
-#define ERI_ATOMIC_DEC		0x1003
-#define ERI_ATOMIC_ADD		0x1004
-#define ERI_ATOMIC_SUB		0x1005
-#define ERI_ATOMIC_ADC		0x1006
-#define ERI_ATOMIC_SBB		0x1007
-#define ERI_ATOMIC_NEG		0x1008
-#define ERI_ATOMIC_AND		0x1009
-#define ERI_ATOMIC_OR		0x100a
-#define ERI_ATOMIC_XOR		0x100b
-#define ERI_ATOMIC_NOT		0x100c
-#define ERI_ATOMIC_BTC		0x100d
-#define ERI_ATOMIC_BTR		0x100e
-#define ERI_ATOMIC_BTS		0x100f
-#define ERI_ATOMIC_XCHG	0x1010
-#define ERI_ATOMIC_XADD	0x1011
-#define ERI_ATOMIC_CMPXCHG	0x1012
 #define ERI_ATOMIC_XCHG8B	0x1013
 #define ERI_ATOMIC_XCHG16B	0x1014
 #endif
@@ -180,12 +177,28 @@ ERI_PASTE (_eri_atomic_, type) (uint16_t code, type *mem,		\
       _eri_atomic_x (cmpxchg, rflags, mem, old, val); break;		\
     case ERI_OP_ATOMIC_ADD:						\
       _eri_atomic_x (add, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_SUB:						\
+      _eri_atomic_x (sub, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_ADC:						\
+      _eri_atomic_x (adc, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_SBB:						\
+      _eri_atomic_x (sbb, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_NEG:						\
+      _eri_atomic_x (neg, rflags, mem);	break;				\
     case ERI_OP_ATOMIC_AND:						\
       _eri_atomic_x (and, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_OR:						\
       _eri_atomic_x (or, rflags, mem, val); break;			\
     case ERI_OP_ATOMIC_XOR:						\
       _eri_atomic_x (xor, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_NOT:						\
+      _eri_atomic_x (not, rflags, mem);	break;				\
+    case ERI_OP_ATOMIC_BTC:						\
+      _eri_atomic_x (btc, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_BTR:						\
+      _eri_atomic_x (btr, rflags, mem, val);	break;			\
+    case ERI_OP_ATOMIC_BTS:						\
+      _eri_atomic_x (bts, rflags, mem, val);	break;			\
     case ERI_OP_ATOMIC_XAND:						\
       *(type *) old = _eri_atomic_cas (type, mem, &, val); break;	\
     case ERI_OP_ATOMIC_X_OR:						\
@@ -357,35 +370,38 @@ struct eri_access
 {
   uint64_t addr;
   uint64_t size;
+  uint64_t rip;
   uint8_t type;
 };
 
 static eri_unused void
 eri_set_access (struct eri_access *acc, uint64_t addr,
-		uint64_t size, uint8_t type)
+		uint64_t size, uint64_t rip, uint8_t type)
 {
   acc->addr = addr;
   acc->size = size;
+  acc->rip = rip;
   acc->type = type;
 }
 
-#define eri_set_read(acc, addr, size) \
-  eri_set_access (acc, addr, size, ERI_ACCESS_READ)
-#define eri_set_write(acc, addr, size) \
-  eri_set_access (acc, addr, size, ERI_ACCESS_WRITE)
+#define eri_set_read(acc, addr, size, rip) \
+  eri_set_access (acc, addr, size, rip, ERI_ACCESS_READ)
+#define eri_set_write(acc, addr, size, rip) \
+  eri_set_access (acc, addr, size, rip, ERI_ACCESS_WRITE)
 
 static eri_unused void
-eri_set_read_write (struct eri_access *acc, uint64_t addr, uint64_t size)
+eri_set_read_write (struct eri_access *acc,
+		    uint64_t addr, uint64_t size, uint64_t rip)
 {
-  eri_set_read (acc, addr, size);
-  eri_set_write (acc + 1, addr, size);
+  eri_set_read (acc, addr, size, rip);
+  eri_set_write (acc + 1, addr, size, rip);
 }
 
 static eri_unused void
 eri_append_access (struct eri_buf *buf, uint64_t addr,
-		   uint64_t size, uint8_t type)
+		   uint64_t size, uint64_t rip, uint8_t type)
 {
-  struct eri_access acc = { addr, size, type };
+  struct eri_access acc = { addr, size, rip, type };
   eri_assert_buf_append (buf, &acc, 1);
 }
 

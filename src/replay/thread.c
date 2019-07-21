@@ -711,6 +711,16 @@ copy_from_user (struct thread *th, void *dst, const void *src, uint64_t size)
 		eri_entry__copy_from_user, th->entry, dst, src, size);
 }
 
+#define set_read(th, acc, mem, size) \
+  eri_set_read (acc, (uint64_t) (mem), size,				\
+		eri_entry__get_start ((th)->entry))
+#define set_write(th, acc, mem, size) \
+  eri_set_write (acc, (uint64_t) (mem), size,				\
+		 eri_entry__get_start ((th)->entry))
+#define set_read_write(th, acc, mem, size) \
+  eri_set_read_write (acc, (uint64_t) (mem), size,			\
+		      eri_entry__get_start ((th)->entry))
+
 #define copy_obj_from_user(th, dst, src) \
   copy_from_user (th, dst, src, sizeof *(dst))
 #define copy_obj_from_user_or_fault(th, dst, src) \
@@ -745,9 +755,9 @@ access_user (struct thread *th, void *mem, uint64_t size, uint8_t type)
   eri_entry__reset_test_access (entry);
 out:
   if (type & READ)
-    eri_set_read (acc, (uint64_t) mem, eri_min (done + 1, size));
+    set_read (th, acc, mem, eri_min (done + 1, size));
   if (type & WRITE)
-    eri_set_write (acc + 1, (uint64_t) mem, eri_min (done + 1, size));
+    set_write (th, acc + 1, mem, eri_min (done + 1, size));
   update_access (th, acc, eri_length_of (acc));
   return done == size;
 }
@@ -773,7 +783,7 @@ read_str_from_user (struct thread *th, const char *str,
 
   if (! eri_entry__test_access (entry, str, &done))
     {
-      eri_set_read (&acc, (uint64_t) str, done + 1);
+      set_read (th, &acc, str, done + 1);
       update_access (th, &acc, 1);
       return 0;
     }
@@ -783,7 +793,7 @@ read_str_from_user (struct thread *th, const char *str,
   eri_entry__reset_test_access (entry);
 
   if (len) *len = i;
-  eri_set_read (&acc, (uint64_t) str, eri_min (i + 1, max));
+  set_read (th, &acc, str, eri_min (i + 1, max));
   update_access (th, &acc, 1);
   return 1;
 }
@@ -845,11 +855,9 @@ do_atomic (struct thread *th, uint16_t code, void *mem, uint8_t size,
   if (! atomic_wait (th, (uint64_t) mem, size, rec->ver)) return 0;
 
   struct eri_access acc[2] = { 0 };
-  if (code == ERI_OP_ATOMIC_LOAD)
-    eri_set_read (acc, (uint64_t) mem, size);
-  else if (code == ERI_OP_ATOMIC_STORE)
-    eri_set_write (acc, (uint64_t) mem, size);
-  else eri_set_read_write (acc, (uint64_t) mem, size);
+  if (code == ERI_OP_ATOMIC_LOAD) set_read (th, acc, mem, size);
+  else if (code == ERI_OP_ATOMIC_STORE) set_write (th, acc, mem, size);
+  else set_read_write (th, acc, mem, size);
   update_access (th, acc, eri_length_of (acc));
 
   if (! eri_entry__test_access (entry, mem, 0)) return 0;
@@ -1692,8 +1700,8 @@ syscall_do_read_data (struct thread *th, void *dst,
   if (rec.result == ERI_EFAULT)
     {
       struct eri_access acc;
-      eri_set_write (&acc, (uint64_t) (readv
-			? ((struct eri_iovec *) dst)->base : dst), 1);
+      set_write (th, &acc,
+		 readv ? ((struct eri_iovec *) dst)->base : dst, 1);
       update_access (th, &acc, 1);
     }
 
@@ -1761,7 +1769,7 @@ syscall_do_write (SYSCALL_PARAMS)
   struct eri_access acc;
   if (rec.res.result == ERI_EFAULT)
     {
-      eri_set_write (&acc, writev ? (uint64_t) iov->base : buf, 1);
+      set_write (th, &acc, writev ? (uint64_t) iov->base : buf, 1);
       update_access (th, &acc, 1);
       goto out;
     }
@@ -1773,7 +1781,7 @@ syscall_do_write (SYSCALL_PARAMS)
 
   if (! writev)
     {
-      eri_set_write (&acc, buf, rec.res.result);
+      set_write (th, &acc, buf, rec.res.result);
       update_access (th, &acc, 1);
     }
   else
@@ -1783,7 +1791,7 @@ syscall_do_write (SYSCALL_PARAMS)
       while (c < rec.res.result)
 	{
 	  uint64_t s = eri_min (v->len, rec.res.result - c);
-	  eri_set_write (&acc, (uint64_t) (v++)->base, s);
+	  set_write (th, &acc, (v++)->base, s);
 	  update_access (th, &acc, 1);
 	  c += s;
 	}

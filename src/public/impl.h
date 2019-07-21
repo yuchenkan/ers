@@ -120,10 +120,10 @@
 20:
 
 /* mov	imm8/16/32/r8/16/32/64, m8/16/32/64  */
-#define _ERS_ATOMIC_STORE(e, sz, imm_or_reg, mem) \
-  _ERS_ATOMIC_COMMON2 (STORE, e, sz, imm_or_reg, mem)
+#define _ERS_ATOMIC_STORE(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (STORE, e, sz, reg, mem)
 
-#define _ERS_ATOMIC_INC_DEC(e, sz, mem, op) \
+#define _ERS_ATOMIC_COMMON(op, e, sz, mem) \
 30:									\
   _ERS_ENTER (e, _ERS_ATOMIC_OP (op, sz));				\
   _ERS_ATOMIC_SAVE_MEM (e, mem);					\
@@ -132,8 +132,8 @@
   jmp	*_ERS_ENTRY (e, ENTER);						\
 20:
 
-#define _ERS_ATOMIC_INC(e, sz, mem)	_ERS_ATOMIC_INC_DEC (e, sz, mem, INC)
-#define _ERS_ATOMIC_DEC(e, sz, mem)	_ERS_ATOMIC_INC_DEC (e, sz, mem, DEC)
+#define _ERS_ATOMIC_INC(e, sz, mem)	_ERS_ATOMIC_COMMON (INC, e, sz, mem)
+#define _ERS_ATOMIC_DEC(e, sz, mem)	_ERS_ATOMIC_COMMON (DEC, e, sz, mem)
 
 #define _ERS_ATOMIC_XCHG(e, sz, reg, mem) \
   _ERS_ATOMIC_XCOMMON2 (XCHG, e, sz, reg, mem)
@@ -144,6 +144,18 @@
 #define _ERS_ATOMIC_ADD(e, sz, reg, mem) \
   _ERS_ATOMIC_COMMON2 (ADD, e, sz, reg, mem)
 
+#define _ERS_ATOMIC_SUB(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (SUB, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_ADC(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (ADC, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_SBB(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (SBB, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_NEG(e, sz, mem) \
+  _ERS_ATOMIC_COMMON (NEG, e, sz, mem)
+
 #define _ERS_ATOMIC_AND(e, sz, reg, mem) \
   _ERS_ATOMIC_COMMON2 (AND, e, sz, reg, mem)
 
@@ -151,6 +163,18 @@
   _ERS_ATOMIC_COMMON2 (OR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_XOR(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_NOT(e, sz, mem) \
+  _ERS_ATOMIC_COMMON (XOR, e, sz, mem)
+
+#define _ERS_ATOMIC_BTC(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_BTR(e, sz, reg, mem) \
+  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+
+#define _ERS_ATOMIC_BTS(e, sz, reg, mem) \
   _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_XADD(e, sz, reg, mem) \

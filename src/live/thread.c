@@ -1998,6 +1998,8 @@ DEFINE_SYSCALL (mmap)
   };
   eri_assert_unlock (&group->mm_lock);
 
+  if (eri_global_enable_debug) eri_dump_maps ();
+
   eri_live_thread_recorder__rec_syscall_mmap (th->rec, &rec,
 					      anony ? 0 : len);
   eri_entry__syscall_leave (entry, rec.result);
@@ -2303,6 +2305,20 @@ sync_async (struct eri_live_thread *th)
   eri_live_thread_recorder__rec_sync_async (th->rec, regs->rcx);
   eri_entry__leave (entry);
 }
+
+/*
+ * Guide of atomics:
+ * Adding an atomic op is relatively easy, but there are several places
+ * to modify:
+ * 1. common/common.h, to add the op code;
+ * 2. common/common.h, _ERI_DEFINE_DO_ATOMIC_TYPE to impl it, which needs
+ *    lib/atomic*.h;
+ * 3. common/entry.c, eri_entry__atomic_leave to see if it needs interleave;
+ * 4. public/impl.h, to impl the interface;
+ * 5. public/public.h.in.m4, and public/public.h.m4, to add the interface;
+ * 6. ers/public.h.m4, to export the interface;
+ * 7. test...
+ */
 
 static eri_noreturn void
 atomic (struct eri_live_thread *th)
