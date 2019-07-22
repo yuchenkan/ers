@@ -53,7 +53,7 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_xcommon, _)(sz, _m, op, _r, b) \
   asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 0), %1))	\
-		: "+r" (*_r), "+m" (*_m) ERI_PP_IF (b, : : "memory"))
+		: "+r" (*_r), "+m" (*_m) : : "cc" ERI_PP_IF (b, , "memory"))
 
 #define m4_ns(atomic_xcommon)(op, m, r, b) \
   do {									\
@@ -99,7 +99,7 @@ m4_include(`m4/util.m4')
   asm volatile (ERI_STR (ERI_PASTE (m4_ns(atomic_, __), op) (1, sz,	\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 2), %1))	\
 		: "=@ccc" (_r), "+m" (*_m) : "r" (_off)			\
-		ERI_PP_IF (b, : "memory"))
+		: "cc" ERI_PP_IF (b, , "memory"))
 
 #define m4_ns(atomic_btx)(op, m, off, b) \
   ({ typeof (m) _m = m;							\
@@ -128,7 +128,7 @@ m4_include(`m4/util.m4')
   asm volatile (ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %1))	\
 		: "=@ccz" (_z), "+m" (*_m), "+a" (*_a) : "r" (_r)	\
-		ERI_PP_IF (b, : "memory"))
+		: "cc" ERI_PP_IF (b, , "memory"))
 
 #define m4_ns(atomic_cmpxchg)(m, a, r, b) \
   ({ typeof (m) _m = m;							\
