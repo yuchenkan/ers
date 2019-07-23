@@ -762,12 +762,6 @@ struct eri_timespec
   int64_t nsec;
 };
 
-struct eri_timeval
-{
-  int64_t sec;
-  int64_t usec;
-};
-
 static eri_unused void
 eri_timespec_add (struct eri_timespec *a, struct eri_timespec *b)
 {
@@ -783,6 +777,44 @@ eri_timespec_add_nsec (struct eri_timespec *t, int64_t n)
   t->sec += t->nsec / 1000000000;
   t->nsec %= 1000000000;
 }
+
+struct eri_timeval
+{
+  int64_t sec;
+  int64_t usec;
+};
+
+struct eri_tms
+{
+  int64_t utime;
+  int64_t stime;
+  int64_t cutime;
+  int64_t cstime;
+};
+
+struct eri_timex
+{
+  int32_t mode;
+  int64_t offset;
+  int64_t freq;
+  int64_t maxerror;
+  int64_t esterror;
+  int32_t status;
+  int64_t constant;
+  int64_t precision;
+  int64_t tolerance;
+  struct eri_timeval time;
+  int64_t tick;
+  int64_t ppsfreq;
+  int64_t jitter;
+  int32_t shift;
+  int64_t stabil;
+  int64_t jitcnt;
+  int64_t calcnt;
+  int64_t errcnt;
+  int64_t stbcnt;
+  int32_t tai;
+};
 
 static eri_unused uint8_t
 eri_futex_op_get_op (int32_t op)

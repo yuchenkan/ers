@@ -876,6 +876,44 @@ eri_unserialize_syscall_uname_record (eri_file_t file,
 }
 
 void
+eri_serialize_syscall_times_record (eri_file_t file,
+			const struct eri_syscall_times_record *rec)
+{
+}
+
+uint8_t
+eri_try_unserialize_syscall_times_record (eri_file_t file,
+			struct eri_syscall_times_record *rec)
+{
+  return 0;
+}
+
+void
+eri_unserialize_syscall_times_record (eri_file_t file,
+			struct eri_syscall_times_record *rec)
+{
+}
+
+void
+eri_serialize_syscall_gettimeofday_record (eri_file_t file,
+			const struct eri_syscall_gettimeofday_record *rec)
+{
+}
+
+uint8_t
+eri_try_unserialize_syscall_gettimeofday_record (eri_file_t file,
+			struct eri_syscall_gettimeofday_record *rec)
+{
+  return 0;
+}
+
+void
+eri_unserialize_syscall_gettimeofday_record (eri_file_t file,
+			struct eri_syscall_gettimeofday_record *rec)
+{
+}
+
+void
 eri_serialize_syscall_clock_gettime_record (eri_file_t file,
 			const struct eri_syscall_clock_gettime_record *rec)
 {

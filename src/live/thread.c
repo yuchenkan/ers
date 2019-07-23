@@ -655,6 +655,22 @@ syscall_record_res_io (struct eri_live_thread *th,
   syscall_record (th, ERI_SYSCALL_RES_IO_MAGIC, rec);
 }
 
+static uint64_t
+syscall_copy_to_user (struct eri_entry *entry, uint64_t res, void *dst,
+		      const void *src, uint64_t size, uint8_t opt)
+{
+  if (eri_syscall_is_error (res) || (opt && ! dst)) return res;
+  return eri_entry__copy_to_user (entry, dst, src, size, 0)
+						? res : ERI_EFAULT;
+}
+
+#define syscall_copy_obj_to_user(entry, res, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     syscall_copy_to_user (entry, res, dst, src, sizeof *_dst, 0); })
+#define syscall_copy_obj_to_user_opt(entry, res, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     syscall_copy_to_user (entry, res, dst, src, sizeof *_dst, 1); })
+
 #define SYSCALL_PARAMS \
   struct eri_live_thread *th, struct eri_entry *entry,			\
   struct eri_registers *regs, struct eri_live_signal_thread *sig_th
@@ -816,8 +832,8 @@ DEFINE_SYSCALL (uname)
   eri_strcpy (rec.utsname.machine, utsname.machine);
   eri_strcpy (rec.utsname.domainname, utsname.domainname);
 
-  rec.res.result = eri_entry__copy_obj_to_user (entry, user_utsname,
-					&rec.utsname, 0) ? 0 : ERI_EFAULT;
+  rec.res.result = syscall_copy_obj_to_user (entry, 0,
+					     user_utsname, &rec.utsname);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_UNAME_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -871,11 +887,65 @@ SYSCALL_TO_IMPL (setpgid)
 SYSCALL_TO_IMPL (getpgid)
 SYSCALL_TO_IMPL (getpgrp)
 
-SYSCALL_TO_IMPL (settimeofday)
-SYSCALL_TO_IMPL (gettimeofday)
-SYSCALL_TO_IMPL (time)
-SYSCALL_TO_IMPL (times)
-SYSCALL_TO_IMPL (adjtimex)
+DEFINE_SYSCALL (time)
+{
+  int64_t *user_tloc = (void *) regs->rdi;
+
+  uint64_t res = eri_entry__syscall (entry, (0, 0));
+  res = syscall_copy_obj_to_user_opt (entry, res, user_tloc, &res);
+  syscall_record_res_in (th, res);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (times)
+{
+  struct eri_tms *user_buf = (void *) regs->rdi; // TODO
+
+  struct eri_syscall_times_record rec = { 0 };
+  uint64_t res = eri_entry__syscall (entry, (0, user_buf ? &rec.tms : 0));
+  rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
+						 user_buf, &rec.tms);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_TIMES_MAGIC, &rec); // TODO
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (settimeofday)
+{
+  const struct eri_timeval *user_tv = (void *) regs->rdi;
+  if (regs->rsi)
+    non_conforming (th->log.file,
+		    "tz for settimeofday is obsoleted, treat as NULL.");
+
+  struct eri_timeval tv;
+  if (user_tv
+      && ! eri_entry__copy_obj_from_user (entry, &tv, user_tv, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  rec.res.result = eri_entry__syscall (entry,
+				       (0, user_tv ? &tv : 0), (1, 0));
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (gettimeofday)
+{
+  struct eri_timeval *user_tv = (void *) regs->rdi;
+  if (regs->rsi)
+    non_conforming (th->log.file,
+		    "tz for gettimeofday is obsoleted, treat as NULL.");
+
+  struct eri_syscall_gettimeofday_record rec = { 0 };
+  uint64_t res = eri_entry__syscall (entry,
+				(0, user_tv ? &rec.time : 0), (1, 0));
+  rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
+						 user_tv, &rec.time);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_GETTIMEOFDAY_MAGIC, &rec); // TODO
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
 
 DEFINE_SYSCALL (clock_settime)
 {
@@ -899,19 +969,20 @@ DEFINE_SYSCALL (clock_settime)
 static eri_noreturn void
 syscall_do_clock_gettime (SYSCALL_PARAMS)
 {
+  uint8_t time = (int32_t) regs->rax == __NR_clock_getres;
   int32_t id = regs->rdi;
   struct eri_timespec *user_time = (void *) regs->rsi;
 
   eri_entry__syscall_leave_if_error (entry,
 				     eri_syscall_check_clock_id (id));
 
-  struct eri_syscall_clock_gettime_record rec;
+  struct eri_syscall_clock_gettime_record rec = { 0 };
 
-  rec.res.result = eri_entry__syscall (entry, (1, &rec.time));
+  uint64_t res = eri_entry__syscall (entry,
+				(1, user_time || ! time ? &rec.time : 0));
 
-  if (eri_syscall_is_ok (rec.res.result)
-      && ! eri_entry__copy_obj_to_user (entry, user_time, &rec.time, 0))
-    rec.res.result = ERI_EFAULT;
+  rec.res.result = syscall_copy_to_user (entry, res, user_time,
+				&rec.time, sizeof *user_time, ! time);
 
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_CLOCK_GETTIME_MAGIC, &rec);
@@ -921,10 +992,30 @@ syscall_do_clock_gettime (SYSCALL_PARAMS)
 DEFINE_SYSCALL (clock_gettime) { syscall_do_clock_gettime (SYSCALL_ARGS); }
 DEFINE_SYSCALL (clock_getres) { syscall_do_clock_gettime (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (clock_nanosleep)
-SYSCALL_TO_IMPL (clock_adjtime)
-
 SYSCALL_TO_IMPL (nanosleep)
+SYSCALL_TO_IMPL (clock_nanosleep)
+
+static eri_noreturn void
+syscall_do_adjtimex (SYSCALL_PARAMS)
+{
+  uint8_t clock = (int32_t) regs->rax == __NR_clock_adjtime;
+  struct eri_timex *user_buf = (void *) (clock ? regs->rsi : regs->rdi); // TODO
+
+  if (clock)
+    eri_entry__syscall_leave_if_error (entry,
+				eri_syscall_check_clock_id (regs->rdi));
+
+  struct eri_timex buf;
+  if (! eri_entry__copy_obj_from_user (entry, &buf, user_buf, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  uint64_t res = eri_entry__syscall (entry, (clock ? 1 : 0, &buf));
+  syscall_record_res_in (th, res);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (adjtimex) { syscall_do_adjtimex (SYSCALL_ARGS); }
+DEFINE_SYSCALL (clock_adjtime) { syscall_do_adjtimex (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (alarm)
 SYSCALL_TO_IMPL (setitimer)
@@ -963,13 +1054,11 @@ DEFINE_SYSCALL (getrlimit)
   eri_entry__syscall_leave_if_error (entry,
 		eri_syscall_check_prlimit64_resource (resource));
 
-  struct eri_syscall_getrlimit_record rec;
-  rec.res.result = eri_entry__syscall (entry, (1, &rec.rlimit));
+  struct eri_syscall_getrlimit_record rec = { 0 };
+  uint64_t res = eri_entry__syscall (entry, (1, &rec.rlimit));
 
-  if (eri_syscall_is_ok (rec.res.result)
-      && ! eri_entry__copy_obj_to_user (entry, user_rlimit, &rec.rlimit, 0))
-    rec.res.result = ERI_EFAULT;
-
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_rlimit, &rec.rlimit);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_GETRLIMIT_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -993,15 +1082,12 @@ DEFINE_SYSCALL (prlimit64)
 
   struct eri_syscall_prlimit64_record rec = { io_out (th) };
 
-  rec.res.result = eri_entry__syscall (entry, (0, pid),
+  uint64_t res = eri_entry__syscall (entry, (0, pid),
 			(2, user_new_rlimit ? &new_rlimit : 0),
 			(3, user_old_rlimit ? &rec.rlimit : 0));
 
-  if (eri_syscall_is_ok (rec.res.result) && user_old_rlimit
-      && ! eri_entry__copy_obj_to_user (entry, user_old_rlimit,
-					&rec.rlimit, 0))
-    rec.res.result = ERI_EFAULT;
-
+  rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
+					user_old_rlimit, &rec.rlimit);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_PRLIMIT64_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1015,12 +1101,10 @@ DEFINE_SYSCALL (getrusage)
   eri_entry__syscall_leave_if_error (entry,
 		eri_syscall_check_getrusage_who (who));
 
-  struct eri_syscall_getrusage_record rec;
-  rec.res.result = eri_entry__syscall (entry, (1, &rec.rusage));
-  if (eri_syscall_is_ok (rec.res.result)
-      && ! eri_entry__copy_obj_to_user (entry, user_rusage,
-					&rec.rusage, 0))
-    rec.res.result = ERI_EFAULT;
+  struct eri_syscall_getrusage_record rec = { 0 };
+  uint8_t res = eri_entry__syscall (entry, (1, &rec.rusage));
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_rusage, &rec.rusage);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_GETRUSAGE_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1109,10 +1193,8 @@ DEFINE_SYSCALL (rt_sigaction)
   if (! eri_live_signal_thread__sig_action (sig_th, &args))
     syscall_restart (entry);
 
-  uint64_t res = user_old_act
-	&& ! eri_entry__copy_obj_to_user (entry, user_old_act,
-					  &old_act.act, 0)
-	? ERI_EFAULT : 0;
+  uint64_t res = syscall_copy_obj_to_user_opt (entry, 0,
+					       user_old_act, &old_act.act);
 
   if (user_old_act)
     {
@@ -1153,7 +1235,7 @@ DEFINE_SYSCALL (rt_sigpending)
   eri_entry__syscall_leave_if_error (entry,
 	eri_entry__syscall_validate_rt_sigpending (entry));
 
-  struct eri_syscall_rt_sigpending_record rec;
+  struct eri_syscall_rt_sigpending_record rec = { 0 };
 
   struct eri_sys_syscall_args args = {
     __NR_rt_sigpending, { (uint64_t) &rec.set, ERI_SIG_SETSIZE }
@@ -1228,7 +1310,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   eri_assert (eri_live_signal_thread__sig_tmp_mask_async (sig_th, &tmp_mask));
 
-  struct eri_syscall_rt_sigtimedwait_record rec;
+  struct eri_syscall_rt_sigtimedwait_record rec = { 0 };
 
   if (! eri_entry__sig_wait_pending (entry, user_timeout ? &timeout : 0))
     {
@@ -1258,9 +1340,8 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   eri_entry__clear_signal (entry);
   eri_live_signal_thread__sig_reset (sig_th, 0);
 
-  if (user_info
-      && ! eri_entry__copy_obj_to_user (entry, user_info, &rec.info, 0))
-    rec.res.result = ERI_EFAULT;
+  rec.res.result = syscall_copy_obj_to_user_opt (entry, rec.res.result,
+						 user_info, &rec.info);
 
 record:
   rec.res.in = io_in (th);
@@ -1795,12 +1876,10 @@ syscall_do_stat (SYSCALL_PARAMS)
   uint8_t at = (int32_t) regs->rax == __NR_newfstatat;
   struct eri_stat *user_stat = (void *) (at ? regs->rdx : regs->rsi);
 
-  struct eri_syscall_stat_record rec;
-  rec.res.result = eri_entry__syscall (entry, (at ? 2 : 1, &rec.stat));
-  if (eri_syscall_is_ok (rec.res.result)
-      && ! eri_entry__copy_obj_to_user (entry, user_stat, &rec.stat, 0))
-    rec.res.result = ERI_EFAULT;
-
+  struct eri_syscall_stat_record rec = { 0 };
+  uint64_t res = eri_entry__syscall (entry, (at ? 2 : 1, &rec.stat));
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_stat, &rec.stat);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_STAT_MAGIC, &rec);
 
@@ -1881,7 +1960,7 @@ syscall_do_readlink (SYSCALL_PARAMS)
   char *buf = 0;
   uint64_t res;
 
-  struct eri_syscall_res_in_record rec;
+  struct eri_syscall_res_in_record rec = { 0 };
   if (buf_size == 0)
     {
       rec.result = res = eri_entry__syscall (entry);
@@ -2058,6 +2137,7 @@ syscall_futex_get_timeout (struct eri_entry *entry,
   if (! user_timeout) return 0;
   if (! eri_entry__copy_obj_from_user (entry, timeout, user_timeout, 0))
     return ERI_EFAULT;
+  /* This complicates the replay, let kernel check.  */
 #if 0
   if ((int64_t) timeout->sec < 0 || timeout->nsec >= 1000000000)
     return ERI_EINVAL;
@@ -2098,7 +2178,7 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
 
   if (! mask) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  struct eri_syscall_futex_record rec;
+  struct eri_syscall_futex_record rec = { 0 };
   struct eri_live_thread_futex__wait_args args = {
     user_addr, val, mask, cmd != ERI_FUTEX_WAIT,
     !! (op & ERI_FUTEX_CLOCK_REALTIME), user_timeout ? &timeout : 0, &rec
@@ -2140,7 +2220,7 @@ syscall_do_futex_requeue (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 	eri_syscall_futex_check_wake2 (op, -1, user_addr, page_size (th)));
 
-  struct eri_syscall_futex_requeue_record rec;
+  struct eri_syscall_futex_requeue_record rec = { 0 };
 
   struct eri_live_thread_futex__requeue_args args = {
     { user_addr[0], user_addr[1] }, val, val2,
@@ -2174,7 +2254,7 @@ syscall_do_futex_wake_op (SYSCALL_PARAMS)
   if (op_op >= ERI_FUTEX_OP_NUM || op_cmp >= ERI_FUTEX_OP_CMP_NUM)
     eri_entry__syscall_leave (entry, ERI_ENOSYS);
 
-  struct eri_syscall_futex_record rec;
+  struct eri_syscall_futex_record rec = { 0 };
   struct eri_live_thread_futex__wake_op_args args = {
     { user_addr[0], user_addr[1] }, { val, val2 },
     op_op, op_cmp, op_arg, op_cmp_arg, &rec
@@ -2329,7 +2409,7 @@ atomic (struct eri_live_thread *th)
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
   uint64_t old;
-  struct eri_atomic_record rec;
+  struct eri_atomic_record rec = { 0 };
 
   struct eri_live_atomic_args args = {
     th->log.file, entry, code, (void *) eri_entry__get_atomic_mem (entry),

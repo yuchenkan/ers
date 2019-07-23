@@ -219,6 +219,8 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_RT_SIGTIMEDWAIT, ##__VA_ARGS__)				\
   p (SYSCALL_STAT, ##__VA_ARGS__)					\
   p (SYSCALL_UNAME, ##__VA_ARGS__)					\
+  p (SYSCALL_TIMES, ##__VA_ARGS__)					\
+  p (SYSCALL_GETTIMEOFDAY, ##__VA_ARGS__)				\
   p (SYSCALL_CLOCK_GETTIME, ##__VA_ARGS__)				\
   p (SYSCALL_GETRLIMIT,	##__VA_ARGS__)					\
   p (SYSCALL_PRLIMIT64,	##__VA_ARGS__)					\
@@ -379,6 +381,32 @@ uint8_t eri_try_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
 void eri_unserialize_syscall_uname_record (eri_file_t file,
 			struct eri_syscall_uname_record *rec);
+
+struct eri_syscall_times_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_tms tms;
+};
+
+void eri_serialize_syscall_times_record (eri_file_t file,
+			const struct eri_syscall_times_record *rec);
+uint8_t eri_try_unserialize_syscall_times_record (eri_file_t file,
+			struct eri_syscall_times_record *rec);
+void eri_unserialize_syscall_times_record (eri_file_t file,
+			struct eri_syscall_times_record *rec);
+
+struct eri_syscall_gettimeofday_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_timeval time;
+};
+
+void eri_serialize_syscall_gettimeofday_record (eri_file_t file,
+			const struct eri_syscall_gettimeofday_record *rec);
+uint8_t eri_try_unserialize_syscall_gettimeofday_record (eri_file_t file,
+			struct eri_syscall_gettimeofday_record *rec);
+void eri_unserialize_syscall_gettimeofday_record (eri_file_t file,
+			struct eri_syscall_gettimeofday_record *rec);
 
 struct eri_syscall_clock_gettime_record
 {

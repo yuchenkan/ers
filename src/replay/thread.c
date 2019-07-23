@@ -871,6 +871,21 @@ do_atomic (struct thread *th, uint16_t code, void *mem, uint8_t size,
   return 1;
 }
 
+static uint8_t
+syscall_copy_to_user (struct thread *th, uint64_t res, void *dst,
+		      const void *src, uint64_t size, uint8_t opt)
+{
+  return eri_syscall_is_non_fault_error (res) || (opt && ! dst)
+	 || (copy_to_user (th, dst, src, size) == (res != ERI_EFAULT));
+}
+
+#define syscall_copy_obj_to_user(th, res, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     syscall_copy_to_user (th, res, _dst, src, sizeof *_dst, 0); })
+#define syscall_copy_obj_to_user_opt(th, res, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     syscall_copy_to_user (th, res, _dst, src, sizeof *_dst, 1); })
+
 #define SYSCALL_PARAMS \
   struct thread *th, struct eri_entry *entry, struct eri_registers *regs
 #define SYSCALL_ARGS	th, entry, regs
@@ -1092,12 +1107,12 @@ DEFINE_SYSCALL (uname)
       || ! try_unserialize (syscall_uname_record, th, &rec)
       || eri_syscall_is_non_fault_error (rec.res.result)) diverged (th);
 
+  uint64_t res = rec.res.result;
   struct eri_utsname *user_utsname = (void *) regs->rdi;
-  if (copy_obj_to_user (th, user_utsname, &rec.utsname)
-	!= (rec.res.result != ERI_EFAULT)
+  if (! syscall_copy_obj_to_user (th, res, user_utsname, &rec.utsname)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 SYSCALL_TO_IMPL (sysinfo)
@@ -1136,11 +1151,33 @@ SYSCALL_TO_IMPL (setpgid)
 SYSCALL_TO_IMPL (getpgid)
 SYSCALL_TO_IMPL (getpgrp)
 
-SYSCALL_TO_IMPL (settimeofday)
-SYSCALL_TO_IMPL (gettimeofday)
 SYSCALL_TO_IMPL (time)
 SYSCALL_TO_IMPL (times)
-SYSCALL_TO_IMPL (adjtimex)
+
+DEFINE_SYSCALL (settimeofday)
+{
+  const struct eri_timeval *user_tv = (void *) regs->rdi;
+
+  if (! read_user_obj (th, user_tv)) syscall_leave (th, 0, ERI_EFAULT);
+  syscall_do_res_io (th);
+}
+
+DEFINE_SYSCALL (gettimeofday)
+{
+  struct eri_timeval *user_tv = (void *) regs->rdi;
+
+  struct eri_syscall_gettimeofday_record rec = { 0 };
+
+  if (! check_magic (th, ERI_SYSCALL_GETTIMEOFDAY_MAGIC)
+      || ! try_unserialize (syscall_gettimeofday_record, th, &rec))
+    diverged (th);
+
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user_opt (th, res, user_tv, &rec.time)
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
 
 DEFINE_SYSCALL (clock_settime)
 {
@@ -1148,15 +1185,14 @@ DEFINE_SYSCALL (clock_settime)
   const struct eri_timespec *user_time = (void *) regs->rsi;
 
   syscall_leave_if_error (th, 0, eri_syscall_check_clock_id (id));
-
   if (! read_user_obj (th, user_time)) syscall_leave (th, 0, ERI_EFAULT);
-
   syscall_do_res_io (th);
 }
 
 static eri_noreturn void
 syscall_do_clock_gettime (SYSCALL_PARAMS)
 {
+  uint8_t time = (int32_t) regs->rax == __NR_clock_getres;
   int32_t id = regs->rdi;
   struct eri_timespec *user_time = (void *) regs->rsi;
 
@@ -1168,21 +1204,22 @@ syscall_do_clock_gettime (SYSCALL_PARAMS)
       || ! try_unserialize (syscall_clock_gettime_record, th, &rec))
     diverged (th);
 
-  if ((eri_syscall_is_fault_or_ok (rec.res.result)
-       && copy_obj_to_user (th, user_time, &rec.time)
-		!= (rec.res.result != ERI_EFAULT))
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_to_user (th, res, user_time,
+			      &rec.time, sizeof *user_time, ! time)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 DEFINE_SYSCALL (clock_gettime) { syscall_do_clock_gettime (SYSCALL_ARGS); }
 DEFINE_SYSCALL (clock_getres) { syscall_do_clock_gettime (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (clock_nanosleep)
-SYSCALL_TO_IMPL (clock_adjtime)
-
 SYSCALL_TO_IMPL (nanosleep)
+SYSCALL_TO_IMPL (clock_nanosleep)
+
+SYSCALL_TO_IMPL (adjtimex)
+SYSCALL_TO_IMPL (clock_adjtime)
 
 SYSCALL_TO_IMPL (alarm)
 SYSCALL_TO_IMPL (setitimer)
@@ -1220,12 +1257,11 @@ DEFINE_SYSCALL (getrlimit)
       || ! try_unserialize (syscall_getrlimit_record, th, &rec))
     diverged (th);
 
-  if ((eri_syscall_is_fault_or_ok (rec.res.result)
-       && copy_obj_to_user (th, user_rlimit, &rec.rlimit)
-		!= (rec.res.result != ERI_EFAULT))
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user (th, res, user_rlimit, &rec.rlimit)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 DEFINE_SYSCALL (prlimit64)
@@ -1246,12 +1282,11 @@ DEFINE_SYSCALL (prlimit64)
       || ! io_out (th, rec.out))
     diverged (th);
 
-  if ((eri_syscall_is_fault_or_ok (rec.res.result) && user_old_rlimit
-       && copy_obj_to_user (th, user_old_rlimit, &rec.rlimit)
-		!= (rec.res.result != ERI_EFAULT))
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user_opt (th, res, user_old_rlimit, &rec.rlimit)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 DEFINE_SYSCALL (getrusage)
@@ -1267,12 +1302,11 @@ DEFINE_SYSCALL (getrusage)
       || ! try_unserialize (syscall_getrusage_record, th, &rec))
     diverged (th);
 
-  if ((eri_syscall_is_fault_or_ok (rec.res.result)
-       && copy_obj_to_user (th, user_rusage, &rec.rusage)
-		!= (rec.res.result != ERI_EFAULT))
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user (th, res, user_rusage, &rec.rusage)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 SYSCALL_TO_IMPL (capset)
@@ -1428,13 +1462,14 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   struct eri_syscall_rt_sigtimedwait_record rec;
   if (! check_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
-      || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec)
-      || (user_info && eri_syscall_is_fault_or_ok (rec.res.result)
-	  && copy_obj_to_user (th, user_info, &rec.info)
-		!= (rec.res.result != ERI_EFAULT))
+      || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec))
+    diverged (th);
+
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user_opt (th, res, user_info, &rec.info)
       || ! io_in (th, rec.res.in)) diverged (th);
 
-  syscall_leave (th, 1, rec.res.result);
+  syscall_leave (th, 1, res);
 }
 
 DEFINE_SYSCALL (kill) { syscall_do_res_io (th); }
@@ -1857,9 +1892,8 @@ syscall_do_stat (SYSCALL_PARAMS)
     }
 
   if (res == ERI_ENAMETOOLONG
-      || (eri_syscall_is_fault_or_ok (res)
-	  && copy_obj_to_user (th, user_stat, &rec.stat)
-		!= (res != ERI_EFAULT))) diverged (th);
+      || ! syscall_copy_obj_to_user (th, res, user_stat, &rec.stat))
+    diverged (th);
 
 err:
   if (! io_in (th, rec.res.in)) diverged (th);
