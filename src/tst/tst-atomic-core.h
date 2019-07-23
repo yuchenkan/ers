@@ -18,10 +18,10 @@
 #define __tst_atomic_add(e, sz, __r, __m) \
   ERS_ATOMIC_ADD (e, sz, __r, __m)
 
-#define __tst_atomic_SUB(e, sz, __r, __m) \
+#define __tst_atomic_sub(e, sz, __r, __m) \
   ERS_ATOMIC_SUB (e, sz, __r, __m)
 
-#define __tst_atomic_ADC(e, sz, __r, __m) \
+#define __tst_atomic_adc(e, sz, __r, __m) \
   ERS_ATOMIC_ADC (e, sz, __r, __m)
 
 #define __tst_atomic_sbb(e, sz, __r, __m) \

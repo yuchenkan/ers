@@ -184,7 +184,7 @@ m4_include(`m4/util.m4')
 				%_ERI_ASM_TEMPLATE_SIZE (sz, 2), %1))	\
 		"; pushfq; popq\t%q0"					\
 		: "+r" (*_f), "+m" (*_m) : "r" (_v)			\
-		: "cc" ERI_PP_IF (b, m "memory"))
+		: "cc" ERI_PP_IF (b, , "memory"))
 
 #define m4_ns(atomic_common2_x)(op, m, v, f, b) \
   do {									\

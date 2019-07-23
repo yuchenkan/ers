@@ -3,6 +3,7 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
+#include <lib/cpu.h>
 #include <common/debug.h>
 
 #include <tst/tst-rand.h>
@@ -68,6 +69,44 @@ tst_live_start (void)
 
   tst_atomic_add (&v, 0xff00, 1);
   eri_assert (v == 0xffff);
+
+  tst_atomic_sub (&v, 0xff00, 1);
+  eri_assert (v == 0xff);
+
+  uint64_t rflags = ERI_RFLAGS_CF;
+  tst_atomic_sbb_x (&v, 0xff, &rflags, 1);
+  eri_assert (v == -1);
+  eri_assert (rflags & ERI_RFLAGS_CF);
+
+  tst_atomic_adc_x (&v, 0xff, &rflags, 1);
+  eri_assert (v == 0xff);
+  eri_assert (rflags & ERI_RFLAGS_CF);
+
+  tst_atomic_adc_x (&v, 0, &rflags, 1);
+  eri_assert (v == 0x100);
+  eri_assert (! (rflags & ERI_RFLAGS_CF));
+
+  tst_atomic_neg (&v, 1);
+  eri_assert (v == -0x100);
+
+  v = ~0x100;
+  tst_atomic_not (&v, 1);
+  eri_assert (v == 0x100);
+
+  rflags = 0;
+  tst_atomic_btc_x (&v, 8, &rflags, 1);
+  eri_assert (v == 0);
+  eri_assert (rflags & ERI_RFLAGS_CF);
+
+  rflags = 0;
+  tst_atomic_bts_x (&v, 8, &rflags, 1);
+  eri_assert (v == 0x100);
+  eri_assert (! (rflags & ERI_RFLAGS_CF));
+
+  rflags = 0;
+  tst_atomic_btc_x (&v, 8, &rflags, 1);
+  eri_assert (v == 0);
+  eri_assert (rflags & ERI_RFLAGS_CF);
 
   tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
   tst_assert_sys_exit (0);

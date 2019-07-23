@@ -166,16 +166,16 @@
   _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_NOT(e, sz, mem) \
-  _ERS_ATOMIC_COMMON (XOR, e, sz, mem)
+  _ERS_ATOMIC_COMMON (NOT, e, sz, mem)
 
 #define _ERS_ATOMIC_BTC(e, sz, reg, mem) \
-  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (BTC, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_BTR(e, sz, reg, mem) \
-  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (BTR, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_BTS(e, sz, reg, mem) \
-  _ERS_ATOMIC_COMMON2 (XOR, e, sz, reg, mem)
+  _ERS_ATOMIC_COMMON2 (BTS, e, sz, reg, mem)
 
 #define _ERS_ATOMIC_XADD(e, sz, reg, mem) \
   _ERS_ATOMIC_XCOMMON2 (XADD, e, sz, reg, mem)

@@ -80,6 +80,7 @@
   ERI_FOREACH_REG_SIZE3 (p, ##__VA_ARGS__)				\
   p (q, ##__VA_ARGS__)
 
+#define ERI_RFLAGS_CF		(1 << 0)
 #define ERI_RFLAGS_ZF		(1 << 6)
 #define ERI_RFLAGS_TF		(1 << 8)
 #define ERI_RFLAGS_DF		(1 << 10)
