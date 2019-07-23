@@ -167,6 +167,30 @@ main (int32_t argc, const char **argv)
 		    rec.utsname.version, rec.utsname.machine,
 		    rec.utsname.domainname);
 	  }
+        else if (magic == ERI_SYSCALL_TIMES_MAGIC)
+	  {
+	    struct eri_syscall_times_record rec;
+	    eri_unserialize_syscall_times_record (file, &rec);
+	    printf ("  syscall.times.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      printf (", ..tms.utime: %ld, ...stime: %ld, "
+		      "...cutime: %ld, ...cstime: %ld\n",
+		      rec.tms.utime, rec.tms.stime,
+		      rec.tms.cutime, rec.tms.cstime);
+	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_GETTIMEOFDAY_MAGIC)
+	  {
+	    struct eri_syscall_gettimeofday_record rec;
+	    eri_unserialize_syscall_gettimeofday_record (file, &rec);
+	    printf ("  syscall.times.result: %ld, ..in: %lu",
+		    rec.res.result, rec.res.in);
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      printf (", ..time.sec: %ld, ...usec: %ld\n",
+		      rec.time.sec, rec.time.usec);
+	    else printf ("\n");
+	  }
         else if (magic == ERI_SYSCALL_CLOCK_GETTIME_MAGIC)
 	  {
 	    struct eri_syscall_clock_gettime_record rec;

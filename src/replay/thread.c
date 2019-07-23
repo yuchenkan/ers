@@ -1151,8 +1151,34 @@ SYSCALL_TO_IMPL (setpgid)
 SYSCALL_TO_IMPL (getpgid)
 SYSCALL_TO_IMPL (getpgrp)
 
-SYSCALL_TO_IMPL (time)
-SYSCALL_TO_IMPL (times)
+DEFINE_SYSCALL (time)
+{
+  int64_t *user_tloc = (void *) regs->rdi;
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_in (th);
+
+  uint64_t res = rec.result;
+  if (! syscall_copy_obj_to_user_opt (th, res, user_tloc, &res)
+      || ! io_in (th, rec.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
+DEFINE_SYSCALL (times)
+{
+  struct eri_tms *user_buf = (void *) regs->rdi;
+
+  struct eri_syscall_times_record rec;
+
+  if (! check_magic (th, ERI_SYSCALL_TIMES_MAGIC)
+      || ! try_unserialize (syscall_times_record, th, &rec))
+    diverged (th);
+
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user_opt (th, res, user_buf, &rec.tms)
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
 
 DEFINE_SYSCALL (settimeofday)
 {
@@ -1218,8 +1244,22 @@ DEFINE_SYSCALL (clock_getres) { syscall_do_clock_gettime (SYSCALL_ARGS); }
 SYSCALL_TO_IMPL (nanosleep)
 SYSCALL_TO_IMPL (clock_nanosleep)
 
-SYSCALL_TO_IMPL (adjtimex)
-SYSCALL_TO_IMPL (clock_adjtime)
+static eri_noreturn void
+syscall_do_adjtimex (SYSCALL_PARAMS)
+{
+  uint8_t clock = (int32_t) regs->rax == __NR_clock_adjtime;
+  struct eri_timex *user_buf = (void *) (clock ? regs->rsi : regs->rdi);
+
+  if (clock)
+    syscall_leave_if_error (th, 0, eri_syscall_check_clock_id (regs->rdi));
+
+  if (! read_user_obj (th, user_buf)) syscall_leave (th, 0, ERI_EFAULT);
+
+  syscall_do_res_io (th);
+}
+
+DEFINE_SYSCALL (adjtimex) { syscall_do_adjtimex (SYSCALL_ARGS); }
+DEFINE_SYSCALL (clock_adjtime) { syscall_do_adjtimex (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (alarm)
 SYSCALL_TO_IMPL (setitimer)

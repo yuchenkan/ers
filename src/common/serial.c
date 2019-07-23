@@ -411,6 +411,30 @@ eri_unserialize_timeval (eri_file_t file, struct eri_timeval *timeval)
 }
 
 void
+eri_serialize_tms (eri_file_t file, const struct eri_tms *tms)
+{
+  eri_serialize_int64 (file, tms->utime);
+  eri_serialize_int64 (file, tms->stime);
+  eri_serialize_int64 (file, tms->cutime);
+  eri_serialize_int64 (file, tms->cstime);
+}
+
+uint8_t
+eri_try_unserialize_tms (eri_file_t file, struct eri_tms *tms)
+{
+  return eri_try_unserialize_int64 (file, &tms->utime)
+	 && eri_try_unserialize_int64 (file, &tms->stime)
+	 && eri_try_unserialize_int64 (file, &tms->cutime)
+	 && eri_try_unserialize_int64 (file, &tms->cstime);
+}
+
+void
+eri_unserialize_tms (eri_file_t file, struct eri_tms *tms)
+{
+  eri_assert (eri_try_unserialize_tms (file, tms));
+}
+
+void
 eri_serialize_stat (eri_file_t file, const struct eri_stat *stat)
 {
   eri_serialize_uint64 (file, stat->dev);
@@ -879,38 +903,50 @@ void
 eri_serialize_syscall_times_record (eri_file_t file,
 			const struct eri_syscall_times_record *rec)
 {
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_tms (file, &rec->tms);
 }
 
 uint8_t
 eri_try_unserialize_syscall_times_record (eri_file_t file,
 			struct eri_syscall_times_record *rec)
 {
-  return 0;
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_tms (file, &rec->tms));
 }
 
 void
 eri_unserialize_syscall_times_record (eri_file_t file,
 			struct eri_syscall_times_record *rec)
 {
+  eri_assert (eri_try_unserialize_syscall_times_record (file, rec));
 }
 
 void
 eri_serialize_syscall_gettimeofday_record (eri_file_t file,
 			const struct eri_syscall_gettimeofday_record *rec)
 {
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_timeval (file, &rec->time);
 }
 
 uint8_t
 eri_try_unserialize_syscall_gettimeofday_record (eri_file_t file,
 			struct eri_syscall_gettimeofday_record *rec)
 {
-  return 0;
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_timeval (file, &rec->time));
 }
 
 void
 eri_unserialize_syscall_gettimeofday_record (eri_file_t file,
 			struct eri_syscall_gettimeofday_record *rec)
 {
+  eri_assert (eri_try_unserialize_syscall_gettimeofday_record (file, rec));
 }
 
 void

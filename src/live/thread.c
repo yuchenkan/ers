@@ -899,14 +899,14 @@ DEFINE_SYSCALL (time)
 
 DEFINE_SYSCALL (times)
 {
-  struct eri_tms *user_buf = (void *) regs->rdi; // TODO
+  struct eri_tms *user_buf = (void *) regs->rdi;
 
   struct eri_syscall_times_record rec = { 0 };
   uint64_t res = eri_entry__syscall (entry, (0, user_buf ? &rec.tms : 0));
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
 						 user_buf, &rec.tms);
   rec.res.in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_TIMES_MAGIC, &rec); // TODO
+  syscall_record (th, ERI_SYSCALL_TIMES_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
@@ -943,7 +943,7 @@ DEFINE_SYSCALL (gettimeofday)
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
 						 user_tv, &rec.time);
   rec.res.in = io_in (th);
-  syscall_record (th, ERI_SYSCALL_GETTIMEOFDAY_MAGIC, &rec); // TODO
+  syscall_record (th, ERI_SYSCALL_GETTIMEOFDAY_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
@@ -999,7 +999,7 @@ static eri_noreturn void
 syscall_do_adjtimex (SYSCALL_PARAMS)
 {
   uint8_t clock = (int32_t) regs->rax == __NR_clock_adjtime;
-  struct eri_timex *user_buf = (void *) (clock ? regs->rsi : regs->rdi); // TODO
+  struct eri_timex *user_buf = (void *) (clock ? regs->rsi : regs->rdi);
 
   if (clock)
     eri_entry__syscall_leave_if_error (entry,
@@ -1009,9 +1009,11 @@ syscall_do_adjtimex (SYSCALL_PARAMS)
   if (! eri_entry__copy_obj_from_user (entry, &buf, user_buf, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
-  uint64_t res = eri_entry__syscall (entry, (clock ? 1 : 0, &buf));
-  syscall_record_res_in (th, res);
-  eri_entry__syscall_leave (entry, res);
+  struct eri_syscall_res_io_record rec = {
+    io_out (th), { eri_entry__syscall (entry, (clock ? 1 : 0, &buf)) }
+  };
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
 }
 
 DEFINE_SYSCALL (adjtimex) { syscall_do_adjtimex (SYSCALL_ARGS); }

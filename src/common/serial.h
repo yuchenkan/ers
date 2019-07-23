@@ -92,6 +92,10 @@ uint8_t eri_try_unserialize_timeval (eri_file_t file,
 void eri_unserialize_timeval (eri_file_t file,
 			       struct eri_timeval *timeval);
 
+void eri_serialize_tms (eri_file_t file, const struct eri_tms *tms);
+uint8_t eri_try_unserialize_tms (eri_file_t file, struct eri_tms *tms);
+void eri_unserialize_tms (eri_file_t file, struct eri_tms *tms);
+
 void eri_serialize_stat (eri_file_t file, const struct eri_stat *stat);
 uint8_t eri_try_unserialize_stat (eri_file_t file, struct eri_stat *stat);
 void eri_unserialize_stat (eri_file_t file, struct eri_stat *stat);

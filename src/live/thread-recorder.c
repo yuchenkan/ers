@@ -373,6 +373,10 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_stat_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_UNAME_MAGIC)
     eri_serialize_syscall_uname_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_TIMES_MAGIC)
+    eri_serialize_syscall_times_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_GETTIMEOFDAY_MAGIC)
+    eri_serialize_syscall_gettimeofday_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_CLOCK_GETTIME_MAGIC)
     eri_serialize_syscall_clock_gettime_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_GETRLIMIT_MAGIC)
