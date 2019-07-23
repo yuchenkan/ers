@@ -2079,8 +2079,6 @@ DEFINE_SYSCALL (mmap)
   };
   eri_assert_unlock (&group->mm_lock);
 
-  if (eri_global_enable_debug) eri_dump_maps ();
-
   eri_live_thread_recorder__rec_syscall_mmap (th->rec, &rec,
 					      anony ? 0 : len);
   eri_entry__syscall_leave (entry, rec.result);

@@ -192,7 +192,7 @@ eri_close_log (struct eri_mtpool *pool, struct eri_buf_file *file)
     do									\
       {									\
         eri_assert_fread (_file, _buf, sizeof _buf, &_len);		\
-        eri_assert_fwrite (ERI_STDOUT, _buf, _len, 0);			\
+        eri_assert_fwrite (ERI_STDERR, _buf, _len, 0);			\
       }									\
     while (_len == sizeof _buf);					\
   } while (0)

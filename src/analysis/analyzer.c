@@ -91,7 +91,7 @@ update_interval_tree (struct eri_mtpool *pool, struct interval_tree *tree,
 	  diff (add_start, it->start, args);
 	  add_start = it->end;
 	}
-      else diff (it->end, it->start, args);
+      else diff (it->start, it->end, args);
 
       struct interval *tmp = interval_rbt_get_next (it);
       interval_rbt_remove (tree, it);
@@ -108,8 +108,7 @@ update_interval_tree (struct eri_mtpool *pool, struct interval_tree *tree,
 	  interval_rbt_remove (tree, it);
 	  eri_assert_mtfree (pool, it);
 	}
-      else if (add_start != end)
-	diff (add_start, end, args);
+      else if (add_start != end) diff (add_start, end, args);
 
       it = eri_assert_mtmalloc (pool, sizeof *it);
       it->start = start;
@@ -195,12 +194,19 @@ struct race_inc
   uint64_t size;
 };
 
+struct race_ranges_insert_diff_args
+{
+  eri_file_t log;
+  struct eri_buf *incs;
+};
+
 static void
 race_ranges_insert_diff (uint64_t start, uint64_t end, void *args)
 {
-  eri_xassert (end > start, eri_info);
+  struct race_ranges_insert_diff_args *a = args;;
+  eri_lassert (a->log, end > start);
   struct race_inc inc = { start, end - start };
-  eri_assert_buf_append (args, &inc, 1);
+  eri_assert_buf_append (a->incs, &inc, 1);
 }
 
 static uint8_t
@@ -208,10 +214,11 @@ race_ranges_insert (eri_file_t log,
 		    struct eri_mtpool *pool, struct interval_tree *ranges,
 		    struct race_access *acc, struct eri_buf *incs)
 {
-  // eri_log_info (log, "%lx %lx\n", acc->addr, acc->addr + acc->size);
+  // eri_log (log, "%lx %lx\n", acc->addr, acc->addr + acc->size);
   uint64_t o = incs->o;
+  struct race_ranges_insert_diff_args args = { log, incs };
   update_interval_tree (pool, ranges, acc->addr, acc->addr + acc->size, 1,
-			race_ranges_insert_diff, incs);
+			race_ranges_insert_diff, &args);
   return o != incs->o;
 }
 
@@ -1509,6 +1516,7 @@ eri_analyzer__sig_handler (struct eri_analyzer__sig_handler_args *args)
 
 struct update_mm_prot_diff_args
 {
+  eri_file_t log;
   struct eri_buf *accesses;
   uint64_t rip;
   uint8_t type;
@@ -1532,7 +1540,7 @@ update_mm_prot (struct eri_analyzer *al, uint8_t read,
   eri_assert_buf_mtpool_init (&accesses, pool, 16, struct eri_access);
 
   struct update_mm_prot_diff_args args = {
-    &accesses, eri_entry__get_start (al->entry),
+    al->log.file, &accesses, eri_entry__get_start (al->entry),
     read ? ERI_ACCESS_PROT_READ : ERI_ACCESS_PROT_WRITE
   };
 
