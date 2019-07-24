@@ -676,6 +676,29 @@ syscall_copy_to_user (struct eri_entry *entry, uint64_t res, void *dst,
   struct eri_registers *regs, struct eri_live_signal_thread *sig_th
 #define SYSCALL_ARGS	th, entry, regs, sig_th
 
+static uint64_t
+syscall_copy_path_from_user (struct eri_live_thread *th,
+			     char **path, const char *user_path)
+{
+  struct eri_mtpool *pool = th->group->pool;
+  uint64_t len = ERI_PATH_MAX;
+  char *t = eri_assert_mtmalloc (pool, len);
+  if (! eri_entry__copy_str_from_user (th->entry, t, user_path, &len, 0))
+    {
+      eri_assert_mtfree (pool, t);
+      return ERI_EFAULT;
+    }
+  if (len == ERI_PATH_MAX)
+    {
+      eri_assert_mtfree (pool, t);
+      return ERI_ENAMETOOLONG;
+    }
+  *path = eri_assert_mtmalloc (pool, len + 1);
+  eri_strcpy (*path, t);
+  eri_assert_mtfree (pool, t);
+  return 0;
+}
+
 static eri_noreturn void
 syscall_do_no_sys (SYSCALL_PARAMS)
 {
@@ -683,7 +706,7 @@ syscall_do_no_sys (SYSCALL_PARAMS)
   eri_entry__syscall_leave (entry, ERI_ENOSYS);
 }
 
-static eri_noreturn void
+static eri_unused eri_noreturn void
 syscall_do_res_in (SYSCALL_PARAMS)
 {
   uint64_t res = eri_entry__syscall (entry);
@@ -902,6 +925,7 @@ DEFINE_SYSCALL (times)
   struct eri_tms *user_buf = (void *) regs->rdi;
 
   struct eri_syscall_times_record rec = { 0 };
+  /* XXX: cutimes & cstimes */
   uint64_t res = eri_entry__syscall (entry, (0, user_buf ? &rec.tms : 0));
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
 						 user_buf, &rec.tms);
@@ -910,6 +934,7 @@ DEFINE_SYSCALL (times)
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
+/* XXX: test */
 DEFINE_SYSCALL (settimeofday)
 {
   const struct eri_timeval *user_tv = (void *) regs->rdi;
@@ -1479,9 +1504,18 @@ syscall_do_open (SYSCALL_PARAMS)
 {
   struct eri_live_thread_group *group = th->group;
 
+  uint8_t at = (int32_t) regs->rax == __NR_openat;
+  /* XXX: The order of error check may changed.  */
+  const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+  char *path;
+  /* XXX: /proc */
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &path, user_path));
+
   struct eri_syscall_res_io_record rec = { io_out (th) };
   eri_assert_lock (&group->fdf_lock);
-  rec.res.result = eri_entry__syscall_interruptible (entry);
+  rec.res.result = eri_entry__syscall_interruptible (entry,
+						     (at ? 1 : 0, path));
   if (eri_syscall_is_ok (rec.res.result))
     {
       uint8_t openat = (int32_t) regs->rax == __NR_openat;
@@ -1497,7 +1531,9 @@ syscall_do_open (SYSCALL_PARAMS)
     }
   eri_assert_unlock (&group->fdf_lock);
 
+  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
+  eri_assert_mtfree (group->pool, path);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
@@ -1514,13 +1550,15 @@ DEFINE_SYSCALL (close)
   struct fdf *fdf = fdf_try_lock (group, fd);
   if (! fdf) { rec.res.result = ERI_EBADF; goto record; }
 
-  rec.res.result = eri_syscall (close, fd);
+  struct eri_sys_syscall_args args = { __NR_close, { fd } };
+  rec.res.result = eri_entry__sys_syscall_interruptible (entry, &args);
 
   if (eri_syscall_is_ok (rec.res.result))
     fdf_remove_free (group, fdf);
   eri_assert_unlock (&group->fdf_lock);
 
 record:
+  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1660,7 +1698,7 @@ syscall_read_sig_fd (struct eri_live_thread *th,
 
 /*
  * This is so mainly because initialy we want to record the order
- * of memory related info, e.g. EFAULT, which is discarded as discussed
+ * of memory related info, e.g. EFAULT, the idea is dropped as discussed
  * in the guide of syscalls. This is preserved now for the consistency
  * with signalfd, see signal-thread.c, and it's not that hard to impl.
  */
@@ -1875,16 +1913,27 @@ SYSCALL_TO_IMPL (ioctl)
 static eri_noreturn void
 syscall_do_stat (SYSCALL_PARAMS)
 {
-  uint8_t at = (int32_t) regs->rax == __NR_newfstatat;
+  int32_t nr = (int32_t) regs->rax;
+  uint8_t at = nr == __NR_newfstatat;
+  uint64_t fd_or_path = regs->rdi;
+  if (nr != __NR_fstat)
+    {
+      const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+      eri_entry__syscall_leave_if_error (entry,
+	syscall_copy_path_from_user (th, (void *) &fd_or_path, user_path));
+    }
+
   struct eri_stat *user_stat = (void *) (at ? regs->rdx : regs->rsi);
 
   struct eri_syscall_stat_record rec = { 0 };
-  uint64_t res = eri_entry__syscall (entry, (at ? 2 : 1, &rec.stat));
+  uint64_t res = eri_entry__syscall (entry,
+			(at ? 1 : 0, fd_or_path), (at ? 2 : 1, &rec.stat));
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_stat, &rec.stat);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_STAT_MAGIC, &rec);
-
+  if (nr != __NR_fstat)
+    eri_assert_mtfree (th->group->pool, (void *) fd_or_path);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
@@ -1893,8 +1942,37 @@ DEFINE_SYSCALL (fstat) { syscall_do_stat (SYSCALL_ARGS); }
 DEFINE_SYSCALL (newfstatat) { syscall_do_stat (SYSCALL_ARGS); }
 DEFINE_SYSCALL (lstat) { syscall_do_stat (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (access) { syscall_do_res_in (SYSCALL_ARGS); }
-DEFINE_SYSCALL (faccessat) { syscall_do_res_in (SYSCALL_ARGS); }
+static eri_noreturn void
+syscall_do_access (SYSCALL_PARAMS)
+{
+  int32_t nr = regs->rax;
+  uint8_t at = nr == __NR_unlinkat || nr == __NR_faccessat
+	       || nr == __NR_fchmodat;
+  uint8_t io = nr != __NR_access && nr != __NR_faccessat;
+
+  const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+  char *path;
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &path, user_path));
+
+  uint64_t res;
+  if (io)
+    {
+      struct eri_syscall_res_io_record rec = { io_out (th) };
+      res = rec.res.result = eri_entry__syscall (entry, (at ? 1 : 0, path));
+      syscall_record_res_io (th, &rec);
+    }
+  else
+    {
+      res = eri_entry__syscall (entry, (at ? 1 : 0, path));
+      syscall_record_res_in (th, res);
+    }
+  eri_assert_mtfree (th->group->pool, path);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (access) { syscall_do_access (SYSCALL_ARGS); }
+DEFINE_SYSCALL (faccessat) { syscall_do_access (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (setxattr)
 SYSCALL_TO_IMPL (fsetxattr)
@@ -1930,20 +2008,50 @@ SYSCALL_TO_IMPL (getcwd)
 SYSCALL_TO_IMPL (chdir)
 SYSCALL_TO_IMPL (fchdir)
 
-DEFINE_SYSCALL (rename) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (renameat) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (renameat2) { syscall_do_res_io (SYSCALL_ARGS); }
+static eri_noreturn void
+syscall_do_rename (SYSCALL_PARAMS)
+{
+  int32_t nr = regs->rax;
+  uint8_t oldpath_idx = ! (nr == __NR_rename || nr == __NR_link
+			   || nr == __NR_symlink || nr == __NR_symlinkat);
+  uint8_t newpath_idx = (nr == __NR_rename || nr == __NR_link
+		|| nr == __NR_symlink) ? 1 : (nr == __NR_symlinkat ? 2 : 3);
+  const char *user_oldpath = (void *) (oldpath_idx ? regs->rsi : regs->rdi);
+  const char *user_newpath = (void *) (newpath_idx == 1 ? regs->rsi
+				: (newpath_idx == 2 ? regs->rdx : regs->r10));
+  char *oldpath, *newpath;
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &oldpath, user_oldpath));
+  uint64_t res = syscall_copy_path_from_user (th, &newpath, user_newpath);
+  if (eri_syscall_is_error (res))
+    {
+      eri_assert_mtfree (th->group->pool, oldpath);
+      eri_entry__syscall_leave (entry, res);
+    }
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  rec.res.result = eri_entry__syscall (entry,
+				(oldpath_idx, oldpath), (newpath_idx, newpath));
+  syscall_record_res_io (th, &rec);
+  eri_assert_mtfree (th->group->pool, oldpath);
+  eri_assert_mtfree (th->group->pool, newpath);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (rename) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (renameat2) { syscall_do_rename (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (mkdir)
 SYSCALL_TO_IMPL (mkdirat)
 SYSCALL_TO_IMPL (rmdir)
 
-DEFINE_SYSCALL (link) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (linkat) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (unlink) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (unlinkat) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (symlink) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (symlinkat) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (link) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (linkat) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (unlink) { syscall_do_access (SYSCALL_ARGS); }
+DEFINE_SYSCALL (unlinkat) { syscall_do_access (SYSCALL_ARGS); }
+DEFINE_SYSCALL (symlink) { syscall_do_rename (SYSCALL_ARGS); }
+DEFINE_SYSCALL (symlinkat) { syscall_do_rename (SYSCALL_ARGS); }
 
 static uint64_t
 syscall_do_readlink_buf (struct eri_entry *entry, uint8_t at,
@@ -1952,10 +2060,18 @@ syscall_do_readlink_buf (struct eri_entry *entry, uint8_t at,
   return eri_entry__syscall (entry, (at ? 2 : 1, buf), (at ? 3 : 2, size));
 }
 
+/* TODO */
 static eri_noreturn void
 syscall_do_readlink (SYSCALL_PARAMS)
 {
   uint8_t at = (int32_t) regs->rax == __NR_readlinkat;
+  const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+  char *path;
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &path, user_path));
+
+  struct eri_mtpool *pool = th->group->pool;
+
   char *user_buf = (void *) (at ? regs->rdx : regs->rsi);
   uint64_t buf_size = at ? regs->r10 : regs->rdx;
 
@@ -1969,7 +2085,6 @@ syscall_do_readlink (SYSCALL_PARAMS)
       goto record;
     }
 
-  struct eri_mtpool *pool = th->group->pool;
   if (buf_size > ERI_PATH_MAX)
     {
       uint64_t size = ERI_PATH_MAX;
@@ -1996,6 +2111,7 @@ record:
   rec.in = io_in (th);
   eri_live_thread_recorder__rec_syscall_readlink (th->rec, &rec, buf,
 					eri_syscall_is_ok (res) ? res : 0);
+  eri_assert_mtfree (pool, path);
   if (buf) eri_assert_mtfree (pool, buf);
   eri_entry__syscall_leave (entry, rec.result);
 }
@@ -2008,9 +2124,9 @@ SYSCALL_TO_IMPL (mknodat)
 
 SYSCALL_TO_IMPL (umask)
 
-DEFINE_SYSCALL (chmod) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (chmod) { syscall_do_access (SYSCALL_ARGS); }
 DEFINE_SYSCALL (fchmod) { syscall_do_res_io (SYSCALL_ARGS); }
-DEFINE_SYSCALL (fchmodat) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (fchmodat) { syscall_do_access (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (chown)
 SYSCALL_TO_IMPL (fchown)

@@ -158,6 +158,8 @@ uint8_t eri_entry__copy_to_user (struct eri_entry *entry,
   eri_entry__copy_from_user (entry, dst, src, sizeof *(dst), acc)
 #define eri_entry__copy_obj_to_user(entry, dst, src, acc) \
   eri_entry__copy_to_user (entry, dst, src, sizeof *(dst), acc)
+uint8_t eri_entry__copy_str_from_user (struct eri_entry *entry,
+	char *dst, const char *src, uint64_t *len, struct eri_access *acc);
 
 #define eri_entry__syscall(entry, ...) \
   ({ struct eri_sys_syscall_args _args;					\
@@ -166,10 +168,11 @@ uint8_t eri_entry__copy_to_user (struct eri_entry *entry,
      eri_sys_syscall (&_args); })
 uint64_t eri_entry__sys_syscall_interruptible (
 	struct eri_entry *entry, struct eri_sys_syscall_args *args);
-#define eri_entry__syscall_interruptible(entry) \
+#define eri_entry__syscall_interruptible(entry, ...) \
   ({ struct eri_entry *_entry = entry;					\
      struct eri_sys_syscall_args _args;					\
-     eri_init_sys_syscall_args_from_registers (&_args, &_entry->_regs);	\
+     eri_init_sys_syscall_args_from_registers (&_args,			\
+				&_entry->_regs, ##__VA_ARGS__);		\
      eri_entry__sys_syscall_interruptible (_entry, &_args); })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,

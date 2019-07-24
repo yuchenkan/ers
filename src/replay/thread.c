@@ -772,9 +772,9 @@ out:
 #define read_user_obj(th, obj)	read_user (th, obj, sizeof *(obj))
 
 static uint8_t
-read_str_from_user (struct thread *th, const char *str,
-		    uint64_t max, uint64_t *len)
+read_str_from_user (struct thread *th, const char *str, uint64_t *len)
 {
+  uint64_t max = *len;
   eri_assert (max);
 
   struct eri_entry *entry = th->entry;
@@ -885,6 +885,14 @@ syscall_copy_to_user (struct thread *th, uint64_t res, void *dst,
 #define syscall_copy_obj_to_user_opt(th, res, dst, src) \
   ({ typeof (dst) _dst = dst;						\
      syscall_copy_to_user (th, res, _dst, src, sizeof *_dst, 1); })
+
+static uint64_t
+syscall_read_user_path (struct thread *th, const char *user_path)
+{
+  uint64_t len = ERI_PATH_MAX;
+  return read_str_from_user (th, user_path, &len)
+	? (len == ERI_PATH_MAX ? ERI_ENAMETOOLONG : 0) : ERI_EFAULT;
+}
 
 #define SYSCALL_PARAMS \
   struct thread *th, struct eri_entry *entry, struct eri_registers *regs
@@ -1598,45 +1606,19 @@ SYSCALL_TO_IMPL (fanotify_mark)
 SYSCALL_TO_IMPL (userfaultfd)
 SYSCALL_TO_IMPL (perf_event_open)
 
-static uint64_t
-syscall_read_user_path (struct thread *th, const char *user_path)
-{
-  uint64_t len;
-  return read_str_from_user (th, user_path, ERI_PATH_MAX, &len)
-	? (len == ERI_PATH_MAX ? ERI_ENAMETOOLONG : 0) : ERI_EFAULT;
-}
-
-static uint8_t
-syscall_user_path_error (struct thread *th,
-			 const char *user_path, uint64_t res)
-{
-  uint64_t user_path_res = syscall_read_user_path (th, user_path);
-  return eri_syscall_is_error (user_path_res) && res == user_path_res;
-}
-
-static eri_noreturn void
-syscall_do_common_open (struct thread *th, struct eri_registers *regs,
-			struct eri_syscall_res_in_record rec)
-{
-  uint64_t res = rec.result;
-
-  int32_t nr = regs->rax;
-  const char *user_path = (void *) (
-	nr == __NR_openat || nr == __NR_faccessat || nr == __NR_fchmodat
-					? regs->rsi : regs->rdi);
-
-  if (syscall_user_path_error (th, user_path, res)) goto err;
-  if (res == ERI_EFAULT || res == ERI_ENAMETOOLONG) diverged (th);
-err:
-  if (! io_in (th, rec.in)) diverged (th);
-
-  syscall_leave (th, 1, res);
-}
-
 static eri_noreturn void
 syscall_do_open (SYSCALL_PARAMS)
 {
-  syscall_do_common_open (th, regs, syscall_fetch_res_io (th));
+  int32_t nr = regs->rax;
+  uint8_t at = nr == __NR_openat || nr == __NR_unlinkat
+	       || nr == __NR_faccessat || nr == __NR_fchmodat;
+  uint8_t io = nr != __NR_access && nr != __NR_faccessat;
+
+  const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+  
+  syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
+  if (io) syscall_do_res_io (th);
+  else syscall_do_res_in (th);
 }
 
 DEFINE_SYSCALL (open) { syscall_do_open (SYSCALL_ARGS); }
@@ -1873,10 +1855,9 @@ syscall_do_write (SYSCALL_PARAMS)
     }
 
 out:
-#if 1
-  if (eri_syscall_is_ok (rec.res.result) && regs->rdi == 1)
+  if (eri_syscall_is_ok (rec.res.result)
+      && (regs->rdi == 1 || regs->rdi == 2))
     eri_entry__syscall (entry);
-#endif
 
   if (writev) eri_entry__syscall_free_rw_iov (entry, iov);
   syscall_div_in_leave (th, div, rec.res.in, rec.res.result);
@@ -1915,8 +1896,13 @@ static eri_noreturn void
 syscall_do_stat (SYSCALL_PARAMS)
 {
   int32_t nr = regs->rax;
-
   uint8_t at = nr == __NR_newfstatat;
+  if (nr != __NR_fstat)
+    {
+      const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+      syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
+    }
+
   struct eri_stat *user_stat = (void *) (at ? regs->rdx : regs->rsi);
 
   struct eri_syscall_stat_record rec;
@@ -1924,19 +1910,9 @@ syscall_do_stat (SYSCALL_PARAMS)
       || ! try_unserialize (syscall_stat_record, th, &rec)) diverged (th);
 
   uint64_t res = rec.res.result;
-  if (nr != __NR_fstat)
-    {
-      const char *user_path = (void *) (nr == __NR_newfstatat
-					? regs->rsi : regs->rdi);
-      if (syscall_user_path_error (th, user_path, res)) goto err;
-    }
 
-  if (res == ERI_ENAMETOOLONG
-      || ! syscall_copy_obj_to_user (th, res, user_stat, &rec.stat))
-    diverged (th);
-
-err:
-  if (! io_in (th, rec.res.in)) diverged (th);
+  if (! syscall_copy_obj_to_user (th, res, user_stat, &rec.stat)
+      || ! io_in (th, rec.res.in)) diverged (th);
 
   syscall_leave (th, 1, res);
 }
@@ -1946,14 +1922,8 @@ DEFINE_SYSCALL (fstat) { syscall_do_stat (SYSCALL_ARGS); }
 DEFINE_SYSCALL (newfstatat) { syscall_do_stat (SYSCALL_ARGS); }
 DEFINE_SYSCALL (lstat) { syscall_do_stat (SYSCALL_ARGS); }
 
-static eri_noreturn void
-syscall_do_access (SYSCALL_PARAMS)
-{
-  syscall_do_common_open (th, regs, syscall_fetch_res_in (th));
-}
-
-DEFINE_SYSCALL (access) { syscall_do_access (SYSCALL_ARGS); }
-DEFINE_SYSCALL (faccessat) { syscall_do_access (SYSCALL_ARGS); }
+DEFINE_SYSCALL (access) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (faccessat) { syscall_do_open (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (setxattr)
 SYSCALL_TO_IMPL (fsetxattr)
@@ -1978,7 +1948,7 @@ SYSCALL_TO_IMPL (chdir)
 SYSCALL_TO_IMPL (fchdir)
 
 static const char *
-syscall_do_rename_get_oldpath (int32_t nr, struct eri_registers *regs)
+syscall_rename_get_oldpath (int32_t nr, struct eri_registers *regs)
 {
   if (nr == __NR_rename || nr == __NR_link || nr == __NR_symlink
       || nr == __NR_symlinkat) return (void *) regs->rdi;
@@ -1986,7 +1956,7 @@ syscall_do_rename_get_oldpath (int32_t nr, struct eri_registers *regs)
 }
 
 static const char *
-syscall_do_rename_get_newpath (int32_t nr, struct eri_registers *regs)
+syscall_rename_get_newpath (int32_t nr, struct eri_registers *regs)
 {
   if (nr == __NR_rename || nr == __NR_link || nr == __NR_symlink)
     return (void *) regs->rsi;
@@ -1997,22 +1967,14 @@ syscall_do_rename_get_newpath (int32_t nr, struct eri_registers *regs)
 static eri_noreturn void
 syscall_do_rename (SYSCALL_PARAMS)
 {
-  struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
-  uint64_t res = rec.result;
-
   int32_t nr = regs->rax;
-  const char *user_oldpath = syscall_do_rename_get_oldpath (nr, regs);
-  const char *user_newpath = syscall_do_rename_get_newpath (nr, regs);
+  const char *user_oldpath = syscall_rename_get_oldpath (nr, regs);
+  const char *user_newpath = syscall_rename_get_newpath (nr, regs);
 
-  uint8_t old_err = syscall_user_path_error (th, user_oldpath, res);
-  uint8_t new_err = syscall_user_path_error (th, user_newpath, res);
+  syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_oldpath));
+  syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_newpath));
 
-  if (old_err || new_err) goto err;
-  if (res == ERI_EFAULT || res == ERI_ENAMETOOLONG) diverged (th);
-err:
-  if (! io_in (th, rec.in)) diverged (th);
-
-  syscall_leave (th, 1, res);
+  syscall_do_res_io (th);
 }
 
 DEFINE_SYSCALL (rename) { syscall_do_rename (SYSCALL_ARGS); }
@@ -2035,19 +1997,22 @@ DEFINE_SYSCALL (symlinkat) { syscall_do_rename (SYSCALL_ARGS); }
 static eri_noreturn void
 syscall_do_readlink (SYSCALL_PARAMS)
 {
+  uint8_t at = (int32_t) regs->rax == __NR_readlinkat;
+  const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
+
+  syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
+
   struct eri_syscall_res_in_record rec
 	= syscall_do_fetch_res_in (th, ERI_SYSCALL_READLINK_MAGIC);
 
   if (eri_syscall_is_non_fault_error (rec.result)) goto err;
 
-  int32_t nr = regs->rax;
-
   uint64_t len;
   if (! try_unserialize (uint64, th, &len)
-      || len > (nr == __NR_readlink ? regs->rdx : regs->r10))
+      || len > (at ? regs->r10 : regs->rdx))
     diverged (th);
 
-  char *user_buf = (void *) (nr == __NR_readlink ? regs->rsi : regs->rdx);
+  char *user_buf = (void *) (at ? regs->rdx : regs->rsi);
 
   uint8_t buf[1024];
   uint64_t c = 0;

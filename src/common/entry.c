@@ -205,6 +205,23 @@ out:
   return done == size;
 }
 
+uint8_t eri_entry__copy_str_from_user (struct eri_entry *entry, char *dst,
+		const char *src, uint64_t *len, struct eri_access *acc)
+{
+  uint64_t done;
+  if (! eri_entry__test_access (entry, src, &done))
+    {
+      if (acc) set_read (entry, acc, src, done + 1);
+      return 0;
+    }
+
+  *len = eri_strncpy (dst, src, *len);
+  eri_entry__reset_test_access (entry);
+
+  if (acc) set_read (entry, acc, src, *len);
+  return 1;
+}
+
 #define copy_from_user	eri_entry__copy_from_user
 #define copy_to_user	eri_entry__copy_to_user
 #define copy_obj_from_user(entry, dst, src, acc) \

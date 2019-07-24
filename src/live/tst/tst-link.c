@@ -14,6 +14,8 @@ tst_live_start (void)
   tst_syscall (unlink, "tst-link.t");
   tst_syscall (unlink, "tst-link-rename.t");
   tst_syscall (unlink, "tst-symlink.t");
+  eri_assert (tst_syscall (readlink, 0,
+			   link, ERI_PATH_MAX) == ERI_EFAULT);
   uint64_t res = tst_assert_syscall (readlink, "/proc/self/exe",
 				     link, ERI_PATH_MAX);
   eri_assert (res < ERI_PATH_MAX);

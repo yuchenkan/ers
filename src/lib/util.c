@@ -47,11 +47,22 @@ eri_strlen (const char *s)
   return i;
 }
 
-void
+uint64_t
 eri_strcpy (char *d, const char *s)
 {
+  char *t = d;
   while (*s) *d++ = *s++;
   *d = '\0';
+  return d - t;
+}
+
+uint64_t
+eri_strncpy (char *d, const char *s, uint64_t l)
+{
+  char *t = d;
+  while (d - t < l && *s) *d++ = *s++;
+  if (d - t < l) *d = '\0';
+  return d - t;
 }
 
 void

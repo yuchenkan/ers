@@ -26,7 +26,7 @@ tst_live_start (void)
 
   int32_t fd = tst_assert_syscall (open, "/dev/zero", ERI_O_RDONLY);
   tst_assert_syscall (fstat, fd, &stat);
-  eri_assert (tst_syscall (fstat, -1, 0) == ERI_EBADF);
+  eri_assert (tst_syscall (fstat, -1, "/dev/zero") == ERI_EBADF);
   tst_assert_syscall (close, fd);
 
   tst_assert_syscall (access, "/dev/zero", ERI_F_OK);

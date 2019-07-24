@@ -891,6 +891,7 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
   if (group->log) eri_assert_free (pool, (void *) group->log);
   eri_assert_free (pool, group);
+  if (pool->used) eri_info ("%lu\n", pool->used);
   eri_assert_fini_pool (pool);
 
   eri_assert_sys_exit_group (status);
