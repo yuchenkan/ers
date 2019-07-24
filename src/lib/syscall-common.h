@@ -449,7 +449,9 @@
 #define	ERI_ENAMETOOLONG	-36	/* File name too long */
 #define	ERI_ENOLCK	-37	/* No record locks available */
 #define ERI_ENOSYS	-38	/* Invalid system call number */
+#define	ERI_AFNOSUPPORT	-97	/* Address family not supported by protocol */
 #define	ERI_ETIMEDOUT	-110	/* Connection timed out */
+#define	ERI_EINPROGRESS	-115	/* Operation now in progress */
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>
@@ -615,6 +617,9 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_SFD_CLOEXEC		ERI_O_CLOEXEC
 #define ERI_SFD_NONBLOCK	ERI_O_NONBLOCK
 
+#define ERI_SOCK_CLOEXEC	ERI_O_CLOEXEC
+#define ERI_SOCK_NONBLOCK	ERI_O_NONBLOCK
+
 #define ERI_R_OK		4	/* Test for read permission.  */
 #define ERI_W_OK		2	/* Test for write permission.  */
 #define ERI_X_OK		1	/* Test for execute permission.  */
@@ -681,6 +686,138 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_RUSAGE_SELF		0
 #define ERI_RUSAGE_CHILDREN	-1	/* XXX: children? */
 #define ERI_RUSAGE_THREAD	1
+
+/* Protocol families.  */
+#define ERI_PF_UNSPEC	0	/* Unspecified.  */
+#define ERI_PF_LOCAL	1	/* Local to host (pipes and file-domain).  */
+#define ERI_PF_UNIX	ERI_PF_LOCAL /* POSIX name for PF_LOCAL.  */
+ /* Another non-standard name for PF_LOCAL.  */
+#define ERI_PF_FILE	ERI_PF_LOCAL
+#define ERI_PF_INET	2	/* IP protocol family.  */
+#define ERI_PF_AX25	3	/* Amateur Radio AX.25.  */
+#define ERI_PF_IPX	4	/* Novell Internet Protocol.  */
+#define ERI_PF_APPLETALK	5	/* Appletalk DDP.  */
+#define ERI_PF_NETROM	6	/* Amateur radio NetROM.  */
+#define ERI_PF_BRIDGE	7	/* Multiprotocol bridge.  */
+#define ERI_PF_ATMPVC	8	/* ATM PVCs.  */
+#define ERI_PF_X25	9	/* Reserved for X.25 project.  */
+#define ERI_PF_INET6	10	/* IP version 6.  */
+#define ERI_PF_ROSE	11	/* Amateur Radio X.25 PLP.  */
+#define ERI_PF_DECnet	12	/* Reserved for DECnet project.  */
+#define ERI_PF_NETBEUI	13	/* Reserved for 802.2LLC project.  */
+#define ERI_PF_SECURITY	14	/* Security callback pseudo AF.  */
+#define ERI_PF_KEY	15	/* PF_KEY key management API.  */
+#define ERI_PF_NETLINK	16
+#define ERI_PF_ROUTE	ERI_PF_NETLINK /* Alias to emulate 4.4BSD.  */
+#define ERI_PF_PACKET	17	/* Packet family.  */
+#define ERI_PF_ASH	18	/* Ash.  */
+#define ERI_PF_ECONET	19	/* Acorn Econet.  */
+#define ERI_PF_ATMSVC	20	/* ATM SVCs.  */
+#define ERI_PF_RDS	21	/* RDS sockets.  */
+#define ERI_PF_SNA	22	/* Linux SNA Project */
+#define ERI_PF_IRDA	23	/* IRDA sockets.  */
+#define ERI_PF_PPPOX	24	/* PPPoX sockets.  */
+#define ERI_PF_WANPIPE	25	/* Wanpipe API sockets.  */
+#define ERI_PF_LLC	26	/* Linux LLC.  */
+#define ERI_PF_IB	27	/* Native InfiniBand address.  */
+#define ERI_PF_MPLS	28	/* MPLS.  */
+#define ERI_PF_CAN	29	/* Controller Area Network.  */
+#define ERI_PF_TIPC	30	/* TIPC sockets.  */
+#define ERI_PF_BLUETOOTH	31	/* Bluetooth sockets.  */
+#define ERI_PF_IUCV	32	/* IUCV sockets.  */
+#define ERI_PF_RXRPC	33	/* RxRPC sockets.  */
+#define ERI_PF_ISDN	34	/* mISDN sockets.  */
+#define ERI_PF_PHONET	35	/* Phonet sockets.  */
+#define ERI_PF_IEEE802154	36	/* IEEE 802.15.4 sockets.  */
+#define ERI_PF_CAIF	37	/* CAIF sockets.  */
+#define ERI_PF_ALG	38	/* Algorithm sockets.  */
+#define ERI_PF_NFC	39	/* NFC sockets.  */
+#define ERI_PF_VSOCK	40	/* vSockets.  */
+#define ERI_PF_KCM	41	/* Kernel Connection Multiplexor.  */
+#define ERI_PF_QIPCRTR	42	/* Qualcomm IPC Router.  */
+#define ERI_PF_SMC	43	/* SMC sockets.  */
+#define ERI_PF_MAX	44	/* For now..  */
+
+/* Address families.  */
+#define ERI_AF_UNSPEC	ERI_PF_UNSPEC
+#define ERI_AF_LOCAL	ERI_PF_LOCAL
+#define ERI_AF_UNIX	ERI_PF_UNIX
+#define ERI_AF_FILE	ERI_PF_FILE
+#define ERI_AF_INET	ERI_PF_INET
+#define ERI_AF_AX25	ERI_PF_AX25
+#define ERI_AF_IPX	ERI_PF_IPX
+#define ERI_AF_APPLETALK	ERI_PF_APPLETALK
+#define ERI_AF_NETROM	ERI_PF_NETROM
+#define ERI_AF_BRIDGE	ERI_PF_BRIDGE
+#define ERI_AF_ATMPVC	ERI_PF_ATMPVC
+#define ERI_AF_X25	ERI_PF_X25
+#define ERI_AF_INET6	ERI_PF_INET6
+#define ERI_AF_ROSE	ERI_PF_ROSE
+#define ERI_AF_DECnet	ERI_PF_DECnet
+#define ERI_AF_NETBEUI	ERI_PF_NETBEUI
+#define ERI_AF_SECURITY	ERI_PF_SECURITY
+#define ERI_AF_KEY	ERI_PF_KEY
+#define ERI_AF_NETLINK	ERI_PF_NETLINK
+#define ERI_AF_ROUTE	ERI_PF_ROUTE
+#define ERI_AF_PACKET	ERI_PF_PACKET
+#define ERI_AF_ASH	ERI_PF_ASH
+#define ERI_AF_ECONET	ERI_PF_ECONET
+#define ERI_AF_ATMSVC	ERI_PF_ATMSVC
+#define ERI_AF_RDS	ERI_PF_RDS
+#define ERI_AF_SNA	ERI_PF_SNA
+#define ERI_AF_IRDA	ERI_PF_IRDA
+#define ERI_AF_PPPOX	ERI_PF_PPPOX
+#define ERI_AF_WANPIPE	ERI_PF_WANPIPE
+#define ERI_AF_LLC	ERI_PF_LLC
+#define ERI_AF_IB	ERI_PF_IB
+#define ERI_AF_MPLS	ERI_PF_MPLS
+#define ERI_AF_CAN	ERI_PF_CAN
+#define ERI_AF_TIPC	ERI_PF_TIPC
+#define ERI_AF_BLUETOOTH	ERI_PF_BLUETOOTH
+#define ERI_AF_IUCV	ERI_PF_IUCV
+#define ERI_AF_RXRPC	ERI_PF_RXRPC
+#define ERI_AF_ISDN	ERI_PF_ISDN
+#define ERI_AF_PHONET	ERI_PF_PHONET
+#define ERI_AF_IEEE802154	ERI_PF_IEEE802154
+#define ERI_AF_CAIF	ERI_PF_CAIF
+#define ERI_AF_ALG	ERI_PF_ALG
+#define ERI_AF_NFC	ERI_PF_NFC
+#define ERI_AF_VSOCK	ERI_PF_VSOCK
+#define ERI_AF_KCM	ERI_PF_KCM
+#define ERI_AF_QIPCRTR	ERI_PF_QIPCRTR
+#define ERI_AF_SMC	ERI_PF_SMC
+#define ERI_AF_MAX	ERI_PF_MAX
+
+/* Socket level values.  Others are defined in the appropriate headers.
+
+   XXX These definitions also should go into the appropriate headers as
+   far as they are available.  */
+#define ERI_SOL_RAW	255
+#define ERI_SOL_DECNET	261
+#define ERI_SOL_X25	262
+#define ERI_SOL_PACKET	263
+#define ERI_SOL_ATM	264	/* ATM layer (cell level).  */
+#define ERI_SOL_AAL	265	/* ATM Adaption Layer (packet level).  */
+#define ERI_SOL_IRDA	266
+#define ERI_SOL_NETBEUI	267
+#define ERI_SOL_LLC	268
+#define ERI_SOL_DCCP	269
+#define ERI_SOL_NETLINK	270
+#define ERI_SOL_TIPC	271
+#define ERI_SOL_RXRPC	272
+#define ERI_SOL_PPPOL2TP	273
+#define ERI_SOL_BLUETOOTH	274
+#define ERI_SOL_PNPIPE	275
+#define ERI_SOL_RDS	276
+#define ERI_SOL_IUCV	277
+#define ERI_SOL_CAIF	278
+#define ERI_SOL_ALG	279
+#define ERI_SOL_NFC	280
+#define ERI_SOL_KCM	281
+#define ERI_SOL_TLS	282
+
+/* Maximum queue length specifiable by listen.  */
+#define ERI_SOMAXCONN	128
 
 #define ERI_SA_SIGINFO		4
 #define ERI_SA_RESTORER		0x04000000
@@ -926,6 +1063,19 @@ struct eri_rusage
   int64_t nsignals;
   int64_t nvcsw;
   int64_t nivcsw;
+};
+
+struct eri_sockaddr
+{
+  uint16_t family;
+  uint8_t data[14];
+};
+
+struct eri_sockaddr_storage
+{
+  uint16_t family;
+  uint8_t padding[128 - sizeof (uint16_t) - sizeof (uint64_t)];
+  uint64_t align;
 };
 
 #define ERI_SIG_DFL		((void *) 0)
