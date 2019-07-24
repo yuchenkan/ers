@@ -1254,7 +1254,7 @@ typedef void (*eri_sig_handler_t) (int32_t, struct eri_siginfo *,
   do { *(set) &= ~_eri_sig_mask (sig); } while (0)
 #define eri_sig_set_set(set, sig) (*(set) & _eri_sig_mask (sig))
 
-#define eri_sig_not_set(set, set1) \
+#define eri_sig_not_set(set) \
   do { eri_sigset_t *_s = set; *_s = ~*_s; } while (0)
 #define eri_sig_and_set(set, set1) do { *(set) &= *(set1); } while (0)
 #define eri_sig_or_set(set, set1) do { *(set) |= *(set1); } while (0)
