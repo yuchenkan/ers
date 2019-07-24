@@ -617,6 +617,24 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_SFD_CLOEXEC		ERI_O_CLOEXEC
 #define ERI_SFD_NONBLOCK	ERI_O_NONBLOCK
 
+/* Sequenced, reliable, connection-based byte streams.  */
+#define ERI_SOCK_STREAM	1
+/* Connectionless, unreliable datagrams of fixed maximum length.  */
+#define ERI_SOCK_DGRAM	2
+#define ERI_SOCK_RAW	3	/* Raw protocol interface.  */
+#define ERI_SOCK_RDM	4	/* Reliably-delivered messages.  */
+/*
+ * Sequenced, reliable, connection-based, datagrams of fixed
+ * maximum length.
+ */
+#define ERI_SOCK_SEQPACKET	5
+#define ERI_SOCK_DCCP	6	/* Datagram Congestion Control Protocol.  */
+/*
+ * Linux specific way of getting packets at the dev level.  For writing
+ * rarp and other similar things on the user level.
+ */
+#define ERI_SOCK_PACKET	10
+
 #define ERI_SOCK_CLOEXEC	ERI_O_CLOEXEC
 #define ERI_SOCK_NONBLOCK	ERI_O_NONBLOCK
 
@@ -818,6 +836,8 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 
 /* Maximum queue length specifiable by listen.  */
 #define ERI_SOMAXCONN	128
+
+#define ERI_INADDR_ANY	0
 
 #define ERI_SA_SIGINFO		4
 #define ERI_SA_RESTORER		0x04000000
@@ -1076,6 +1096,20 @@ struct eri_sockaddr_storage
   uint16_t family;
   uint8_t padding[128 - sizeof (uint16_t) - sizeof (uint64_t)];
   uint64_t align;
+};
+
+struct eri_in_addr
+{
+  uint32_t addr;
+};
+
+struct eri_sockaddr_in
+{
+  uint16_t family;
+  uint16_t port;
+  struct eri_in_addr addr;
+
+  uint8_t padding[16 - sizeof (uint16_t) * 2 - sizeof (struct eri_in_addr)];
 };
 
 #define ERI_SIG_DFL		((void *) 0)

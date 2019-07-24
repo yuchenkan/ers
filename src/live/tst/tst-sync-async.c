@@ -62,7 +62,7 @@ eri_noreturn void
 tst_live_start (void)
 {
   struct tst_rand rand;
-  tst_rand_init (&rand, 31699);
+  tst_rand_init (&rand, 0);
 
   struct eri_sigaction act = {
     sig_trap, ERI_SA_SIGINFO | ERI_SA_RESTORER, tst_assert_sys_sigreturn
