@@ -33,7 +33,7 @@ struct eri_live_signal_thread
 
   ERI_LST_NODE_FIELDS (thread)
 
-  struct eri_sigset sig_mask;
+  eri_sigset_t sig_mask;
   struct eri_siginfo *sig_info;
   struct eri_sig_act sig_act;
 
@@ -55,7 +55,7 @@ struct eri_live_signal_thread *init_group (
 eri_noreturn void start_group (struct eri_live_signal_thread *sig_th);
 
 uint8_t sig_mask_async (struct eri_live_signal_thread *sig_th,
-			const struct eri_sigset *mask);
+			const eri_sigset_t *mask);
 
 #endif
 

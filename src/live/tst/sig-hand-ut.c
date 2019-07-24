@@ -35,12 +35,12 @@ eri_live_signal_thread__sig_mask_all (
 void
 eri_live_signal_thread__sig_reset (
 		struct eri_live_signal_thread *sig_th,
-		const struct eri_sigset *mask)
+		const eri_sigset_t *mask)
 {
   eri_atomic_store (&sig_th->sig_reset, 1, 0);
 }
 
-const struct eri_sigset *
+const eri_sigset_t *
 eri_live_signal_thread__get_sig_mask (
 		const struct eri_live_signal_thread *sig_th)
 {

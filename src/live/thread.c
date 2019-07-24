@@ -61,7 +61,7 @@ struct eri_live_thread
 
   struct eri_sig_act sig_act;
   uint8_t sig_force_masked;
-  struct eri_sigset *sig_force_deliver;
+  eri_sigset_t *sig_force_deliver;
 
   int32_t tid;
   struct eri_stack sig_alt_stack;
@@ -75,7 +75,7 @@ struct fdf_sig_mask
 {
   uint64_t ref_count;
   eri_lock_t lock;
-  struct eri_sigset mask;
+  eri_sigset_t mask;
 };
 
 struct fdf
@@ -127,7 +127,7 @@ page_size (struct eri_live_thread *th) { return th->group->page_size; }
 
 static void
 fdf_alloc_insert (struct eri_live_thread_group *group, int32_t fd,
-		  int32_t flags, const struct eri_sigset *sig_mask)
+		  int32_t flags, const eri_sigset_t *sig_mask)
 {
   struct eri_mtpool *pool = group->pool;
   struct fdf *fdf = eri_assert_mtmalloc (pool, sizeof *fdf);
@@ -373,7 +373,7 @@ start (struct eri_live_thread *th)
   eri_log (th->log.file, "tid = %u, user_tid = %u\n",
 	   th->tid, th->user_tid);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_empty_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
@@ -533,7 +533,7 @@ eri_live_thread__set_user_tid (struct eri_live_thread *th,
 uint64_t
 eri_live_thread__clone (struct eri_live_thread *th)
 {
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
@@ -1177,10 +1177,10 @@ SYSCALL_TO_IMPL (ioprio_get)
 
 DEFINE_SYSCALL (rt_sigprocmask)
 {
-  struct eri_sigset old_mask;
+  eri_sigset_t old_mask;
   old_mask = *eri_live_signal_thread__get_sig_mask (sig_th);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_entry__syscall_leave_if_error (entry,
 	eri_entry__syscall_get_rt_sigprocmask (entry, &old_mask, &mask, 0));
 
@@ -1247,7 +1247,7 @@ DEFINE_SYSCALL (rt_sigreturn)
   struct eri_stack st = {
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, THREAD_SIG_STACK_SIZE
   };
-  struct eri_sigset mask;
+  eri_sigset_t mask;
 
   if (! eri_entry__syscall_rt_sigreturn (entry, &st, &mask, 0))
     syscall_restart (entry);
@@ -1291,13 +1291,13 @@ DEFINE_SYSCALL (pause) { syscall_do_pause (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (rt_sigsuspend)
 {
-  const struct eri_sigset *user_mask = (void *) regs->rdi;
+  const eri_sigset_t *user_mask = (void *) regs->rdi;
   uint64_t size = regs->rsi;
 
   if (size != ERI_SIG_SETSIZE)
     eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
@@ -1309,12 +1309,12 @@ DEFINE_SYSCALL (rt_sigsuspend)
 
 DEFINE_SYSCALL (rt_sigtimedwait)
 {
-  const struct eri_sigset *user_set = (void *) regs->rdi;
+  const eri_sigset_t *user_set = (void *) regs->rdi;
   struct eri_siginfo *user_info = (void *) regs->rsi;
   const struct eri_timespec *user_timeout = (void *) regs->rdx;
   uint64_t size = regs->r10;
 
-  struct eri_sigset set;
+  eri_sigset_t set;
   struct eri_timespec timeout;
 
   if (size != ERI_SIG_SETSIZE) eri_entry__syscall_leave (entry, ERI_EINVAL);
@@ -1326,11 +1326,11 @@ DEFINE_SYSCALL (rt_sigtimedwait)
       && !eri_entry__copy_obj_from_user (entry, &timeout, user_timeout, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
-  const struct eri_sigset *mask
+  const eri_sigset_t *mask
 		= eri_live_signal_thread__get_sig_mask (sig_th);
 
-  struct eri_sigset tmp_mask = *mask;
-  eri_sig_diff_set (&tmp_mask, &set);
+  eri_sigset_t tmp_mask = *mask;
+  eri_sig_nand_set (&tmp_mask, &set);
 
   eri_sig_and_set (&set, mask);
   eri_atomic_store (&th->sig_force_deliver, &set, 1);
@@ -1503,13 +1503,13 @@ static eri_noreturn void
 syscall_do_signalfd (SYSCALL_PARAMS)
 {
   int32_t fd = regs->rdi;
-  const struct eri_sigset *user_mask = (void *) regs->rsi;
+  const eri_sigset_t *user_mask = (void *) regs->rsi;
 
   int32_t flags;
   eri_entry__syscall_leave_if_error (entry,
 		eri_entry__syscall_get_signalfd (entry, &flags));
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
     eri_entry__syscall_leave (entry, ERI_EINVAL); /* by kernel */
 
@@ -2657,7 +2657,7 @@ core (struct eri_live_thread *th, uint8_t term)
   struct eri_live_signal_thread *sig_th = th->sig_th;
   struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_assert_sys_sigprocmask (&mask, 0);
 
   eri_entry__clear_signal (th->entry);
@@ -2737,7 +2737,7 @@ eri_live_thread__sig_digest_act (
 
   sig_digest_act (info, act);
 
-  struct eri_sigset *force = th->sig_force_deliver;
+  eri_sigset_t *force = th->sig_force_deliver;
   return act->type != ERI_SIG_ACT_IGNORE
 	 || (force && eri_sig_set_set (force, info->sig));
 }

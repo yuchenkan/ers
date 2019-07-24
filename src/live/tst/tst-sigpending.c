@@ -21,13 +21,13 @@ sig_handler (int32_t sig)
 eri_noreturn void
 tst_live_start (void)
 {
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
   tst_assert_sys_raise (ERI_SIGINT);
 
-  struct eri_sigset set;
+  eri_sigset_t set;
   tst_assert_syscall (rt_sigpending, &set, ERI_SIG_SETSIZE);
   eri_assert (eri_sig_set_set (&set, ERI_SIGINT));
 

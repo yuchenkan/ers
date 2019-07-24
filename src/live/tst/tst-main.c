@@ -12,7 +12,7 @@ eri_noreturn void tst_live_start (void);
 eri_noreturn void
 tst_main (void **args)
 {
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 

@@ -12,7 +12,7 @@ struct eri_live_signal_thread
 {
   struct eri_mtpool pool;
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
 
   struct eri_live_thread *th;
 
