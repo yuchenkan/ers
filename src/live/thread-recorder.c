@@ -226,6 +226,19 @@ eri_live_thread_recorder__rec_signal (
     }
 }
 
+void
+eri_live_thread_recorder__rec_syscall_restart_out (
+			struct eri_live_thread_recorder *th_rec,
+			uint64_t out)
+{
+  if (! th_rec) return;
+
+  submit_sync_async (th_rec);
+
+  eri_serialize_mark (th_rec->file, ERI_SYSCALL_RESTART_OUT_RECORD);
+  eri_serialize_uint64 (th_rec->file, out);
+}
+
 static void
 syscall_start_record (struct eri_live_thread_recorder *th_rec,
 		      uint16_t magic)

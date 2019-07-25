@@ -786,6 +786,14 @@ syscall_restart (struct eri_entry *entry)
   eri_entry__restart (entry);
 }
 
+static eri_noreturn void
+syscall_restart_out (struct eri_live_thread *th, uint64_t out)
+{
+  eri_entry__sig_wait_pending (th->entry, 0);
+  eri_live_thread_recorder__rec_syscall_restart_out (th->rec, out);
+  eri_entry__restart (th->entry);
+}
+
 #define SYSCALL_TO_IMPL(name) \
 DEFINE_SYSCALL (name)							\
 {									\
@@ -1466,7 +1474,7 @@ DEFINE_SYSCALL (connect)
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
   if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, &addr)))
-    syscall_restart (entry);
+    syscall_restart_out (th, rec.out);
 
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
@@ -1484,7 +1492,7 @@ syscall_do_accept (SYSCALL_PARAMS)
   uint64_t res;
   if (! eri_entry__syscall_interruptible (entry, &res,
 	(1, user_addr ? &rec.addr : 0), (2, user_addr ? &rec.addrlen : 0)))
-    syscall_restart (entry);
+    syscall_restart_out (th, rec.out);
 
   res = syscall_copy_to_user (entry, res, user_addr,
 			      &rec.addr, rec.addrlen, 1);
@@ -1654,7 +1662,7 @@ syscall_do_open (SYSCALL_PARAMS)
   struct eri_syscall_res_io_record rec = { io_out (th) };
   if (! eri_entry__syscall_interruptible (entry,
 				&rec.res.result, (at ? 1 : 0, path)))
-    syscall_restart (entry);
+    syscall_restart_out (th, rec.out);
 
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
@@ -1680,7 +1688,7 @@ DEFINE_SYSCALL (close)
       eri_assert_unlock (&group->sfd_lock);
     }
   else if (! eri_entry__syscall_interruptible (entry, &rec.res.result))
-    syscall_restart (entry);
+    syscall_restart_out (th, rec.out);
 
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
@@ -1903,7 +1911,7 @@ syscall_do_write (SYSCALL_PARAMS)
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
   if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, buf)))
-    syscall_restart (entry);
+    syscall_restart_out (th, rec.out);
 
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1923,7 +1931,7 @@ syscall_do_writev (SYSCALL_PARAMS)
   if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, iov)))
     {
       eri_assert_mtfree (group->pool, iov);
-      syscall_restart (entry);
+      syscall_restart_out (th, rec.out);
     }
 
   syscall_record_res_io (th, &rec);
