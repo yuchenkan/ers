@@ -2061,6 +2061,30 @@ syscall_do_getdents (SYSCALL_PARAMS)
 DEFINE_SYSCALL (getdents) { syscall_do_getdents (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getdents64) { syscall_do_getdents (SYSCALL_ARGS); }
 
+static char *
+syscall_get_path (struct eri_mtpool *pool, uint64_t size,
+		  uint8_t (*get) (char *, uint64_t, void *), void *args)
+{
+  char *buf;
+  if (size > ERI_PATH_MAX)
+    {
+      uint64_t s = ERI_PATH_MAX;
+      while (1)
+	{
+	  buf = eri_assert_mtmalloc (pool, s);
+	  if (get (buf, s, args) || s == size) break;
+	  eri_assert_mtfree (pool, buf);
+	  s = eri_min (s * 2, size);
+	}
+    }
+  else
+    {
+      buf = eri_assert_mtmalloc (pool, size);
+      get (buf, size, args);
+    }
+  return buf;
+}
+
 SYSCALL_TO_IMPL (getcwd)
 
 DEFINE_SYSCALL (chdir)
@@ -2124,11 +2148,20 @@ DEFINE_SYSCALL (unlinkat) { syscall_do_access (SYSCALL_ARGS); }
 DEFINE_SYSCALL (symlink) { syscall_do_rename (SYSCALL_ARGS); }
 DEFINE_SYSCALL (symlinkat) { syscall_do_rename (SYSCALL_ARGS); }
 
-static uint64_t
-syscall_do_readlink_buf (struct eri_entry *entry, uint8_t at,
-			 char *buf, uint64_t size)
+struct syscall_readlink_get_path_args
 {
-  return eri_entry__syscall (entry, (at ? 2 : 1, buf), (at ? 3 : 2, size));
+  struct eri_entry *entry;
+  uint8_t at;
+  uint64_t res;
+};
+
+static uint8_t
+syscall_readlink_get_path (char *buf, uint64_t size, void *args)
+{
+  struct syscall_readlink_get_path_args *a = args;
+  a->res = eri_entry__syscall (a->entry,
+			       (a->at ? 2 : 1, buf), (a->at ? 3 : 2, size));
+  return eri_syscall_is_error (a->res) || a->res != size;
 }
 
 static eri_noreturn void
@@ -2146,41 +2179,21 @@ syscall_do_readlink (SYSCALL_PARAMS)
   uint64_t buf_size = at ? regs->r10 : regs->rdx;
 
   char *buf = 0;
-  uint64_t res;
 
   struct eri_syscall_res_in_record rec = { 0 };
-  if (buf_size == 0)
-    {
-      rec.result = res = eri_entry__syscall (entry);
-      goto record;
-    }
-
-  if (buf_size > ERI_PATH_MAX)
-    {
-      uint64_t size = ERI_PATH_MAX;
-      while (1)
-	{
-	  buf = eri_assert_mtmalloc (pool, size);
-	  res = syscall_do_readlink_buf (entry, at, buf, size);
-	  if (res != size) break;
-	  eri_assert_mtfree (pool, buf);
-	  size = eri_min (size * 2, buf_size);
-	}
-    }
+  if (buf_size == 0) rec.result = eri_entry__syscall (entry);
   else
     {
-      buf = eri_assert_mtmalloc (pool, buf_size);
-      res = syscall_do_readlink_buf (entry, at, buf, buf_size);
+      struct syscall_readlink_get_path_args args = { entry, at };
+      buf = syscall_get_path (pool, buf_size,
+			      syscall_readlink_get_path, &args);
+      rec.result = syscall_copy_to_user (entry, args.res,
+					 user_buf, buf, args.res, 0);
     }
 
-  rec.result = eri_syscall_is_ok (res)
-	       && ! eri_entry__copy_to_user (entry, user_buf, buf, res, 0)
-		? ERI_EFAULT : res;
-
-record:
   rec.in = io_in (th);
   eri_live_thread_recorder__rec_syscall_readlink (th->rec, &rec, buf,
-					eri_syscall_is_ok (res) ? res : 0);
+			eri_syscall_is_ok (rec.result) ? rec.result : 0);
   eri_assert_mtfree (pool, path);
   if (buf) eri_assert_mtfree (pool, buf);
   eri_entry__syscall_leave (entry, rec.result);
