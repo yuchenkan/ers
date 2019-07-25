@@ -122,6 +122,7 @@ void eri_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage);
   p (INIT, ##__VA_ARGS__)						\
   p (INIT_MAP, ##__VA_ARGS__)						\
   p (ASYNC, ##__VA_ARGS__)						\
+  p (SYSCALL_RESTART_OUT, ##__VA_ARGS__)				\
   p (SYNC, ##__VA_ARGS__)
 
 enum

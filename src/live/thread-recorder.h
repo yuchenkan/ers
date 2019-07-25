@@ -34,6 +34,8 @@ void eri_live_thread_recorder__rec_init (
 void eri_live_thread_recorder__rec_signal (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t async, void *rec);
+void eri_live_thread_recorder__rec_syscall_restart_out (
+		struct eri_live_thread_recorder *th_rec, uint64_t out);
 
 void eri_live_thread_recorder__rec_syscall_read (
 		struct eri_live_thread_recorder *th_rec,

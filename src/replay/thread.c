@@ -514,6 +514,25 @@ set_async_signal (struct thread *th)
   eri_assert_syscall (tgkill, th->group->pid, th->tid, ERI_SIGRTMIN);
 }
 
+static uint64_t
+test_fetch_mark (struct thread *th, uint8_t mark)
+{
+  while (mark == ERI_SYSCALL_RESTART_OUT_RECORD)
+    {
+      uint64_t out;
+      if (! try_unserialize (uint64, th, &out) || ! io_out (th, out))
+	diverged (th);
+      mark = fetch_mark (th);
+    }
+  return mark;
+}
+
+static void
+test_next_async_signal (struct thread *th, uint8_t mark)
+{
+  if (test_fetch_mark (th, mark) == ERI_ASYNC_RECORD) set_async_signal (th);
+}
+
 static eri_noreturn void
 start (struct thread *th, uint8_t next)
 {
@@ -532,8 +551,7 @@ start (struct thread *th, uint8_t next)
 
   eri_assert_syscall (arch_prctl, ERI_ARCH_SET_GS, th->entry);
 
-  if ((next != (uint8_t) -1 ? next : fetch_mark (th)) == ERI_ASYNC_RECORD)
-    set_async_signal (th);
+  test_next_async_signal (th, next != (uint8_t) -1 ? next : fetch_mark (th));
   eri_entry__leave (th->entry);
 }
 
@@ -670,7 +688,7 @@ eri_replay_start (struct eri_replay_rtld_args *rtld_args)
 static void
 fetch_test_async_signal (struct thread *th)
 {
-  if (fetch_mark (th) == ERI_ASYNC_RECORD) set_async_signal (th);
+  test_next_async_signal (th, fetch_mark (th));
 }
 
 static void
@@ -2442,7 +2460,7 @@ sync_async (struct thread *th)
   struct eri_entry *entry = th->entry;
   struct eri_registers *regs = eri_entry__get_regs (entry);
 
-  if (fetch_mark (th) == ERI_ASYNC_RECORD)
+  if (test_fetch_mark (th, fetch_mark (th)) == ERI_ASYNC_RECORD)
     {
       if (regs->rflags & ERI_RFLAGS_TF) set_async_signal (th);
       else
