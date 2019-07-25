@@ -1,6 +1,6 @@
 set -ex
 
-for i in {1..200}
+for i in {1..1000}
 do
   echo $i
   rm -rf eri-live-log/

@@ -162,7 +162,7 @@ eri_init_map (struct init_map_args *args)
 eri_noreturn void
 rtld (void **args)
 {
-  struct eri_sigset set;
+  eri_sigset_t set;
   eri_sig_fill_set (&set);
   eri_assert_sys_sigprocmask (&set, 0);
 

@@ -153,7 +153,7 @@ struct thread
   int32_t *clear_user_tid;
   int32_t user_tid;
 
-  struct eri_sigset sig_mask;
+  eri_sigset_t sig_mask;
   struct eri_stack sig_alt_stack;
 
   eri_aligned16 uint8_t sig_stack[THREAD_SIG_STACK_SIZE];
@@ -526,7 +526,7 @@ start (struct thread *th, uint8_t next)
 
   if (eri_enable_analyzer) eri_analyzer__set_tid (th->analyzer, th->tid);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_empty_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
@@ -1027,7 +1027,7 @@ DEFINE_SYSCALL (clone)
   cth->sig_mask = th->sig_mask;
   cth->sig_alt_stack = th->sig_alt_stack;
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_fill_set (&mask);
   eri_assert_sys_sigprocmask (&mask, 0);
 
@@ -1393,8 +1393,8 @@ SYSCALL_TO_IMPL (ioprio_get)
 
 DEFINE_SYSCALL (rt_sigprocmask)
 {
-  struct eri_sigset mask;
-  struct eri_sigset old_mask = th->sig_mask;
+  eri_sigset_t mask;
+  eri_sigset_t old_mask = th->sig_mask;
   syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 	eri_entry__syscall_get_rt_sigprocmask, entry, &old_mask, &mask));
   if (eri_entry__syscall_rt_sigprocmask_mask (entry))
@@ -1485,7 +1485,7 @@ DEFINE_SYSCALL (pause) { syscall_do_pause (th); }
 
 DEFINE_SYSCALL (rt_sigsuspend)
 {
-  struct eri_sigset *user_mask = (void *) regs->rdi;
+  eri_sigset_t *user_mask = (void *) regs->rdi;
   uint64_t size = regs->rsi;
 
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
@@ -1497,7 +1497,7 @@ DEFINE_SYSCALL (rt_sigsuspend)
 
 DEFINE_SYSCALL (rt_sigtimedwait)
 {
-  struct eri_sigset *user_set = (void *) regs->rdi;
+  eri_sigset_t *user_set = (void *) regs->rdi;
   struct eri_siginfo *user_info = (void *) regs->rsi;
   struct eri_timespec *user_timeout = (void *) regs->rdx;
   uint64_t size = regs->r10;
@@ -1579,7 +1579,7 @@ SYSCALL_TO_IMPL (eventfd2)
 static eri_noreturn void
 syscall_do_signalfd (SYSCALL_PARAMS)
 {
-  struct eri_sigset *user_mask = (void *) regs->rsi;
+  eri_sigset_t *user_mask = (void *) regs->rsi;
 
   int32_t flags;
   syscall_leave_if_error (th, 0,

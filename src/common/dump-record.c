@@ -30,7 +30,7 @@ main (int32_t argc, const char **argv)
 	printf ("  rdx: 0x%lx, rsp: 0x%lx, rip: 0x%lx\n",
 		rec.rdx, rec.rsp, rec.rip);
 	printf ("  brk: 0x%lx\n", rec.brk);
-	printf ("  sig_mask: 0x%lx\n", rec.sig_mask.val[0]);
+	printf ("  sig_mask: 0x%lx\n", rec.sig_mask);
 	printf ("  sig_alt_stack.sp: 0x%lx, .flags: 0x%x, .size: %lu\n",
 		rec.sig_alt_stack.sp, rec.sig_alt_stack.flags,
 		rec.sig_alt_stack.size);
@@ -134,7 +134,7 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.rt_sigpending.result: %ld, ..in: %lu",
 		    rec.res.result, rec.res.in);
 	    if (eri_syscall_is_ok (rec.res.result))
-	      printf (", ..set: 0x%lx\n", rec.set.val[0]);
+	      printf (", ..set: 0x%lx\n", rec.set);
 	    else printf ("\n");
 	  }
 	else if (magic == ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)

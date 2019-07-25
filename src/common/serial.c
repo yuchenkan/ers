@@ -225,19 +225,19 @@ eri_unserialize_pair (eri_file_t file)
 }
 
 void
-eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set)
+eri_serialize_sigset (eri_file_t file, const eri_sigset_t *set)
 {
-  eri_assert_fwrite (file, set->val, ERI_SIG_SETSIZE, 0);
+  eri_assert_fwrite (file, set, ERI_SIG_SETSIZE, 0);
 }
 
 uint8_t
-eri_try_unserialize_sigset (eri_file_t file, struct eri_sigset *set)
+eri_try_unserialize_sigset (eri_file_t file, eri_sigset_t *set)
 {
-  return ! eri_fread (file, set->val, ERI_SIG_SETSIZE, 0);
+  return ! eri_fread (file, set, ERI_SIG_SETSIZE, 0);
 }
 
 void
-eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set)
+eri_unserialize_sigset (eri_file_t file, eri_sigset_t *set)
 {
   eri_assert (eri_try_unserialize_sigset (file, set));
 }

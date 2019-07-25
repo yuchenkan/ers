@@ -60,15 +60,15 @@ uint8_t eri_live_signal_thread__sig_action (
 
 uint8_t eri_live_signal_thread__sig_mask_async (
 		struct eri_live_signal_thread *sig_th,
-		const struct eri_sigset *mask);
+		const eri_sigset_t *mask);
 uint8_t eri_live_signal_thread__sig_tmp_mask_async (
 		struct eri_live_signal_thread *sig_th,
-		const struct eri_sigset *mask);
+		const eri_sigset_t *mask);
 uint8_t eri_live_signal_thread__sig_mask_all (
 		struct eri_live_signal_thread *sig_th);
 void eri_live_signal_thread__sig_reset (
 		struct eri_live_signal_thread *sig_th,
-		const struct eri_sigset *mask);
+		const eri_sigset_t *mask);
 /*
  * Returns 0 if failed to mask_all, the existing signal and corresponding
  * digested sig_act are put in the info and act.
@@ -84,7 +84,7 @@ struct eri_live_signal_thread__sig_fd_read_args
 
   int32_t flags;
   eri_lock_t *mask_lock;
-  const struct eri_sigset *mask;
+  const eri_sigset_t *mask;
 };
 
 uint8_t eri_live_signal_thread__sig_fd_read (
@@ -98,7 +98,7 @@ uint64_t eri_live_signal_thread__syscall (
 uint8_t eri_live_signal_thread__signaled (
 		struct eri_live_signal_thread *sig_th);
 
-const struct eri_sigset *eri_live_signal_thread__get_sig_mask (
+const eri_sigset_t *eri_live_signal_thread__get_sig_mask (
 		const struct eri_live_signal_thread *sig_th);
 
 uint64_t eri_live_signal_thread__get_id (

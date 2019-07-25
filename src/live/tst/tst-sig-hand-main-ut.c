@@ -55,7 +55,7 @@ step (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   if (! unblocked)
     {
-      struct eri_sigset mask;
+      eri_sigset_t mask;
       eri_assert_sys_sigprocmask (0, &mask);
       if (eri_sig_set_set (&mask, ERI_SIGRTMAX)) return;
       unblocked = 1;
@@ -96,7 +96,7 @@ tst_main (void)
   };
   eri_assert_sys_sigaction (ERI_SIGTRAP, &act, 0);
 
-  struct eri_sigset mask;
+  eri_sigset_t mask;
   eri_sig_empty_set (&mask);
   eri_sig_add_set (&mask, ERI_SIGRTMAX);
   eri_assert_sys_sigprocmask (&mask, 0);
