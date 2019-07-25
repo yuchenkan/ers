@@ -2131,7 +2131,6 @@ syscall_do_readlink_buf (struct eri_entry *entry, uint8_t at,
   return eri_entry__syscall (entry, (at ? 2 : 1, buf), (at ? 3 : 2, size));
 }
 
-/* TODO */
 static eri_noreturn void
 syscall_do_readlink (SYSCALL_PARAMS)
 {
