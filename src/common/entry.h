@@ -176,18 +176,18 @@ uint64_t eri_entry__sys_syscall_interruptible (
      eri_entry__sys_syscall_interruptible (_entry, &_args); })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
-		const eri_sigset_t *old_mask, eri_sigset_t *mask,
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
 		struct eri_access *acc);
 #define eri_entry__syscall_rt_sigprocmask_mask(entry) \
   (!! (entry)->_regs.rsi)
 uint64_t eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
-		eri_sigset_t *old_mask, struct eri_access *acc);
+		struct eri_sigset *old_mask, struct eri_access *acc);
 #define ERI_ENTRY__MAX_SYSCALL_SIGALTSTACK_USER_ACCESSES	2
 uint64_t eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 		struct eri_stack *stack, struct eri_access *acc);
 #define ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES	3
 uint8_t eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
-		struct eri_stack *stack, eri_sigset_t *mask,
+		struct eri_stack *stack, struct eri_sigset *mask,
 		struct eri_access *acc);
 #define eri_entry__syscall_validate_rt_sigpending(entry) \
   ((entry)->_regs.rsi > ERI_SIG_SETSIZE ? ERI_EINVAL : 0)
@@ -201,7 +201,7 @@ void eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
 #define ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS		2
 struct eri_sigframe *eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,
-	struct eri_stack *stack, const eri_sigset_t *mask,
+	struct eri_stack *stack, const struct eri_sigset *mask,
 	struct eri_access *acc);
 
 #define eri_entry__get_sig_info(entry)		(&(entry)->_sig_info)

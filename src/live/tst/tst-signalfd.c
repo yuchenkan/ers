@@ -50,7 +50,7 @@ tst_live_start (void)
   raise_args.count = 1;
   eri_info ("%u %u\n", delay, raise_args.args.delay);
 
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 

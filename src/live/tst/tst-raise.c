@@ -11,7 +11,7 @@
 static uint8_t handled;
 static int32_t pid;
 static int32_t tid;
-static eri_sigset_t old_mask;
+static struct eri_sigset old_mask;
 
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
@@ -28,11 +28,11 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_assert (ctx->mctx.rdi == pid);
   eri_assert (ctx->mctx.rsi == tid);
   eri_assert (ctx->mctx.rdx == ERI_SIGINT);
-  eri_assert (ctx->sig_mask == old_mask);
+  eri_assert (ctx->sig_mask.val[0] == old_mask.val[0]);
 
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   tst_assert_sys_sigprocmask (0, &mask);
-  eri_assert (mask == TST_SIGSET_MASK);
+  eri_assert (mask.val[0] == TST_SIGSET_MASK);
 }
 
 eri_noreturn void
@@ -56,9 +56,9 @@ tst_live_start (void)
   tst_assert_syscall (tgkill, pid, tid, ERI_SIGINT);
   eri_assert (handled);
 
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   tst_assert_sys_sigprocmask (0, &mask);
-  eri_assert (mask == old_mask);
+  eri_assert (mask.val[0] == old_mask.val[0]);
 
   tst_assert_sys_exit (0);
 }

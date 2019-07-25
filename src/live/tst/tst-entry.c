@@ -74,8 +74,8 @@ tst_live_entry (struct tst_live_entry_mcontext *tctx,
   tst_assert_sys_sigaction (ERI_SIGTRAP, &act, &old_act_trap);
   tst_assert_sys_sigaction (ERI_SIGSEGV, &act, &old_act_segv);
 
-  eri_sigset_t old_mask;
-  eri_sigset_t mask;
+  struct eri_sigset old_mask;
+  struct eri_sigset mask;
   eri_sig_fill_set (&mask);
   eri_sig_del_set (&mask, ERI_SIGTRAP);
   eri_sig_del_set (&mask, ERI_SIGSEGV);

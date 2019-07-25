@@ -244,13 +244,13 @@ init_group_signal (struct signal_thread_group *group)
 
 static void
 set_sig_mask (struct eri_live_signal_thread *sig_th,
-	      const eri_sigset_t *mask)
+	      const struct eri_sigset *mask)
 {
   eri_set_sig_mask (&sig_th->sig_mask, mask);
 }
 
 static void
-init_event (struct eri_live_signal_thread *sig_th, eri_sigset_t *mask)
+init_event (struct eri_live_signal_thread *sig_th, struct eri_sigset *mask)
 {
   set_sig_mask (sig_th, mask);
   sig_th->sig_info = 0;
@@ -532,7 +532,7 @@ static void sig_action (struct eri_live_signal_thread *sig_th,
 struct sig_mask_event
 {
   struct event_type type;
-  const eri_sigset_t *mask;
+  const struct eri_sigset *mask;
 
   uint8_t done;
 };
@@ -540,7 +540,7 @@ struct sig_mask_event
 static uint8_t
 sig_mask_all_async (struct eri_live_signal_thread *sig_th)
 {
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   eri_sig_fill_set (&mask);
 
   return sig_mask_async (sig_th, &mask);
@@ -933,7 +933,7 @@ static void
 sig_action (struct eri_live_signal_thread *sig_th,
 	    struct sig_action_event *event)
 {
-  eri_sigset_t mask = sig_th->sig_mask;
+  struct eri_sigset mask = sig_th->sig_mask;
   struct eri_live_signal_thread__sig_action_args *args = event->args;
   eri_sig_add_set (&mask, args->sig);
 
@@ -973,7 +973,7 @@ eri_live_signal_thread__sig_action (struct eri_live_signal_thread *sig_th,
 
 static uint8_t
 thread_do_sig_mask (struct eri_live_signal_thread *sig_th,
-		    uint32_t type, const eri_sigset_t *mask)
+		    uint32_t type, const struct eri_sigset *mask)
 {
   struct sig_mask_event event = { INIT_EVENT_TYPE (type), mask };
   proc_event (sig_th, &event);
@@ -983,7 +983,7 @@ thread_do_sig_mask (struct eri_live_signal_thread *sig_th,
 uint8_t
 eri_live_signal_thread__sig_mask_async (
 			struct eri_live_signal_thread *sig_th,
-			const eri_sigset_t *mask)
+			const struct eri_sigset *mask)
 {
   return thread_do_sig_mask (sig_th, SIG_MASK_ASYNC_EVENT, mask);
 }
@@ -991,7 +991,7 @@ eri_live_signal_thread__sig_mask_async (
 uint8_t
 eri_live_signal_thread__sig_tmp_mask_async (
 			struct eri_live_signal_thread *sig_th,
-			const eri_sigset_t *mask)
+			const struct eri_sigset *mask)
 {
   return thread_do_sig_mask (sig_th, SIG_TMP_MASK_ASYNC_EVENT, mask);
 }
@@ -1004,7 +1004,7 @@ eri_live_signal_thread__sig_mask_all (struct eri_live_signal_thread *sig_th)
 
 void
 eri_live_signal_thread__sig_reset (struct eri_live_signal_thread *sig_th,
-				   const eri_sigset_t *mask)
+				   const struct eri_sigset *mask)
 {
   thread_do_sig_mask (sig_th, SIG_RESET_EVENT, mask);
 }
@@ -1020,7 +1020,7 @@ eri_live_signal_thread__sig_prepare (struct eri_live_signal_thread *sig_th,
     }
 
   /* XXX: May lost SIGTRAP here.  */
-  eri_sigset_t set;
+  struct eri_sigset set;
   eri_sig_fill_set (&set);
   do
     eri_assert_syscall (rt_sigtimedwait, &set, info, 0, ERI_SIG_SETSIZE);
@@ -1064,9 +1064,9 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
 
   do
     {
-      eri_sigset_t mask = sig_th->sig_mask;
+      struct eri_sigset mask = sig_th->sig_mask;
       eri_assert_lock (args->mask_lock);
-      eri_sig_or_set (&mask, args->mask);
+      eri_sig_union_set (&mask, args->mask);
       eri_assert_unlock (args->mask_lock);
 
       sys_args->result = eri_syscall (ppoll, fds, 2, 0, &mask, ERI_SIG_SETSIZE);
@@ -1111,7 +1111,7 @@ eri_live_signal_thread__signaled (struct eri_live_signal_thread *sig_th)
   return !! eri_atomic_load (&sig_th->sig_info, 0);
 }
 
-const eri_sigset_t *
+const struct eri_sigset *
 eri_live_signal_thread__get_sig_mask (
 			const struct eri_live_signal_thread *sig_th)
 {

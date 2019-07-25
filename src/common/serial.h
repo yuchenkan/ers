@@ -54,9 +54,9 @@ void eri_serialize_pair (eri_file_t file, struct eri_pair pair);
 uint8_t eri_try_unserialize_pair (eri_file_t file, struct eri_pair *pair);
 struct eri_pair eri_unserialize_pair (eri_file_t file);
 
-void eri_serialize_sigset (eri_file_t file, const eri_sigset_t *set);
-uint8_t eri_try_unserialize_sigset (eri_file_t file, eri_sigset_t *set);
-void eri_unserialize_sigset (eri_file_t file, eri_sigset_t *set);
+void eri_serialize_sigset (eri_file_t file, const struct eri_sigset *set);
+uint8_t eri_try_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
+void eri_unserialize_sigset (eri_file_t file, struct eri_sigset *set);
 
 void eri_serialize_stack (eri_file_t file, const struct eri_stack *set);
 uint8_t eri_try_unserialize_stack (eri_file_t file, struct eri_stack *set);
@@ -162,7 +162,7 @@ struct eri_init_record
 
   uint64_t page_size;
   uint64_t brk;
-  eri_sigset_t sig_mask;
+  struct eri_sigset sig_mask;
   struct eri_stack sig_alt_stack;
   int32_t user_pid;
 
@@ -337,7 +337,7 @@ void eri_unserialize_syscall_exit_record (eri_file_t file,
 struct eri_syscall_rt_sigpending_record
 {
   struct eri_syscall_res_in_record res;
-  eri_sigset_t set;
+  struct eri_sigset set;
 };
 
 void eri_serialize_syscall_rt_sigpending_record (eri_file_t file,

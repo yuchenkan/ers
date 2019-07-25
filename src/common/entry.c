@@ -235,13 +235,13 @@ uint8_t eri_entry__copy_str_from_user (struct eri_entry *entry, char *dst,
 
 uint64_t
 eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
-		const eri_sigset_t *old_mask, eri_sigset_t *mask,
+		const struct eri_sigset *old_mask, struct eri_sigset *mask,
 		struct eri_access *acc)
 {
   init_acc_opt (acc, 1);
 
   int32_t how = entry->_regs.rdi;
-  const eri_sigset_t *user_mask = (void *) entry->_regs.rsi;
+  const struct eri_sigset *user_mask = (void *) entry->_regs.rsi;
   uint64_t sig_set_size = entry->_regs.r10;
 
   if ((how != ERI_SIG_BLOCK && how != ERI_SIG_UNBLOCK
@@ -253,11 +253,11 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
   if (! copy_obj_from_user (entry, mask, user_mask, acc))
     return ERI_EFAULT;
 
-  if (how == ERI_SIG_BLOCK) eri_sig_or_set (mask, old_mask);
+  if (how == ERI_SIG_BLOCK) eri_sig_union_set (mask, old_mask);
   else if (how == ERI_SIG_UNBLOCK)
     {
-      eri_sigset_t old = *old_mask;
-      eri_sig_nand_set (&old, mask);
+      struct eri_sigset old = *old_mask;
+      eri_sig_diff_set (&old, mask);
       *mask = old;
     }
 
@@ -266,11 +266,11 @@ eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 
 uint64_t
 eri_entry__syscall_set_rt_sigprocmask (struct eri_entry *entry,
-		eri_sigset_t *old_mask, struct eri_access *acc)
+		struct eri_sigset *old_mask, struct eri_access *acc)
 {
   init_acc_opt (acc, 1);
 
-  eri_sigset_t *user_old_mask = (void *) entry->_regs.rdx;
+  struct eri_sigset *user_old_mask = (void *) entry->_regs.rdx;
   if (! user_old_mask) return 0;
 
   return copy_obj_to_user_or_fault (entry, user_old_mask, old_mask, acc);
@@ -350,7 +350,7 @@ eri_entry__syscall_sigaltstack (struct eri_entry *entry,
 
 uint8_t
 eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
-		struct eri_stack *stack, eri_sigset_t *mask,
+		struct eri_stack *stack, struct eri_sigset *mask,
 		struct eri_access *acc)
 {
   init_acc_opt (acc, ERI_ENTRY__MAX_SYSCALL_RT_SIGRETURN_USER_ACCESSES);
@@ -455,7 +455,7 @@ eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
 struct eri_sigframe *
 eri_entry__setup_user_frame (
 	struct eri_entry *entry, const struct eri_sigaction *act,
-	struct eri_stack *stack, const eri_sigset_t *mask,
+	struct eri_stack *stack, const struct eri_sigset *mask,
 	struct eri_access *acc)
 {
   init_acc_opt (acc, ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS);

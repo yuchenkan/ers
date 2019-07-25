@@ -1081,7 +1081,10 @@ struct eri_sockaddr_storage
 #define ERI_SIG_DFL		((void *) 0)
 #define ERI_SIG_IGN		((void *) 1)
 
-typedef uint64_t eri_sigset_t;
+struct eri_sigset
+{
+  uint64_t val[1];
+};
 
 struct eri_stack
 {
@@ -1095,7 +1098,7 @@ struct eri_sigaction
   void *act;
   int32_t flags;
   void (*restorer) (void);
-  eri_sigset_t mask;
+  struct eri_sigset mask;
 };
 
 struct eri_siginfo
@@ -1231,7 +1234,7 @@ struct eri_ucontext
   struct eri_ucontext *link;
   struct eri_stack stack;
   struct eri_mcontext mctx;
-  eri_sigset_t sig_mask;
+  struct eri_sigset sig_mask;
 };
 
 struct eri_sigframe
@@ -1244,21 +1247,99 @@ struct eri_sigframe
 typedef void (*eri_sig_handler_t) (int32_t, struct eri_siginfo *,
 				   struct eri_ucontext *);
 
-#define eri_sig_fill_set(set) do { *(set) = -1; } while (0)
-#define eri_sig_empty_set(set) do { *(set) = 0; } while (0)
+#define eri_sig_fill_set(set) \
+  eri_memset (set, 0xff, sizeof (struct eri_sigset))
+#define eri_sig_empty_set(set) \
+  eri_memset (set, 0, sizeof (struct eri_sigset))
 
-#define _eri_sig_mask(sig) (1l << ((sig) - 1))
+#define _eri_sigword(sig)	(((sig) - 1) / 64)
+#define _eri_sigmask(sig)	(((uint64_t) 1) << ((sig) - 1) % 64)
+
 #define eri_sig_add_set(set, sig) \
-  do { *(set) |= _eri_sig_mask (sig); } while (0)
+  do {									\
+    int32_t _s = sig;							\
+    (set)->val[_eri_sigword (_s)] |= _eri_sigmask (_s);			\
+  } while (0)
 #define eri_sig_del_set(set, sig) \
-  do { *(set) &= ~_eri_sig_mask (sig); } while (0)
-#define eri_sig_set_set(set, sig) (*(set) & _eri_sig_mask (sig))
+  do {									\
+    int32_t _s = sig;							\
+    (set)->val[_eri_sigword (_s)] &= ~_eri_sigmask (_s);		\
+  } while (0)
+#define eri_sig_set_set(set, sig) \
+  ({ int32_t _s = sig;							\
+     (set)->val[_eri_sigword (_s)] & _eri_sigmask (_s); })
 
-#define eri_sig_not_set(set, set1) \
-  do { eri_sigset_t *_s = set; *_s = ~*_s; } while (0)
-#define eri_sig_and_set(set, set1) do { *(set) &= *(set1); } while (0)
-#define eri_sig_or_set(set, set1) do { *(set) |= *(set1); } while (0)
-#define eri_sig_nand_set(set, set1) do { *(set) &= ~*(set1); } while (0)
+#define eri_sig_and_set(set, set1) \
+  do {									\
+    struct eri_sigset *_s = set;					\
+    const struct eri_sigset *_s1 = set1;				\
+    int _i;								\
+    for (_i = 0; _i < eri_length_of (_s->val); ++_i)			\
+      _s->val[_i] &= _s1->val[_i];					\
+  } while (0)
+
+#define eri_sig_union_set(set, set1) \
+  do {									\
+    struct eri_sigset *_s = set;					\
+    const struct eri_sigset *_s1 = set1;				\
+    int _i;								\
+    for (_i = 0; _i < eri_length_of (_s->val); ++_i)			\
+      _s->val[_i] |= _s1->val[_i];					\
+  } while (0)
+
+#define eri_sig_diff_set(set, set1) \
+  do {									\
+    struct eri_sigset *_s = set;					\
+    const struct eri_sigset *_s1 = set1;				\
+    int _i;								\
+    for (_i = 0; _i < eri_length_of (_s->val); ++_i)			\
+      _s->val[_i] &= ~_s1->val[_i];					\
+  } while (0)
+
+
+#if 0
+#define _eri_sigset_word_eq(word, set, to, ...) \
+  ({									\
+    uint64_t _m = ~0;							\
+    if (_eri_sigword (ERI_SIGKILL) == (word))				\
+      _m &= ~_eri_sigmask (ERI_SIGKILL);				\
+    if (_eri_sigword (ERI_SIGSTOP) == (word))				\
+      _m &= ~_eri_sigmask (ERI_SIGSTOP);				\
+    ((set)->val[word] & _m) == (to (word, ##__VA_ARGS__) & _m);		\
+  })
+
+#define _eri_sigset_cmp(set, to, ...) \
+  ({									\
+    uint8_t _eq = 1;							\
+    int32_t _w;								\
+    for (_w = 0; _eq && _w < (ERI_NSIG - 1) / 64; ++_w)			\
+      _eq = _eri_sigset_word_eq (_w, set, to, ##__VA_ARGS__);		\
+    if (_eq && (ERI_NSIG - 1) % 64)					\
+      _eq = _eri_sigset_word_eq (_w, set, to, ##__VA_ARGS__);		\
+    _eq;								\
+  })
+
+#define _eri_sigset_eq_to(word, b)	((b)->val[word])
+#define eri_sigset_eq(a, b) \
+  ({									\
+    const struct eri_sigset *_a = a, *_b = b;				\
+    _eri_sigset_cmp (_a, _eri_sigset_eq_to, _b);			\
+  })
+
+#define _eri_sigset_full_to(word)	(~0)
+#define eri_sigset_full(set) \
+  ({									\
+    const struct eri_sigset *_s = set;					\
+    _eri_sigset_cmp (_s, _eri_sigset_full_to);				\
+  })
+
+#define _eri_sigset_empty_to(word)	0
+#define eri_sigset_empty(set) \
+  ({									\
+    const struct eri_sigset *_s = set;					\
+    _eri_sigset_cmp (_s, _eri_sigset_empty_to);				\
+  })
+#endif
 
 struct eri_sys_syscall_args
 {

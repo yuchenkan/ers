@@ -38,7 +38,7 @@ rtld (void **args, uint64_t rdx)
   struct eri_live_rtld_args rtld_args = {
     rdx, (uint64_t) args, (uint64_t) eri_binary_end
   };
-  eri_sigset_t set;
+  struct eri_sigset set;
   eri_sig_fill_set (&set);
   eri_assert_sys_sigprocmask (&set, &rtld_args.sig_mask);
 

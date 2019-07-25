@@ -36,7 +36,7 @@ tst_live_start (void)
   pid = tst_assert_syscall (getpid);
   tid = tst_assert_syscall (gettid);
 
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   eri_sig_fill_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 

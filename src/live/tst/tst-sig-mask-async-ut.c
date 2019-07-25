@@ -62,7 +62,7 @@ signal (void)
   done = 0;
   sig_th.sig_info = 0;
 
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   eri_sig_empty_set (&mask);
   eri_sig_add_set (&mask, ERI_SIGINT);
 
@@ -92,7 +92,7 @@ eri_noreturn void
 tst_main (void)
 {
   sig_th.sig_info = 0;
-  eri_sigset_t mask;
+  struct eri_sigset mask;
   eri_sig_empty_set (&mask);
   eri_sig_add_set (&mask, ERI_SIGINT);
   eri_assert (sig_mask_async (&sig_th, &mask));

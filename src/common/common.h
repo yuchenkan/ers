@@ -121,7 +121,7 @@ void eri_mkdir (const char *path);
      eri_sig_valid (_s2) && _s2 != ERI_SIGKILL && _s2 != ERI_SIGSTOP; })
 
 #define eri_set_sig_mask(dst, src) \
-  do { eri_sigset_t _set = *(src);					\
+  do { struct eri_sigset _set = *(src);					\
        eri_sig_del_set (&_set, ERI_SIGKILL);				\
        eri_sig_del_set (&_set, ERI_SIGSTOP);				\
        *(dst) = _set; } while (0)
