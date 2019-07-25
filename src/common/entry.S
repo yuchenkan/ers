@@ -73,9 +73,8 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
 
   cmpl	$0, EN__SIG_PENDING(%rbx)
   je	.lsyscall
-  movq	$ERI_EINTR, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
-  xorb	%al, %al
-  jmp	.lsyscall_interrupt_return
+  movq	$ERI_EINTR, %rax
+  jmp	.lsyscall_interrupt
 
 .lsyscall:
   movl	ERI_SYS_SYSCALL_ARGS_NR(%rbp), %eax
@@ -90,8 +89,6 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
 .lsyscall_interrupt:
   movq	$0, EN__SYSCALL_INTERRUPT(%rbx)
   movq	%rax, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
-  movb	$1, %al
-.lsyscall_interrupt_return:
   popq	%rbp
   popq	%rbx
   ret

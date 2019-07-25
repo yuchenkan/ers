@@ -269,10 +269,7 @@ eri_live_thread_futex__wait (struct eri_live_thread_futex *th_ftx,
       (uint64_t) timeout, 0, -1 }
   };
   do
-    {
-      eri_entry__sys_syscall_interruptible (th_ftx->entry, &sys_args);
-      res = sys_args.result;
-    }
+    res = eri_entry__sys_syscall_interruptible (th_ftx->entry, &sys_args);
   while (res == 0 && eri_atomic_load (&waiter.lock, 1));
 
   if (res == ERI_EAGAIN) res = 0;
