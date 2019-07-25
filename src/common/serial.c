@@ -1052,66 +1052,6 @@ eri_unserialize_syscall_getrusage_record (eri_file_t file,
 }
 
 void
-eri_serialize_syscall_accept_record (eri_file_t file,
-			const struct eri_syscall_accept_record *rec)
-{
-  eri_serialize_uint64 (file, rec->out);
-  eri_serialize_syscall_res_in_record (file, &rec->res);
-  eri_serialize_uint32 (file, rec->addrlen);
-  if (rec->addrlen)
-    eri_serialize_uint8_array (file, (void *) &rec->addr, rec->addrlen);
-}
-
-uint8_t
-eri_try_unserialize_syscall_accept_record (eri_file_t file,
-			struct eri_syscall_accept_record *rec)
-{
-  return eri_try_unserialize_uint64 (file, &rec->out)
-	 && eri_try_unserialize_syscall_res_in_record (file, &rec->res)
-	 && eri_try_unserialize_uint32 (file, &rec->addrlen)
-	 && (! rec->addrlen
-	     || (rec->addrlen <= sizeof rec->addr
-		 && eri_try_unserialize_uint8_array (file,
-				(void *) &rec->addr, rec->addrlen)));
-}
-
-void
-eri_unserialize_syscall_accept_record (eri_file_t file,
-			struct eri_syscall_accept_record *rec)
-{
-  eri_assert (eri_try_unserialize_syscall_accept_record (file, rec));
-}
-
-void
-eri_serialize_syscall_getsockname_record (eri_file_t file,
-			const struct eri_syscall_getsockname_record *rec)
-{
-  eri_serialize_syscall_res_in_record (file, &rec->res);
-  eri_serialize_uint32 (file, rec->addrlen);
-  if (rec->addrlen)
-    eri_serialize_uint8_array (file, (void *) &rec->addr, rec->addrlen);
-}
-
-uint8_t
-eri_try_unserialize_syscall_getsockname_record (eri_file_t file,
-			struct eri_syscall_getsockname_record *rec)
-{
-  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
-	 && eri_try_unserialize_uint32 (file, &rec->addrlen)
-	 && (! rec->addrlen
-	     || (rec->addrlen <= sizeof rec->addr
-		 && eri_try_unserialize_uint8_array (file,
-				(void *) &rec->addr, rec->addrlen)));
-}
-
-void
-eri_unserialize_syscall_getsockname_record (eri_file_t file,
-			struct eri_syscall_getsockname_record *rec)
-{
-  eri_assert (eri_try_unserialize_syscall_getsockname_record (file, rec));
-}
-
-void
 eri_serialize_syscall_futex_record (eri_file_t file,
 			const struct eri_syscall_futex_record *rec)
 {

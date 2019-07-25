@@ -1543,112 +1543,21 @@ DEFINE_SYSCALL (rt_tgsigqueueinfo)
 
 SYSCALL_TO_IMPL (restart_syscall)
 
-DEFINE_SYSCALL (socket) { syscall_do_res_io (th); }
-
-static uint64_t
-syscall_read_user_addr (struct thread *th,
-			const struct eri_sockaddr *user_addr, uint32_t len)
-{
-  if (len > sizeof (struct eri_sockaddr_storage)) return ERI_EINVAL;
-  return ! read_user (th, user_addr, len) ? ERI_EFAULT : 0;
-}
-
-DEFINE_SYSCALL (connect)
-{
-  const struct eri_sockaddr *user_addr = (void *) regs->rsi;
-  uint32_t addrlen = regs->rdx;
-
-  syscall_leave_if_error (th, 0,
-			  syscall_read_user_addr (th, user_addr, addrlen));
-  syscall_do_res_io (th);
-}
-
-static uint8_t
-syscall_copy_addr_to_user (struct thread *th, uint64_t res,
-	struct eri_sockaddr *user_addr, uint32_t *user_addrlen,
-	const struct eri_sockaddr_storage *addr, uint32_t addrlen,
-	uint8_t opt)
-{
-  if (eri_syscall_is_non_fault_error (res)) return 1;
-
-  if (syscall_copy_to_user (th, res, user_addr, addr, addrlen, opt)
-      && syscall_copy_to_user (th, res,
-			user_addr || ! opt ? user_addrlen : 0, &addrlen,
-			sizeof *user_addrlen, opt))
-    return eri_syscall_is_ok (res);
-
-  return res == ERI_EFAULT;
-}
-
-static eri_noreturn void
-syscall_do_accept (SYSCALL_PARAMS)
-{
-  struct eri_sockaddr *user_addr = (void *) regs->rsi;
-  uint32_t *user_addrlen = (void *) regs->rdx;
-
-  struct eri_syscall_accept_record rec;
-
-  if (! check_magic (th, ERI_SYSCALL_ACCEPT_MAGIC)
-      || ! try_unserialize (syscall_accept_record, th, &rec)
-      || ! io_out (th, rec.out)) diverged (th);
-
-  uint64_t res = rec.res.result;
-  if (! syscall_copy_addr_to_user (th, res, user_addr, user_addrlen,
-				   &rec.addr, rec.addrlen, 1))
-    diverged (th);
-
-  if (! io_in (th, rec.res.in)) diverged (th);
-  syscall_leave (th, 1, res);
-}
-
-DEFINE_SYSCALL (accept) { syscall_do_accept (SYSCALL_ARGS); }
-DEFINE_SYSCALL (accept4) { syscall_do_accept (SYSCALL_ARGS); }
+SYSCALL_TO_IMPL (socket)
+SYSCALL_TO_IMPL (connect)
+SYSCALL_TO_IMPL (accept)
+SYSCALL_TO_IMPL (accept4)
 SYSCALL_TO_IMPL (sendto)
 SYSCALL_TO_IMPL (recvfrom)
 SYSCALL_TO_IMPL (sendmsg)
 SYSCALL_TO_IMPL (sendmmsg)
 SYSCALL_TO_IMPL (recvmsg)
 SYSCALL_TO_IMPL (recvmmsg)
-
-DEFINE_SYSCALL (shutdown) { syscall_do_res_io (th); }
-
-DEFINE_SYSCALL (bind)
-{
-  const struct eri_sockaddr *user_addr = (void *) regs->rsi;
-  uint32_t addrlen = regs->rdx;
-
-  syscall_leave_if_error (th, 0,
-			  syscall_read_user_addr (th, user_addr, addrlen));
-  syscall_do_res_io (th);
-}
-
-DEFINE_SYSCALL (listen) { syscall_do_res_io (th); }
-
-static eri_noreturn void
-syscall_do_getsockname (SYSCALL_PARAMS)
-{
-  struct eri_sockaddr *user_addr = (void *) regs->rsi;
-  uint32_t *user_addrlen = (void *) regs->rdx;
-
-  if (! read_user_obj (th, user_addrlen)) syscall_leave (th, 0, ERI_EFAULT);
-
-  struct eri_syscall_getsockname_record rec;
-  if (! check_magic (th, ERI_SYSCALL_GETSOCKNAME_MAGIC)
-      || ! try_unserialize (syscall_getsockname_record, th, &rec))
-    diverged (th);
-
-  uint64_t res = rec.res.result;
-  if (! syscall_copy_addr_to_user (th, res, user_addr, user_addrlen,
-				   &rec.addr, rec.addrlen, 0))
-    diverged (th);
-
-  if (! io_in (th, rec.res.in)) diverged (th);
-  syscall_leave (th, 1, res);
-}
-
-DEFINE_SYSCALL (getsockname) { syscall_do_getsockname (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getpeername) { syscall_do_getsockname (SYSCALL_ARGS); }
-
+SYSCALL_TO_IMPL (shutdown)
+SYSCALL_TO_IMPL (bind)
+SYSCALL_TO_IMPL (listen)
+SYSCALL_TO_IMPL (getsockname)
+SYSCALL_TO_IMPL (getpeername)
 SYSCALL_TO_IMPL (socketpair)
 SYSCALL_TO_IMPL (setsockopt)
 SYSCALL_TO_IMPL (getsockopt)

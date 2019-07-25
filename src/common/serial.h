@@ -226,11 +226,9 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_TIMES, ##__VA_ARGS__)					\
   p (SYSCALL_GETTIMEOFDAY, ##__VA_ARGS__)				\
   p (SYSCALL_CLOCK_GETTIME, ##__VA_ARGS__)				\
-  p (SYSCALL_GETRLIMIT, ##__VA_ARGS__)					\
-  p (SYSCALL_PRLIMIT64, ##__VA_ARGS__)					\
-  p (SYSCALL_GETRUSAGE, ##__VA_ARGS__)					\
-  p (SYSCALL_ACCEPT, ##__VA_ARGS__)					\
-  p (SYSCALL_GETSOCKNAME, ##__VA_ARGS__)				\
+  p (SYSCALL_GETRLIMIT,	##__VA_ARGS__)					\
+  p (SYSCALL_PRLIMIT64,	##__VA_ARGS__)					\
+  p (SYSCALL_GETRUSAGE,	##__VA_ARGS__)					\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
@@ -466,37 +464,6 @@ uint8_t eri_try_unserialize_syscall_getrusage_record (eri_file_t file,
 			struct eri_syscall_getrusage_record *rec);
 void eri_unserialize_syscall_getrusage_record (eri_file_t file,
 			struct eri_syscall_getrusage_record *rec);
-
-struct eri_syscall_accept_record
-{
-  uint64_t out;
-  struct eri_syscall_res_in_record res;
-
-  uint32_t addrlen;
-  struct eri_sockaddr_storage addr;
-};
-
-void eri_serialize_syscall_accept_record (eri_file_t file,
-			const struct eri_syscall_accept_record *rec);
-uint8_t eri_try_unserialize_syscall_accept_record (eri_file_t file,
-			struct eri_syscall_accept_record *rec);
-void eri_unserialize_syscall_accept_record (eri_file_t file,
-			struct eri_syscall_accept_record *rec);
-
-struct eri_syscall_getsockname_record
-{
-  struct eri_syscall_res_in_record res;
-
-  uint32_t addrlen;
-  struct eri_sockaddr_storage addr;
-};
-
-void eri_serialize_syscall_getsockname_record (eri_file_t file,
-			const struct eri_syscall_getsockname_record *rec);
-uint8_t eri_try_unserialize_syscall_getsockname_record (eri_file_t file,
-			struct eri_syscall_getsockname_record *rec);
-void eri_unserialize_syscall_getsockname_record (eri_file_t file,
-			struct eri_syscall_getsockname_record *rec);
 
 struct eri_syscall_futex_record
 {
