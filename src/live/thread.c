@@ -172,11 +172,40 @@ sfd_try_lock (struct eri_live_thread_group *group, int32_t fd)
   return sfd;
 }
 
+struct init_test_sig_fd_line_args
+{
+  uint8_t sig_fd;
+  eri_sigset_t mask;
+};
+
+static void
+init_test_sig_fd_line (const char *ln, uint64_t len, void *args)
+{
+  const char *head = "sigmask:\t";
+  uint64_t head_len = eri_strlen (head);
+  if (len < head_len || eri_strncmp (ln, head, head_len)) return;
+
+  char buf[len - head_len + 1];
+  eri_strncpy (buf, ln + head_len, len - head_len);
+  buf[len - head_len] = '\0';
+  eri_sigset_t set = eri_assert_atoi (buf, 16);
+  eri_sig_not_set (&set);
+
+  struct init_test_sig_fd_line_args *a = args;
+  a->sig_fd = 1;
+  a->mask = set;
+}
+
 static void
 init_sfd (struct eri_live_thread_group *group)
 {
-  int32_t fd = eri_assert_syscall (open, "/proc/self/fd",
+  const char *fdinfo = "/proc/self/fdinfo";
+  int32_t fd = eri_assert_syscall (open, fdinfo,
 				   ERI_O_RDONLY | ERI_O_DIRECTORY);
+
+  struct eri_buf line_buf;
+  eri_assert_buf_mtpool_init (&line_buf, group->pool, 16, char);
+
   uint8_t buf[128];
   uint64_t nread;
   while ((nread = eri_assert_syscall (getdents, fd, buf, sizeof buf)))
@@ -191,12 +220,24 @@ init_sfd (struct eri_live_thread_group *group)
 
 	  int32_t efd = eri_assert_atoi (d->name, 10);
 	  if (efd == fd) continue;
+
+	  char info[eri_strlen (fdinfo) + eri_strlen (d->name) + 2];
+	  eri_strcpy (info, fdinfo);
+	  info[eri_strlen (fdinfo)] = '/';
+	  eri_strcpy (info + eri_strlen (fdinfo) + 1, d->name);
+
+	  struct init_test_sig_fd_line_args args = { 0 };
+	  eri_assert_file_foreach_line (info, &line_buf,
+					init_test_sig_fd_line, &args);
+
 	  int32_t flags = eri_assert_syscall (fcntl, efd, ERI_F_GETFL);
-	  sfd_alloc_insert (group, efd, flags & ERI_O_NONBLOCK, 0);
+	  sfd_alloc_insert (group, efd, flags & ERI_O_NONBLOCK,
+			    args.sig_fd ? &args.mask : 0);
 	  eri_assert_syscall (fcntl, efd, ERI_F_SETFL,
 			      flags & ~ERI_O_NONBLOCK);
 	}
     }
+  eri_assert_buf_fini (&line_buf);
   eri_assert_syscall (close, fd);
 }
 
