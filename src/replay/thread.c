@@ -2054,8 +2054,15 @@ DEFINE_SYSCALL (getdents) { syscall_do_read (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getdents64) { syscall_do_read (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (getcwd)
-SYSCALL_TO_IMPL (chdir)
-SYSCALL_TO_IMPL (fchdir)
+
+DEFINE_SYSCALL (chdir)
+{
+  const char *user_path = (void *) regs->rdi;
+  syscall_leave_if_error  (th, 0, syscall_read_user_path (th, user_path));
+  syscall_do_res_io (th);
+}
+
+DEFINE_SYSCALL (fchdir) { syscall_do_res_io (th); }
 
 static const char *
 syscall_rename_get_oldpath (int32_t nr, struct eri_registers *regs)

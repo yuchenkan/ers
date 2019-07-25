@@ -2062,8 +2062,22 @@ DEFINE_SYSCALL (getdents) { syscall_do_getdents (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getdents64) { syscall_do_getdents (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (getcwd)
-SYSCALL_TO_IMPL (chdir)
-SYSCALL_TO_IMPL (fchdir)
+
+DEFINE_SYSCALL (chdir)
+{
+  const char *user_path = (void *) regs->rdi;
+  char *path;
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &path, user_path));
+  struct eri_syscall_res_io_record rec = {
+    io_out (th), { eri_entry__syscall (entry, (0, path)) }
+  };
+  syscall_record_res_io (th, &rec);
+  eri_assert_mtfree (th->group->pool, path);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (fchdir) { syscall_do_res_io (SYSCALL_ARGS); }
 
 static eri_noreturn void
 syscall_do_rename (SYSCALL_PARAMS)
