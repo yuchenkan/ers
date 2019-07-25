@@ -230,9 +230,10 @@ init_sfd (struct eri_live_thread_group *group)
 	  eri_assert_file_foreach_line (info, &line_buf,
 					init_test_sig_fd_line, &args);
 
+	  if (! args.sig_fd) continue;
+
 	  int32_t flags = eri_assert_syscall (fcntl, efd, ERI_F_GETFL);
-	  sfd_alloc_insert (group, efd, flags & ERI_O_NONBLOCK,
-			    args.sig_fd ? &args.mask : 0);
+	  sfd_alloc_insert (group, efd, flags & ERI_O_NONBLOCK, &args.mask);
 	  eri_assert_syscall (fcntl, efd, ERI_F_SETFL,
 			      flags & ~ERI_O_NONBLOCK);
 	}
@@ -1440,74 +1441,9 @@ DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (restart_syscall)
 
-DEFINE_SYSCALL (socket)
-{
-  int32_t type = regs->rsi;
+SYSCALL_TO_IMPL (socket)
 
-  struct eri_live_thread_group *group = th->group;
-  struct eri_syscall_res_io_record rec = { io_out (th) };
-  eri_assert_lock (&group->sfd_lock);
-  rec.res.result = eri_entry__syscall (entry,
-				       (1, type & ~ERI_SOCK_NONBLOCK));
-  if (eri_syscall_is_ok (rec.res.result))
-    sfd_alloc_insert (group, rec.res.result, type & ERI_SOCK_NONBLOCK, 0);
-  eri_assert_unlock (&group->sfd_lock);
-
-  syscall_record_res_io (th, &rec);
-  eri_entry__syscall_leave (entry, rec.res.result);
-}
-
-DEFINE_SYSCALL (connect)
-{
-  int32_t fd = regs->rdi;
-  const struct eri_sockaddr *user_addr = (void *) regs->rsi;
-  uint32_t addrlen = regs->rdx;
-
-  struct eri_sockaddr_storage addr;
-  if (addrlen > sizeof addr)
-    eri_entry__syscall_leave (entry, ERI_EINVAL);
-
-  if (! eri_entry__copy_from_user (entry, &addr, user_addr, addrlen, 0))
-    eri_entry__syscall_leave (entry, ERI_EFAULT);
-
-  struct eri_live_thread_group *group = th->group;
-  struct eri_syscall_res_io_record rec = { io_out (th) };
-  struct sfd *sfd = sfd_try_lock (group, fd);
-  int32_t flags;
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
-  else flags = sfd->flags;
-  eri_assert_unlock (&group->sfd_lock);
-
-  rec.res.result = eri_entry__syscall (entry, (1, &addr));
-  if ((flags & ERI_SOCK_NONBLOCK) || rec.res.result != ERI_EINPROGRESS)
-    goto record;
-
-  struct eri_pollfd pollfd = { fd, ERI_POLLOUT };
-  struct eri_sys_syscall_args args = {
-    __NR_poll, { (uint64_t) &pollfd, 1, -1 }
-  };
-
-  do
-    {
-      rec.res.result = eri_entry__sys_syscall_interruptible (entry, &args);
-      if (rec.res.result == ERI_EINTR) break;
-
-      int32_t err;
-      uint64_t res = eri_syscall (getsockopt, fd, /* ERI_SOL_SOCKET */ 1,
-				  /* ERI_SO_ERROR */ 4, &err, sizeof err);
-      eri_lassert (th->log.file,
-		   eri_syscall_is_ok (res) || res == ERI_EBADF);
-      if (res == ERI_EBADF) rec.res.result = res;
-
-      rec.res.result = (int64_t) err;
-    }
-  while (rec.res.result == ERI_EINPROGRESS);
-
-record:
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
-  syscall_record_res_io (th, &rec);
-  eri_entry__syscall_leave (entry, rec.res.result);
-}
+SYSCALL_TO_IMPL (connect)
 
 SYSCALL_TO_IMPL (accept)
 SYSCALL_TO_IMPL (accept4)
@@ -1571,11 +1507,10 @@ syscall_do_signalfd (SYSCALL_PARAMS)
     }
 
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
-  else if (! sfd->sig_mask)
+  if (! sfd)
     {
-      rec.res.result = ERI_EINVAL;
-      eri_assert_unlock (&group->sfd_lock);
+      rec.res.result = eri_syscall (signalfd4, fd, &mask,
+				    ERI_SIG_SETSIZE, flags);
       goto record;
     }
 
@@ -1621,23 +1556,8 @@ syscall_do_open (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
-  eri_assert_lock (&group->sfd_lock);
   rec.res.result = eri_entry__syscall_interruptible (entry,
 						     (at ? 1 : 0, path));
-  if (eri_syscall_is_ok (rec.res.result))
-    {
-      uint8_t openat = (int32_t) regs->rax == __NR_openat;
-      int32_t fd = rec.res.result;
-      int32_t flags = openat ? regs->rdx : regs->rsi;
-      /*
-       * XXX: the following two operations may cause crash when some
-       * close is not done through us
-       */
-      if (! (flags & ERI_O_NONBLOCK)) /* to keep open blockable */
-	eri_assert_syscall (fcntl, fd, ERI_F_SETFL, flags | ERI_O_NONBLOCK);
-      sfd_alloc_insert (group, fd, flags & ERI_O_NONBLOCK, 0);
-    }
-  eri_assert_unlock (&group->sfd_lock);
 
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
@@ -1656,16 +1576,14 @@ DEFINE_SYSCALL (close)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
+  if (sfd)
+    {
+      rec.res.result = eri_entry__syscall (entry);
+      if (eri_syscall_is_ok (rec.res.result)) sfd_remove_free (group, sfd);
+      eri_assert_unlock (&group->sfd_lock);
+    }
+  else rec.res.result = eri_entry__syscall_interruptible (entry);
 
-  struct eri_sys_syscall_args args = { __NR_close, { fd } };
-  rec.res.result = eri_entry__sys_syscall_interruptible (entry, &args);
-
-  if (eri_syscall_is_ok (rec.res.result))
-    sfd_remove_free (group, sfd);
-  eri_assert_unlock (&group->sfd_lock);
-
-record:
   if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1678,15 +1596,16 @@ DEFINE_SYSCALL (dup)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
 
   rec.res.result = eri_syscall (dup, fd);
 
-  if (eri_syscall_is_ok (rec.res.result))
-    sfd_dup (group, rec.res.result, sfd);
-  eri_assert_unlock (&group->sfd_lock);
+  if (sfd)
+    {
+      if (eri_syscall_is_ok (rec.res.result))
+	sfd_dup (group, rec.res.result, sfd);
+      eri_assert_unlock (&group->sfd_lock);
+    }
 
-record:
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1705,21 +1624,22 @@ syscall_do_dup2 (SYSCALL_PARAMS)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
 
   rec.res.result = eri_syscall (dup3, fd, new_fd, flags);
 
-  if (eri_syscall_is_ok (rec.res.result))
+  if (sfd)
     {
-      new_fd = rec.res.result;
-      struct sfd *new_sfd = sfd_rbt_get (group, &new_fd, ERI_RBT_EQ);
-      if (new_sfd) sfd_remove_free (group, new_sfd);
-
-      sfd_dup (group, new_fd, sfd);
+      if (eri_syscall_is_ok (rec.res.result))
+	{
+	  new_fd = rec.res.result;
+	  struct sfd *new_sfd = sfd_rbt_get (group, &new_fd, ERI_RBT_EQ);
+	  if (new_sfd) sfd_remove_free (group, new_sfd);
+ 
+	  sfd_dup (group, new_fd, sfd);
+	}
+      eri_assert_unlock (&group->sfd_lock);
     }
-  eri_assert_unlock (&group->sfd_lock);
 
-record:
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1741,30 +1661,31 @@ DEFINE_SYSCALL (fcntl)
     {
       struct eri_syscall_res_io_record rec = { io_out (th) };
       struct sfd *sfd = sfd_try_lock (group, fd);
-      if (! sfd) { rec.res.result = ERI_EBADF; goto record_kill; }
-
-      if (cmd == ERI_F_SETFL)
-	rec.res.result = eri_syscall (fcntl, fd, cmd,
-				  regs->rdx | ERI_O_NONBLOCK);
-      else rec.res.result = eri_syscall (fcntl, fd, cmd, regs->rdx);
-
-      if (eri_syscall_is_ok (rec.res.result))
+      if (sfd)
 	{
-	  if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC)
-	    sfd_dup (group, rec.res.result, sfd);
-	  else if (cmd == ERI_F_GETFL)
-	    rec.res.result &= sfd->flags | ~ERI_O_NONBLOCK;
-	  else sfd->flags = regs->rdx & ERI_O_NONBLOCK;
-	}
-      eri_assert_unlock (&group->sfd_lock);
+	  if (cmd == ERI_F_SETFL)
+	    rec.res.result = eri_syscall (fcntl, fd, cmd,
+				      regs->rdx | ERI_O_NONBLOCK);
+	  else rec.res.result = eri_syscall (fcntl, fd, cmd, regs->rdx);
 
-    record_kill:
+	  if (eri_syscall_is_ok (rec.res.result))
+	    {
+	      if (cmd == ERI_F_DUPFD || cmd == ERI_F_DUPFD_CLOEXEC)
+		sfd_dup (group, rec.res.result, sfd);
+	      else if (cmd == ERI_F_GETFL)
+		rec.res.result &= sfd->flags | ~ERI_O_NONBLOCK;
+	      else sfd->flags = regs->rdx & ERI_O_NONBLOCK;
+	    }
+	  eri_assert_unlock (&group->sfd_lock);
+	}
+      else rec.res.result = eri_entry__syscall (entry);
+
       syscall_record_res_io (th, &rec);
       eri_entry__syscall_leave (entry, rec.res.result);
     }
 
   /* TODO: other cmd */
-  eri_entry__syscall_leave (entry, eri_entry__syscall (entry));
+  eri_entry__syscall_leave (entry, ERI_ENOSYS);
 }
 
 SYSCALL_TO_IMPL (flock)
@@ -1785,53 +1706,32 @@ SYSCALL_TO_IMPL (epoll_pwait)
 SYSCALL_TO_IMPL (epoll_ctl)
 
 static uint8_t
-syscall_read_sig_fd (struct eri_live_thread *th,
-		     struct eri_sys_syscall_args *args, int32_t flags,
-		     struct sfd_mask *mask)
+syscall_read_sig_fd (struct eri_live_thread *th, struct sfd *sfd,
+		     void *buf, uint64_t *res)
 {
   struct eri_live_thread_group *group = th->group;
   struct eri_live_signal_thread *sig_th = th->sig_th;
+
+  int32_t flags = sfd->flags;
+  struct sfd_mask *mask = sfd->sig_mask;
   eri_atomic_inc (&mask->ref_count, 0);
   eri_assert_unlock (&group->sfd_lock);
 
+  struct eri_registers *regs = eri_entry__get_regs (th->entry);
+
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs, (1, buf));
+
   struct eri_live_signal_thread__sig_fd_read_args read_args = {
-    args, flags, &mask->lock, &mask->mask
+    &args, flags, &mask->lock, &mask->mask
   };
   uint8_t done = eri_live_signal_thread__sig_fd_read (sig_th, &read_args);
 
   if (! eri_atomic_dec_fetch (&mask->ref_count, 1))
     eri_assert_mtfree (group->pool, mask);
+
+  if (done) *res = args.result;
   return done;
-}
-
-/*
- * This is so mainly because initialy we want to record the order
- * of memory related info, e.g. EFAULT, the idea is dropped as discussed
- * in the guide of syscalls. This is preserved now for the consistency
- * with signalfd, see signal-thread.c, and it's not that hard to impl.
- */
-static uint64_t
-syscall_read_write (struct eri_entry *entry, int32_t flags,
-		    struct eri_sys_syscall_args *args, uint8_t read)
-{
-  uint64_t res = eri_sys_syscall (args);
-  if ((flags & ERI_O_NONBLOCK) || res != ERI_EAGAIN) return res;
-
-  int32_t fd = args->a[0];
-  struct eri_pollfd pollfd = { fd, read ? ERI_POLLIN : ERI_POLLOUT };
-  struct eri_sys_syscall_args poll_args = {
-    __NR_poll, { (uint64_t) &pollfd, 1, -1 }
-  };
-
-  do
-    {
-      res = eri_entry__sys_syscall_interruptible (entry, &poll_args);
-      if (res == ERI_EINTR) break;
-
-      res = eri_sys_syscall (args);
-    }
-  while (res == ERI_EAGAIN);
-  return res;
 }
 
 static void
@@ -1845,10 +1745,8 @@ syscall_record_read (struct eri_live_thread *th, uint64_t res,
 static eri_noreturn void
 syscall_do_read (SYSCALL_PARAMS)
 {
-  int32_t nr = regs->rax;
   int32_t fd = regs->rdi;
   uint64_t buf = regs->rsi;
-  uint64_t count = regs->rdx;
 
   eri_entry__test_invalidate (entry, &buf);
 
@@ -1856,24 +1754,13 @@ syscall_do_read (SYSCALL_PARAMS)
   uint64_t res;
 
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { res = ERI_EBADF; goto record; }
-
-  int32_t flags = sfd->flags;
-  struct eri_sys_syscall_args args = { nr, { fd, buf, count, regs->r10 } };
-
-  if (sfd->sig_mask)
+  if (sfd)
     {
-      if (! syscall_read_sig_fd (th, &args, flags, sfd->sig_mask))
+      if (! syscall_read_sig_fd (th, sfd, (void *) buf, &res))
 	syscall_restart (entry);
-
-      res = args.result;
-      goto record;
     }
+  else res = eri_entry__syscall_interruptible (entry, (1, buf));
 
-  eri_assert_unlock (&group->sfd_lock);
-  res = syscall_read_write (entry, flags, &args, 1);
-
-record:
   if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_read (th, res, (void *) buf, 0);
   eri_entry__syscall_leave (entry, res);
@@ -1882,7 +1769,6 @@ record:
 static eri_noreturn void
 syscall_do_readv (SYSCALL_PARAMS)
 {
-  int32_t nr = regs->rax;
   int32_t fd = regs->rdi;
 
   struct eri_live_thread_group *group = th->group;
@@ -1894,29 +1780,13 @@ syscall_do_readv (SYSCALL_PARAMS)
   uint64_t res;
 
   struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { res = ERI_EBADF; goto record; }
-
-  int flags = sfd->flags;
-  struct eri_sys_syscall_args args = {
-    nr, { fd, (uint64_t) iov, iov_cnt, regs->r10, regs->r8 }
-  };
-
-  if (sfd->sig_mask)
+  if (sfd)
     {
-      if (! syscall_read_sig_fd (th, &args, flags, sfd->sig_mask))
-	{
-	  eri_assert_mtfree (group->pool, iov);
-	  syscall_restart (entry);
-	}
-
-      res = args.result;
-      goto record;
+      if (! syscall_read_sig_fd (th, sfd, iov, &res))
+	syscall_restart (entry);
     }
+  else res = eri_entry__syscall_interruptible (entry, (1, iov));
 
-  eri_assert_unlock (&group->sfd_lock);
-  res = syscall_read_write (entry, flags, &args, 1);
-
-record:
   if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
   syscall_record_read (th, res, iov, 1);
   eri_entry__syscall_free_rw_iov (entry, iov);
@@ -1932,27 +1802,13 @@ DEFINE_SYSCALL (preadv2) { syscall_do_readv (SYSCALL_ARGS); }
 static eri_noreturn void
 syscall_do_write (SYSCALL_PARAMS)
 {
-  int32_t nr = regs->rax;
-  int32_t fd = regs->rdi;
   uint64_t buf = regs->rsi;
-  uint64_t count = regs->rdx;
-
   eri_entry__test_invalidate (entry, &buf);
 
-  struct eri_live_thread_group *group = th->group;
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
-  if (sfd->sig_mask) { rec.res.result = ERI_EINVAL; goto record; }
+  rec.res.result = eri_entry__syscall_interruptible (entry, (1, buf));
 
-  int32_t flags = sfd->flags;
-  struct eri_sys_syscall_args args = { nr, { fd, buf, count, regs->r10 } };
-
-  eri_assert_unlock (&group->sfd_lock);
-  rec.res.result = syscall_read_write (entry, flags, &args, 0);
-
-record:
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1960,9 +1816,6 @@ record:
 static eri_noreturn void
 syscall_do_writev (SYSCALL_PARAMS)
 {
-  int32_t nr = regs->rax;
-  int32_t fd = regs->rdi;
-
   struct eri_iovec *iov;
   int32_t iov_cnt;
   eri_entry__syscall_leave_if_error (entry,
@@ -1971,19 +1824,8 @@ syscall_do_writev (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  struct sfd *sfd = sfd_try_lock (group, fd);
-  if (! sfd) { rec.res.result = ERI_EBADF; goto record; }
-  if (sfd->sig_mask) { rec.res.result = ERI_EINVAL; goto record; }
+  rec.res.result = eri_entry__syscall_interruptible (entry, (1, iov));
 
-  int32_t flags = sfd->flags;
-  struct eri_sys_syscall_args args = {
-    nr, { fd, (uint64_t) iov, iov_cnt, regs->r10, regs->r8 }
-  };
-
-  eri_assert_unlock (&group->sfd_lock);
-  rec.res.result = syscall_read_write (entry, flags, &args, 0);
-
-record:
   syscall_record_res_io (th, &rec);
   eri_assert_mtfree (group->pool, iov);
   eri_entry__syscall_leave (entry, rec.res.result);
