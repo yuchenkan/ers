@@ -258,6 +258,26 @@ main (int32_t argc, const char **argv)
 			rec.rusage.nvcsw, rec.rusage.nivcsw);
 	      }
 	  }
+	else if (magic == ERI_SYSCALL_ACCEPT_MAGIC)
+	  {
+	    struct eri_syscall_accept_record rec;
+	    eri_unserialize_syscall_accept_record (file, &rec);
+	    printf ("  syscall.accept.out: %ld, ..result: %ld, ..in: %ld\n",
+		    rec.out, rec.res.result, rec.res.in);
+	    if (rec.addrlen)
+	      printf ("  syscall.accept.addr.family: %hu\n",
+		      rec.addr.family);
+	  }
+	else if (magic == ERI_SYSCALL_GETSOCKNAME_MAGIC)
+	  {
+	    struct eri_syscall_getsockname_record rec;
+	    eri_unserialize_syscall_getsockname_record (file, &rec);
+	    printf ("  syscall.getsockname.result: %ld, ..in: %ld\n",
+		    rec.res.result, rec.res.in);
+	    if (rec.addrlen)
+	      printf ("  syscall.getsockname.addr.family: %hu\n",
+		      rec.addr.family);
+	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {
 	    struct eri_syscall_futex_record rec;

@@ -1449,23 +1449,118 @@ DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (restart_syscall)
 
-SYSCALL_TO_IMPL (socket)
+DEFINE_SYSCALL (socket) { syscall_do_res_io (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (connect)
+static uint64_t
+syscall_copy_addr_from_user (struct eri_entry *entry,
+			struct eri_sockaddr_storage *addr,
+			const struct eri_sockaddr *user_addr, uint32_t len)
+{
+  if (len > sizeof *addr) return ERI_EINVAL;
+  return ! eri_entry__copy_from_user (entry, addr, user_addr, len, 0)
+		? ERI_EFAULT : 0;
+}
 
-SYSCALL_TO_IMPL (accept)
-SYSCALL_TO_IMPL (accept4)
+DEFINE_SYSCALL (connect)
+{
+  const struct eri_sockaddr *user_addr = (void *) regs->rsi;
+  uint32_t addrlen = regs->rdx;
+
+  struct eri_sockaddr_storage addr;
+  eri_entry__syscall_leave_if_error (entry,
+	syscall_copy_addr_from_user (entry, &addr, user_addr, addrlen));
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, &addr)))
+    syscall_restart_out (th, rec.out);
+
+  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+static eri_noreturn void
+syscall_do_accept (SYSCALL_PARAMS)
+{
+  struct sockaddr *user_addr = (void *) regs->rsi;
+  uint32_t *user_addrlen = (void *) regs->rdx;
+
+  struct eri_syscall_accept_record rec = { io_out (th) };
+
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res,
+	(1, user_addr ? &rec.addr : 0), (2, user_addr ? &rec.addrlen : 0)))
+    syscall_restart_out (th, rec.out);
+
+  res = syscall_copy_to_user (entry, res, user_addr,
+			      &rec.addr, rec.addrlen, 1);
+  rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
+				user_addr ? user_addrlen : 0, &rec.addrlen);
+
+  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_ACCEPT_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (accept) { syscall_do_accept (SYSCALL_ARGS); }
+DEFINE_SYSCALL (accept4) { syscall_do_accept (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (sendto)
 SYSCALL_TO_IMPL (recvfrom)
 SYSCALL_TO_IMPL (sendmsg)
 SYSCALL_TO_IMPL (sendmmsg)
 SYSCALL_TO_IMPL (recvmsg)
 SYSCALL_TO_IMPL (recvmmsg)
-SYSCALL_TO_IMPL (shutdown)
-SYSCALL_TO_IMPL (bind)
-SYSCALL_TO_IMPL (listen)
-SYSCALL_TO_IMPL (getsockname)
-SYSCALL_TO_IMPL (getpeername)
+
+DEFINE_SYSCALL (shutdown) { syscall_do_res_io (SYSCALL_ARGS); }
+
+DEFINE_SYSCALL (bind)
+{
+  const struct eri_sockaddr *user_addr = (void *) regs->rsi;
+  uint32_t addrlen = regs->rdx;
+
+  struct eri_sockaddr_storage addr;
+  eri_entry__syscall_leave_if_error (entry,
+	syscall_copy_addr_from_user (entry, &addr, user_addr, addrlen));
+
+  struct eri_syscall_res_io_record rec = {
+    io_out (th), { eri_entry__syscall (entry, (1, &addr)) }
+  };
+
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (listen) { syscall_do_res_io (SYSCALL_ARGS); }
+
+static eri_noreturn void
+syscall_do_getsockname (SYSCALL_PARAMS)
+{
+  struct eri_sock_addr *user_addr = (void *) regs->rsi;
+  uint32_t *user_addrlen = (void *) regs->rdx;
+
+  struct eri_syscall_getsockname_record rec = { 0 };
+
+  if (! eri_entry__copy_obj_from_user (entry, &rec.addrlen,
+				       user_addrlen, 0))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  uint64_t res = eri_entry__syscall (entry,
+				(1, &rec.addr), (2, &rec.addrlen));
+  res = syscall_copy_to_user (entry, res, user_addr,
+			      &rec.addr, rec.addrlen, 0);
+  rec.res.result = syscall_copy_obj_to_user (entry, res, user_addrlen,
+					     &rec.addrlen);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_GETSOCKNAME_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (getsockname) { syscall_do_getsockname (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getpeername) { syscall_do_getsockname (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (socketpair)
 SYSCALL_TO_IMPL (setsockopt)
 SYSCALL_TO_IMPL (getsockopt)
