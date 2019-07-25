@@ -68,11 +68,6 @@ main (int32_t argc, const char **argv)
 	  printf (", .code: %d, act.ver: %lu\n", rec.info.code, rec.act.ver);
 	else printf ("\n");
       }
-    else if (mark == ERI_SYSCALL_RESTART_OUT_RECORD)
-      {
-	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
-	printf ("  syscall.restart.out: %lu\n", eri_unserialize_uint64 (file));
-      }
     else if (mark == ERI_SYNC_RECORD)
       {
 	printf ("%lu %s\n", i++, eri_record_mark_str (mark));
