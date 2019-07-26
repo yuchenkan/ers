@@ -336,13 +336,13 @@ eri_live_thread_recorder__rec_syscall_mmap (
 }
 
 void
-eri_live_thread_recorder__rec_syscall_readlink (
+eri_live_thread_recorder__rec_syscall_getcwd (
 	struct eri_live_thread_recorder *th_rec,
 	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len)
 {
   if (! th_rec) return;
 
-  syscall_start_record (th_rec, ERI_SYSCALL_READLINK_MAGIC);
+  syscall_start_record (th_rec, ERI_SYSCALL_GETCWD_MAGIC);
   eri_serialize_syscall_res_in_record (th_rec->file, rec);
   if (eri_syscall_is_fault_or_ok (rec->result))
     {

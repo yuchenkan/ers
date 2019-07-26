@@ -330,7 +330,7 @@ main (int32_t argc, const char **argv)
 	      }
 	    else printf ("\n");
 	  }
-	else if (magic == ERI_SYSCALL_READLINK_MAGIC)
+	else if (magic == ERI_SYSCALL_GETCWD_MAGIC)
 	  {
 	    struct eri_syscall_res_in_record rec;
 	    eri_unserialize_syscall_res_in_record (file, &rec);

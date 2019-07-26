@@ -2192,7 +2192,7 @@ syscall_do_readlink (SYSCALL_PARAMS)
     }
 
   rec.in = io_in (th);
-  eri_live_thread_recorder__rec_syscall_readlink (th->rec, &rec, buf,
+  eri_live_thread_recorder__rec_syscall_getcwd (th->rec, &rec, buf,
 			eri_syscall_is_ok (rec.result) ? rec.result : 0);
   eri_assert_mtfree (pool, path);
   if (buf) eri_assert_mtfree (pool, buf);

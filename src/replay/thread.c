@@ -2120,7 +2120,7 @@ syscall_do_readlink (SYSCALL_PARAMS)
   syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
 
   struct eri_syscall_res_in_record rec
-	= syscall_do_fetch_res_in (th, ERI_SYSCALL_READLINK_MAGIC);
+	= syscall_do_fetch_res_in (th, ERI_SYSCALL_GETCWD_MAGIC);
 
   if (eri_syscall_is_non_fault_error (rec.result)) goto err;
 

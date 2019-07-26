@@ -44,7 +44,7 @@ void eri_live_thread_recorder__rec_syscall_read (
 void eri_live_thread_recorder__rec_syscall_mmap (
 		struct eri_live_thread_recorder *th_rec,
 		struct eri_syscall_res_in_record *rec, uint64_t len);
-void eri_live_thread_recorder__rec_syscall_readlink (
+void eri_live_thread_recorder__rec_syscall_getcwd (
 	struct eri_live_thread_recorder *th_rec,
 	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len);
 void eri_live_thread_recorder__rec_syscall (
