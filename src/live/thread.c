@@ -311,8 +311,10 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 
   group->stack_size = stack_size;
 
+  path = eri_live_alloc_abs_path (pool, path);
   group->rec_group = eri_live_thread_recorder__create_group (
 		pool, path, group->file_buf_size, group->page_size);
+  if (path) eri_assert_mtfree (pool, (void *) path);
 
   group->io = args->io;
 

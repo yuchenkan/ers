@@ -197,8 +197,7 @@ create_group (struct eri_live_rtld_args *rtld_args)
   group->pool = pool;
   group->file_buf_size = file_buf_size;
 
-  group->log = log
-	? eri_assert_malloc (&pool->pool, eri_strlen (log) + 1) : 0;
+  group->log = eri_live_alloc_abs_path (pool, log);
   if (log)
     {
       eri_mkdir (log);

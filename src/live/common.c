@@ -1,5 +1,6 @@
 #include <lib/util.h>
 #include <lib/buf.h>
+#include <lib/syscall.h>
 
 #include <common/debug.h>
 #include <common/common.h>
@@ -7,6 +8,45 @@
 #include <common/entry.h>
 
 #include <live/common.h>
+
+char *
+eri_live_alloc_abs_path (struct eri_mtpool *pool, const char *path)
+{
+  if (! path) return 0;
+
+  if (path[0] == '/')
+    {
+      char *abs = eri_assert_mtmalloc (pool, eri_strlen (path) + 1);
+      eri_strcpy (abs, path);
+      return abs;
+    }
+
+  char *buf;
+  uint64_t size = ERI_PATH_MAX, res;
+  while (1)
+    {
+      buf = eri_assert_mtmalloc (pool, size);
+      res = eri_syscall (getcwd, buf, size);
+      if (eri_syscall_is_ok (res)) break;
+      eri_assert (res == ERI_ERANGE);
+      eri_assert_mtfree (pool, buf);
+      size *= 2;
+    }
+
+  eri_assert (res >= 2);
+  uint8_t slash = buf[res - 2] == '/';
+  char *abs = eri_assert_mtmalloc (pool, res + ! slash + eri_strlen (path));
+  eri_strcpy (abs, buf);
+  if (! slash)
+    {
+      abs[res - 1] = '/';
+      eri_strcpy (abs + res, path);
+    }
+  else eri_strcpy (abs + res - 1, path);
+  // eri_info ("%s\n", abs);
+  eri_assert_mtfree (pool, buf);
+  return abs;
+}
 
 struct init_get_map_args
 {
