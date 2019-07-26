@@ -2053,7 +2053,36 @@ SYSCALL_TO_IMPL (lremovexattr)
 DEFINE_SYSCALL (getdents) { syscall_do_read (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getdents64) { syscall_do_read (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (getcwd)
+static eri_noreturn void
+syscall_do_getcwd (struct thread *th, char *user_buf, uint64_t size)
+{
+  struct eri_syscall_res_in_record rec
+	= syscall_do_fetch_res_in (th, ERI_SYSCALL_GETCWD_MAGIC);
+
+  if (eri_syscall_is_non_fault_error (rec.result)) goto err;
+
+  uint64_t len;
+  if (! try_unserialize (uint64, th, &len) || len > size)
+    diverged (th);
+
+  uint8_t buf[1024];
+  uint64_t c = 0;
+  for (c = 0; c < len; c += sizeof buf)
+    {
+      uint64_t l = eri_min (len - c, sizeof buf);
+      if (! try_unserialize (uint8_array, th, buf, l)) diverged (th);
+      if (! copy_to_user (th, user_buf + c, buf, l)) break;
+    }
+
+  if ((c < len) != (rec.result == ERI_EFAULT)) diverged (th);
+
+err:
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, rec.result);
+}
+
+DEFINE_SYSCALL (getcwd)
+{ syscall_do_getcwd (th, (void *) regs->rdi, regs->rsi); }
 
 DEFINE_SYSCALL (chdir)
 {
@@ -2119,32 +2148,10 @@ syscall_do_readlink (SYSCALL_PARAMS)
 
   syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
 
-  struct eri_syscall_res_in_record rec
-	= syscall_do_fetch_res_in (th, ERI_SYSCALL_GETCWD_MAGIC);
-
-  if (eri_syscall_is_non_fault_error (rec.result)) goto err;
-
-  uint64_t len;
-  if (! try_unserialize (uint64, th, &len)
-      || len > (at ? regs->r10 : regs->rdx))
-    diverged (th);
-
   char *user_buf = (void *) (at ? regs->rdx : regs->rsi);
+  uint64_t size = at ? regs->r10 : regs->rdx;
 
-  uint8_t buf[1024];
-  uint64_t c = 0;
-  for (c = 0; c < len; c += sizeof buf)
-    {
-      uint64_t l = eri_min (len - c, sizeof buf);
-      if (! try_unserialize (uint8_array, th, buf, l)) diverged (th);
-      if (! copy_to_user (th, user_buf + c, buf, l)) break;
-    }
-
-  if ((c < len) != (rec.result == ERI_EFAULT)) diverged (th);
-
-err:
-  if (! io_in (th, rec.in)) diverged (th);
-  syscall_leave (th, 1, rec.result);
+  syscall_do_getcwd (th, user_buf, size);
 }
 
 DEFINE_SYSCALL (readlink) { syscall_do_readlink (SYSCALL_ARGS); }

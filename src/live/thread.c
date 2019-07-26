@@ -2061,6 +2061,7 @@ syscall_do_getdents (SYSCALL_PARAMS)
 DEFINE_SYSCALL (getdents) { syscall_do_getdents (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getdents64) { syscall_do_getdents (SYSCALL_ARGS); }
 
+/* Size should not be zero.  */
 static char *
 syscall_get_path (struct eri_mtpool *pool, uint64_t size,
 		  uint8_t (*get) (char *, uint64_t, void *), void *args)
@@ -2085,7 +2086,47 @@ syscall_get_path (struct eri_mtpool *pool, uint64_t size,
   return buf;
 }
 
-SYSCALL_TO_IMPL (getcwd)
+struct syscall_getcwd_get_path_args
+{
+  struct eri_entry *entry;
+  uint64_t res;
+};
+
+static uint8_t
+syscall_getcwd_get_path (char *buf, uint64_t size, void *args)
+{
+  struct syscall_getcwd_get_path_args *a = args;
+  a->res = eri_entry__syscall (a->entry, (0, buf), (1, size));
+  return a->res != ERI_ERANGE;
+}
+
+DEFINE_SYSCALL (getcwd)
+{
+  char *user_buf = (void *) regs->rdi;
+  uint64_t buf_size = regs->rsi;
+
+  struct eri_mtpool *pool = th->group->pool;
+
+  char *buf = 0;
+  uint64_t res = 0;
+
+  struct eri_syscall_res_in_record rec;
+  if (! buf_size) rec.result = eri_entry__syscall (entry);
+  else
+    {
+      struct syscall_getcwd_get_path_args args = { entry };
+      buf = syscall_get_path (pool, buf_size,
+			      syscall_getcwd_get_path, &args);
+      res = args.res;
+      rec.result = syscall_copy_to_user (entry, res, user_buf, buf, res, 0);
+    }
+
+  rec.in = io_in (th);
+  eri_live_thread_recorder__rec_syscall_getcwd (th->rec, &rec, buf,
+				eri_syscall_is_fault_or_ok (res) ? res : 0);
+  if (buf) eri_assert_mtfree (pool, buf);
+  eri_entry__syscall_leave (entry, rec.result);
+}
 
 DEFINE_SYSCALL (chdir)
 {
@@ -2179,21 +2220,22 @@ syscall_do_readlink (SYSCALL_PARAMS)
   uint64_t buf_size = at ? regs->r10 : regs->rdx;
 
   char *buf = 0;
+  uint64_t res = 0;
 
-  struct eri_syscall_res_in_record rec = { 0 };
-  if (buf_size == 0) rec.result = eri_entry__syscall (entry);
+  struct eri_syscall_res_in_record rec;
+  if (! buf_size) rec.result = eri_entry__syscall (entry);
   else
     {
       struct syscall_readlink_get_path_args args = { entry, at };
       buf = syscall_get_path (pool, buf_size,
 			      syscall_readlink_get_path, &args);
-      rec.result = syscall_copy_to_user (entry, args.res,
-					 user_buf, buf, args.res, 0);
+      res = args.res;
+      rec.result = syscall_copy_to_user (entry, res, user_buf, buf, res, 0);
     }
 
   rec.in = io_in (th);
   eri_live_thread_recorder__rec_syscall_getcwd (th->rec, &rec, buf,
-			eri_syscall_is_ok (rec.result) ? rec.result : 0);
+					eri_syscall_is_ok (res) ? res : 0);
   eri_assert_mtfree (pool, path);
   if (buf) eri_assert_mtfree (pool, buf);
   eri_entry__syscall_leave (entry, rec.result);
