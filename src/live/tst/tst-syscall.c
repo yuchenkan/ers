@@ -55,3 +55,21 @@ tst_assert_live_clone_exit_group (struct tst_live_clone_args *args)
   args->fn = exit_group;
   tst_assert_live_clone (args);
 }
+
+void *
+tst_assert_live_alloc_boundary (uint64_t size, uint64_t page_size)
+{
+  eri_assert (size < page_size);
+  uint8_t *p = (void *) tst_assert_syscall (mmap, 0, 2 * page_size,
+			ERI_PROT_READ | ERI_PROT_WRITE,
+			ERI_MAP_PRIVATE | ERI_MAP_ANONYMOUS, -1, 0);
+  tst_assert_syscall (mprotect, p + page_size, page_size, 0);
+  return p + page_size - size;
+}
+
+void
+tst_assert_live_free_boundary (void *ptr, uint64_t page_size)
+{
+  tst_assert_syscall (munmap, eri_round_down ((uint64_t) ptr, page_size),
+		      2 * page_size);
+}

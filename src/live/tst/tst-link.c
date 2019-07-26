@@ -5,6 +5,7 @@
 #include <common/debug.h>
 
 #include <tst/tst-syscall.h>
+#include <live/tst/tst-syscall.h>
 
 char link[ERI_PATH_MAX];
 
@@ -22,6 +23,13 @@ tst_live_start (void)
   eri_assert (res < ERI_PATH_MAX);
   link[res] = '\0';
   eri_info ("%s\n", link);
+
+  char *part = tst_assert_live_alloc_boundary (4, 4096);
+  eri_assert (tst_syscall (readlink,
+			   "/proc/self/exe", part, 8) == ERI_EFAULT);
+  eri_assert (! eri_strncmp (part, link, 4));
+  tst_assert_live_free_boundary (part, 4096);
+
   tst_assert_syscall (link, link, "tst-link.t");
   tst_assert_syscall (rename, "tst-link.t", "tst-link-rename.t");
   tst_assert_syscall (unlink, "tst-link-rename.t");

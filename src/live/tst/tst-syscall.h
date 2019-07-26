@@ -45,6 +45,9 @@ struct tst_live_clone_raise_args
 void tst_assert_live_clone_raise (struct tst_live_clone_raise_args *args);
 void tst_assert_live_clone_exit_group (struct tst_live_clone_args *args);
 
+void *tst_assert_live_alloc_boundary (uint64_t size, uint64_t page_size);
+void tst_assert_live_free_boundary (void *ptr, uint64_t page_size);
+
 #endif
 
 #endif
