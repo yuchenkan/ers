@@ -1,26 +1,28 @@
 'use strict'; /* vim: set ft=javascript: */
 
 const base = goal.replace (/^live\/tst\//, '');
+const full = x => `live/tst/${x}`;
+
 if (new Set ([ 'tst-registers.h', 'tst-rtld.out', 'main.l', 'sig-hand-ut.l' ]).has (base))
   return await this.invoke (`${goal}.g`);
 
 if (new Set ([ 'tst-main.ld', 'tst-sig-hand-ut.ld' ]).has (base))
   return await this.invoke ('goal/m4.g');
 
-if (base === 'rtld/live') return await this.invoke ('live/live.g', { plain: 'live/tst/rtld/plain.so' });
+if (base === 'rtld/live') return await this.invoke ('live/live.g', { plain: full ('rtld/plain.so') });
 
-if (base.match (/^tst-sig-hand-[^.]*-ut$/)) return await this.invoke ('live/tst/tst-sig-hand-ut.g');
+if (base.match (/^tst-sig-hand-[^.]*-ut$/)) return await this.invoke (full ('tst-sig-hand-ut.g'));
 
-if (base.match (/^tst-[^.-]*-exit-[^.]*.out$/)) return await this.invoke ('live/tst/tst-exit.out.g');
+if (base.match (/^tst-[^.-]*-exit-[^.]*.out$/)) return await this.invoke (full ('tst-exit.out.g'));
 
-if (base.match (/^tst-[^.-]*-entry-atomic-[^.]*$/)) return await this.invoke ('live/tst/tst-entry-atomic.g');
+if (base.match (/^tst-[^.-]*-entry-atomic-[^.]*$/)) return await this.invoke (full ('tst-entry-atomic.g'));
 
-if (base.match (/^tst-[^.-]*-entry-[^.]*$/)) return await this.invoke ('live/tst/tst-entry.g');
+if (base.match (/^tst-[^.-]*-entry-[^.]*$/)) return await this.invoke (full ('tst-entry.g'));
 
-if (base.match (/^tst-main-[^.]*$/)) return await this.invoke ('live/tst/tst-main.g');
+if (base.match (/^tst-main-[^.]*$/)) return await this.invoke (full ('tst-main.g'));
 
-if (base.match (/^tst-init-[^.]*.out$/)) return await this.invoke ('live/tst/tst-init.out.g');
+if (base.match (/^tst-init-[^.]*.out$/)) return await this.invoke (full ('tst-init.out.g'));
 
-if (base.match (/^tst-init-[^.]*$/)) return await this.invoke ('live/tst/tst-init.g');
+if (base.match (/^tst-init-[^.]*$/)) return await this.invoke (full ('tst-init.g'));
 
 return false;
