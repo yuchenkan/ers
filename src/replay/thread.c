@@ -2766,7 +2766,7 @@ handle_signal (struct eri_siginfo *info, struct eri_ucontext *ctx,
   if (eri_si_sync (info))
     eri_assert (! eri_within (&th->group->map_range, ctx->mctx.rip));
 
-  eri_entry__sig_test_op_ret (th->entry,
+  eri_entry__sig_set_test_op_ret (th->entry,
 		eri_struct_of (info, struct eri_sigframe, info));
   return 1;
 }

@@ -2878,7 +2878,7 @@ eri_live_thread__sig_handler (
 
   eri_entry__sig_test_interrupted (entry, &ctx->mctx);
 
-  eri_entry__sig_test_op_ret (entry, frame);
+  eri_entry__sig_set_test_op_ret (entry, frame);
 }
 
 eri_file_t

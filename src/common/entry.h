@@ -220,7 +220,7 @@ uint8_t eri_entry__sig_test_clear_single_step (
 			struct eri_entry *entry, uint64_t rip);
 void _eri_entry__sig_op_ret (struct eri_entry *entry,
 			     struct eri_sigframe *frame);
-#define eri_entry__sig_test_op_ret(entry, frame) \
+#define eri_entry__sig_set_test_op_ret(entry, frame) \
   do { struct eri_entry *_entry = entry;				\
        struct eri_sigframe *_frame = frame;				\
        eri_entry__set_signal (entry, &_frame->info, &_frame->ctx);	\
