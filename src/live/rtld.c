@@ -87,12 +87,18 @@ rtld (void **args, uint64_t rdx)
   eri_sig_fill_set (&set);
   eri_assert_sys_sigprocmask (&set, &rtld_args.sig_mask);
 
-  const char *live = "/work/ers/live";
-  uint64_t buf_size = 1024 * 1024 * 1024;
-  uint64_t page_size = 4096;
+  const char *on = 0;
 
   rtld_args.envp = eri_get_envp_from_args (args);
+
   char **envp;
+  for (envp = rtld_args.envp; *envp; ++envp)
+    eri_get_arg_str (*envp, "ERS_DATA=", (void *) &on);
+
+  const char *live = "/work/ers/live";
+  uint64_t buf_size = on ? 1024 * 1024 * 1024 : 1024 * 1024;
+  uint64_t page_size = 4096;
+
   for (envp = rtld_args.envp; *envp; ++envp)
     (void) (eri_get_arg_str (*envp, "ERS_LIVE=", (void *) &live)
     || eri_get_arg_int (*envp, "ERS_BUF_SIZE=", &buf_size, 10));
@@ -129,8 +135,9 @@ rtld (void **args, uint64_t rdx)
       eri_assert_sys_read (fd, &headers[i].end, sizeof headers[i].end);
     }
 
-  eri_assert (headers[0].type == ERI_LIVE_PLAIN);
-  eri_assert (headers[1].type == ERI_LIVE_LIVE);
+  for (i = 0; i < n; ++i)
+    if (headers[i].type == (on ? ERI_LIVE_LIVE : ERI_LIVE_PLAIN))
+      run (fd, headers[1].end, page_size, &rtld_args);
 
-  run (fd, headers[1].end, page_size, &rtld_args);
+  eri_assert_unreachable ();
 }
