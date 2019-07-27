@@ -6,7 +6,6 @@ if (! base) return;
 
 if (base === 'convert.c.o') return await this.invoke ('goal/compile.g', { cflags: (_, f) => f });
 
-if (new Set ([ 'live.h', 'rtld' ]).has (base))
-  return await this.invoke (`${goal}.g`);
+if (base === 'live.h') return await this.invoke (`${goal}.g`);
 
 return false;
