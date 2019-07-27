@@ -3,11 +3,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define eri_assert	assert
 
 #include <lib/elf.h>
 #include <lib/syscall-common.h>
+
+#include <live/rtld.h>
 
 static uint64_t
 parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs,
@@ -67,7 +70,8 @@ parse_elf (FILE *f, struct eri_seg **segs, uint16_t *nsegs,
 }
 
 static void
-convert_bin (const char *elf, const char *bin)
+convert_elf (const char *elf, const char *bin,
+	     struct eri_live_header *h, uint64_t start, FILE *bf)
 {
   FILE *ef = fopen (elf, "rb");
   assert (ef);
@@ -78,13 +82,12 @@ convert_bin (const char *elf, const char *bin)
   uint64_t nrels;
   uint64_t entry = parse_elf (ef, &segs, &nsegs, &rels, &nrels);
 
-  FILE *bf = fopen (bin, "wb");
-  assert (bf);
-
   uint16_t i;
   for (i = 0; i < nsegs; ++i)
     {
       assert (fseek (ef, segs[i].offset, SEEK_SET) == 0);
+
+      segs[i].offset += start;
       assert (fseek (bf, segs[i].offset, SEEK_SET) == 0);
 
       uint8_t b[segs[i].filesz];
@@ -100,10 +103,39 @@ convert_bin (const char *elf, const char *bin)
   assert (fwrite (&nrels, sizeof nrels, 1, bf) == 1);
   assert (fwrite (&entry, sizeof entry, 1, bf) == 1);
 
-  fclose (bf);
+  h->end = ftell (bf);
+  eri_assert (h->end != -1);
+
   free (segs);
   free (rels);
   fclose (ef);
+}
+
+static void
+convert_bin (const char *plain, const char *live, const char *bin)
+{
+  FILE *bf = fopen (bin, "wb");
+  assert (bf);
+
+  const char *names[] = { plain, live };
+  struct eri_live_header hs[] = { { ERI_LIVE_PLAIN }, { ERI_LIVE_LIVE } };
+
+  uint64_t start = 0;
+  uint8_t i;
+  for (i = 0; i < eri_length_of (hs); ++i)
+    {
+      convert_elf (names[i], bin, hs + i, start, bf);
+      start = eri_round_up (hs[i].end, getpagesize ());
+    }
+
+  for (i = 0; i < eri_length_of (hs); ++i)
+    {
+      assert (fseek (bf, 0, SEEK_END) == 0);
+      assert (fwrite (&hs[i].type, sizeof hs[i].type, 1, bf) == 1);
+      assert (fwrite (&hs[i].end, sizeof hs[i].end, 1, bf) == 1);
+    }
+  assert (fwrite (&i, sizeof i, 1, bf) == 1);
+  fclose (bf);
 }
 
 static void
@@ -148,8 +180,8 @@ main (int32_t argc, const char **argv)
 
   if (strcmp (t, "bin") == 0)
     {
-      assert (argc == 4);
-      convert_bin (argv[2], argv[3]);
+      assert (argc == 5);
+      convert_bin (argv[2], argv[3], argv[4]);
     }
   else if (strcmp (t, "header") == 0)
     {

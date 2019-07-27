@@ -1,6 +1,8 @@
 'use strict'; /* vim: set ft=javascript: */
 
-const convert = 'live/convert';
-await this.update ([ convert, `${goal}.so` ]);
+if (typeof plain === 'undefined') var plain = 'plain/plain.so';
 
-await env.run (`./${convert} bin ${goal}.so ${goal}`);
+const convert = 'live/convert';
+await this.update ([ convert, plain, `${goal}.so` ]);
+
+await env.run (`./${convert} bin ${plain} ${goal}.so ${goal}`);

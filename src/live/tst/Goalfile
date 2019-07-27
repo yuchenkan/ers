@@ -7,7 +7,7 @@ if (new Set ([ 'tst-registers.h', 'tst-rtld.out', 'main.l', 'sig-hand-ut.l' ]).h
 if (new Set ([ 'tst-main.ld', 'tst-sig-hand-ut.ld' ]).has (base))
   return await this.invoke ('goal/m4.g');
 
-if (base === 'rtld/live') return await this.invoke ('live/live.g');
+if (base === 'rtld/live') return await this.invoke ('live/live.g', { plain: 'live/tst/rtld/plain.so' });
 
 if (base.match (/^tst-sig-hand-[^.]*-ut$/)) return await this.invoke ('live/tst/tst-sig-hand-ut.g');
 

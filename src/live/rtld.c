@@ -31,6 +31,51 @@ map_base (struct eri_seg *segs, uint16_t nsegs,
   return base;
 }
 
+static eri_noreturn void
+run (int32_t fd, uint64_t end, uint64_t page_size,
+     struct eri_live_rtld_args *rtld_args)
+{
+  uint8_t buf[sizeof (uint16_t) + sizeof (uint64_t) * 2];
+  eri_assert_syscall (lseek, fd, end - sizeof buf, ERI_SEEK_SET);
+  eri_assert_sys_read (fd, buf, sizeof buf);
+  uint16_t nsegs = *(uint16_t *) buf;
+  uint64_t nrels = *(uint64_t *) (buf + sizeof nsegs);
+  uint64_t entry = *(uint64_t *) (buf + sizeof nsegs + sizeof nrels);
+
+  uint64_t rels_size = sizeof (struct eri_relative) * nrels;
+
+  eri_assert (nsegs > 0);
+  struct eri_seg segs[nsegs];
+  eri_assert_syscall (lseek, fd,
+		end - (sizeof segs + rels_size + sizeof buf), ERI_SEEK_SET);
+  eri_assert_sys_read (fd, segs, sizeof segs);
+
+  uint64_t base = map_base (segs, nsegs, page_size, rtld_args);
+  eri_map_bin (fd, segs, nsegs, base, page_size);
+
+  // eri_assert_fprintf (ERI_STDERR, "base = %lx\n", base);
+
+  if (nrels)
+    {
+      struct eri_relative rels[4096];
+      eri_assert_syscall (lseek, fd,
+			  end - (rels_size + sizeof buf), ERI_SEEK_SET);
+
+      uint64_t i;
+      for (i = 0; i < nrels; i += eri_length_of (rels))
+	{
+	  uint64_t n = eri_min (eri_length_of (rels), nrels - i);
+	  eri_assert_sys_read (fd, rels, sizeof rels[0] * n);
+	  eri_map_reloc (rels, n, base);
+	}
+    }
+
+  eri_assert_syscall (close, fd);
+
+  ((void (*) (void *)) base + entry) (rtld_args);
+  eri_assert_unreachable ();
+}
+
 eri_noreturn void
 rtld (void **args, uint64_t rdx)
 {
@@ -68,43 +113,24 @@ rtld (void **args, uint64_t rdx)
   eri_assert (eri_syscall_is_ok (res));
   int32_t fd = res;
 
-  uint8_t buf[sizeof (uint16_t) + sizeof (uint64_t) * 2];
-  eri_assert_syscall (lseek, fd, -sizeof buf, ERI_SEEK_END);
-  eri_assert_sys_read (fd, buf, sizeof buf);
-  uint16_t nsegs = *(uint16_t *) buf;
-  uint64_t nrels = *(uint64_t *) (buf + sizeof nsegs);
-  uint64_t entry = *(uint64_t *) (buf + sizeof nsegs + sizeof nrels);
+  uint8_t n;
+  eri_assert_syscall (lseek, fd, -sizeof n, ERI_SEEK_END);
+  eri_assert_sys_read (fd, &n, sizeof n);
 
-  uint64_t rels_size = sizeof (struct eri_relative) * nrels;
+  uint8_t buf[(sizeof (uint8_t) + sizeof (uint64_t)) * n];
+  struct eri_live_header headers[n];
 
-  eri_assert (nsegs > 0);
-  struct eri_seg segs[nsegs];
-  eri_assert_syscall (lseek, fd,
-		      -(sizeof segs + rels_size + sizeof buf), ERI_SEEK_END);
-  eri_assert_sys_read (fd, segs, sizeof segs);
+  eri_assert_syscall (lseek, fd, -(sizeof buf + sizeof n), ERI_SEEK_END);
 
-  uint64_t base = map_base (segs, nsegs, page_size, &rtld_args);
-  eri_map_bin (fd, segs, nsegs, base, page_size);
-
-  // eri_assert_fprintf (ERI_STDERR, "base = %lx\n", base);
-
-  if (nrels)
+  uint8_t i;
+  for (i = 0; i < n; ++i)
     {
-      struct eri_relative rels[4096];
-      eri_assert_syscall (lseek, fd,
-			  -(rels_size + sizeof buf), ERI_SEEK_END);
-
-      uint64_t i;
-      for (i = 0; i < nrels; i += eri_length_of (rels))
-	{
-	  uint64_t n = eri_min (eri_length_of (rels), nrels - i);
-	  eri_assert_sys_read (fd, rels, sizeof rels[0] * n);
-	  eri_map_reloc (rels, n, base);
-	}
+      eri_assert_sys_read (fd, &headers[i].type, sizeof headers[i].type);
+      eri_assert_sys_read (fd, &headers[i].end, sizeof headers[i].end);
     }
 
-  eri_assert_syscall (close, fd);
+  eri_assert (headers[0].type == ERI_LIVE_PLAIN);
+  eri_assert (headers[1].type == ERI_LIVE_LIVE);
 
-  ((void (*) (void *)) base + entry) (&rtld_args);
-  eri_assert_unreachable ();
+  run (fd, headers[1].end, page_size, &rtld_args);
 }
