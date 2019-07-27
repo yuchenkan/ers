@@ -387,8 +387,11 @@ eri_entry__syscall_rt_sigreturn (struct eri_entry *entry,
       ctx->mctx.fpstate = (void *) top;
     }
 
-  *mask = ctx->sig_mask;
-  eri_sig_empty_set (&ctx->sig_mask);
+  if (mask)
+    {
+      *mask = ctx->sig_mask;
+      eri_sig_empty_set (&ctx->sig_mask);
+    }
 
   struct eri_stack st = *stack;
   set_sig_alt_stack (stack, rsp, &ctx->stack);
@@ -467,7 +470,7 @@ eri_entry__setup_user_frame (struct eri_entry *entry,
   frame.ctx = entry->_ctx;
   frame.ctx.stack = *stack;
   eri_mcontext_from_registers (&frame.ctx.mctx, regs);
-  frame.ctx.sig_mask = *mask;
+  if (mask) frame.ctx.sig_mask = *mask;
   frame.info = entry->_sig_info;
 
   uint8_t alt = (act->flags & ERI_SA_ONSTACK)

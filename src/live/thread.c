@@ -808,7 +808,7 @@ DEFINE_SYSCALL (clone)
   int32_t flags = regs->rdi;
   int32_t *user_ptid = (void *) regs->rdx;
   int32_t *user_ctid = (void *) regs->r10;
-  /* XXX: support more */
+  /* XXX: support more, so for plain */
   eri_assert (flags == ERI_CLONE_SUPPORTED_FLAGS);
 
   struct eri_live_thread__create_args create_args = { th };
@@ -2683,7 +2683,7 @@ main_entry (struct eri_entry *entry)
   if (code == ERI_OP_SYSCALL) syscall (th);
   else if (code == ERI_OP_SYNC_ASYNC) sync_async (th);
   else if (eri_op_is_pub_atomic (code)) atomic (th);
-  else eri_assert_unreachable (); /* XXX: invalid argument */
+  else eri_assert_unreachable (); /* XXX: invalid argument, so for plain */
 }
 
 static void

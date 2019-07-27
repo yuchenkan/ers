@@ -110,6 +110,8 @@ void eri_entry__destroy (struct eri_entry *entry);
 #define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
 #define eri_entry__get_atomic_size(entry)	(1 << (entry)->_op.args)
 
+#define eri_entry__get_interrupt(entry)		((entry)->_interrupt)
+
 eri_noreturn void eri_entry__do_leave (struct eri_entry *entry);
 eri_noreturn void eri_entry__leave (struct eri_entry *entry);
 eri_noreturn void eri_entry__syscall_leave (
