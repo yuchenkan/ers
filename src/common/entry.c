@@ -452,11 +452,10 @@ eri_entry__syscall_free_rw_iov (struct eri_entry *entry,
   eri_assert_mtfree (entry->_pool, iov);
 }
 
-struct eri_sigframe *
-eri_entry__setup_user_frame (
-	struct eri_entry *entry, const struct eri_sigaction *act,
-	struct eri_stack *stack, const eri_sigset_t *mask,
-	struct eri_access *acc)
+uint8_t
+eri_entry__setup_user_frame (struct eri_entry *entry,
+	const struct eri_sigaction *act, struct eri_stack *stack,
+	const eri_sigset_t *mask, struct eri_access *acc)
 {
   init_acc_opt (acc, ERI_ENTRY__MAX_SETUP_USER_FRAME_USER_ACCESS);
 
@@ -498,7 +497,7 @@ eri_entry__setup_user_frame (
   regs->rip = (uint64_t) act->act;
   regs->rflags &= ~(ERI_RFLAGS_TF | ERI_RFLAGS_DF | ERI_RFLAGS_RF);
 
-  return copy_obj_to_user (entry, user_frame, &frame, acc) ? user_frame : 0;
+  return copy_obj_to_user (entry, user_frame, &frame, acc);
 }
 
 void
