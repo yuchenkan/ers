@@ -51,7 +51,7 @@ eri_entry__create (struct eri_entry__create_args *args)
   entry->_exit = args->exit;
 
   entry->_test_access = 0;
-  entry->_syscall_interrupt = 0;
+  entry->_interrupt = 0;
 
   th_copy_text (entry);
   return entry;
@@ -560,13 +560,9 @@ _eri_entry__sig_op_ret (struct eri_entry *entry, struct eri_sigframe *frame)
 }
 
 void
-eri_entry__sig_test_syscall_interrupted (
+eri_entry__sig_test_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx)
 {
-  uint64_t intr = entry->_syscall_interrupt;
-  if (intr && mctx->rip != intr)
-    {
-      mctx->rax = ERI_EINTR;
-      mctx->rip = intr;
-    }
+  uint64_t intr = entry->_interrupt;
+  if (intr && mctx->rip != intr) mctx->rip = entry->_interrupt_restart;
 }

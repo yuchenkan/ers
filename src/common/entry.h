@@ -65,7 +65,8 @@ struct eri_entry
     } _access;
   uint8_t _test_access;
 
-  uint64_t _syscall_interrupt;
+  uint64_t _interrupt;
+  uint64_t _interrupt_restart;
 
   union
     {
@@ -252,7 +253,7 @@ eri_entry__sig_access_fault (struct eri_entry *entry,
   entry->_test_access = 0;
 }
 
-void eri_entry__sig_test_syscall_interrupted (
+void eri_entry__sig_test_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx);
 
 #endif
