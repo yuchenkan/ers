@@ -38,7 +38,7 @@ struct thread
   uint8_t sig_tf;
   struct eri_stack sig_alt_stack;
 
-  eri_aligned16 uint8_t sig_stack[ERI_MINSIGSTKSZ];
+  eri_aligned16 uint8_t sig_stack[4096];
   eri_aligned16 uint8_t stack[4096];
 };
 

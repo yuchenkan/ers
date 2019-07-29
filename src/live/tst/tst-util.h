@@ -3,6 +3,7 @@
 
 #include <lib/util.h>
 #include <lib/cpu.h>
+#include <lib/elf.h>
 
 #define tst_get_tls() \
   ({ void *_tls; asm ("movq\t%%fs:0, %0" : "=r" (_tls)); _tls; })
@@ -27,5 +28,17 @@ asm ("pushq\t%0; popfq" : : "n" (ERI_RFLAGS_TF) : "cc", "memory");
 
 #define tst_disable_trace() \
 asm ("pushq\t$0; popfq" : : : "cc", "memory");
+
+#define tst_get_plain(args) \
+  ({ void *_a = args;							\
+     uint64_t _r = 0;							\
+     if (_a)								\
+       {								\
+	 char **_p;							\
+	 for (_p = eri_get_envp_from_args (_a); *_p; ++_p)		\
+	   eri_get_arg_int (*_p, "TST_PLAIN=", &_r, 10);		\
+       }								\
+     !! _r; })
+
 
 #endif

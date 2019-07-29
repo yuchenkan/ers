@@ -40,8 +40,10 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 }
 
 eri_noreturn void
-tst_live_start (void)
+tst_live_start (void *args)
 {
+  uint8_t plain = tst_get_plain (args);
+
   eri_info ("start %lx\n", &tid);
   tid = tst_assert_syscall (gettid);
 
@@ -70,7 +72,7 @@ tst_live_start (void)
        : : "r" (c), "r" (d), "r" (s) : "memory");
 
   tst_assert_sys_futex_wait (&args1.args.alive, 1, 0);
-  eri_assert (tst_atomic_load (&raise_steps, 0));
+  if (! plain) eri_assert (tst_atomic_load (&raise_steps, 0));
 
   struct tst_live_clone_args args2 = {
     .top = tst_stack_top (stack), .delay = 1

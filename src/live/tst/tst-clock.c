@@ -3,22 +3,16 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
-#include <lib/elf.h>
 #include <common/debug.h>
 
 #include <tst/tst-atomic.h>
 #include <tst/tst-syscall.h>
+#include <live/tst/tst-util.h>
 
 eri_noreturn void
 tst_live_start (void *args)
 {
-  uint64_t plain = 0;
-  if (args)
-    {
-      char **p;
-      for (p = eri_get_envp_from_args (args); *p; ++p)
-	eri_get_arg_int (*p, "TST_PLAIN=", &plain, 10);
-    }
+  uint8_t plain = tst_get_plain (args);
 
   uint64_t t[2];
   eri_assert (tst_syscall (time, 1) == ERI_EFAULT);
