@@ -35,6 +35,7 @@ struct thread
 
   struct eri_entry *entry;
 
+  uint8_t sig_tf;
   struct eri_stack sig_alt_stack;
 
   eri_aligned16 uint8_t sig_stack[ERI_MINSIGSTKSZ];
@@ -59,6 +60,7 @@ create (struct thread_group *group)
   };
 
   th->entry = eri_entry__create (&args);
+  th->sig_tf = 0;
   return th;
 }
 
@@ -144,6 +146,12 @@ sig_action (struct eri_entry *entry)
   struct eri_sigaction act = sig_act->act;
   eri_assert_unlock (&sig_act->lock);
 
+  if (th->sig_tf)
+    {
+      eri_entry__get_regs (entry)->rflags |= ERI_RFLAGS_TF;
+      th->sig_tf = 0;
+    }
+
   eri_assert (eri_entry__setup_user_frame (entry, &act,
 					   &th->sig_alt_stack, 0, 0));
 
@@ -179,7 +187,9 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
   eri_entry__sig_set_test_op_ret (entry,
 			eri_struct_of (info, struct eri_sigframe, info));
 
-  ctx->mctx.rflags = 0;
+  if (ctx->mctx.rflags & ERI_RFLAGS_TF) th->sig_tf = 1;
+
+  ctx->mctx.rflags &= ~ERI_RFLAGS_TF;
   eri_sig_fill_set (&ctx->sig_mask);
 }
 

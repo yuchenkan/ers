@@ -73,6 +73,8 @@ tst_live_start (void)
   tst_atomic_sub (&v, 0xff00, 1);
   eri_assert (v == 0xff);
 
+  eri_info ("sbb\n");
+
   uint64_t rflags = ERI_RFLAGS_CF;
   tst_atomic_sbb_x (&v, 0xff, &rflags, 1);
   eri_assert (v == -1);
