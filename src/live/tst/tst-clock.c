@@ -3,14 +3,23 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
+#include <lib/elf.h>
 #include <common/debug.h>
 
 #include <tst/tst-atomic.h>
 #include <tst/tst-syscall.h>
 
 eri_noreturn void
-tst_live_start (void)
+tst_live_start (void *args)
 {
+  uint64_t plain = 0;
+  if (args)
+    {
+      char **p;
+      for (p = eri_get_envp_from_args (args); *p; ++p)
+	eri_get_arg_int (*p, "TST_PLAIN=", &plain, 10);
+    }
+
   uint64_t t[2];
   eri_assert (tst_syscall (time, 1) == ERI_EFAULT);
   eri_info ("time: %lu\n", tst_assert_syscall (time, 0));
@@ -33,12 +42,14 @@ tst_live_start (void)
   eri_info ("get time: %lu %lu\n", timeval.sec, timeval.usec);
 
   eri_assert (tst_syscall (adjtimex, 0) == ERI_EFAULT);
-  eri_assert (tst_syscall (clock_adjtime, -1, 0) == ERI_EINVAL);
+  if (! plain)
+    eri_assert (tst_syscall (clock_adjtime, -1, 0) == ERI_EINVAL);
   eri_assert (tst_syscall (clock_adjtime,
 			   ERI_CLOCK_REALTIME, 0) == ERI_EFAULT);
 
   struct eri_timespec timespec;
-  eri_assert (tst_syscall (clock_settime, -1, 0) == ERI_EINVAL);
+  if (! plain)
+    eri_assert (tst_syscall (clock_settime, -1, 0) == ERI_EINVAL);
   eri_assert (tst_syscall (clock_settime,
 			   ERI_CLOCK_REALTIME, 0) == ERI_EFAULT);
   tst_assert_syscall (clock_gettime, ERI_CLOCK_REALTIME, &timespec);

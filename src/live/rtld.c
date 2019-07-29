@@ -137,7 +137,7 @@ rtld (void **args, uint64_t rdx)
 
   for (i = 0; i < n; ++i)
     if (headers[i].type == (on ? ERI_LIVE_LIVE : ERI_LIVE_PLAIN))
-      run (fd, headers[1].end, page_size, &rtld_args);
+      run (fd, headers[i].end, page_size, &rtld_args);
 
   eri_assert_unreachable ();
 }

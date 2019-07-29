@@ -44,8 +44,8 @@ wait_requeue (void *p)
 {
   eri_assert (! tst_syscall (futex, p, ERI_FUTEX_WAIT_PRIVATE, 1, 0));
   tst_atomic_add (&wait_wake_num,
-	tst_assert_syscall (futex, (int32_t *) p + 1,
-					ERI_FUTEX_WAKE_PRIVATE, 1), 0);
+		  tst_assert_syscall (futex, (int32_t *) p + 1,
+				      ERI_FUTEX_WAKE_PRIVATE, 1), 0);
 }
 
 static void
@@ -59,10 +59,14 @@ tst_requeue (struct tst_rand *rand, uint8_t cmp)
   clone (args, 2, rand, wait_requeue, a);
 
   while (tst_atomic_load (&wait_wake_num, 0) != 2)
-    tst_atomic_add (&wait_wake_num,
-	eri_min (1, tst_assert_syscall (futex, x,
-			  cmp ? ERI_FUTEX_CMP_REQUEUE : ERI_FUTEX_REQUEUE,
-			  1, 1, x + 1, 1)), 0);
+    {
+      tst_atomic_add (&wait_wake_num,
+	  eri_min (1, tst_assert_syscall (futex, x,
+			    cmp ? ERI_FUTEX_CMP_REQUEUE_PRIVATE
+				: ERI_FUTEX_REQUEUE_PRIVATE,
+			    1, 1, x + 1, 1)), 0);
+      tst_yield (8);
+    }
 
   join (args, 2);
   eri_assert (wait_wake_num == 2);

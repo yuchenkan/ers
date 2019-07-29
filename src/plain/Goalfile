@@ -1,0 +1,3 @@
+'use strict'; /* vim: set ft=javascript: */
+
+return ! await this.invoke ('common/filter-out-sub-tst.g', { cur: 'plain' });

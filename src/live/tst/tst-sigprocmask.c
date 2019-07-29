@@ -12,6 +12,7 @@
 eri_noreturn void
 tst_live_start (void)
 {
+eri_enable_debug = 1;
   struct tst_rand rand;
   tst_rand_init (&rand, 0);
 
@@ -46,7 +47,7 @@ tst_live_start (void)
 
   eri_debug ("inval 1\n");
   eri_assert (tst_syscall (rt_sigprocmask, -1,
-			   0, 0, ERI_SIG_SETSIZE) == ERI_EINVAL);
+			   &set, 0, ERI_SIG_SETSIZE) == ERI_EINVAL);
   eri_debug ("inval 2\n");
   eri_assert (tst_syscall (rt_sigprocmask, ERI_SIG_SETMASK,
 			   0, 0, 0) == ERI_EINVAL);

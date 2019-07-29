@@ -55,6 +55,7 @@ tst_live_start (void)
   eri_sig_empty_set (&mask);
   tst_assert_sys_sigprocmask (&mask, 0);
 
+  eri_info ("wait %lx %lx\n", &int_lock, &term_lock);
   tst_assert_lock (&int_lock);
   tst_assert_lock (&term_lock);
   tst_assert_sys_exit (0);

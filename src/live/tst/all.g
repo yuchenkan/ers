@@ -6,10 +6,7 @@ let tsts = [ 'rtld', 'sig-mask-async-ut' ];
 tsts = tsts.concat ([ 'main', 'syscall', 'sync-async', 'atomic', 'atomic-ext', 'sig-action' ].map (x => `sig-hand-${x}-ut`));
 tsts = tsts.concat ((await this.invoke (full ('diverge.g'))).map (t => `init-diverge-${t}`));
 
-let entries = [ 'syscall', 'sync-async' ];
-entries = entries.concat ([ 'load', 'store', 'inc-dec', 'xchg', 'cmpxchg', 'cmp', 'and', 'or', 'xor', 'xadd' ].map (x => `atomic-${x}`));
-
-let commons = entries.map (t => `entry-${t}`).concat (await this.invoke (full ('replay.g')));
+let commons = await this.invoke (full ('plain.g'));
 
 tsts = tsts.concat (commons.map (t => `main-${t}`)).concat (commons.map (t => `init-${t}`));
 

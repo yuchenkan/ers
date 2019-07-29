@@ -7,7 +7,7 @@
 
 #define _ERI_ASM_TEMPLATE_SIZE_b	b
 #define _ERI_ASM_TEMPLATE_SIZE_w	w
-#define _ERI_ASM_TEMPLATE_SIZE_l
+#define _ERI_ASM_TEMPLATE_SIZE_l	k
 #define _ERI_ASM_TEMPLATE_SIZE_q	q
 #define _ERI_ASM_TEMPLATE_SIZE(sz, i) \
   ERI_PASTE (ERI_PASTE (_ERI_ASM_TEMPLATE_SIZE_, sz), i)

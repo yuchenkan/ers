@@ -1,0 +1,19 @@
+'use strict'; /* vim: set ft=javascript: */
+
+const base = goal.replace (/^plain\/tst\//, '');
+const full = x => `plain/tst/${x}`;
+
+if (base === 'all') {
+  let names = (await this.invoke ('live/tst/plain.g'));
+  return await this.update (names.map (x => full (`tst-live-${x}.out`)));
+}
+
+const exit = /^tst-live-exit-([^.]*)\.out$/;
+if (base.match (exit))
+  return await this.invoke (full ('live.g'), { name: 'exit', args: base.match (exit)[1] });
+
+const pat = /^tst-live-([^.]*)\.out$/;
+if (base.match (pat))
+  return await this.invoke (full ('live.g'), { name: base.match (pat)[1] });
+
+return false;
