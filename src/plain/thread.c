@@ -39,7 +39,7 @@ struct thread
   struct eri_stack sig_alt_stack;
 
   eri_aligned16 uint8_t sig_stack[4096];
-  eri_aligned16 uint8_t stack[4096];
+  eri_aligned16 uint8_t stack[8192];
 };
 
 static eri_noreturn void main_entry (struct eri_entry *entry);
@@ -99,7 +99,7 @@ eri_plain_start (struct eri_live_rtld_args *rtld_args)
   eri_debug ("base = %lx\n", rtld_args->base);
 
   struct eri_mtpool *pool = eri_init_mtpool_from_buf (
-				rtld_args->buf, rtld_args->buf_size, 0);
+				rtld_args->buf, rtld_args->buf_size, 1);
   struct thread_group *group
 			= eri_assert_malloc (&pool->pool, sizeof *group);
   group->pool = pool;
