@@ -397,7 +397,7 @@ l:									\
 
 #define _ATOMIC_INTR_COMM(lintr, op, sz, _m, _f) \
   pushq	%ERI_PASTE (p, _f); popf;					\
-  ERI_PASTE (op, sz)	%_m;						\
+  lock ERI_PASTE (op, sz)	%_m;					\
   _ATOMIC_INTR_RESET (lintr);						\
   pushfq; popq	%ERI_PASTE (p, _f)
 
@@ -412,7 +412,7 @@ l:									\
 
 #define _ATOMIC_INTR_COMM2(lintr, op, sz, _r, _m, _f) \
   pushq	%ERI_PASTE (p, _f); popf;					\
-  ERI_PASTE (op, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;		\
+  lock ERI_PASTE (op, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;	\
   _ATOMIC_INTR_RESET (lintr);						\
   pushfq; popq	%ERI_PASTE (p, _f)
 
@@ -443,7 +443,7 @@ l:									\
 
 #define _ATOMIC_INTR_CMPXCHG(lintr, sz, _r, _m, _f) \
   pushq	%ERI_PASTE (q, _f); popfq;					\
-  ERI_PASTE (cmpxchg, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;	\
+  lock ERI_PASTE (cmpxchg, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;	\
   _ATOMIC_INTR_RESET (lintr);						\
   pushfq; popq	%ERI_PASTE (q, _f)
 
@@ -473,7 +473,7 @@ l:									\
 
 #define _ATOMIC_INTR_XADD(lintr, sz, _r, _m, _f) \
   pushq	%ERI_PASTE (q, _f); popfq;					\
-  ERI_PASTE (xadd, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;		\
+  lock ERI_PASTE (xadd, sz)	%_ERI_ASM_TEMPLATE_SIZE (sz, _r), %_m;	\
   _ATOMIC_INTR_RESET (lintr);						\
   pushfq; popq	%ERI_PASTE (q, _f)
 
