@@ -287,8 +287,7 @@ eri_live_thread__create_group (struct eri_mtpool *pool,
 	|| eri_get_arg_str (*p, "ERS_DATA=", (void *) &path));
     }
 
-  // TODO
-  if (! path && (args->log || eri_global_enable_debug)) path = "ers-data";
+  if (path && path[0] == '\0') path = 0;
 
   struct eri_live_thread_group *group = eri_assert_mtmalloc (
 						pool, sizeof *group);
