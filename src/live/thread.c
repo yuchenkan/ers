@@ -2705,6 +2705,8 @@ record_signal (struct eri_live_thread *th,
 static eri_noreturn void
 die (struct eri_live_thread *th)
 {
+  eri_log (th->log.file, "die\n");
+
   record_signal (th, 0, 0);
   eri_live_signal_thread__die (th->sig_th);
   eri_assert_sys_thread_die (&th->alive);
@@ -2730,7 +2732,7 @@ core (struct eri_live_thread *th, uint8_t term)
 	  && ! (eri_si_sync (info) && th->sig_force_masked))
 	record_signal (th, info, &th->sig_act);
 
-      if (term) eri_assert_syscall (exit, 0);
+      if (term) eri_assert_syscall (exit_group, 0);
       eri_assert_unreachable ();
     }
   else die (th);
