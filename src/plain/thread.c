@@ -3,6 +3,7 @@
 #include <lib/compiler.h>
 #include <lib/util.h>
 #include <lib/cpu.h>
+#include <lib/list.h>
 #include <lib/atomic-common.h>
 #include <lib/lock.h>
 #include <lib/syscall.h>
@@ -27,11 +28,16 @@ struct thread_group
   struct eri_mtpool *pool;
   struct eri_range map_range;
   struct sig_act sig_acts[ERI_NSIG - 1];
+
+  eri_lock_t thread_lock;
+  ERI_LST_LIST_FIELDS (thread)
 };
 
 struct thread
 {
   struct thread_group *group;
+
+  ERI_LST_NODE_FIELDS (thread)
 
   struct eri_entry *entry;
 
@@ -42,6 +48,8 @@ struct thread
   eri_aligned16 uint8_t stack[8192];
 };
 
+ERI_DEFINE_LIST (static, thread, struct thread_group, struct thread)
+
 static eri_noreturn void main_entry (struct eri_entry *entry);
 static eri_noreturn void sig_action (struct eri_entry *entry);
 
@@ -51,6 +59,8 @@ static void sig_handler (int32_t sig, struct eri_siginfo *info,
 static struct thread *
 create (struct thread_group *group)
 {
+  eri_assert_lock (&group->thread_lock);
+
   struct thread *th = eri_assert_mtmalloc (group->pool, sizeof *th);
   th->group = group;
 
@@ -61,14 +71,21 @@ create (struct thread_group *group)
 
   th->entry = eri_entry__create (&args);
   th->sig_tf = 0;
+
+  thread_lst_append (group, th);
+  eri_assert_unlock (&group->thread_lock);
   return th;
 }
 
 static void
 destroy (struct thread *th)
 {
+  struct thread_group *group = th->group;
+  eri_assert_lock (&group->thread_lock);
+  thread_lst_remove (group, th);
   eri_entry__destroy (th->entry);
-  eri_assert_mtfree (th->group->pool, th);
+  eri_assert_mtfree (group->pool, th);
+  eri_assert_unlock (&group->thread_lock);
 }
 
 static eri_noreturn void
@@ -122,6 +139,9 @@ eri_plain_start (struct eri_live_rtld_args *rtld_args)
 
   group->map_range.start = rtld_args->map_start;
   group->map_range.end = rtld_args->map_end;
+
+  group->thread_lock = 0;
+  ERI_LST_INIT_LIST (thread, group);
 
   struct thread *th = create (group);
 
@@ -196,7 +216,8 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 static eri_noreturn void
 syscall_clone (struct thread *th)
 {
-  struct eri_registers *regs = eri_entry__get_regs (th->entry);
+  struct eri_entry *entry = th->entry;
+  struct eri_registers *regs = eri_entry__get_regs (entry);
 
   int32_t flags = regs->rdi;
   uint64_t stack = regs->rsi;
@@ -204,29 +225,53 @@ syscall_clone (struct thread *th)
   int32_t *ctid = (void *) regs->r10;
   void *new_tls = (void *) regs->r8;
 
-  eri_assert (flags == ERI_CLONE_SUPPORTED_FLAGS);
+  if (flags & ERI_CLONE_VM)
+    {
+      eri_xassert (flags & ERI_CLONE_THREAD, eri_info);
 
-  struct thread *cth = create (th->group);
-  struct eri_registers *cregs = eri_entry__get_regs (cth->entry);
+      eri_sigset_t mask, old_mask;
+      eri_sig_fill_set (&mask);
+      eri_assert_sys_sigprocmask (&mask, &old_mask);
 
-  *cregs = *regs;
-  cregs->rsp = stack;
-  cregs->rax = 0;
+      if (eri_entry__sig_is_pending (entry))
+	{
+	  eri_assert_sys_sigprocmask (&old_mask, 0);
+	  eri_entry__restart (entry);
+	}
 
-  eri_sigset_t mask, old_mask;
-  eri_sig_fill_set (&mask);
-  eri_assert_sys_sigprocmask (&mask, &old_mask);
+      struct thread *cth = create (th->group);
+      struct eri_registers *cregs = eri_entry__get_regs (cth->entry);
 
-  struct eri_sys_clone_args args = {
-    flags, eri_entry__get_stack (cth->entry) - 8, ptid, ctid, new_tls,
-    start, cth, (void *) old_mask
-  };
+      *cregs = *regs;
+      cregs->rsp = stack;
+      cregs->rax = 0;
 
-  uint64_t res = eri_sys_clone (&args);
-  if (eri_syscall_is_error (res)) destroy (cth);
+      struct eri_sys_clone_args args = {
+	flags, eri_entry__get_stack (cth->entry) - 8, ptid, ctid, new_tls,
+	start, cth, (void *) old_mask
+      };
 
-  eri_assert_sys_sigprocmask (&old_mask, 0);
-  eri_entry__syscall_leave (th->entry, res);
+      uint64_t res = eri_sys_clone (&args);
+      if (eri_syscall_is_error (res)) destroy (cth);
+
+      eri_assert_sys_sigprocmask (&old_mask, 0);
+      eri_entry__syscall_leave (entry, res);
+    }
+  else
+    {
+      uint64_t res;
+      if (! eri_entry__syscall_interruptible (entry, &res, (1, 0)))
+	eri_entry__restart (entry);
+
+      if (res == 0)
+	{
+	  if (stack) regs->rsp = stack;
+	  struct thread *t, *nt;
+	  ERI_LST_FOREACH_SAFE (thread, th->group, t, nt)
+	    if (t != th) destroy (t);
+	}
+      eri_entry__syscall_leave (th->entry, res);
+    }
 }
 
 static eri_noreturn void
