@@ -227,6 +227,7 @@ syscall_clone (struct thread *th)
 
   if (flags & ERI_CLONE_VM)
     {
+      /* Without CLONE_THREAD, it may leak memory if killed by signal.  */
       eri_xassert (flags & ERI_CLONE_THREAD, eri_info);
 
       eri_sigset_t mask, old_mask;
