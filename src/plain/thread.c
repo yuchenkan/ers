@@ -59,6 +59,8 @@ static void sig_handler (int32_t sig, struct eri_siginfo *info,
 static struct thread *
 create (struct thread_group *group)
 {
+  // eri_debug ("create\n");
+
   eri_assert_lock (&group->thread_lock);
 
   struct thread *th = eri_assert_mtmalloc (group->pool, sizeof *th);
@@ -80,6 +82,8 @@ create (struct thread_group *group)
 static void
 destroy (struct thread *th)
 {
+  // eri_debug ("destroy\n");
+
   struct thread_group *group = th->group;
   eri_assert_lock (&group->thread_lock);
   thread_lst_remove (group, th);
@@ -91,7 +95,6 @@ destroy (struct thread *th)
 static eri_noreturn void
 start (struct thread *th, eri_sigset_t mask)
 {
-  eri_assert_syscall (sigaltstack, 0, &th->sig_alt_stack);
   struct eri_stack st = {
     (uint64_t) th->sig_stack, ERI_SS_AUTODISARM, sizeof (th->sig_stack)
   };
@@ -151,6 +154,7 @@ eri_plain_start (struct eri_live_rtld_args *rtld_args)
   regs->rdx = rtld_args->rdx;
   regs->rip = rtld_args->rip;
 
+  eri_assert_syscall (sigaltstack, 0, &th->sig_alt_stack);
   eri_jump (eri_entry__get_stack (th->entry) - 8, start, th,
 	    (void *) rtld_args->sig_mask, 0);
 }
@@ -225,10 +229,11 @@ syscall_clone (struct thread *th)
   int32_t *ctid = (void *) regs->r10;
   void *new_tls = (void *) regs->r8;
 
+  // eri_debug ("flags = %lx\n", flags);
   if (flags & ERI_CLONE_VM)
     {
-      /* Without CLONE_THREAD, it may leak memory if killed by signal.  */
-      eri_xassert (flags & ERI_CLONE_THREAD, eri_info);
+      /* Without CLONE_THREAD, memory may leak if killed by signal.  */
+      // eri_xassert (flags & ERI_CLONE_THREAD, eri_info);
 
       eri_sigset_t mask, old_mask;
       eri_sig_fill_set (&mask);
@@ -246,6 +251,8 @@ syscall_clone (struct thread *th)
       *cregs = *regs;
       cregs->rsp = stack;
       cregs->rax = 0;
+
+      cth->sig_alt_stack = th->sig_alt_stack;
 
       struct eri_sys_clone_args args = {
 	flags, eri_entry__get_stack (cth->entry) - 8, ptid, ctid, new_tls,
