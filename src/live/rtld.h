@@ -28,8 +28,7 @@ struct eri_live_rtld_args
   uint64_t buf_size;
 };
 
-#define ERI_LIVE_PLAIN	0
-#define ERI_LIVE_LIVE	1
+#define ERI_LIVE_LIVE	0
 
 struct eri_live_header
 {

@@ -112,13 +112,13 @@ convert_elf (const char *elf, const char *bin,
 }
 
 static void
-convert_bin (const char *plain, const char *live, const char *bin)
+convert_bin (const char *live, const char *bin)
 {
   FILE *bf = fopen (bin, "wb");
   assert (bf);
 
-  const char *names[] = { plain, live };
-  struct eri_live_header hs[] = { { ERI_LIVE_PLAIN }, { ERI_LIVE_LIVE } };
+  const char *names[] = { live };
+  struct eri_live_header hs[] = { { ERI_LIVE_LIVE } };
 
   uint64_t start = 0;
   uint8_t i;
@@ -180,8 +180,8 @@ main (int32_t argc, const char **argv)
 
   if (strcmp (t, "bin") == 0)
     {
-      assert (argc == 5);
-      convert_bin (argv[2], argv[3], argv[4]);
+      assert (argc == 4);
+      convert_bin (argv[2], argv[3]);
     }
   else if (strcmp (t, "header") == 0)
     {
