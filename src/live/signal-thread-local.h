@@ -23,6 +23,8 @@ struct eri_live_thread;
 
 struct eri_live_signal_thread
 {
+  int32_t tid;
+
   struct signal_thread_group *group;
 
   uint64_t id;
@@ -44,8 +46,6 @@ struct eri_live_signal_thread
 
   eri_aligned16 uint8_t stack[SIGNAL_THREAD_STACK_SIZE];
   eri_aligned16 uint8_t sig_stack[SIGNAL_THREAD_SIG_STACK_SIZE];
-
-  int32_t tid;
 
   struct eri_live_thread *th;
 };

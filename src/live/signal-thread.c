@@ -62,15 +62,8 @@ struct signal_thread_group
   struct eri_live_thread_group *thread_group;
 };
 
-static uint8_t
-thread_less_than (struct signal_thread_group *g,
-	struct eri_live_signal_thread *a, struct eri_live_signal_thread *b)
-{
-  return a->tid < b->tid;
-}
-
-ERI_DEFINE_RBTREE1 (static, thread, struct signal_thread_group,
-		    struct eri_live_signal_thread, thread_less_than)
+ERI_DEFINE_RBTREE (static, thread, struct signal_thread_group,
+		   struct eri_live_signal_thread, int32_t, eri_less_than)
 
 #define SIG_EXIT_GROUP	ERI_SIGRTMIN
 #define SIG_SIGNAL	(ERI_SIGRTMIN + 1)
