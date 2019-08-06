@@ -819,6 +819,7 @@ cleanup (void *args)
 {
   struct eri_live_signal_thread *sig_th = args;
   join (sig_th);
+  end_change (sig_th->group);
   destroy (sig_th);
 }
 
@@ -865,7 +866,6 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       eri_live_thread__join (th);
 
       remove_from_group (sig_th);
-      end_change (group);
 
       eri_live_thread__destroy (th);
 
