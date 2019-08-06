@@ -1163,6 +1163,14 @@ syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
 
   if (! eri_syscall_is_ok (args->result)) return;
 
+  if (nr == __NR_setuid || nr == __NR_setgid || nr == __NR_setreuid
+      || nr == __NR_setregid || nr == __NR_setresuid || nr == __NR_setresgid
+      || nr == __NR_setfsuid || nr == __NR_setfsgid)
+    {
+      event->do_both = 1;
+      return;
+    }
+
   if (nr == __NR_prlimit64 && args->a[2])
     {
       int32_t id = args->a[0];

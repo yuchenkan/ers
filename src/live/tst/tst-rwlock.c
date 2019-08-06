@@ -47,6 +47,8 @@ start (void *args)
 eri_noreturn void
 tst_live_start (void)
 {
+  eri_info ("start\n");
+
   uint8_t i;
   for (i = 0; i < NTH; ++i)
     {

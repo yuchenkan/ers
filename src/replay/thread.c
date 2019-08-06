@@ -1145,34 +1145,35 @@ SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
 SYSCALL_TO_IMPL (getrandom)
 
-SYSCALL_TO_IMPL (setuid)
-SYSCALL_TO_IMPL (getuid)
-SYSCALL_TO_IMPL (setgid)
-SYSCALL_TO_IMPL (getgid)
-SYSCALL_TO_IMPL (geteuid)
-SYSCALL_TO_IMPL (getegid)
+DEFINE_SYSCALL (setuid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getuid) { syscall_do_res_in (th); }
+DEFINE_SYSCALL (setgid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getgid) { syscall_do_res_in (th); }
+DEFINE_SYSCALL (geteuid) { syscall_do_res_in (th); }
+DEFINE_SYSCALL (getegid) { syscall_do_res_in (th); }
 
 DEFINE_SYSCALL (gettid) { syscall_leave (th, 0, th->user_tid); }
 DEFINE_SYSCALL (getpid) { syscall_leave (th, 0, th->group->user_pid); }
 
 DEFINE_SYSCALL (getppid) { syscall_do_res_in (th); }
 
-SYSCALL_TO_IMPL (setreuid)
-SYSCALL_TO_IMPL (setregid)
+DEFINE_SYSCALL (setreuid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (setregid) { syscall_do_res_io (th); }
 
-SYSCALL_TO_IMPL (setresuid)
-SYSCALL_TO_IMPL (getresuid)
-SYSCALL_TO_IMPL (setresgid)
-SYSCALL_TO_IMPL (getresgid)
+DEFINE_SYSCALL (setresuid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getresuid) { syscall_do_res_in (th); }
+DEFINE_SYSCALL (setresgid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getresgid) { syscall_do_res_in (th); }
 
-SYSCALL_TO_IMPL (setfsuid)
-SYSCALL_TO_IMPL (setfsgid)
+DEFINE_SYSCALL (setfsuid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (setfsgid) { syscall_do_res_io (th); }
 
 SYSCALL_TO_IMPL (setgroups)
 SYSCALL_TO_IMPL (getgroups)
 
-SYSCALL_TO_IMPL (setsid)
-SYSCALL_TO_IMPL (getsid)
+DEFINE_SYSCALL (setsid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getsid) { syscall_do_res_in (th); }
+
 SYSCALL_TO_IMPL (setpgid)
 SYSCALL_TO_IMPL (getpgid)
 SYSCALL_TO_IMPL (getpgrp)

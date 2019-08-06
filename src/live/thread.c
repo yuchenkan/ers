@@ -768,7 +768,7 @@ syscall_do_res_io (SYSCALL_PARAMS)
 }
 
 static uint64_t
-syscall_do_signal_thread (struct eri_live_thread *th)
+syscall_on_signal_thread (struct eri_live_thread *th)
 {
   struct eri_sys_syscall_args args;
   struct eri_registers *regs = eri_entry__get_regs (th->entry);
@@ -918,12 +918,29 @@ SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
 SYSCALL_TO_IMPL (getrandom)
 
-SYSCALL_TO_IMPL (setuid)
-SYSCALL_TO_IMPL (getuid)
-SYSCALL_TO_IMPL (setgid)
-SYSCALL_TO_IMPL (getgid)
-SYSCALL_TO_IMPL (geteuid)
-SYSCALL_TO_IMPL (getegid)
+static eri_noreturn void
+syscall_do_setuid (SYSCALL_PARAMS)
+{
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  rec.res.result = syscall_on_signal_thread (th);
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+static eri_noreturn void
+syscall_do_getuid (SYSCALL_PARAMS)
+{
+  uint64_t res = syscall_on_signal_thread (th);
+  syscall_record_res_in (th, res);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (setuid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getuid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setgid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getgid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (geteuid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getegid) { syscall_do_getuid (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (gettid)
 {
@@ -935,29 +952,25 @@ DEFINE_SYSCALL (getpid)
   eri_entry__syscall_leave (entry, th->group->user_pid);
 }
 
-DEFINE_SYSCALL (getppid)
-{
-  uint64_t res = syscall_do_signal_thread (th);
-  syscall_record_res_in (th, res);
-  eri_entry__syscall_leave (entry, res);
-}
+DEFINE_SYSCALL (getppid) { syscall_do_getuid (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (setreuid)
-SYSCALL_TO_IMPL (setregid)
+DEFINE_SYSCALL (setreuid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setregid) { syscall_do_setuid (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (setresuid)
-SYSCALL_TO_IMPL (getresuid)
-SYSCALL_TO_IMPL (setresgid)
-SYSCALL_TO_IMPL (getresgid)
+DEFINE_SYSCALL (setresuid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getresuid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setresgid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getresgid) { syscall_do_getuid (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (setfsuid)
-SYSCALL_TO_IMPL (setfsgid)
+DEFINE_SYSCALL (setfsuid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setfsgid) { syscall_do_setuid (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (setgroups)
 SYSCALL_TO_IMPL (getgroups)
 
-SYSCALL_TO_IMPL (setsid)
-SYSCALL_TO_IMPL (getsid)
+DEFINE_SYSCALL (setsid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getsid) { syscall_do_getuid (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (setpgid)
 SYSCALL_TO_IMPL (getpgid)
 SYSCALL_TO_IMPL (getpgrp)
@@ -1441,7 +1454,7 @@ static eri_noreturn void
 syscall_do_kill (SYSCALL_PARAMS)
 {
   struct eri_syscall_res_io_record rec = {
-    io_out (th), { syscall_do_signal_thread (th) }
+    io_out (th), { syscall_on_signal_thread (th) }
   };
 
   if (eri_syscall_is_ok (rec.res.result)
