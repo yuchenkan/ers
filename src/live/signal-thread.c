@@ -20,6 +20,7 @@
 
 struct watch
 {
+  int32_t tid;
   int32_t alive;
   uint8_t stack[WATCH_STACK_SIZE];
 };
@@ -48,6 +49,8 @@ struct signal_thread_group
 
   uint8_t exit_group;
   int32_t exit_group_lock;
+
+  eri_lock_t thread_change_lock;
 
   uint32_t thread_count;
   eri_lock_t thread_lock;
@@ -399,10 +402,11 @@ watch (struct eri_live_signal_thread *sig_th)
   struct eri_sys_clone_args args = {
 
     ERI_CLONE_VM | ERI_CLONE_FS | ERI_CLONE_FILES | ERI_CLONE_SYSVSEM
-    | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD | ERI_CLONE_CHILD_CLEARTID,
+    | ERI_CLONE_SIGHAND | ERI_CLONE_THREAD | ERI_CLONE_PARENT_SETTID
+    | ERI_CLONE_CHILD_CLEARTID,
 
     (void *) ((uint64_t) watch->stack + sizeof watch->stack - 8),
-    0, &watch->alive, 0, start_watch, sig_th, &lock
+    &watch->tid, &watch->alive, 0, start_watch, sig_th, &lock
   };
 
   eri_assert_sys_clone (&args);
@@ -448,6 +452,30 @@ try_lock_exit_group (struct signal_thread_group *group)
 				      1, ERI_INT_MIN, 1) != 1)
     eri_assert_syscall (sched_yield);
   return 1;
+}
+
+static eri_unused void
+lock_change (struct signal_thread_group *group)
+{
+  eri_assert_wlock (&group->thread_change_lock);
+}
+
+static eri_unused void
+unlock_change (struct signal_thread_group *group)
+{
+  eri_assert_wunlock (&group->thread_change_lock);
+}
+
+static void
+start_change (struct signal_thread_group *group)
+{
+  eri_assert_rlock (&group->thread_change_lock);
+}
+
+static void
+end_change (struct signal_thread_group *group)
+{
+  eri_assert_runlock (&group->thread_change_lock);
 }
 
 static void
@@ -560,11 +588,9 @@ struct sig_fd_read_event;
 static void sig_fd_read (struct eri_live_signal_thread *sig_th,
 			 struct sig_fd_read_event *event);
 
-struct syscall_event
-{
-  struct event_type type;
-  struct eri_sys_syscall_args *args;
-};
+struct syscall_event;
+static void syscall (struct eri_live_signal_thread *sig_th,
+		     struct syscall_event *event);
 
 static eri_noreturn void
 event_loop (struct eri_live_signal_thread *sig_th)
@@ -632,10 +658,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       else if (type == SIG_FD_READ_EVENT)
 	sig_fd_read (sig_th, event_type);
       else if (type == SYSCALL_EVENT)
-	{
-	  struct syscall_event *event = event_type;
-	  eri_sys_syscall (event->args);
-	}
+	syscall (sig_th, event_type);
       else if (type == SIG_EXIT_GROUP_EVENT)
 	{
 	  if (sig_mask_all (sig_th, &group->sig_exit_group_info))
@@ -678,6 +701,8 @@ start (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   restore_sig_mask (sig_th);
   append_to_group (sig_th);
+  end_change (sig_th->group);
+
   eri_assert_unlock (&event->clone_start_return);
 
   unhold_exit_group (&sig_th->group->exit_group_lock);
@@ -703,6 +728,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
 
   sig_cth->th = eri_live_thread__create (sig_cth, args->args);
 
+  start_change (group);
   eri_atomic_inc (&group->thread_count, 1);
 
   struct eri_sys_clone_args sig_cth_args = {
@@ -730,6 +756,7 @@ clone (struct eri_live_signal_thread *sig_th, struct clone_event *event)
   if (eri_syscall_is_error (args->result))
     {
       eri_atomic_dec (&group->thread_count, 1);
+      end_change (group);
 
       eri_live_thread__destroy (sig_cth->th);
 
@@ -833,10 +860,12 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       && eri_atomic_dec_fetch (&group->thread_count, 1))
     {
       event->done = 1;
+      start_change (group);
       release_event (event);
       eri_live_thread__join (th);
 
       remove_from_group (sig_th);
+      end_change (group);
 
       eri_live_thread__destroy (th);
 
@@ -1098,12 +1127,72 @@ eri_live_signal_thread__sig_fd_read (struct eri_live_signal_thread *sig_th,
   return event.done;
 }
 
+struct syscall_event
+{
+  struct event_type type;
+  struct eri_sys_syscall_args *args;
+
+  uint8_t do_both;
+};
+
+static uint8_t
+syscall_invalid_tid (struct signal_thread_group *group, int32_t tid)
+{
+  return tid == eri_helper__get_pid (group->helper) || tid == group->watch.tid;
+}
+
+static void
+syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
+{
+  struct eri_sys_syscall_args *args = event->args;
+  uint32_t nr = args->nr;
+
+  struct signal_thread_group *group = sig_th->group;
+
+  int32_t tid_idx = -1;
+  if (nr == __NR_tkill || nr == __NR_prlimit64) tid_idx = 0;
+  else if (nr == __NR_tkill || nr == __NR_rt_tgsigqueueinfo) tid_idx = 1;
+
+  if (tid_idx != -1 && syscall_invalid_tid (group, args->a[tid_idx]))
+    {
+      args->result = ERI_ESRCH;
+      return;
+    }
+
+  args->result = eri_sys_syscall (event->args);
+
+  if (! eri_syscall_is_ok (args->result)) return;
+
+  if (nr == __NR_prlimit64 && args->a[2])
+    {
+      int32_t id = args->a[0];
+
+      struct eri_live_signal_thread *it = id
+			? thread_rbt_get (group, &id, ERI_RBT_EQ) : sig_th;
+
+      if (it)
+	{
+	  args->a[0] = it == sig_th ? 0 : eri_live_thread__get_tid (it->th);
+	  args->a[3] = 0;
+	  event->do_both = 1;
+	}
+    }
+}
+
 uint64_t
 eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
 				 struct eri_sys_syscall_args *args)
 {
   struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
+
+  uint8_t search = args->nr == __NR_prlimit64 && args->a[0] && args->a[2];
+  if (search) lock_change (sig_th->group);
+
   proc_event (sig_th, &event);
+  if (event.do_both)
+    eri_assert (eri_syscall_is_ok (eri_sys_syscall (args)));
+
+  if (search) unlock_change (sig_th->group);
   return args->result;
 }
 
@@ -1124,21 +1213,4 @@ uint64_t
 eri_live_signal_thread__get_id (const struct eri_live_signal_thread *sig_th)
 {
   return sig_th->id;
-}
-
-int32_t
-eri_live_signal_thread__map_tid (struct eri_live_signal_thread *sig_th,
-				 int32_t tid)
-{
-  struct signal_thread_group *group = sig_th->group;
-  eri_assert_lock (&group->thread_lock);
-  struct eri_live_signal_thread *it;
-  ERI_RBT_FOREACH (thread, group, it)
-    if (it->tid == tid)
-      {
-	tid = eri_live_thread__get_tid (it->th);
-	break;
-      }
-  eri_assert_unlock (&group->thread_lock);
-  return tid;
 }

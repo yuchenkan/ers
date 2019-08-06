@@ -1118,8 +1118,11 @@ DEFINE_SYSCALL (setrlimit)
   if (! eri_entry__copy_obj_from_user (entry, &rlimit, user_rlimit, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs, (1, &rlimit));
+
   struct eri_syscall_res_in_record rec = {
-    eri_entry__syscall (entry, (1, &rlimit)), io_in (th)
+    eri_live_signal_thread__syscall (sig_th, &args), io_in (th)
   };
   syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.result);
@@ -1134,7 +1137,11 @@ DEFINE_SYSCALL (getrlimit)
 		eri_syscall_check_prlimit64_resource (resource));
 
   struct eri_syscall_getrlimit_record rec = { 0 };
-  uint64_t res = eri_entry__syscall (entry, (1, &rec.rlimit));
+
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs, (1, &rec.rlimit));
+
+  uint64_t res = eri_live_signal_thread__syscall (sig_th, &args);
 
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_rlimit, &rec.rlimit);
@@ -1145,7 +1152,6 @@ DEFINE_SYSCALL (getrlimit)
 
 DEFINE_SYSCALL (prlimit64)
 {
-  int32_t pid = eri_live_signal_thread__map_tid (sig_th, regs->rdi);
   int32_t resource = regs->rsi;
   const struct eri_rlimit *user_new_rlimit = (void *) regs->rdx;
   struct eri_rlimit *user_old_rlimit = (void *) regs->r10;
@@ -1161,9 +1167,12 @@ DEFINE_SYSCALL (prlimit64)
 
   struct eri_syscall_prlimit64_record rec = { io_out (th) };
 
-  uint64_t res = eri_entry__syscall (entry, (0, pid),
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs,
 			(2, user_new_rlimit ? &new_rlimit : 0),
 			(3, user_old_rlimit ? &rec.rlimit : 0));
+
+  uint64_t res = eri_live_signal_thread__syscall (sig_th, &args);
 
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
 					user_old_rlimit, &rec.rlimit);
