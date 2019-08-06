@@ -887,7 +887,9 @@ SYSCALL_TO_IMPL (waitid)
 
 SYSCALL_TO_IMPL (execve)
 SYSCALL_TO_IMPL (execveat)
-SYSCALL_TO_IMPL (ptrace)
+
+DEFINE_SYSCALL (ptrace) { syscall_do_no_sys (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (syslog)
 SYSCALL_TO_IMPL (seccomp)
 
@@ -1471,7 +1473,10 @@ DEFINE_SYSCALL (tgkill) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_sigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (restart_syscall)
+DEFINE_SYSCALL (restart_syscall)
+{
+  eri_entry__syscall_leave (entry, ERI_ENOSYS);
+}
 
 DEFINE_SYSCALL (socket) { syscall_do_res_io (SYSCALL_ARGS); }
 
