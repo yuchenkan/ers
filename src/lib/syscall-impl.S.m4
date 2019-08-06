@@ -52,7 +52,7 @@ ERI_FUNCTION (m4_ns(assert_sys_sigreturn))
 
 ERI_FUNCTION (m4_ns(assert_sys_thread_die))
   .cfi_startproc
-  movq	$0, (%rdi)
+  movl	$0, (%rdi)
 
   movl	$__NR_futex, %eax
   movq	$ERI_FUTEX_WAKE, %rsi
