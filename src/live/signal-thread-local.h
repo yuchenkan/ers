@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #include <lib/compiler.h>
-#include <lib/list.h>
+#include <lib/rbtree.h>
 #include <lib/syscall-common.h>
 #include <lib/printf.h>
 
@@ -31,7 +31,7 @@ struct eri_live_signal_thread
 
   int32_t alive;
 
-  ERI_LST_NODE_FIELDS (thread)
+  ERI_RBT_NODE_FIELDS (thread, struct eri_live_signal_thread)
 
   eri_sigset_t sig_mask;
   struct eri_siginfo *sig_info;

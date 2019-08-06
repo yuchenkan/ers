@@ -51,7 +51,7 @@ struct signal_thread_group
 
   uint32_t thread_count;
   eri_lock_t thread_lock;
-  ERI_LST_LIST_FIELDS (thread)
+  ERI_RBT_TREE_FIELDS (thread, struct eri_live_signal_thread)
 
   struct watch watch;
   struct eri_helper *helper;
@@ -62,8 +62,15 @@ struct signal_thread_group
   struct eri_live_thread_group *thread_group;
 };
 
-ERI_DEFINE_LIST (static, thread, struct signal_thread_group,
-		 struct eri_live_signal_thread)
+static uint8_t
+thread_less_than (struct signal_thread_group *g,
+	struct eri_live_signal_thread *a, struct eri_live_signal_thread *b)
+{
+  return a->tid < b->tid;
+}
+
+ERI_DEFINE_RBTREE1 (static, thread, struct signal_thread_group,
+		    struct eri_live_signal_thread, thread_less_than)
 
 #define SIG_EXIT_GROUP	ERI_SIGRTMIN
 #define SIG_SIGNAL	(ERI_SIGRTMIN + 1)
@@ -311,7 +318,7 @@ init_main (struct signal_thread_group *group,
   sig_th->th = eri_live_thread__create_main (group->thread_group,
 					     sig_th, rtld_args, sig_th->tid);
 
-  thread_lst_append (group, sig_th);
+  thread_rbt_insert (group, sig_th);
   return sig_th;
 }
 
@@ -327,7 +334,7 @@ init_group (struct eri_live_rtld_args *rtld_args)
 
   group->thread_count = 1;
   group->thread_lock = 0;
-  ERI_LST_INIT_LIST (thread, group);
+  ERI_RBT_INIT_TREE (thread, group);
 
   return init_main (group, rtld_args);
 }
@@ -455,7 +462,7 @@ append_to_group (struct eri_live_signal_thread *sig_th)
 {
   struct signal_thread_group *group = sig_th->group;
   eri_assert_lock (&group->thread_lock);
-  thread_lst_append (group, sig_th);
+  thread_rbt_insert (group, sig_th);
   eri_assert_unlock (&group->thread_lock);
 }
 
@@ -464,7 +471,7 @@ remove_from_group (struct eri_live_signal_thread *sig_th)
 {
   struct signal_thread_group *group = sig_th->group;
   eri_assert_lock (&group->thread_lock);
-  thread_lst_remove (group, sig_th);
+  thread_rbt_remove (group, sig_th);
   eri_assert_unlock (&group->thread_lock);
 }
 
@@ -801,7 +808,7 @@ inform_exit_group (struct eri_live_signal_thread *sig_th)
   struct signal_thread_group *group = sig_th->group;
 
   struct eri_live_signal_thread *it;
-  ERI_LST_FOREACH (thread, group, it)
+  ERI_RBT_FOREACH (thread, group, it)
     if (it != sig_th)
       {
 	struct event_type event
@@ -858,14 +865,14 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
 
       eri_log (sig_th->log.file, "exit thread group\n");
 
-      ERI_LST_FOREACH (thread, group, it)
+      ERI_RBT_FOREACH (thread, group, it)
 	if (it != sig_th) join (it);
 
-      ERI_LST_FOREACH_SAFE (thread, group, it, nit)
+      ERI_RBT_FOREACH_SAFE (thread, group, it, nit)
 	if (it != sig_th)
 	  {
 	    eri_live_thread__destroy (it->th);
-	    thread_lst_remove (group, it);
+	    thread_rbt_remove (group, it);
 	    destroy (it);
 	  }
     }
@@ -1133,7 +1140,7 @@ eri_live_signal_thread__map_tid (struct eri_live_signal_thread *sig_th,
   struct signal_thread_group *group = sig_th->group;
   eri_assert_lock (&group->thread_lock);
   struct eri_live_signal_thread *it;
-  ERI_LST_FOREACH (thread, group, it)
+  ERI_RBT_FOREACH (thread, group, it)
     if (it->tid == tid)
       {
 	tid = eri_live_thread__get_tid (it->th);
