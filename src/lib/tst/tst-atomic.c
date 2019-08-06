@@ -147,10 +147,10 @@ main (void)
   u32 = 2;
   u64 = 2;
 
-  eri_assert (! eri_atomic_compare_exchange (&u8, 1, 3, 1));
-  eri_assert (! eri_atomic_compare_exchange (&u16, 1, 3, 1));
-  eri_assert (! eri_atomic_compare_exchange (&u32, 1, 3, 1));
-  eri_assert (! eri_atomic_compare_exchange (&u64, 1, 3, 1));
+  eri_assert (eri_atomic_compare_exchange (&u8, 1, 3, 1) != 1);
+  eri_assert (eri_atomic_compare_exchange (&u16, 1, 3, 1) != 1);
+  eri_assert (eri_atomic_compare_exchange (&u32, 1, 3, 1) != 1);
+  eri_assert (eri_atomic_compare_exchange (&u64, 1, 3, 1) != 1);
   eri_assert (u8 == 2);
   eri_assert (u16 == 2);
   eri_assert (u32 == 2);
@@ -161,10 +161,10 @@ main (void)
   u32 = 1;
   u64 = 1;
 
-  eri_assert (eri_atomic_compare_exchange (&u8, 1, 3, 1));
-  eri_assert (eri_atomic_compare_exchange (&u16, 1, 3, 1));
-  eri_assert (eri_atomic_compare_exchange (&u32, 1, 3, 1));
-  eri_assert (eri_atomic_compare_exchange (&u64, 1, 3, 1));
+  eri_assert (eri_atomic_compare_exchange (&u8, 1, 3, 1) == 1);
+  eri_assert (eri_atomic_compare_exchange (&u16, 1, 3, 1) == 1);
+  eri_assert (eri_atomic_compare_exchange (&u32, 1, 3, 1) == 1);
+  eri_assert (eri_atomic_compare_exchange (&u64, 1, 3, 1) == 1);
   eri_assert (u8 == 3);
   eri_assert (u16 == 3);
   eri_assert (u32 == 3);

@@ -53,7 +53,7 @@ tst_live_start (void)
   eri_assert (v == 0xf);
   eri_assert (a == 0);
   a = 0xf;
-  eri_assert (tst_atomic_cmpxchg (&v, &a, 0xff, 1));
+  eri_assert (tst_atomic_cmpxchg (&v, &a, 0xff, 1) == 0xf);
   eri_assert (v == 0xff);
   eri_assert (a == 0xf);
   tst_atomic_and (&v, 0xf, 1);

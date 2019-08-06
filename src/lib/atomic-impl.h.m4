@@ -124,20 +124,18 @@ m4_include(`m4/util.m4')
 #define m4_ns(atomic_xchg)(m, r, b) \
   m4_ns(atomic_xcommon) (xchg, m, r, b)
 
-#define m4_ns(atomic_cmpxchg, _)(sz, _m, _z, _a, _r, b) \
+#define m4_ns(atomic_cmpxchg, _)(sz, _m, _a, _r, b) \
   asm volatile (ERI_STR (m4_ns(atomic_cmpxchg, __) (1, sz,		\
-				%_ERI_ASM_TEMPLATE_SIZE (sz, 3), %1))	\
-		: "=@ccz" (_z), "+m" (*_m), "+a" (*_a) : "r" (_r)	\
+				%_ERI_ASM_TEMPLATE_SIZE (sz, 2), %0))	\
+		: "+m" (*_m), "+a" (*_a) : "r" (_r)			\
 		: "cc" ERI_PP_IF (b, , "memory"))
 
 #define m4_ns(atomic_cmpxchg)(m, a, r, b) \
   ({ typeof (m) _m = m;							\
      typeof (_m) _a = (typeof (_m)) (a);				\
      typeof (*_m) _r = (typeof (*_m)) (r);				\
-     uint8_t _z;							\
-     _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg, _),		\
-			      _z, _a, _r, b);				\
-     _z; })
+     _eri_atomic_switch_size (_m, m4_ns(atomic_cmpxchg, _), _a, _r, b);	\
+     *_a; })
 
 #define m4_ns(atomic_add_fetch)(m, v, b) \
   ({ typeof (*(m)) _v = (typeof (_v)) (v);				\

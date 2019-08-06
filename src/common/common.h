@@ -147,7 +147,8 @@ void eri_mkdir (const char *path);
   ({									\
     type *_mem = mem;							\
     type _t = eri_atomic_load (_mem, 0);				\
-    while (! eri_atomic_compare_exchange (_mem, _t, _t op (val), 0))	\
+    while (eri_atomic_compare_exchange (_mem, _t,			\
+					_t op (val), 0) != _t)		\
       _t = eri_atomic_load (_mem, 0);					\
     _t;									\
   })
