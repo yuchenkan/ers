@@ -857,10 +857,13 @@ exit (struct eri_live_signal_thread *sig_th, struct exit_event *event)
       struct eri_live_signal_thread *it, *nit;
 
       eri_log (sig_th->log.file, "exit thread group\n");
+
+      ERI_LST_FOREACH (thread, group, it)
+	if (it != sig_th) join (it);
+
       ERI_LST_FOREACH_SAFE (thread, group, it, nit)
 	if (it != sig_th)
 	  {
-	    join (it);
 	    eri_live_thread__destroy (it->th);
 	    thread_lst_remove (group, it);
 	    destroy (it);
