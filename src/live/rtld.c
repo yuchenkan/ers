@@ -89,7 +89,7 @@ rtld (void **args, uint64_t rdx)
 
   rtld_args.envp = eri_get_envp_from_args (args);
 
-  const char *live = "/work/ers/live";
+  const char *live = "/work/ers-live";
   uint64_t buf_size = 1024 * 1024 * 1024;
   uint64_t page_size = 4096;
 
