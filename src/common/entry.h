@@ -65,8 +65,8 @@ struct eri_entry
     } _access;
   uint8_t _test_access;
 
-  uint64_t _interrupt;
-  uint64_t _interrupt_restart;
+  uint64_t _syscall_interrupt;
+  uint64_t _syscall_interrupt_restart;
 
   union
     {
@@ -109,8 +109,6 @@ void eri_entry__destroy (struct eri_entry *entry);
 #define eri_entry__get_atomic_val(entry)	((entry)->_atomic.val)
 #define eri_entry__get_atomic_mem(entry)	((entry)->_atomic.mem)
 #define eri_entry__get_atomic_size(entry)	(1 << (entry)->_op.args)
-
-#define eri_entry__get_interrupt(entry)		((entry)->_interrupt)
 
 eri_noreturn void eri_entry__do_leave (struct eri_entry *entry);
 eri_noreturn void eri_entry__leave (struct eri_entry *entry);
@@ -254,7 +252,7 @@ eri_entry__sig_access_fault (struct eri_entry *entry,
   entry->_test_access = 0;
 }
 
-void eri_entry__sig_test_interrupted (
+void eri_entry__sig_test_syscall_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx);
 
 #endif

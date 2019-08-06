@@ -2899,7 +2899,7 @@ eri_live_thread__sig_handler (
     }
   else th->sig_act = *act;
 
-  eri_entry__sig_test_interrupted (entry, &ctx->mctx);
+  eri_entry__sig_test_syscall_interrupted (entry, &ctx->mctx);
 
   eri_entry__sig_set_test_op_ret (entry, frame);
 }

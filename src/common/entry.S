@@ -70,13 +70,14 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
   movq	%rsi, %rbp
 
   ERI_MOV_LM (.lsyscall_interrupt_restart,
-	      EN__INTERRUPT_RESTART(%rbx), %rax)
-  ERI_MOV_LM (.lsyscall_interrupt, EN__INTERRUPT(%rbx), %rax)
+	      EN__SYSCALL_INTERRUPT_RESTART(%rbx), %rax)
+  ERI_MOV_LM (.lsyscall_interrupt,
+	      EN__SYSCALL_INTERRUPT(%rbx), %rax)
 
   cmpl	$0, EN__SIG_PENDING(%rbx)
   je	.lsyscall
 .lsyscall_interrupt_restart:
-  movq	$0, EN__INTERRUPT(%rbx)
+  movq	$0, EN__SYSCALL_INTERRUPT(%rbx)
   movq	$ERI_EINTR, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
   xorb	%al, %al
   jmp	.lsyscall_return
@@ -92,7 +93,7 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
   movq	ERI_SYS_SYSCALL_ARGS_A5(%rbp), %r9
   syscall
 .lsyscall_interrupt:
-  movq	$0, EN__INTERRUPT(%rbx)
+  movq	$0, EN__SYSCALL_INTERRUPT(%rbx)
   movq	%rax, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
   movb	$1, %al
 .lsyscall_return:

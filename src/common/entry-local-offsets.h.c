@@ -31,8 +31,8 @@ declare (void)
   EN_OFFSET (_ACCESS_RIP, _access.rip);
   EN_OFFSET (_TEST_ACCESS, _test_access);
 
-  EN_OFFSET (_INTERRUPT, _interrupt);
-  EN_OFFSET (_INTERRUPT_RESTART, _interrupt_restart);
+  EN_OFFSET (_SYSCALL_INTERRUPT, _syscall_interrupt);
+  EN_OFFSET (_SYSCALL_INTERRUPT_RESTART, _syscall_interrupt_restart);
 
   ERI_DECLARE_SYMBOL (EN_SIZE, sizeof (struct eri_entry));
 }
