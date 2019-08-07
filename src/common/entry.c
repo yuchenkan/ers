@@ -107,9 +107,12 @@ eri_entry__leave (struct eri_entry *entry)
 eri_noreturn void
 eri_entry__syscall_leave (struct eri_entry *entry, uint64_t res)
 {
-  entry->_regs.rax = res;
   entry->_regs.rcx = entry->_regs.rip;
   entry->_regs.r11 = entry->_regs.rflags;
+
+  if (res == ERI_ERESTART) entry->_regs.rip = entry->_start;
+  else entry->_regs.rax = res;
+
   eri_entry__leave (entry);
 }
 
@@ -566,6 +569,13 @@ eri_entry__sig_test_syscall_interrupted (
 		struct eri_entry *entry, struct eri_mcontext *mctx)
 {
   uint64_t intr = entry->_syscall_interrupt;
-  if (intr && mctx->rip != intr)
+  if (! intr) return;
+
+  if (mctx->rip == intr - 2 && mctx->rcx)
+    {
+      mctx->rip = intr;
+      mctx->rax = ERI_ERESTART;
+    }
+  else if (mctx->rip != intr)
     mctx->rip = entry->_syscall_interrupt_restart;
 }

@@ -91,6 +91,7 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
   movq	ERI_SYS_SYSCALL_ARGS_A3(%rbp), %r10
   movq	ERI_SYS_SYSCALL_ARGS_A4(%rbp), %r8
   movq	ERI_SYS_SYSCALL_ARGS_A5(%rbp), %r9
+  xorq	%rcx, %rcx	/* to indicate ERI_ERESTART */
   syscall
 .lsyscall_interrupt:
   movq	$0, EN__SYSCALL_INTERRUPT(%rbx)

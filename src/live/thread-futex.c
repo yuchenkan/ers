@@ -278,7 +278,10 @@ eri_live_thread_futex__wait (struct eri_live_thread_futex *th_ftx,
   if (res == ERI_EAGAIN) res = 0;
   else if (eri_syscall_is_error (res))
     {
-      eri_lassert (th_ftx->log, res == ERI_EINTR || res == ERI_ETIMEDOUT);
+      eri_lassert (th_ftx->log, res == ERI_EINTR
+		|| (timeout ? res == ERI_ETIMEDOUT : res == ERI_ERESTART));
+      if (! timeout) res = ERI_ERESTART;
+
       eri_assert_lock (&slot->lock);
       if (! waiter.lock) res = 0;
       else remove_waiter (th_ftx->log, group->pool, slot, futex, &waiter);

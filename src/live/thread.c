@@ -746,7 +746,7 @@ syscall_copy_path_from_user (struct eri_live_thread *th,
 static eri_noreturn void
 syscall_do_no_sys (SYSCALL_PARAMS)
 {
-  /* XXX: inteneded not to impl for now.  */
+  /* XXX: inteneded not to impl at least for now.  */
   eri_entry__syscall_leave (entry, ERI_ENOSYS);
 }
 
@@ -793,6 +793,28 @@ syscall_restart_out (struct eri_live_thread *th, uint64_t out)
   eri_entry__sig_wait_pending (th->entry, 0);
   eri_live_thread_recorder__rec_syscall_restart_out (th->rec, out);
   eri_entry__restart (th->entry);
+}
+
+static uint64_t
+syscall_test_interrupt (struct eri_live_thread *th, uint64_t res)
+{
+  if (res != ERI_EINTR && res != ERI_ERESTART) return res;
+
+  eri_entry__sig_wait_pending (th->entry, 0);
+
+  if (res == ERI_EINTR) return res;
+
+  struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
+
+  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) return ERI_EINTR;
+
+  struct eri_sig_act *act = &th->sig_act;
+
+  if (eri_sig_act_internal_act (act)) return ERI_EINTR;
+
+  if (! (act->act.flags & ERI_SA_RESTART)) return ERI_EINTR;
+
+  return res;
 }
 
 #define SYSCALL_TO_IMPL(name) \
@@ -1471,7 +1493,10 @@ DEFINE_SYSCALL (tgkill) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_sigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (restart_syscall)
+DEFINE_SYSCALL (restart_syscall)
+{
+  syscall_do_no_sys (SYSCALL_ARGS);
+}
 
 DEFINE_SYSCALL (socket) { syscall_do_res_io (SYSCALL_ARGS); }
 
@@ -1496,10 +1521,12 @@ DEFINE_SYSCALL (connect)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, &addr)))
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res, (1, &addr)))
     syscall_restart_out (th, rec.out);
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.result = syscall_test_interrupt (th, res);
+
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1519,10 +1546,11 @@ syscall_do_accept (SYSCALL_PARAMS)
 
   res = syscall_copy_to_user (entry, res, user_addr,
 			      &rec.addr, rec.addrlen, 1);
-  rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
+  res = syscall_copy_obj_to_user_opt (entry, res,
 				user_addr ? user_addrlen : 0, &rec.addrlen);
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.result = syscall_test_interrupt (th, res);
+
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_ACCEPT_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1683,14 +1711,17 @@ syscall_do_open (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
-  if (! eri_entry__syscall_interruptible (entry, &rec.res.result,
+
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res,
 					  (at ? 1 : 0, path)))
     {
       eri_assert_mtfree (group->pool, path);
       syscall_restart_out (th, rec.out);
     }
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.result = syscall_test_interrupt (th, res);
+
   syscall_record_res_io (th, &rec);
   eri_assert_mtfree (group->pool, path);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1706,17 +1737,20 @@ DEFINE_SYSCALL (close)
   int32_t fd = regs->rdi;
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
+
+  uint64_t res;
   struct sfd *sfd = sfd_try_lock (group, fd);
   if (sfd)
     {
-      rec.res.result = eri_entry__syscall (entry);
-      if (eri_syscall_is_ok (rec.res.result)) sfd_remove_free (group, sfd);
+      res = eri_entry__syscall (entry);
+      if (eri_syscall_is_ok (res)) sfd_remove_free (group, sfd);
       eri_assert_unlock (&group->sfd_lock);
     }
-  else if (! eri_entry__syscall_interruptible (entry, &rec.res.result))
+  else if (! eri_entry__syscall_interruptible (entry, &res))
     syscall_restart_out (th, rec.out);
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.result = syscall_test_interrupt (th, res);
+
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
 }
@@ -1890,7 +1924,8 @@ syscall_do_read (SYSCALL_PARAMS)
 	  : ! eri_entry__syscall_interruptible (entry, &res, (1, buf)))
     syscall_restart (entry);
 
-  if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  res = syscall_test_interrupt (th, res);
+
   syscall_record_read (th, res, (void *) buf, 0);
   eri_entry__syscall_leave (entry, res);
 }
@@ -1913,7 +1948,8 @@ syscall_do_readv (SYSCALL_PARAMS)
 	  : ! eri_entry__syscall_interruptible (entry, &res, (1, iov)))
     syscall_restart (entry);
 
-  if (res == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  res = syscall_test_interrupt (th, res);
+
   syscall_record_read (th, res, iov, 1);
   eri_entry__syscall_free_rw_iov (entry, iov);
   eri_entry__syscall_leave (entry, res);
@@ -1933,8 +1969,11 @@ syscall_do_write (SYSCALL_PARAMS)
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, buf)))
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res, (1, buf)))
     syscall_restart_out (th, rec.out);
+
+  rec.res.result = syscall_test_interrupt (th, res);
 
   syscall_record_res_io (th, &rec);
   eri_entry__syscall_leave (entry, rec.res.result);
@@ -1951,11 +1990,14 @@ syscall_do_writev (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
   struct eri_syscall_res_io_record rec = { io_out (th) };
 
-  if (! eri_entry__syscall_interruptible (entry, &rec.res.result, (1, iov)))
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res, (1, iov)))
     {
       eri_assert_mtfree (group->pool, iov);
       syscall_restart_out (th, rec.out);
     }
+
+  rec.res.result = syscall_test_interrupt (th, res);
 
   syscall_record_res_io (th, &rec);
   eri_assert_mtfree (group->pool, iov);
@@ -2450,7 +2492,8 @@ syscall_do_futex_wait (SYSCALL_PARAMS)
   };
   eri_live_thread_futex__wait (th->futex, &args);
 
-  if (rec.res.result == ERI_EINTR) eri_entry__sig_wait_pending (entry, 0);
+  rec.res.result = syscall_test_interrupt (th, rec.res.result);
+
   syscall_do_futex_record_leave (th, &rec);
 }
 

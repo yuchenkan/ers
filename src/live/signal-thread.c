@@ -231,7 +231,8 @@ init_group_signal (struct signal_thread_group *group)
       sig_act->lock = 0;
 
       struct eri_sigaction act = {
-	sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK,
+	sig_handler,
+	ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_ONSTACK | ERI_SA_RESTART,
 	eri_assert_sys_sigreturn
       };
       eri_sig_fill_set (&act.mask);
@@ -604,7 +605,7 @@ event_loop (struct eri_live_signal_thread *sig_th)
       void *event_type;
       uint64_t res = eri_syscall (read, sig_th->event_pipe[0],
 				  &event_type, sizeof event_type);
-      if (res == ERI_EINTR) continue;
+      // if (res == ERI_EINTR) continue;
       eri_assert (eri_syscall_is_ok (res));
 
       uint32_t type = ((struct event_type *) event_type)->type;
@@ -1115,6 +1116,7 @@ sig_fd_read (struct eri_live_signal_thread *sig_th,
   while (sys_args->result == ERI_EAGAIN);
 
   if (sys_args->result != ERI_EINTR) restore_sig_mask (sig_th);
+  else sys_args->result = ERI_ERESTART;
 }
 
 uint8_t

@@ -449,6 +449,7 @@
 #define	ERI_ENAMETOOLONG	-36	/* File name too long */
 #define	ERI_ENOLCK	-37	/* No record locks available */
 #define ERI_ENOSYS	-38	/* Invalid system call number */
+#define ERI_ERESTART	-85	/* Interrupted system call should be restarted */
 #define	ERI_AFNOSUPPORT	-97	/* Address family not supported by protocol */
 #define	ERI_ETIMEDOUT	-110	/* Connection timed out */
 #define	ERI_EINPROGRESS	-115	/* Operation now in progress */
