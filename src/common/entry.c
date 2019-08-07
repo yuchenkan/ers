@@ -524,6 +524,8 @@ uint8_t
 eri_entry__sig_wait_pending (struct eri_entry *entry,
 			     struct eri_timespec *timeout)
 {
+  if (eri_atomic_load (&entry->_sig_pending, 1)) return 1;
+
   eri_atomic_store (&entry->_sig_wait_pending, 1, 1);
 
   uint8_t res = eri_assert_sys_futex_wait (&entry->_sig_pending, 0, timeout);
