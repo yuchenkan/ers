@@ -468,4 +468,6 @@ eri_syscall_check_getrusage_who (int32_t who)
 	 && who != ERI_RUSAGE_THREAD ? ERI_EINVAL : 0;
 }
 
+#define ERI_SYSCALL_GETRANDOM_URANDOM_BUF_SIZE	2048
+
 #endif

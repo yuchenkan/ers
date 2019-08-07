@@ -234,6 +234,8 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_GETSOCKNAME, ##__VA_ARGS__)				\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
+  p (SYSCALL_GETRANDOM_RANDOM, ##__VA_ARGS__)				\
+  p (SYSCALL_GETRANDOM_URANDOM, ##__VA_ARGS__)				\
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
   p (SYSCALL_GETCWD, ##__VA_ARGS__)					\

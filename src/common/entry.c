@@ -236,6 +236,26 @@ uint8_t eri_entry__copy_str_from_user (struct eri_entry *entry, char *dst,
 #define copy_obj_to_user_or_fault(entry, dst, src, acc) \
   (copy_obj_to_user (entry, dst, src, acc) ? 0 : ERI_EFAULT)
 
+#define SEC_XFER_SIZE	512
+#define ENTROY_SHIFT	3
+
+uint64_t
+eri_entry__syscall_get_getrandom (struct eri_entry *entry,
+			uint64_t *user_buf, uint64_t *len, uint32_t *flags)
+{
+  *user_buf = entry->_regs.rdi;
+  *len = entry->_regs.rsi;
+  *flags = entry->_regs.rdx;
+
+  if (*flags & ~(ERI_GRND_NONBLOCK | ERI_GRND_RANDOM)) return ERI_EINVAL;
+
+  eri_entry__test_invalidate (entry, user_buf);
+
+  *len = eri_min (*len, *flags & ERI_GRND_RANDOM ? SEC_XFER_SIZE
+				: ERI_INT_MAX >> (ENTROY_SHIFT + 3));
+  return 0;
+}
+
 uint64_t
 eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 		const eri_sigset_t *old_mask, eri_sigset_t *mask,

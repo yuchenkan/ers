@@ -13,6 +13,7 @@ BLANK (destroy);
 BLANK (rec_init);
 BLANK (rec_signal);
 BLANK (rec_syscall_restart_out);
+BLANK (rec_syscall_getrandom);
 BLANK (rec_syscall_read);
 BLANK (rec_syscall_mmap);
 BLANK (rec_syscall_getcwd);

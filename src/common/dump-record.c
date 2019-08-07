@@ -299,6 +299,33 @@ main (int32_t argc, const char **argv)
 	      printf ("  syscall.futex_requeue.atomic.ver: %lu %lu\n",
 		      rec.atomic.ver.first, rec.atomic.ver.second);
 	  }
+	else if (magic == ERI_SYSCALL_GETRANDOM_RANDOM_MAGIC)
+	  {
+	    uint64_t res = eri_unserialize_uint64 (file);
+	    printf ("  syscall.getrandom_random.result: %ld", res);
+	    if (eri_syscall_is_fault_or_ok (res))
+	      {
+		uint64_t len = eri_unserialize_uint64 (file);
+		printf (", ..len: %ld\n", len);
+		eri_unserialize_skip_uint8_array (file, len);
+	      }
+	    else printf ("\n");
+	  }
+	else if (magic == ERI_SYSCALL_GETRANDOM_URANDOM_MAGIC)
+	  {
+	    uint64_t len = 0;
+	    while (1)
+	      {
+		uint64_t l = eri_unserialize_uint64 (file);
+		if (l == 0) break;
+		eri_unserialize_skip_uint8_array (file, l);
+		len += l;
+	      }
+	    uint64_t res = eri_unserialize_uint64 (file);
+	    printf ("  syscall.getrandom_urandom.result: %ld", res);
+	    if (len) printf (", ..len: %ld\n", len);
+	    else printf ("\n");
+	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
 	    struct eri_syscall_res_in_record rec;

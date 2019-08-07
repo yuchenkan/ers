@@ -1143,7 +1143,63 @@ DEFINE_SYSCALL (uname)
 
 SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
-SYSCALL_TO_IMPL (getrandom)
+
+DEFINE_SYSCALL (getrandom)
+{
+  uint64_t user_buf, len;
+  uint32_t flags;
+
+  syscall_leave_if_error (th, 0,
+	eri_entry__syscall_get_getrandom (entry, &user_buf, &len, &flags));
+
+  uint64_t res;
+  if (flags & ERI_GRND_RANDOM)
+    {
+      if (! check_magic (th, ERI_SYSCALL_GETRANDOM_RANDOM_MAGIC)
+	  || ! try_unserialize (uint64, th, &res)) diverged (th);
+      if (eri_syscall_is_fault_or_ok (res))
+	{
+	  uint64_t l;
+	  if (! try_unserialize (uint64, th, &l) || l > len) diverged (th);
+
+	  uint8_t buf[l];
+	  if (! try_unserialize (uint8_array, th, buf, l)
+	      || ! syscall_copy_to_user (th, res, (void *) user_buf, buf, l, 0))
+	    diverged (th);
+	}
+    }
+  else
+    {
+      if (! check_magic (th, ERI_SYSCALL_GETRANDOM_URANDOM_MAGIC))
+	diverged (th);
+
+      uint8_t fault = 0;
+      uint64_t c = 0;
+      while (1)
+	{
+	  uint64_t l;
+	  if (! try_unserialize (uint64, th, &l)) diverged (th);
+
+	  if (l == 0) break;
+
+	  if (fault
+	      || l > ERI_SYSCALL_GETRANDOM_URANDOM_BUF_SIZE
+	      || c + l > len) diverged (th);
+
+	  uint8_t buf[l];
+	  if (! try_unserialize (uint8_array, th, buf, l)) diverged (th);
+
+	  if (copy_to_user (th, (uint8_t *) user_buf + c, buf, l))
+	    c += l;
+	  else fault = 1;
+	}
+
+      if (! try_unserialize (uint64, th, &res)
+	  || fault != (res == ERI_EFAULT)) diverged (th);
+    }
+
+  syscall_leave (th, 1, res);
+}
 
 DEFINE_SYSCALL (setuid) { syscall_do_res_io (th); }
 DEFINE_SYSCALL (getuid) { syscall_do_res_in (th); }

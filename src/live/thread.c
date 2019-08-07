@@ -743,6 +743,28 @@ syscall_copy_path_from_user (struct eri_live_thread *th,
   return 0;
 }
 
+static uint64_t
+syscall_test_interrupt (struct eri_live_thread *th, uint64_t res)
+{
+  if (res != ERI_EINTR && res != ERI_ERESTART) return res;
+
+  eri_entry__sig_wait_pending (th->entry, 0);
+
+  if (res == ERI_EINTR) return res;
+
+  struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
+
+  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) return ERI_EINTR;
+
+  struct eri_sig_act *act = &th->sig_act;
+
+  if (eri_sig_act_internal_act (act)) return ERI_EINTR;
+
+  if (! (act->act.flags & ERI_SA_RESTART)) return ERI_EINTR;
+
+  return res;
+}
+
 static eri_noreturn void
 syscall_do_no_sys (SYSCALL_PARAMS)
 {
@@ -793,28 +815,6 @@ syscall_restart_out (struct eri_live_thread *th, uint64_t out)
   eri_entry__sig_wait_pending (th->entry, 0);
   eri_live_thread_recorder__rec_syscall_restart_out (th->rec, out);
   eri_entry__restart (th->entry);
-}
-
-static uint64_t
-syscall_test_interrupt (struct eri_live_thread *th, uint64_t res)
-{
-  if (res != ERI_EINTR && res != ERI_ERESTART) return res;
-
-  eri_entry__sig_wait_pending (th->entry, 0);
-
-  if (res == ERI_EINTR) return res;
-
-  struct eri_siginfo *info = eri_entry__get_sig_info (th->entry);
-
-  if (info->sig == ERI_LIVE_SIGNAL_THREAD_SIG_EXIT_GROUP) return ERI_EINTR;
-
-  struct eri_sig_act *act = &th->sig_act;
-
-  if (eri_sig_act_internal_act (act)) return ERI_EINTR;
-
-  if (! (act->act.flags & ERI_SA_RESTART)) return ERI_EINTR;
-
-  return res;
 }
 
 #define SYSCALL_TO_IMPL(name) \
@@ -938,7 +938,85 @@ DEFINE_SYSCALL (uname)
 
 SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
-SYSCALL_TO_IMPL (getrandom)
+
+#define GETRAND_RANDOM \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_RANDOM
+#define GETRAND_USTART \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_USTART
+#define GETRAND_UBUF \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UBUF
+#define GETRAND_UEND \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UEND
+
+DEFINE_SYSCALL (getrandom)
+{
+  uint64_t user_buf, len;
+  uint32_t flags;
+
+  eri_entry__syscall_leave_if_error (entry,
+	eri_entry__syscall_get_getrandom (entry, &user_buf, &len, &flags));
+
+  uint64_t res;
+  if (flags & ERI_GRND_RANDOM)
+    {
+      uint8_t buf[len];
+      uint64_t r;
+      if (! eri_entry__syscall_interruptible (entry, &r,
+					      (0, buf), (1, len)))
+	syscall_restart (entry);
+
+      res = syscall_copy_to_user (entry, r, (void *) user_buf,
+				  buf, r, 0);
+      res = syscall_test_interrupt (th, res);
+
+      eri_live_thread_recorder__rec_syscall_getrandom (th->rec,
+					GETRAND_RANDOM, res, buf, r);
+    }
+  else
+    {
+      uint8_t buf[ERI_SYSCALL_GETRANDOM_URANDOM_BUF_SIZE];
+      res = 0;
+      while (res < len)
+	{
+	  uint64_t l = eri_min (len - res, sizeof buf);
+	  uint64_t r;
+	  if (! eri_entry__syscall_interruptible (entry, &r,
+						  (0, buf), (1, l)))
+	    {
+	      if (res == 0) syscall_restart (entry);
+
+	      eri_entry__sig_wait_pending (entry, 0);
+	      break;
+	    }
+	  else
+	    {
+	      if (res == 0)
+		eri_live_thread_recorder__rec_syscall_getrandom (
+						th->rec, GETRAND_USTART);
+
+	      if (eri_syscall_is_ok (r))
+		eri_live_thread_recorder__rec_syscall_getrandom (
+					th->rec, GETRAND_UBUF, buf, r);
+
+	      r = syscall_copy_to_user (entry, r,
+			(uint8_t *) user_buf + res, buf, r, 0);
+	      r = syscall_test_interrupt (th, r);
+	      if (eri_syscall_is_error (r))
+		{
+		  if (res == 0 || (r != ERI_EINTR && r != ERI_ERESTART))
+		    res = r;
+		  break;
+		}
+	      res += r;
+	    }
+	}
+
+      eri_live_thread_recorder__rec_syscall_getrandom (th->rec,
+						       GETRAND_UEND, res);
+    }
+
+  eri_entry__syscall_leave (entry, res);
+}
 
 static eri_noreturn void
 syscall_do_setuid (SYSCALL_PARAMS)

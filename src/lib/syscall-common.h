@@ -509,6 +509,10 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_CLOCK_REALTIME_ALARM	8
 #define ERI_CLOCK_BOOTTIME_ALARM	9
 
+/* Flags for use with getrandom.  */
+#define ERI_GRND_NONBLOCK	0x01
+#define ERI_GRND_RANDOM		0x02
+
 #define ERI_FUTEX_WAIT			0
 #define ERI_FUTEX_WAKE			1
 #define ERI_FUTEX_FD			2
