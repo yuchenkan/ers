@@ -78,7 +78,6 @@ ERI_FUNCTION (eri_entry__sys_syscall_interruptible)
   je	.lsyscall
 .lsyscall_interrupt_restart:
   movq	$0, EN__SYSCALL_INTERRUPT(%rbx)
-  movq	$ERI_EINTR, ERI_SYS_SYSCALL_ARGS_RESULT(%rbp)
   xorb	%al, %al
   jmp	.lsyscall_return
 

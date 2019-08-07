@@ -176,7 +176,7 @@ uint8_t eri_entry__sys_syscall_interruptible (
 				&_entry->_regs, ##__VA_ARGS__);		\
      uint8_t _done = eri_entry__sys_syscall_interruptible (_entry,	\
 							   &_args);	\
-     *(res) = _args.result; _done; })
+     if (_done) *(res) = _args.result; _done; })
 
 uint64_t eri_entry__syscall_get_rt_sigprocmask (struct eri_entry *entry,
 		const eri_sigset_t *old_mask, eri_sigset_t *mask,
