@@ -1803,7 +1803,8 @@ syscall_do_open (SYSCALL_PARAMS)
 {
   int32_t nr = regs->rax;
   uint8_t at = nr == __NR_openat || nr == __NR_unlinkat
-	       || nr == __NR_faccessat || nr == __NR_fchmodat;
+	       || nr == __NR_faccessat || nr == __NR_fchmodat
+	       || nr == __NR_mkdirat;
   uint8_t io = nr != __NR_access && nr != __NR_faccessat;
 
   const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
@@ -2212,9 +2213,9 @@ DEFINE_SYSCALL (rename) { syscall_do_rename (SYSCALL_ARGS); }
 DEFINE_SYSCALL (renameat) { syscall_do_rename (SYSCALL_ARGS); }
 DEFINE_SYSCALL (renameat2) { syscall_do_rename (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (mkdir)
-SYSCALL_TO_IMPL (mkdirat)
-SYSCALL_TO_IMPL (rmdir)
+DEFINE_SYSCALL (mkdir) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (mkdirat) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (rmdir) { syscall_do_open (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (link) { syscall_do_rename (SYSCALL_ARGS); }
 DEFINE_SYSCALL (linkat) { syscall_do_rename (SYSCALL_ARGS); }
