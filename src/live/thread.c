@@ -2436,8 +2436,35 @@ DEFINE_SYSCALL (ustat)
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
-SYSCALL_TO_IMPL (statfs)
-SYSCALL_TO_IMPL (fstatfs)
+static eri_noreturn void
+syscall_do_statfs (struct eri_live_thread *th, uint64_t path)
+{
+  struct eri_entry *entry = th->entry;
+  struct eri_registers *regs = eri_entry__get_regs (entry);
+
+  struct eri_statfs *user_statfs = (void *) regs->rsi;
+  struct eri_syscall_statfs_record rec;
+  uint64_t res = eri_entry__syscall (entry, (0, path ? : regs->rdi));
+  eri_memset (rec.statfs.spare, 0, sizeof rec.statfs.spare);
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_statfs, &rec.statfs);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_STATFS_MAGIC, &rec);
+  if (path) eri_assert_mtfree (th->group->pool, (void *) path);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (statfs)
+{
+  const char *user_path = (void *) regs->rdi;
+  char *path;
+  eri_entry__syscall_leave_if_error (entry,
+		syscall_copy_path_from_user (th, &path, user_path));
+
+  syscall_do_statfs (th, (uint64_t) path);
+}
+
+DEFINE_SYSCALL (fstatfs) { syscall_do_statfs (th, 0); }
 
 SYSCALL_TO_IMPL (sysfs)
 SYSCALL_TO_IMPL (sync)

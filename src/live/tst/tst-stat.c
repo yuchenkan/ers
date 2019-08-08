@@ -53,5 +53,16 @@ tst_live_start (void)
   eri_assert (tst_syscall (ustat, stat.dev, 0) == ERI_EFAULT);
   eri_assert (tst_syscall (ustat, -1, &ustat) == ERI_EINVAL);
 
+  struct eri_statfs statfs;
+  tst_assert_syscall (statfs, "/dev", &statfs);
+
+  fd = tst_assert_syscall (open, "/dev/zero", ERI_O_RDONLY);
+  tst_assert_syscall (fstatfs, fd, &statfs);
+  tst_assert_syscall (close, fd);
+
+  eri_assert (tst_syscall (statfs, "/dev", 0) == ERI_EFAULT);
+  eri_assert (tst_syscall (statfs, 0, &statfs) == ERI_EFAULT);
+  eri_assert (tst_syscall (statfs, 0, 0) == ERI_EFAULT);
+
   tst_assert_sys_exit (0);
 }

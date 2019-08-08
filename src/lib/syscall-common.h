@@ -1086,6 +1086,25 @@ eri_syscall_zcpy_ustat (struct eri_ustat *dst, struct eri_ustat *src)
   eri_memcpy (dst->fpack, src->fpack, sizeof dst->fpack);
 }
 
+struct eri_statfs
+{
+  int64_t type;
+  int64_t bsize;
+  uint64_t blocks;
+  uint64_t bfree;
+  uint64_t bavail;
+  uint64_t files;
+  uint64_t ffree;
+  struct
+    {
+      int32_t val[2];
+    } fsid;
+  int64_t namelen;
+  int64_t frsize;
+  int64_t flags;
+  int64_t spare[4];
+};
+
 struct eri_rlimit
 {
   uint64_t cur;

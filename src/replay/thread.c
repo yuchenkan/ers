@@ -2278,8 +2278,33 @@ DEFINE_SYSCALL (ustat)
   syscall_leave (th, 1, res);
 }
 
-SYSCALL_TO_IMPL (statfs)
-SYSCALL_TO_IMPL (fstatfs)
+static eri_noreturn void
+syscall_do_statfs (SYSCALL_PARAMS)
+{
+  struct eri_statfs *user_statfs = (void *) regs->rsi;
+
+  struct eri_syscall_statfs_record rec;
+  if (! check_magic (th, ERI_SYSCALL_STATFS_MAGIC)
+      || ! try_unserialize (syscall_statfs_record, th, &rec)) diverged (th);
+
+  eri_memset (rec.statfs.spare, 0, sizeof rec.statfs.spare);
+
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_obj_to_user (th, res, user_statfs, &rec.statfs)
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
+DEFINE_SYSCALL (statfs)
+{
+  const char *user_path = (void *) regs->rdi;
+  syscall_leave_if_error (th, 0, syscall_read_user_path (th, user_path));
+
+  syscall_do_statfs (SYSCALL_ARGS);
+}
+
+DEFINE_SYSCALL (fstatfs) { syscall_do_statfs (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (sysfs)
 SYSCALL_TO_IMPL (sync)

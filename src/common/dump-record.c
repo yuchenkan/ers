@@ -285,6 +285,13 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.ustat.result: %ld, ..in: %ld\n",
 		    rec.res.result, rec.res.in);
 	  }
+	else if (magic == ERI_SYSCALL_STATFS_MAGIC)
+	  {
+	    struct eri_syscall_statfs_record rec;
+	    eri_unserialize_syscall_statfs_record (file, &rec);
+	    printf ("  syscall.statfs.result: %ld, ..in: %ld\n",
+		    rec.res.result, rec.res.in);
+	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {
 	    struct eri_syscall_futex_record rec;
