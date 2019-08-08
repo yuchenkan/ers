@@ -991,6 +991,12 @@ syscall_fetch_res_io (struct thread *th)
 }
 
 static eri_noreturn void
+syscall_do_no_sys (struct eri_entry *entry)
+{
+  eri_entry__syscall_leave (entry, ERI_ENOSYS);
+}
+
+static eri_noreturn void
 syscall_do_res_in (struct thread *th)
 {
   struct eri_syscall_res_in_record rec = syscall_fetch_res_in (th);
@@ -1621,7 +1627,7 @@ DEFINE_SYSCALL (rt_tgsigqueueinfo)
   syscall_do_rt_sigqueueinfo (SYSCALL_ARGS);
 }
 
-SYSCALL_TO_IMPL (restart_syscall)
+DEFINE_SYSCALL (restart_syscall) { syscall_do_no_sys (entry); }
 
 DEFINE_SYSCALL (socket) { syscall_do_res_io (th); }
 
@@ -2251,8 +2257,8 @@ SYSCALL_TO_IMPL (syncfs)
 SYSCALL_TO_IMPL (mount)
 SYSCALL_TO_IMPL (umount2)
 
-SYSCALL_TO_IMPL (chroot)
-SYSCALL_TO_IMPL (pivot_root)
+DEFINE_SYSCALL (chroot) { syscall_do_no_sys (entry); }
+DEFINE_SYSCALL (pivot_root) { syscall_do_no_sys (entry); }
 
 static uint8_t
 mm_wait (struct thread *th, uint64_t exp)
@@ -2540,8 +2546,8 @@ DEFINE_SYSCALL (futex)
     }
 }
 
-SYSCALL_TO_IMPL (set_robust_list)
-SYSCALL_TO_IMPL (get_robust_list)
+DEFINE_SYSCALL (set_robust_list) { syscall_do_no_sys (entry); }
+DEFINE_SYSCALL (get_robust_list) { syscall_do_no_sys (entry); }
 
 SYSCALL_TO_IMPL (pkey_mprotect)
 SYSCALL_TO_IMPL (pkey_alloc)

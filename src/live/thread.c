@@ -766,7 +766,7 @@ syscall_test_interrupt (struct eri_live_thread *th, uint64_t res)
 }
 
 static eri_noreturn void
-syscall_do_no_sys (SYSCALL_PARAMS)
+syscall_do_no_sys (struct eri_entry *entry)
 {
   /* XXX: inteneded not to impl at least for now.  */
   eri_entry__syscall_leave (entry, ERI_ENOSYS);
@@ -1571,10 +1571,7 @@ DEFINE_SYSCALL (tgkill) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_sigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 DEFINE_SYSCALL (rt_tgsigqueueinfo) { syscall_do_kill (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (restart_syscall)
-{
-  syscall_do_no_sys (SYSCALL_ARGS);
-}
+DEFINE_SYSCALL (restart_syscall) { syscall_do_no_sys (entry); }
 
 DEFINE_SYSCALL (socket) { syscall_do_res_io (SYSCALL_ARGS); }
 
@@ -2418,8 +2415,8 @@ SYSCALL_TO_IMPL (syncfs)
 SYSCALL_TO_IMPL (mount)
 SYSCALL_TO_IMPL (umount2)
 
-SYSCALL_TO_IMPL (chroot)
-SYSCALL_TO_IMPL (pivot_root)
+DEFINE_SYSCALL (chroot) { syscall_do_no_sys (entry); }
+DEFINE_SYSCALL (pivot_root) { syscall_do_no_sys (entry); }
 
 DEFINE_SYSCALL (mmap)
 {
@@ -2685,8 +2682,8 @@ DEFINE_SYSCALL (futex)
     }
 }
 
-DEFINE_SYSCALL (set_robust_list) { syscall_do_no_sys (SYSCALL_ARGS); }
-DEFINE_SYSCALL (get_robust_list) { syscall_do_no_sys (SYSCALL_ARGS); }
+DEFINE_SYSCALL (set_robust_list) { syscall_do_no_sys (entry); }
+DEFINE_SYSCALL (get_robust_list) { syscall_do_no_sys (entry); }
 
 SYSCALL_TO_IMPL (pkey_mprotect)
 SYSCALL_TO_IMPL (pkey_alloc)
