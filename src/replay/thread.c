@@ -1804,7 +1804,7 @@ syscall_do_open (SYSCALL_PARAMS)
   int32_t nr = regs->rax;
   uint8_t at = nr == __NR_openat || nr == __NR_unlinkat
 	       || nr == __NR_faccessat || nr == __NR_fchmodat
-	       || nr == __NR_mkdirat;
+	       || nr == __NR_mkdirat || nr == __NR_mknodat;
   uint8_t io = nr != __NR_access && nr != __NR_faccessat;
 
   const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
@@ -2243,8 +2243,8 @@ syscall_do_readlink (SYSCALL_PARAMS)
 DEFINE_SYSCALL (readlink) { syscall_do_readlink (SYSCALL_ARGS); }
 DEFINE_SYSCALL (readlinkat) { syscall_do_readlink (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (mknod)
-SYSCALL_TO_IMPL (mknodat)
+DEFINE_SYSCALL (mknod) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (mknodat) { syscall_do_open (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (umask)
 
