@@ -47,7 +47,7 @@ tst_live_start (void)
   tst_assert_syscall (rmdir, "tst-rmdir.t");
 
   int32_t fd = tst_assert_syscall (open, ".",
-				   ERI_O_DIRECTORY | ERI_O_RDONLY);
+				   ERI_O_RDONLY | ERI_O_DIRECTORY);
   tst_assert_syscall (mkdirat, fd, "tst-rmdir.t", 0755);
   tst_assert_syscall (rmdir, "tst-rmdir.t");
   tst_assert_syscall (close, fd);
