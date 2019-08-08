@@ -798,6 +798,23 @@ syscall_on_signal_thread (struct eri_live_thread *th)
   return eri_live_signal_thread__syscall (th->sig_th, &args);
 }
 
+static eri_noreturn void
+syscall_do_res_io_sig (SYSCALL_PARAMS)
+{
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  rec.res.result = syscall_on_signal_thread (th);
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+static eri_noreturn void
+syscall_do_res_in_sig (SYSCALL_PARAMS)
+{
+  uint64_t res = syscall_on_signal_thread (th);
+  syscall_record_res_in (th, res);
+  eri_entry__syscall_leave (entry, res);
+}
+
 #define DEFINE_SYSCALL(name) \
 static eri_noreturn void						\
 ERI_PASTE (syscall_, name) (SYSCALL_PARAMS)
@@ -1018,29 +1035,12 @@ DEFINE_SYSCALL (getrandom)
   eri_entry__syscall_leave (entry, res);
 }
 
-static eri_noreturn void
-syscall_do_setuid (SYSCALL_PARAMS)
-{
-  struct eri_syscall_res_io_record rec = { io_out (th) };
-  rec.res.result = syscall_on_signal_thread (th);
-  syscall_record_res_io (th, &rec);
-  eri_entry__syscall_leave (entry, rec.res.result);
-}
-
-static eri_noreturn void
-syscall_do_getuid (SYSCALL_PARAMS)
-{
-  uint64_t res = syscall_on_signal_thread (th);
-  syscall_record_res_in (th, res);
-  eri_entry__syscall_leave (entry, res);
-}
-
-DEFINE_SYSCALL (setuid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getuid) { syscall_do_getuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (setgid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getgid) { syscall_do_getuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (geteuid) { syscall_do_getuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getegid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setuid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getuid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setgid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getgid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (geteuid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getegid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (gettid)
 {
@@ -1052,28 +1052,28 @@ DEFINE_SYSCALL (getpid)
   eri_entry__syscall_leave (entry, th->group->user_pid);
 }
 
-DEFINE_SYSCALL (getppid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getppid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (setreuid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (setregid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setreuid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setregid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (setresuid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getresuid) { syscall_do_getuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (setresgid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getresgid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setresuid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getresuid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setresgid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getresgid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (setfsuid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (setfsgid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setfsuid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setfsgid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (setgroups)
 SYSCALL_TO_IMPL (getgroups)
 
-DEFINE_SYSCALL (setsid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getsid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setsid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getsid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
 
-DEFINE_SYSCALL (setpgid) { syscall_do_setuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getpgid) { syscall_do_getuid (SYSCALL_ARGS); }
-DEFINE_SYSCALL (getpgrp) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (setpgid) { syscall_do_res_io_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getpgid) { syscall_do_res_in_sig (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getpgrp) { syscall_do_res_in_sig (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (time)
 {
