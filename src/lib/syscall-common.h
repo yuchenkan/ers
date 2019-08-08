@@ -710,6 +710,10 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_RUSAGE_CHILDREN	-1	/* XXX: children? */
 #define ERI_RUSAGE_THREAD	1
 
+#define ERI_PRIO_PROCESS	0	/* WHO is a process ID.  */
+#define ERI_PRIO_PGRP		1	/* WHO is a process group ID.  */
+#define ERI_PRIO_USER		2	/* WHO is a user ID.  */
+
 /* Protocol families.  */
 #define ERI_PF_UNSPEC	0	/* Unspecified.  */
 #define ERI_PF_LOCAL	1	/* Local to host (pipes and file-domain).  */

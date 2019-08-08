@@ -1326,8 +1326,23 @@ DEFINE_SYSCALL (arch_prctl)
 SYSCALL_TO_IMPL (quotactl)
 SYSCALL_TO_IMPL (acct)
 
-SYSCALL_TO_IMPL (setpriority)
-SYSCALL_TO_IMPL (getpriority)
+DEFINE_SYSCALL (setpriority)
+{
+  int32_t which = regs->rdi;
+  eri_entry__syscall_leave_if_error (entry,
+			eri_syscall_priority_check_which (which));
+  if (which == ERI_PRIO_USER) syscall_do_res_io (SYSCALL_ARGS);
+  else syscall_do_res_io_sig (SYSCALL_ARGS);
+}
+
+DEFINE_SYSCALL (getpriority)
+{
+  int32_t which = regs->rdi;
+  eri_entry__syscall_leave_if_error (entry,
+			eri_syscall_priority_check_which (which));
+  if (which == ERI_PRIO_USER) syscall_do_res_in (SYSCALL_ARGS);
+  else syscall_do_res_in_sig (SYSCALL_ARGS);
+}
 
 DEFINE_SYSCALL (sched_yield)
 {

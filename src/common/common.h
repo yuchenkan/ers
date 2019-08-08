@@ -470,4 +470,11 @@ eri_syscall_check_getrusage_who (int32_t who)
 
 #define ERI_SYSCALL_GETRANDOM_URANDOM_BUF_SIZE	2048
 
+static eri_unused uint64_t
+eri_syscall_priority_check_which (int32_t which)
+{
+  return which != ERI_PRIO_PROCESS && which != ERI_PRIO_PGRP
+	 && which != ERI_PRIO_USER ? ERI_EINVAL : 0;
+}
+
 #endif
