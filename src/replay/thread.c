@@ -1133,6 +1133,8 @@ SYSCALL_TO_IMPL (seccomp)
 
 DEFINE_SYSCALL (uname)
 {
+  struct eri_utsname *user_utsname = (void *) regs->rdi;
+
   struct eri_syscall_uname_record rec = { 0 };
 
   if (! check_magic (th, ERI_SYSCALL_UNAME_MAGIC)
@@ -1140,7 +1142,6 @@ DEFINE_SYSCALL (uname)
       || eri_syscall_is_non_fault_error (rec.res.result)) diverged (th);
 
   uint64_t res = rec.res.result;
-  struct eri_utsname *user_utsname = (void *) regs->rdi;
   if (! syscall_copy_obj_to_user (th, res, user_utsname, &rec.utsname)
       || ! io_in (th, rec.res.in)) diverged (th);
 
