@@ -2246,7 +2246,7 @@ DEFINE_SYSCALL (readlinkat) { syscall_do_readlink (SYSCALL_ARGS); }
 DEFINE_SYSCALL (mknod) { syscall_do_open (SYSCALL_ARGS); }
 DEFINE_SYSCALL (mknodat) { syscall_do_open (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (umask)
+DEFINE_SYSCALL (umask) { syscall_do_res_io (th); }
 
 DEFINE_SYSCALL (chmod) { syscall_do_open (SYSCALL_ARGS); }
 DEFINE_SYSCALL (fchmod) { syscall_do_res_io (th); }
