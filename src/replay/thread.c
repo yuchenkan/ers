@@ -993,7 +993,7 @@ syscall_fetch_res_io (struct thread *th)
 static eri_noreturn void
 syscall_do_no_sys (struct eri_entry *entry)
 {
-  syscall_leave (th, 0, ERI_ENOSYS);
+  eri_entry__syscall_leave (entry, ERI_ENOSYS);
 }
 
 static eri_noreturn void

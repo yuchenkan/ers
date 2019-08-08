@@ -2430,7 +2430,7 @@ DEFINE_SYSCALL (ustat)
 					     user_ustat, &rec.ustat);
   rec.res.in = io_in (th);
   syscall_record (th, ERI_SYSCALL_USTAT_MAGIC, &rec);
-  eri_entry__syscall_leave (entry, rec.result);
+  eri_entry__syscall_leave (entry, rec.res.result);
 }
 
 SYSCALL_TO_IMPL (statfs)
