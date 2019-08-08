@@ -46,5 +46,12 @@ tst_live_start (void)
 
   tst_assert_syscall (close, dir);
 
+  struct eri_ustat ustat;
+  tst_assert_syscall (ustat, stat.dev, &ustat);
+  eri_info ("ustat.tfree = %u\n", ustat.tfree);
+
+  eri_assert (tst_syscall (ustat, stat.dev, 0) == ERI_EFAULT);
+  eri_assert (tst_syscall (ustat, -1, &ustat) == ERI_EINVAL);
+
   tst_assert_sys_exit (0);
 }

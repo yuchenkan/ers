@@ -2421,7 +2421,6 @@ SYSCALL_TO_IMPL (utimes)
 SYSCALL_TO_IMPL (futimesat)
 SYSCALL_TO_IMPL (utimensat)
 
-/* TODO test */
 DEFINE_SYSCALL (ustat)
 {
   struct eri_ustat *user_ustat = (void *) regs->rsi;
