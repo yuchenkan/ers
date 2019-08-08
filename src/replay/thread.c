@@ -993,7 +993,7 @@ syscall_fetch_res_io (struct thread *th)
 static eri_noreturn void
 syscall_do_no_sys (struct eri_entry *entry)
 {
-  eri_entry__syscall_leave (entry, ERI_ENOSYS);
+  syscall_leave (th, 0, ERI_ENOSYS);
 }
 
 static eri_noreturn void
@@ -2616,7 +2616,7 @@ SYSCALL_TO_IMPL (lookup_dcookie)
 SYSCALL_TO_IMPL (process_vm_readv)
 SYSCALL_TO_IMPL (process_vm_writev)
 
-SYSCALL_TO_IMPL (remap_file_pages) /* deprecated */
+DEFINE_SYSCALL (remap_file_pages) { syscall_do_no_sys (entry); }
 
 static eri_noreturn void
 syscall (struct thread *th)

@@ -2756,7 +2756,8 @@ SYSCALL_TO_IMPL (lookup_dcookie)
 SYSCALL_TO_IMPL (process_vm_readv)
 SYSCALL_TO_IMPL (process_vm_writev)
 
-SYSCALL_TO_IMPL (remap_file_pages)
+/* deprecated */
+DEFINE_SYSCALL (remap_file_pages) { syscall_do_no_sys (entry)}
 
 static eri_noreturn void
 syscall (struct eri_live_thread *th)
