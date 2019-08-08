@@ -1137,12 +1137,6 @@ struct syscall_event
   uint8_t do_both;
 };
 
-static uint8_t
-syscall_invalid_tid (struct signal_thread_group *group, int32_t tid)
-{
-  return tid == eri_helper__get_pid (group->helper) || tid == group->watch.tid;
-}
-
 static void
 syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
 {
@@ -1155,7 +1149,17 @@ syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
   if (nr == __NR_tkill || nr == __NR_prlimit64) tid_idx = 0;
   else if (nr == __NR_tkill || nr == __NR_rt_tgsigqueueinfo) tid_idx = 1;
 
-  if (tid_idx != -1 && syscall_invalid_tid (group, args->a[tid_idx]))
+  if (tid_idx != -1
+      && (args->a[tid_idx] == eri_helper__get_pid (group->helper)
+	  || args->a[tid_idx] == group->watch.tid))
+    {
+      args->result = ERI_ESRCH;
+      return;
+    }
+
+  if ((nr == __NR_setpgid || nr == __NR_getpgid)
+      && (args->a[0] == eri_helper__get_pid (group->helper)
+	  || args->a[0] == eri_live_thread__get_pid (sig_th->th)))
     {
       args->result = ERI_ESRCH;
       return;

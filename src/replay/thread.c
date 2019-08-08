@@ -1230,9 +1230,9 @@ SYSCALL_TO_IMPL (getgroups)
 DEFINE_SYSCALL (setsid) { syscall_do_res_io (th); }
 DEFINE_SYSCALL (getsid) { syscall_do_res_in (th); }
 
-SYSCALL_TO_IMPL (setpgid)
-SYSCALL_TO_IMPL (getpgid)
-SYSCALL_TO_IMPL (getpgrp)
+DEFINE_SYSCALL (setpgid) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (getpgid) { syscall_do_res_in (th); }
+DEFINE_SYSCALL (getpgrp) { syscall_do_res_in (th); }
 
 DEFINE_SYSCALL (time)
 {

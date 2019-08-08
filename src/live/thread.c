@@ -1071,9 +1071,9 @@ SYSCALL_TO_IMPL (getgroups)
 DEFINE_SYSCALL (setsid) { syscall_do_setuid (SYSCALL_ARGS); }
 DEFINE_SYSCALL (getsid) { syscall_do_getuid (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (setpgid)
-SYSCALL_TO_IMPL (getpgid)
-SYSCALL_TO_IMPL (getpgrp)
+DEFINE_SYSCALL (setpgid) { syscall_do_setuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getpgid) { syscall_do_getuid (SYSCALL_ARGS); }
+DEFINE_SYSCALL (getpgrp) { syscall_do_getuid (SYSCALL_ARGS); }
 
 DEFINE_SYSCALL (time)
 {
