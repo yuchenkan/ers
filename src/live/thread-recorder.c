@@ -450,6 +450,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_accept_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_GETSOCKNAME_MAGIC)
     eri_serialize_syscall_getsockname_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_USTAT_MAGIC)
+    eri_serialize_syscall_ustat_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
     eri_serialize_syscall_futex_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)

@@ -1068,6 +1068,14 @@ struct eri_iovec
   uint64_t len;
 };
 
+struct eri_ustat
+{
+  int32_t tfree;
+  uint64_t tinode;
+  char fname[6];
+  char fpack[6];
+};
+
 struct eri_rlimit
 {
   uint64_t cur;

@@ -2419,7 +2419,20 @@ SYSCALL_TO_IMPL (utimes)
 SYSCALL_TO_IMPL (futimesat)
 SYSCALL_TO_IMPL (utimensat)
 
-SYSCALL_TO_IMPL (ustat)
+/* TODO test */
+DEFINE_SYSCALL (ustat)
+{
+  struct eri_ustat *user_ustat = (void *) regs->rsi;
+
+  struct eri_syscall_ustat_record rec;
+  uint64_t res = eri_entry__syscall (entry, (1, &rec.ustat));
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_ustat, &rec.ustat);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_USTAT_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.result);
+}
+
 SYSCALL_TO_IMPL (statfs)
 SYSCALL_TO_IMPL (fstatfs)
 
@@ -2757,7 +2770,7 @@ SYSCALL_TO_IMPL (process_vm_readv)
 SYSCALL_TO_IMPL (process_vm_writev)
 
 /* deprecated */
-DEFINE_SYSCALL (remap_file_pages) { syscall_do_no_sys (entry)}
+DEFINE_SYSCALL (remap_file_pages) { syscall_do_no_sys (entry); }
 
 static eri_noreturn void
 syscall (struct eri_live_thread *th)

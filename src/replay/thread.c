@@ -2258,7 +2258,22 @@ SYSCALL_TO_IMPL (utimes)
 SYSCALL_TO_IMPL (futimesat)
 SYSCALL_TO_IMPL (utimensat)
 
-SYSCALL_TO_IMPL (ustat)
+DEFINE_SYSCALL (ustat)
+{
+  struct eri_ustat *user_ustat = (void *) regs->rsi;
+
+  struct eri_syscall_ustat_record rec;
+  if (! check_magic (th, ERI_SYSCALL_USTAT_MAGIC)
+      || ! try_unserialize (syscall_ustat_record, th, &rec)) diverged (th);
+
+  uint64_t res = rec.res.result;
+
+  if (! syscall_copy_obj_to_user (th, res, user_ustat, &rec.ustat)
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
 SYSCALL_TO_IMPL (statfs)
 SYSCALL_TO_IMPL (fstatfs)
 

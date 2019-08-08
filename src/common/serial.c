@@ -579,6 +579,32 @@ eri_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage)
 }
 
 void
+eri_serialize_ustat (eri_file_t file, const struct eri_ustat *ustat)
+{
+  eri_serialize_int32 (file, ustat->tfree);
+  eri_serialize_uint64 (file, ustat->tinode);
+  eri_serialize_uint8_array (file, (void *) ustat->fname,
+			     sizeof ustat->fname);
+  eri_serialize_uint8_array (file, (void *) ustat->fpack,
+			     sizeof ustat->fpack);
+}
+uint8_t
+eri_try_unserialize_ustat (eri_file_t file, struct eri_ustat *ustat)
+{
+  return eri_try_unserialize_int32 (file, &ustat->tfree)
+	 && eri_try_unserialize_uint64 (file, &ustat->tinode)
+	 && eri_try_unserialize_uint8_array (file, (void *) ustat->fname,
+					     sizeof ustat->fname)
+	 && eri_try_unserialize_uint8_array (file, (void *) ustat->fpack,
+					     sizeof ustat->fpack);
+}
+
+void eri_unserialize_ustat (eri_file_t file, struct eri_ustat *ustat)
+{
+  eri_assert (eri_try_unserialize_ustat (file, ustat));
+}
+
+void
 eri_serialize_init_record (eri_file_t file, const struct eri_init_record *rec)
 {
   eri_serialize_uint64 (file, rec->ver);
@@ -1109,6 +1135,31 @@ eri_unserialize_syscall_getsockname_record (eri_file_t file,
 			struct eri_syscall_getsockname_record *rec)
 {
   eri_assert (eri_try_unserialize_syscall_getsockname_record (file, rec));
+}
+
+void
+eri_serialize_syscall_ustat_record (eri_file_t file,
+			const struct eri_syscall_ustat_record *rec)
+{
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_ustat (file, &rec->ustat);
+}
+
+uint8_t
+eri_try_unserialize_syscall_ustat_record (eri_file_t file,
+			struct eri_syscall_ustat_record *rec)
+{
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_ustat (file, &rec->ustat));
+}
+
+void
+eri_unserialize_syscall_ustat_record (eri_file_t file,
+			struct eri_syscall_ustat_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_ustat_record (file, rec));
 }
 
 void

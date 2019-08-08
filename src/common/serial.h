@@ -118,6 +118,10 @@ uint8_t eri_try_unserialize_rusage (eri_file_t file,
 				    struct eri_rusage *rusage);
 void eri_unserialize_rusage (eri_file_t file, struct eri_rusage *rusage);
 
+void eri_serialize_ustat (eri_file_t file, const struct eri_ustat *ustat);
+uint8_t eri_try_unserialize_ustat (eri_file_t file, struct eri_ustat *ustat);
+void eri_unserialize_ustat (eri_file_t file, struct eri_ustat *ustat);
+
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
   p (INIT_MAP, ##__VA_ARGS__)						\
@@ -232,6 +236,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_GETRUSAGE, ##__VA_ARGS__)					\
   p (SYSCALL_ACCEPT, ##__VA_ARGS__)					\
   p (SYSCALL_GETSOCKNAME, ##__VA_ARGS__)				\
+  p (SYSCALL_USTAT, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_GETRANDOM_RANDOM, ##__VA_ARGS__)				\
@@ -500,6 +505,19 @@ uint8_t eri_try_unserialize_syscall_getsockname_record (eri_file_t file,
 			struct eri_syscall_getsockname_record *rec);
 void eri_unserialize_syscall_getsockname_record (eri_file_t file,
 			struct eri_syscall_getsockname_record *rec);
+
+struct eri_syscall_ustat_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_ustat ustat;
+};
+
+void eri_serialize_syscall_ustat_record (eri_file_t file,
+			const struct eri_syscall_ustat_record *rec);
+uint8_t eri_try_unserialize_syscall_ustat_record (eri_file_t file,
+			struct eri_syscall_ustat_record *rec);
+void eri_unserialize_syscall_ustat_record (eri_file_t file,
+			struct eri_syscall_ustat_record *rec);
 
 struct eri_syscall_futex_record
 {
