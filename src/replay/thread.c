@@ -1612,9 +1612,14 @@ syscall_do_rt_sigqueueinfo (SYSCALL_PARAMS)
 }
 
 DEFINE_SYSCALL (rt_sigqueueinfo)
-{ syscall_do_rt_sigqueueinfo (SYSCALL_ARGS); }
+{
+  syscall_do_rt_sigqueueinfo (SYSCALL_ARGS);
+}
+
 DEFINE_SYSCALL (rt_tgsigqueueinfo)
-{ syscall_do_rt_sigqueueinfo (SYSCALL_ARGS); }
+{
+  syscall_do_rt_sigqueueinfo (SYSCALL_ARGS);
+}
 
 SYSCALL_TO_IMPL (restart_syscall)
 
@@ -2139,7 +2144,9 @@ err:
 }
 
 DEFINE_SYSCALL (getcwd)
-{ syscall_do_getcwd (th, (void *) regs->rdi, regs->rsi); }
+{
+  syscall_do_getcwd (th, (void *) regs->rdi, regs->rsi);
+}
 
 DEFINE_SYSCALL (chdir)
 {
