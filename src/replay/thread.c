@@ -1135,7 +1135,8 @@ DEFINE_SYSCALL (uname)
 {
   struct eri_utsname *user_utsname = (void *) regs->rdi;
 
-  struct eri_syscall_uname_record rec = { 0 };
+  struct eri_syscall_uname_record rec;
+  eri_memset (&rec.utsname, 0, sizeof rec.utsname);
 
   if (! check_magic (th, ERI_SYSCALL_UNAME_MAGIC)
       || ! try_unserialize (syscall_uname_record, th, &rec)
@@ -1282,7 +1283,7 @@ DEFINE_SYSCALL (gettimeofday)
 {
   struct eri_timeval *user_tv = (void *) regs->rdi;
 
-  struct eri_syscall_gettimeofday_record rec = { 0 };
+  struct eri_syscall_gettimeofday_record rec;
 
   if (! check_magic (th, ERI_SYSCALL_GETTIMEOFDAY_MAGIC)
       || ! try_unserialize (syscall_gettimeofday_record, th, &rec))
@@ -1512,7 +1513,7 @@ DEFINE_SYSCALL (rt_sigaction)
   uint64_t act_ver;
   if (user_old_act)
     {
-      struct eri_sigaction act;
+      struct eri_sigaction act = { 0 };
       if (! check_magic (th, ERI_SYSCALL_RT_SIGACTION_MAGIC)
 	  || ! try_unserialize (sigaction, th, &act)
 	  || ! try_unserialize (uint64, th, &act_ver))
@@ -1602,6 +1603,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_rt_sigtimedwait_record rec;
+  if (user_info) eri_memset (&rec.info, 0, sizeof rec.info);
   if (! check_magic (th, ERI_SYSCALL_RT_SIGTIMEDWAIT_MAGIC)
       || ! try_unserialize (syscall_rt_sigtimedwait_record, th, &rec))
     diverged (th);
@@ -2101,6 +2103,7 @@ syscall_do_stat (SYSCALL_PARAMS)
 
   uint64_t res = rec.res.result;
 
+  rec.stat.pad = 0;
   if (! syscall_copy_obj_to_user (th, res, user_stat, &rec.stat)
       || ! io_in (th, rec.res.in)) diverged (th);
 
@@ -2263,6 +2266,7 @@ DEFINE_SYSCALL (ustat)
   struct eri_ustat *user_ustat = (void *) regs->rsi;
 
   struct eri_syscall_ustat_record rec;
+  eri_memset (&rec.ustat, 0, sizeof rec.ustat);
   if (! check_magic (th, ERI_SYSCALL_USTAT_MAGIC)
       || ! try_unserialize (syscall_ustat_record, th, &rec)) diverged (th);
 

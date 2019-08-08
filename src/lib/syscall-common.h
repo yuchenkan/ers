@@ -1076,6 +1076,16 @@ struct eri_ustat
   char fpack[6];
 };
 
+static eri_unused void
+eri_syscall_zcpy_ustat (struct eri_ustat *dst, struct eri_ustat *src)
+{
+  eri_memset (dst, 0, sizeof *dst);
+  dst->tfree = src->tfree;
+  dst->tinode = src->tinode;
+  eri_memcpy (dst->fname, src->fname, sizeof dst->fname);
+  eri_memcpy (dst->fpack, src->fpack, sizeof dst->fpack);
+}
+
 struct eri_rlimit
 {
   uint64_t cur;
@@ -1149,6 +1159,17 @@ struct eri_sigaction
   eri_sigset_t mask;
 };
 
+static eri_unused void
+eri_syscall_zpad_sigaction (struct eri_sigaction *act)
+{
+  struct eri_sigaction a = *act;
+  eri_memset (act, 0, sizeof act);
+  act->act = a.act;
+  act->flags = a.flags;
+  act->restorer = a.restorer;
+  act->mask = a.mask;
+};
+
 struct eri_siginfo
 {
   int32_t sig;
@@ -1177,6 +1198,26 @@ struct eri_siginfo
     };
 };
 
+#define eri_si_from_kernel(info)	((info)->code > 0)
+
+static eri_unused void
+eri_syscall_zcpy_siginfo (struct eri_siginfo *dst,
+			  const struct eri_siginfo *src)
+{
+  eri_memset (dst, 0, sizeof *dst);
+  dst->sig = src->sig;
+  dst->errno = src->errno;
+  dst->code = src->code;
+  if (dst->code == ERI_SI_TKILL || dst->code == ERI_SI_USER)
+    dst->kill = src->kill;
+  else if (dst->sig == ERI_SIGCHLD && eri_si_from_kernel (dst))
+    dst->chld = src->chld;
+  else if ((dst->sig == ERI_SIGILL || dst->sig == ERI_SIGFPE
+	    || dst->sig == ERI_SIGSEGV || dst->sig == ERI_SIGBUS)
+	   && eri_si_from_kernel (dst) && dst->code != ERI_SI_KERNEL)
+    dst->fault = src->fault;
+}
+
 struct eri_signalfd_siginfo {
   int32_t sig;
   int32_t err;
@@ -1201,8 +1242,6 @@ struct eri_signalfd_siginfo {
   uint32_t arch;
   uint8_t pad[28];
 };
-
-#define eri_si_from_kernel(info)	((info)->code > 0)
 
 static eri_unused uint8_t
 eri_si_sync (const struct eri_siginfo *info)

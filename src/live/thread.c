@@ -1089,7 +1089,7 @@ DEFINE_SYSCALL (times)
 {
   struct eri_tms *user_buf = (void *) regs->rdi;
 
-  struct eri_syscall_times_record rec = { 0 };
+  struct eri_syscall_times_record rec;
   /* XXX: cutimes & cstimes */
   uint64_t res = eri_entry__syscall (entry, (0, user_buf ? &rec.tms : 0));
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
@@ -1127,7 +1127,7 @@ DEFINE_SYSCALL (gettimeofday)
     non_conforming (th->log.file,
 		    "tz for gettimeofday is obsoleted, treat as NULL.");
 
-  struct eri_syscall_gettimeofday_record rec = { 0 };
+  struct eri_syscall_gettimeofday_record rec;
   uint64_t res = eri_entry__syscall (entry,
 				(0, user_tv ? &rec.time : 0), (1, 0));
   rec.res.result = syscall_copy_obj_to_user_opt (entry, res,
@@ -1166,7 +1166,7 @@ syscall_do_clock_gettime (SYSCALL_PARAMS)
   eri_entry__syscall_leave_if_error (entry,
 				     eri_syscall_check_clock_id (id));
 
-  struct eri_syscall_clock_gettime_record rec = { 0 };
+  struct eri_syscall_clock_gettime_record rec;
 
   uint64_t res = eri_entry__syscall (entry,
 				(1, user_time || ! time ? &rec.time : 0));
@@ -1249,7 +1249,7 @@ DEFINE_SYSCALL (getrlimit)
   eri_entry__syscall_leave_if_error (entry,
 		eri_syscall_check_prlimit64_resource (resource));
 
-  struct eri_syscall_getrlimit_record rec = { 0 };
+  struct eri_syscall_getrlimit_record rec;
 
   struct eri_sys_syscall_args args;
   eri_init_sys_syscall_args_from_registers (&args, regs, (1, &rec.rlimit));
@@ -1302,7 +1302,7 @@ DEFINE_SYSCALL (getrusage)
   eri_entry__syscall_leave_if_error (entry,
 		eri_syscall_check_getrusage_who (who));
 
-  struct eri_syscall_getrusage_record rec = { 0 };
+  struct eri_syscall_getrusage_record rec;
   uint8_t res = eri_entry__syscall (entry, (1, &rec.rusage));
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_rusage, &rec.rusage);
@@ -1409,6 +1409,7 @@ DEFINE_SYSCALL (rt_sigaction)
   if (! eri_live_signal_thread__sig_action (sig_th, &args))
     syscall_restart (entry);
 
+  eri_syscall_zpad_sigaction (&old_act.act);
   uint64_t res = syscall_copy_obj_to_user_opt (entry, 0,
 					       user_old_act, &old_act.act);
 
@@ -1451,7 +1452,7 @@ DEFINE_SYSCALL (rt_sigpending)
   eri_entry__syscall_leave_if_error (entry,
 	eri_entry__syscall_validate_rt_sigpending (entry));
 
-  struct eri_syscall_rt_sigpending_record rec = { 0 };
+  struct eri_syscall_rt_sigpending_record rec;
 
   struct eri_sys_syscall_args args = {
     __NR_rt_sigpending, { (uint64_t) &rec.set, ERI_SIG_SETSIZE }
@@ -1526,7 +1527,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   eri_assert (eri_live_signal_thread__sig_tmp_mask_async (sig_th, &tmp_mask));
 
-  struct eri_syscall_rt_sigtimedwait_record rec = { 0 };
+  struct eri_syscall_rt_sigtimedwait_record rec;
 
   if (! eri_entry__sig_wait_pending (entry, user_timeout ? &timeout : 0))
     {
@@ -1550,7 +1551,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
     }
 
   rec.res.result = info->sig;
-  if (user_info) rec.info = *info;
+  if (user_info) eri_syscall_zcpy_siginfo (&rec.info, info);
   else rec.info.sig = 0;
 
   eri_entry__clear_signal (entry);
@@ -1683,7 +1684,7 @@ syscall_do_getsockname (SYSCALL_PARAMS)
   struct eri_sock_addr *user_addr = (void *) regs->rsi;
   uint32_t *user_addrlen = (void *) regs->rdx;
 
-  struct eri_syscall_getsockname_record rec = { 0 };
+  struct eri_syscall_getsockname_record rec;
 
   if (! eri_entry__copy_obj_from_user (entry, &rec.addrlen,
 				       user_addrlen, 0))
@@ -2138,9 +2139,10 @@ syscall_do_stat (SYSCALL_PARAMS)
 
   struct eri_stat *user_stat = (void *) (at ? regs->rdx : regs->rsi);
 
-  struct eri_syscall_stat_record rec = { 0 };
+  struct eri_syscall_stat_record rec;
   uint64_t res = eri_entry__syscall (entry,
 			(at ? 1 : 0, fd_or_path), (at ? 2 : 1, &rec.stat));
+  rec.stat.pad = 0;
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_stat, &rec.stat);
   rec.res.in = io_in (th);
@@ -2424,8 +2426,10 @@ DEFINE_SYSCALL (ustat)
 {
   struct eri_ustat *user_ustat = (void *) regs->rsi;
 
+  struct eri_ustat ustat;
+  uint64_t res = eri_entry__syscall (entry, (1, &ustat));
   struct eri_syscall_ustat_record rec;
-  uint64_t res = eri_entry__syscall (entry, (1, &rec.ustat));
+  eri_syscall_zcpy_ustat (&rec.ustat, &ustat);
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_ustat, &rec.ustat);
   rec.res.in = io_in (th);
