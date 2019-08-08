@@ -1804,7 +1804,8 @@ syscall_do_open (SYSCALL_PARAMS)
   int32_t nr = regs->rax;
   uint8_t at = nr == __NR_openat || nr == __NR_unlinkat
 	       || nr == __NR_faccessat || nr == __NR_fchmodat
-	       || nr == __NR_mkdirat || nr == __NR_mknodat;
+	       || nr == __NR_mkdirat || nr == __NR_mknodat
+	       || nr == __NR_fchownat;
   uint8_t io = nr != __NR_access && nr != __NR_faccessat;
 
   const char *user_path = (void *) (at ? regs->rsi : regs->rdi);
@@ -2252,10 +2253,10 @@ DEFINE_SYSCALL (chmod) { syscall_do_open (SYSCALL_ARGS); }
 DEFINE_SYSCALL (fchmod) { syscall_do_res_io (th); }
 DEFINE_SYSCALL (fchmodat) { syscall_do_open (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (chown)
-SYSCALL_TO_IMPL (fchown)
-SYSCALL_TO_IMPL (fchownat)
-SYSCALL_TO_IMPL (lchown)
+DEFINE_SYSCALL (chown) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (fchown) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (fchownat) { syscall_do_open (SYSCALL_ARGS); }
+DEFINE_SYSCALL (lchown) { syscall_do_open (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (utime)
 SYSCALL_TO_IMPL (utimes)
