@@ -1231,11 +1231,8 @@ DEFINE_SYSCALL (setrlimit)
   if (! eri_entry__copy_obj_from_user (entry, &rlimit, user_rlimit, 0))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs, (1, &rlimit));
-
   struct eri_syscall_res_in_record rec = {
-    eri_live_signal_thread__syscall (sig_th, &args), io_in (th)
+    eri_entry__syscall (entry, (1, &rlimit)), io_in (th)
   };
   syscall_record (th, ERI_SYSCALL_RES_IN_MAGIC, &rec);
   eri_entry__syscall_leave (entry, rec.result);
@@ -1251,10 +1248,7 @@ DEFINE_SYSCALL (getrlimit)
 
   struct eri_syscall_getrlimit_record rec;
 
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs, (1, &rec.rlimit));
-
-  uint64_t res = eri_live_signal_thread__syscall (sig_th, &args);
+  uint64_t res = eri_entry__syscall (entry, (1, &rec.rlimit));
 
   rec.res.result = syscall_copy_obj_to_user (entry, res,
 					     user_rlimit, &rec.rlimit);

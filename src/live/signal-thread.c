@@ -1156,34 +1156,7 @@ syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
   struct eri_sys_syscall_args *args = event->args;
   uint32_t nr = args->nr;
 
-  struct signal_thread_group *group = sig_th->group;
-
   uint8_t set_prio = nr == __NR_setpriority;
-
-  int32_t tid_idx = -1;
-  if (nr == __NR_tkill || nr == __NR_prlimit64) tid_idx = 0;
-  else if (nr == __NR_tkill || nr == __NR_rt_tgsigqueueinfo) tid_idx = 1;
-  else if (set_prio && args->a[0] == ERI_PRIO_PROCESS) tid_idx = 1;
-
-  if (tid_idx != -1
-      && (args->a[tid_idx] == eri_helper__get_pid (group->helper)
-	  || args->a[tid_idx] == group->watch.tid))
-    {
-      args->result = ERI_ESRCH;
-      return;
-    }
-
-  int32_t pid_idx = -1;
-  if (nr == __NR_setpgid || nr == __NR_getpgid) pid_idx = 0;
-  else if (set_prio && args->a[0] == ERI_PRIO_PGRP) pid_idx = 1;
-
-  if (pid_idx != -1
-      && (args->a[pid_idx] == eri_helper__get_pid (group->helper)
-	  || args->a[pid_idx] == eri_live_thread__get_pid (sig_th->th)))
-    {
-      args->result = ERI_ESRCH;
-      return;
-    }
 
   if (set_prio && args->a[0] == ERI_PRIO_PGRP
       && args->a[1] == eri_assert_syscall (getpgrp))
@@ -1198,19 +1171,6 @@ syscall (struct eri_live_signal_thread *sig_th, struct syscall_event *event)
       || nr == __NR_setfsuid || nr == __NR_setfsgid)
     {
       event->do_both = 1;
-      return;
-    }
-
-  if (nr == __NR_prlimit64 && args->a[2])
-    {
-      struct eri_live_signal_thread *it = search (sig_th, args->a[0]);
-
-      if (it)
-	{
-	  args->a[0] = get_search_id (sig_th, it);
-	  args->a[3] = 0;
-	  event->do_both = 1;
-	}
       return;
     }
 
@@ -1234,19 +1194,52 @@ uint64_t
 eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
 				 struct eri_sys_syscall_args *args)
 {
-  struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
+  uint32_t nr = args->nr;
+  uint8_t prio = nr == __NR_setpriority || nr == __NR_getpriority;
 
-  uint8_t search = (args->nr == __NR_prlimit64 && args->a[0] && args->a[2])
-	|| ((args->nr == __NR_setpriority || args->nr == __NR_getpriority)
-	    && args->a[0] == ERI_PRIO_PROCESS && args->a[1]);
+  int32_t tid_idx = -1;
+  if (nr == __NR_tkill || (nr == __NR_prlimit64 && args->a[0]))
+    tid_idx = 0;
+  else if (nr == __NR_tkill || nr == __NR_rt_tgsigqueueinfo
+	   || (prio && args->a[0] == ERI_PRIO_PROCESS && args->a[1]))
+    tid_idx = 1;
 
-  if (search) lock_change (sig_th->group);
+  if (tid_idx != -1) lock_change (sig_th->group);
 
-  proc_event (sig_th, &event);
-  if (event.do_both)
-    eri_assert (eri_syscall_is_ok (eri_sys_syscall (args)));
+  struct signal_thread_group *group = sig_th->group;
 
-  if (search) unlock_change (sig_th->group);
+  if (tid_idx != -1
+      && (args->a[tid_idx] == eri_helper__get_pid (group->helper)
+	  || args->a[tid_idx] == group->watch.tid))
+    {
+      args->result = ERI_ESRCH;
+      goto out;
+    }
+
+  int32_t pid_idx = -1;
+  if (nr == __NR_setpgid || nr == __NR_getpgid) pid_idx = 0;
+  else if (prio && args->a[0] == ERI_PRIO_PGRP) pid_idx = 1;
+
+  if (pid_idx != -1
+      && (args->a[pid_idx] == eri_helper__get_pid (group->helper)
+	  || args->a[pid_idx] == eri_live_thread__get_pid (sig_th->th)))
+    {
+      args->result = ERI_ESRCH;
+      goto out;
+    }
+
+  if (nr == __NR_prlimit64) eri_sys_syscall (args);
+  else
+    {
+      struct syscall_event event = { INIT_EVENT_TYPE (SYSCALL_EVENT), args };
+
+      proc_event (sig_th, &event);
+      if (event.do_both)
+	eri_assert (eri_syscall_is_ok (eri_sys_syscall (args)));
+    }
+
+out:
+  if (tid_idx != -1) unlock_change (sig_th->group);
   return args->result;
 }
 
