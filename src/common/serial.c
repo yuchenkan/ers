@@ -158,6 +158,24 @@ eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t len)
 }
 
 void
+eri_serialize_int32_array (eri_file_t file, const int32_t *a, uint64_t len)
+{
+  eri_assert_fwrite (file, a, sizeof *a * len, 0);
+}
+
+uint8_t
+eri_try_unserialize_int32_array (eri_file_t file, int32_t *a, uint64_t len)
+{
+  return ! eri_fread (file, a, sizeof *a * len, 0);
+}
+
+void
+eri_unserialize_int32_array (eri_file_t file, int32_t *a, uint64_t len)
+{
+  eri_assert (eri_try_unserialize_int32_array (file, a, len));
+}
+
+void
 eri_serialize_uint64_array (eri_file_t file,
 			    const uint64_t *a, uint64_t len)
 {
@@ -1225,6 +1243,34 @@ eri_unserialize_syscall_statfs_record (eri_file_t file,
 			struct eri_syscall_statfs_record *rec)
 {
   eri_assert (eri_try_unserialize_syscall_statfs_record (file, rec));
+}
+
+void
+eri_serialize_syscall_pipe_record (eri_file_t file,
+			const struct eri_syscall_pipe_record *rec)
+{
+  eri_serialize_uint64 (file, rec->out);
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    eri_serialize_int32_array (file, rec->pipe, eri_length_of (rec->pipe));
+}
+
+uint8_t
+eri_try_unserialize_syscall_pipe_record (eri_file_t file,
+			struct eri_syscall_pipe_record *rec)
+{
+  return eri_try_unserialize_uint64 (file, &rec->out)
+	 && eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && (eri_syscall_is_non_fault_error (rec->res.result)
+	     || eri_try_unserialize_int32_array (file, rec->pipe,
+						 eri_length_of (rec->pipe)));
+}
+
+void
+eri_unserialize_syscall_pipe_record (eri_file_t file,
+			struct eri_syscall_pipe_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_pipe_record (file, rec));
 }
 
 void

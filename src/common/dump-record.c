@@ -292,6 +292,16 @@ main (int32_t argc, const char **argv)
 	    printf ("  syscall.statfs.result: %ld, ..in: %ld\n",
 		    rec.res.result, rec.res.in);
 	  }
+	else if (magic == ERI_SYSCALL_PIPE_MAGIC)
+	  {
+	    struct eri_syscall_pipe_record rec;
+	    eri_unserialize_syscall_pipe_record (file, &rec);
+	    printf ("  syscall.pipe.out: %ld, ..result: %ld, ..in: %ld",
+		    rec.out, rec.res.result, rec.res.in);
+	    if (eri_syscall_is_ok (rec.res.result))
+	      printf (", ..pipe: %d %d\n", rec.pipe[0], rec.pipe[1]);
+	    else printf ("\n");
+	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {
 	    struct eri_syscall_futex_record rec;

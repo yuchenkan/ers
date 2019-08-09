@@ -1784,8 +1784,26 @@ syscall_do_signalfd (SYSCALL_PARAMS)
 DEFINE_SYSCALL (signalfd) { syscall_do_signalfd (SYSCALL_ARGS); }
 DEFINE_SYSCALL (signalfd4) { syscall_do_signalfd (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (pipe)
-SYSCALL_TO_IMPL (pipe2)
+static eri_noreturn void
+syscall_do_pipe (SYSCALL_PARAMS)
+{
+  int32_t *user_pipefd = (void *) regs->rdi;
+
+  struct eri_syscall_pipe_record rec;
+  if (! check_magic (th, ERI_SYSCALL_PIPE_MAGIC)
+      || ! try_unserialize (syscall_pipe_record, th, &rec)
+      || ! io_out (th, rec.out)) diverged (th);
+
+  uint64_t res = rec.res.result;
+  if (! syscall_copy_to_user (th, res, user_pipefd, &rec.pipe,
+			      sizeof rec.pipe, 0))
+    diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
+DEFINE_SYSCALL (pipe) { syscall_do_pipe (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pipe2) { syscall_do_pipe (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (inotify_init)
 SYSCALL_TO_IMPL (inotify_init1)

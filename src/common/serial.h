@@ -39,6 +39,13 @@ void eri_unserialize_uint8_array (eri_file_t file,
 				  uint8_t *a, uint64_t len);
 void eri_unserialize_skip_uint8_array (eri_file_t file, uint64_t len);
 
+void eri_serialize_int32_array (eri_file_t file,
+				const int32_t *a, uint64_t len);
+uint8_t eri_try_unserialize_int32_array (eri_file_t file,
+					 int32_t *a, uint64_t len);
+void eri_unserialize_int32_array (eri_file_t file,
+				  int32_t *a, uint64_t len);
+
 void eri_serialize_uint64_array (eri_file_t file,
 				 const uint64_t *a, uint64_t len);
 uint8_t eri_try_unserialize_uint64_array (eri_file_t file,
@@ -245,6 +252,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_GETSOCKNAME, ##__VA_ARGS__)				\
   p (SYSCALL_USTAT, ##__VA_ARGS__)					\
   p (SYSCALL_STATFS, ##__VA_ARGS__)					\
+  p (SYSCALL_PIPE, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_GETRANDOM_RANDOM, ##__VA_ARGS__)				\
@@ -539,6 +547,20 @@ uint8_t eri_try_unserialize_syscall_statfs_record (eri_file_t file,
 			struct eri_syscall_statfs_record *rec);
 void eri_unserialize_syscall_statfs_record (eri_file_t file,
 			struct eri_syscall_statfs_record *rec);
+
+struct eri_syscall_pipe_record
+{
+  uint64_t out;
+  struct eri_syscall_res_in_record res;
+  int32_t pipe[2];
+};
+
+void eri_serialize_syscall_pipe_record (eri_file_t file,
+			const struct eri_syscall_pipe_record *rec);
+uint8_t eri_try_unserialize_syscall_pipe_record (eri_file_t file,
+			struct eri_syscall_pipe_record *rec);
+void eri_unserialize_syscall_pipe_record (eri_file_t file,
+			struct eri_syscall_pipe_record *rec);
 
 struct eri_syscall_futex_record
 {
