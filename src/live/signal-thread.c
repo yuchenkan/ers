@@ -60,6 +60,9 @@ struct signal_thread_group
   struct eri_helper *helper;
   uint8_t exit_helper;
 
+  int32_t helper_pid;
+  int32_t th_pid;
+
   uint64_t io;
 
   struct eri_live_thread_group *thread_group;
@@ -140,12 +143,12 @@ sig_handler (int32_t sig, struct eri_siginfo *info, struct eri_ucontext *ctx)
 
   eri_assert (! eri_si_sync (info));
 
-  int32_t th_pid = eri_live_thread__get_pid (th);
+  int32_t th_pid = sig_th->group->th_pid;
   int32_t th_tid = eri_live_thread__get_tid (th);
 
   if (info->sig == ERI_SIGCHLD && eri_si_from_kernel (info)
       && (info->chld.pid == th_pid
-	  || info->chld.pid == eri_helper__get_pid (sig_th->group->helper)))
+	  || info->chld.pid == sig_th->group->helper_pid))
     return;
 
   /* From sig_route_xcpu.  */
@@ -370,11 +373,11 @@ start_watch (struct eri_live_signal_thread *sig_th, eri_lock_t *lock)
   struct signal_thread_group *group = sig_th->group;
   group->helper = eri_helper__start (group->pool,
 				     HELPER_STACK_SIZE, group->pid);
-  int32_t pgid = eri_helper__get_pid (group->helper);
+  int32_t pgid = group->helper_pid = eri_helper__get_pid (group->helper);
   eri_assert_syscall (setpgid, pgid, 0);
 
   eri_live_thread__clone_main (sig_th->th);
-  int32_t th_pid = eri_live_thread__get_pid (sig_th->th);
+  int32_t th_pid = group->th_pid = eri_live_thread__get_pid (sig_th->th);
   eri_assert_syscall (setpgid, th_pid, pgid);
   eri_assert_unlock (lock);
 
@@ -942,7 +945,7 @@ static void
 signal_exit_group (struct eri_live_signal_thread *sig_th)
 {
   struct eri_live_thread *th = sig_th->th;
-  eri_assert_syscall (tgkill, eri_live_thread__get_pid (th),
+  eri_assert_syscall (tgkill, sig_th->group->th_pid,
 		      eri_live_thread__get_tid (th), SIG_EXIT_GROUP);
 }
 
@@ -1209,7 +1212,7 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
   struct signal_thread_group *group = sig_th->group;
 
   if (tid_idx != -1
-      && (args->a[tid_idx] == eri_helper__get_pid (group->helper)
+      && (args->a[tid_idx] == group->helper_pid 
 	  || args->a[tid_idx] == group->watch.tid))
     {
       args->result = ERI_ESRCH;
@@ -1221,8 +1224,8 @@ eri_live_signal_thread__syscall (struct eri_live_signal_thread *sig_th,
   else if (prio && args->a[0] == ERI_PRIO_PGRP) pid_idx = 1;
 
   if (pid_idx != -1
-      && (args->a[pid_idx] == eri_helper__get_pid (group->helper)
-	  || args->a[pid_idx] == eri_live_thread__get_pid (sig_th->th)))
+      && (args->a[pid_idx] == group->helper_pid
+	  || args->a[pid_idx] == group->th_pid))
     {
       args->result = ERI_ESRCH;
       goto out;
