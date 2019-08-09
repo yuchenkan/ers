@@ -967,14 +967,12 @@ DEFINE_SYSCALL (uname)
 SYSCALL_TO_IMPL (sysinfo)
 SYSCALL_TO_IMPL (getcpu)
 
-#define GETRAND_RANDOM \
-  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_RANDOM
-#define GETRAND_USTART \
-  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_USTART
-#define GETRAND_UBUF \
-  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UBUF
-#define GETRAND_UEND \
-  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UEND
+#define GETURAND_START \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_START
+#define GETURAND_BUF \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_BUF
+#define GETURAND_END \
+  ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_END
 
 DEFINE_SYSCALL (getrandom)
 {
@@ -993,12 +991,13 @@ DEFINE_SYSCALL (getrandom)
 					      (0, buf), (1, len)))
 	syscall_restart (entry);
 
-      res = syscall_copy_to_user (entry, r, (void *) user_buf,
-				  buf, r, 0);
+      res = syscall_copy_to_user (entry, r, (void *) user_buf, buf, r, 0);
       res = syscall_test_interrupt (th, res);
 
-      eri_live_thread_recorder__rec_syscall_getrandom (th->rec,
-					GETRAND_RANDOM, res, buf, r);
+      struct eri_live_thread_recorder__syscall_getrandom_record rec
+							= { res, buf, r };
+
+      syscall_record (th, ERI_SYSCALL_GETRANDOM_RANDOM_MAGIC, &rec);
     }
   else
     {
@@ -1019,12 +1018,12 @@ DEFINE_SYSCALL (getrandom)
 	  else
 	    {
 	      if (res == 0)
-		eri_live_thread_recorder__rec_syscall_getrandom (
-						th->rec, GETRAND_USTART);
+		eri_live_thread_recorder__rec_syscall_geturandom (
+						th->rec, GETURAND_START);
 
 	      if (eri_syscall_is_ok (r))
-		eri_live_thread_recorder__rec_syscall_getrandom (
-					th->rec, GETRAND_UBUF, buf, r);
+		eri_live_thread_recorder__rec_syscall_geturandom (
+					th->rec, GETURAND_BUF, buf, r);
 
 	      r = syscall_copy_to_user (entry, r,
 			(uint8_t *) user_buf + res, buf, r, 0);
@@ -1039,8 +1038,8 @@ DEFINE_SYSCALL (getrandom)
 	    }
 	}
 
-      eri_live_thread_recorder__rec_syscall_getrandom (th->rec,
-						       GETRAND_UEND, res);
+      eri_live_thread_recorder__rec_syscall_geturandom (th->rec,
+							GETURAND_END, res);
     }
 
   eri_entry__syscall_leave (entry, res);
@@ -2016,8 +2015,10 @@ static void
 syscall_record_read (struct eri_live_thread *th, uint64_t res,
 		     void *dst, uint8_t readv)
 {
-  struct eri_syscall_res_in_record rec = { res, io_in (th) };
-  eri_live_thread_recorder__rec_syscall_read (th->rec, &rec, readv, dst);
+  struct eri_live_thread_recorder__syscall_read_record rec = {
+    { res, io_in (th) }, readv, dst
+  };
+  syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
 }
 
 static eri_noreturn void
@@ -2290,22 +2291,25 @@ DEFINE_SYSCALL (getcwd)
   char *buf = 0;
   uint64_t res = 0;
 
-  struct eri_syscall_res_in_record rec;
-  if (! buf_size) rec.result = eri_entry__syscall (entry);
+  struct eri_live_thread_recorder__syscall_getcwd_record rec;
+  if (! buf_size) rec.res.result = eri_entry__syscall (entry);
   else
     {
       struct syscall_getcwd_get_path_args args = { entry };
       buf = syscall_get_path (pool, buf_size,
 			      syscall_getcwd_get_path, &args);
       res = args.res;
-      rec.result = syscall_copy_to_user (entry, res, user_buf, buf, res, 0);
+      rec.res.result = syscall_copy_to_user (entry, res,
+					     user_buf, buf, res, 0);
     }
 
-  rec.in = io_in (th);
-  eri_live_thread_recorder__rec_syscall_getcwd (th->rec, &rec, buf,
-				eri_syscall_is_fault_or_ok (res) ? res : 0);
+  rec.res.in = io_in (th);
+  rec.buf = buf;
+  rec.len = eri_syscall_is_fault_or_ok (res) ? res : 0;
+
+  syscall_record (th, ERI_SYSCALL_GETCWD_MAGIC, &rec);
   if (buf) eri_assert_mtfree (pool, buf);
-  eri_entry__syscall_leave (entry, rec.result);
+  eri_entry__syscall_leave (entry, rec.res.result);
 }
 
 DEFINE_SYSCALL (chdir)
@@ -2402,23 +2406,26 @@ syscall_do_readlink (SYSCALL_PARAMS)
   char *buf = 0;
   uint64_t res = 0;
 
-  struct eri_syscall_res_in_record rec;
-  if (! buf_size) rec.result = eri_entry__syscall (entry);
+  struct eri_live_thread_recorder__syscall_getcwd_record rec;
+  if (! buf_size) rec.res.result = eri_entry__syscall (entry);
   else
     {
       struct syscall_readlink_get_path_args args = { entry, at };
       buf = syscall_get_path (pool, buf_size,
 			      syscall_readlink_get_path, &args);
       res = args.res;
-      rec.result = syscall_copy_to_user (entry, res, user_buf, buf, res, 0);
+      rec.res.result = syscall_copy_to_user (entry, res,
+					     user_buf, buf, res, 0);
     }
 
-  rec.in = io_in (th);
-  eri_live_thread_recorder__rec_syscall_getcwd (th->rec, &rec, buf,
-					eri_syscall_is_ok (res) ? res : 0);
+  rec.res.in = io_in (th);
+  rec.buf = buf;
+  rec.len = eri_syscall_is_ok (res) ? res : 0;
+
+  syscall_record (th, ERI_SYSCALL_GETCWD_MAGIC, &rec);
   eri_assert_mtfree (pool, path);
   if (buf) eri_assert_mtfree (pool, buf);
-  eri_entry__syscall_leave (entry, rec.result);
+  eri_entry__syscall_leave (entry, rec.res.result);
 }
 
 DEFINE_SYSCALL (readlink) { syscall_do_readlink (SYSCALL_ARGS); }
@@ -2536,15 +2543,14 @@ DEFINE_SYSCALL (mmap)
 
   struct eri_live_thread_group *group = th->group;
   eri_assert_lock (&group->mm_lock);
-  struct eri_syscall_res_in_record rec = {
-    eri_syscall (mmap, regs->rdi, len, prot, flags, regs->r8, regs->r9),
-    group->mm++
+  struct eri_live_thread_recorder__syscall_mmap_record rec = {
+    { eri_syscall (mmap, regs->rdi, len, prot, flags, regs->r8, regs->r9),
+      group->mm++ }, anony ? 0 : len
   };
   eri_assert_unlock (&group->mm_lock);
 
-  eri_live_thread_recorder__rec_syscall_mmap (th->rec, &rec,
-					      anony ? 0 : len);
-  eri_entry__syscall_leave (entry, rec.result);
+  syscall_record (th, ERI_SYSCALL_MMAP_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
 }
 
 static eri_noreturn void

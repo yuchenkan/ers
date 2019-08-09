@@ -37,24 +37,41 @@ void eri_live_thread_recorder__rec_signal (
 void eri_live_thread_recorder__rec_syscall_restart_out (
 		struct eri_live_thread_recorder *th_rec, uint64_t out);
 
-#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_RANDOM	0
-#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_USTART	1
-#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UBUF	2
-#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UEND	3
+#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_START	0
+#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_BUF	1
+#define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_END	2
 
-void eri_live_thread_recorder__rec_syscall_getrandom (
+void eri_live_thread_recorder__rec_syscall_geturandom (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t type, ...);
-void eri_live_thread_recorder__rec_syscall_read (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_res_in_record *rec,
-		uint8_t readv, void *dst);
-void eri_live_thread_recorder__rec_syscall_mmap (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_res_in_record *rec, uint64_t len);
-void eri_live_thread_recorder__rec_syscall_getcwd (
-	struct eri_live_thread_recorder *th_rec,
-	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len);
+
+struct eri_live_thread_recorder__syscall_getrandom_record
+{
+  uint64_t res;
+  uint8_t *buf;
+  uint64_t len;
+};
+
+struct eri_live_thread_recorder__syscall_read_record
+{
+  struct eri_syscall_res_in_record res;
+  uint8_t readv;
+   void *dst;
+};
+
+struct eri_live_thread_recorder__syscall_mmap_record
+{
+  struct eri_syscall_res_in_record res;
+  uint64_t len;
+};
+
+struct eri_live_thread_recorder__syscall_getcwd_record
+{
+  struct eri_syscall_res_in_record res;
+  char *buf;
+  uint64_t len;
+};
+
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

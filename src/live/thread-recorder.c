@@ -253,8 +253,21 @@ syscall_start_record (struct eri_live_thread_recorder *th_rec,
   eri_serialize_magic (th_rec->file, magic);
 }
 
+static void
+syscall_rec_getrandom (struct eri_live_thread_recorder *th_rec,
+	struct eri_live_thread_recorder__syscall_getrandom_record *rec)
+{
+  eri_serialize_uint64 (th_rec->file, rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res))
+    {
+      eri_serialize_uint64 (th_rec->file, rec->len);
+      eri_serialize_uint8_array (th_rec->file, rec->buf, rec->len);
+    }
+
+}
+
 void
-eri_live_thread_recorder__rec_syscall_getrandom (
+eri_live_thread_recorder__rec_syscall_geturandom (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t type, ...)
 {
@@ -262,22 +275,9 @@ eri_live_thread_recorder__rec_syscall_getrandom (
 
   va_list arg;
   va_start (arg, type);
-  if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_RANDOM)
-    {
-      syscall_start_record (th_rec, ERI_SYSCALL_GETRANDOM_RANDOM_MAGIC);
-      uint64_t res = va_arg (arg, uint64_t);
-      uint8_t *buf = va_arg (arg, uint8_t *);
-      uint64_t len = va_arg (arg, uint64_t);
-      eri_serialize_uint64 (th_rec->file, res);
-      if (eri_syscall_is_fault_or_ok (res))
-	{
-	  eri_serialize_uint64 (th_rec->file, len);
-	  eri_serialize_uint8_array (th_rec->file, buf, len);
-	}
-    }
-  else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_USTART)
+  if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_START)
     syscall_start_record (th_rec, ERI_SYSCALL_GETRANDOM_URANDOM_MAGIC);
-  else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UBUF)
+  else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_BUF)
     {
       uint8_t *buf = va_arg (arg, uint8_t *);
       uint64_t len = va_arg (arg, uint64_t);
@@ -288,7 +288,7 @@ eri_live_thread_recorder__rec_syscall_getrandom (
 	  eri_serialize_uint8_array (th_rec->file, buf, len);
 	}
     }
-  else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETRANDOM_UEND)
+  else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_END)
     {
       uint64_t res = va_arg (arg, uint64_t);
       eri_serialize_uint64 (th_rec->file, 0);
@@ -299,18 +299,16 @@ eri_live_thread_recorder__rec_syscall_getrandom (
   va_end (arg);
 }
 
-void
-eri_live_thread_recorder__rec_syscall_read (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_res_in_record *rec,
-		uint8_t readv, void *dst)
+static void
+syscall_rec_read (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_read_record *rec)
 {
-  if (! th_rec) return;
-
-  syscall_start_record (th_rec, ERI_SYSCALL_READ_MAGIC);
-  eri_serialize_syscall_res_in_record (th_rec->file, rec);
-  uint64_t res = rec->result;
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+  uint64_t res = rec->res.result;
   if (eri_syscall_is_error (res) || res == 0) return;
+
+  uint8_t readv = rec->readv;
+  void *dst = rec->dst;
 
   struct eri_entry *entry = th_rec->entry;
 
@@ -362,40 +360,32 @@ out:
   eri_serialize_uint64 (th_rec->file, 0);
 }
 
-void
-eri_live_thread_recorder__rec_syscall_mmap (
-		struct eri_live_thread_recorder *th_rec,
-		struct eri_syscall_res_in_record *rec, uint64_t len)
+static void
+syscall_rec_mmap (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_mmap_record *rec)
 {
-  if (! th_rec) return;
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+  if (eri_syscall_is_error (rec->res.result)) return;
 
-  syscall_start_record (th_rec, ERI_SYSCALL_MMAP_MAGIC);
-  eri_serialize_syscall_res_in_record (th_rec->file, rec);
-  if (eri_syscall_is_error (rec->result)) return;
-
-  if (len == 0)
+  if (rec->len == 0)
     {
       eri_serialize_uint64 (th_rec->file, 0);
       return;
     }
 
   eri_serialize_uint8 (th_rec->file,
-		       record_mmap_file (th_rec, rec->result, len));
+		       record_mmap_file (th_rec, rec->res.result, rec->len));
 }
 
-void
-eri_live_thread_recorder__rec_syscall_getcwd (
-	struct eri_live_thread_recorder *th_rec,
-	struct eri_syscall_res_in_record *rec, char *buf, uint64_t len)
+static void
+syscall_rec_getcwd (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_getcwd_record *rec)
 {
-  if (! th_rec) return;
-
-  syscall_start_record (th_rec, ERI_SYSCALL_GETCWD_MAGIC);
-  eri_serialize_syscall_res_in_record (th_rec->file, rec);
-  if (eri_syscall_is_fault_or_ok (rec->result))
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
     {
-      eri_serialize_uint64 (th_rec->file, len);
-      eri_serialize_uint8_array (th_rec->file, (void *) buf, len);
+      eri_serialize_uint64 (th_rec->file, rec->len);
+      eri_serialize_uint8_array (th_rec->file, (void *) rec->buf, rec->len);
     }
 }
 
@@ -460,6 +450,14 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_futex_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)
     eri_serialize_syscall_futex_requeue_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_GETRANDOM_RANDOM_MAGIC)
+    syscall_rec_getrandom (th_rec, rec);
+  else if (magic == ERI_SYSCALL_READ_MAGIC)
+    syscall_rec_read (th_rec, rec);
+  else if (magic == ERI_SYSCALL_MMAP_MAGIC)
+    syscall_rec_mmap (th_rec, rec);
+  else if (magic == ERI_SYSCALL_GETCWD_MAGIC)
+    syscall_rec_getcwd (th_rec, rec);
   else eri_assert_unreachable ();
 }
 
