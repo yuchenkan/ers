@@ -623,6 +623,18 @@ eri_live_thread__join (struct eri_live_thread *th)
   eri_assert_sys_futex_wait (&th->alive, 1, 0);
 }
 
+#define copy_from_user(entry, dst, src, size) \
+  eri_entry__copy_from_user (entry, dst, src, size, 0)
+#define copy_to_user(entry, dst, src, size) \
+  eri_entry__copy_to_user (entry, dst, src, size, 0)
+
+#define copy_obj_from_user(entry, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     copy_from_user (entry, _dst, src, sizeof *_dst); })
+#define copy_obj_to_user(entry, dst, src) \
+  ({ typeof (dst) _dst = dst;						\
+     copy_to_user (entry, _dst, src, sizeof *_dst); })
+
 /*
  * Guide of syscalls:
  *
@@ -704,8 +716,7 @@ syscall_copy_to_user (struct eri_entry *entry, uint64_t res, void *dst,
 		      const void *src, uint64_t size, uint8_t opt)
 {
   if (eri_syscall_is_error (res) || (opt && ! dst)) return res;
-  return eri_entry__copy_to_user (entry, dst, src, size, 0)
-						? res : ERI_EFAULT;
+  return copy_to_user (entry, dst, src, size) ? res : ERI_EFAULT;
 }
 
 #define syscall_copy_obj_to_user(entry, res, dst, src) \
@@ -863,9 +874,9 @@ DEFINE_SYSCALL (clone)
   if (eri_syscall_is_ok (res))
     {
       if (flags & ERI_CLONE_PARENT_SETTID)
-	(void) eri_entry__copy_obj_to_user (entry, user_ptid, &res, 0);
+	(void) copy_obj_to_user (entry, user_ptid, &res);
       if (flags & ERI_CLONE_CHILD_SETTID)
-	(void) eri_entry__copy_obj_to_user (entry, user_ctid, &res, 0);
+	(void) copy_obj_to_user (entry, user_ctid, &res);
       rec.id = create_args.cth->id;
       eri_assert_unlock (&create_args.cth->start_lock);
     }
@@ -1108,8 +1119,7 @@ DEFINE_SYSCALL (settimeofday)
 		    "tz for settimeofday is obsoleted, treat as NULL.");
 
   struct eri_timeval tv;
-  if (user_tv
-      && ! eri_entry__copy_obj_from_user (entry, &tv, user_tv, 0))
+  if (user_tv && ! copy_obj_from_user (entry, &tv, user_tv))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
@@ -1146,7 +1156,7 @@ DEFINE_SYSCALL (clock_settime)
 				     eri_syscall_check_clock_id (id));
 
   struct eri_timespec time;
-  if (! eri_entry__copy_obj_from_user (entry, &time, user_time, 0))
+  if (! copy_obj_from_user (entry, &time, user_time))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_syscall_res_io_record rec = { io_out (th) };
@@ -1196,7 +1206,7 @@ syscall_do_adjtimex (SYSCALL_PARAMS)
 				eri_syscall_check_clock_id (regs->rdi));
 
   struct eri_timex buf;
-  if (! eri_entry__copy_obj_from_user (entry, &buf, user_buf, 0))
+  if (! copy_obj_from_user (entry, &buf, user_buf))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_syscall_res_io_record rec = {
@@ -1228,7 +1238,7 @@ DEFINE_SYSCALL (setrlimit)
 		eri_syscall_check_prlimit64_resource (resource));
 
   struct eri_rlimit rlimit;
-  if (! eri_entry__copy_obj_from_user (entry, &rlimit, user_rlimit, 0))
+  if (! copy_obj_from_user (entry, &rlimit, user_rlimit))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_syscall_res_in_record rec = {
@@ -1268,8 +1278,7 @@ DEFINE_SYSCALL (prlimit64)
 
   struct eri_rlimit new_rlimit;
   if (user_new_rlimit
-      && ! eri_entry__copy_obj_from_user (entry, &new_rlimit,
-					  user_new_rlimit, 0))
+      && ! copy_obj_from_user (entry, &new_rlimit, user_new_rlimit))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_syscall_prlimit64_record rec = { io_out (th) };
@@ -1393,7 +1402,7 @@ DEFINE_SYSCALL (rt_sigaction)
     eri_entry__syscall_leave (entry, 0);
 
   struct eri_sigaction act;
-  if (user_act && ! eri_entry__copy_obj_from_user (entry, &act, user_act, 0))
+  if (user_act && ! copy_obj_from_user (entry, &act, user_act))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   struct eri_sig_act old_act;
@@ -1454,8 +1463,7 @@ DEFINE_SYSCALL (rt_sigpending)
   rec.res.result = eri_live_signal_thread__syscall (sig_th, &args);
 
   eri_assert (eri_syscall_is_ok (rec.res.result));
-  if (! eri_entry__copy_to_user (entry, (void *) regs->rdi,
-				 &rec.set, ERI_SIG_SETSIZE, 0))
+  if (! copy_to_user (entry, (void *) regs->rdi, &rec.set, ERI_SIG_SETSIZE))
     rec.res.result = ERI_EFAULT;
 
   rec.res.in = io_in (th);
@@ -1482,7 +1490,7 @@ DEFINE_SYSCALL (rt_sigsuspend)
     eri_entry__syscall_leave (entry, ERI_EINVAL);
 
   eri_sigset_t mask;
-  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
+  if (! copy_obj_from_user (entry, &mask, user_mask))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &mask))
@@ -1503,11 +1511,10 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   if (size != ERI_SIG_SETSIZE) eri_entry__syscall_leave (entry, ERI_EINVAL);
 
-  if (! eri_entry__copy_obj_from_user (entry, &set, user_set, 0))
+  if (! copy_obj_from_user (entry, &set, user_set))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
-  if (user_timeout
-      && !eri_entry__copy_obj_from_user (entry, &timeout, user_timeout, 0))
+  if (user_timeout && !copy_obj_from_user (entry, &timeout, user_timeout))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   const eri_sigset_t *mask
@@ -1591,8 +1598,7 @@ syscall_copy_addr_from_user (struct eri_entry *entry,
 			const struct eri_sockaddr *user_addr, uint32_t len)
 {
   if (len > sizeof *addr) return ERI_EINVAL;
-  return ! eri_entry__copy_from_user (entry, addr, user_addr, len, 0)
-		? ERI_EFAULT : 0;
+  return ! copy_from_user (entry, addr, user_addr, len) ? ERI_EFAULT : 0;
 }
 
 DEFINE_SYSCALL (connect)
@@ -1680,8 +1686,7 @@ syscall_do_getsockname (SYSCALL_PARAMS)
 
   struct eri_syscall_getsockname_record rec;
 
-  if (! eri_entry__copy_obj_from_user (entry, &rec.addrlen,
-				       user_addrlen, 0))
+  if (! copy_obj_from_user (entry, &rec.addrlen, user_addrlen))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   uint64_t res = eri_entry__syscall (entry,
@@ -1727,7 +1732,7 @@ syscall_do_signalfd (SYSCALL_PARAMS)
 		eri_entry__syscall_get_signalfd (entry, &flags));
 
   eri_sigset_t mask;
-  if (! eri_entry__copy_obj_from_user (entry, &mask, user_mask, 0))
+  if (! copy_obj_from_user (entry, &mask, user_mask))
     eri_entry__syscall_leave (entry, ERI_EINVAL); /* by kernel */
 
   struct eri_live_thread_group *group = th->group;
@@ -2593,7 +2598,7 @@ syscall_futex_get_timeout (struct eri_entry *entry,
 	const struct eri_timespec *user_timeout, struct eri_timespec *timeout)
 {
   if (! user_timeout) return 0;
-  if (! eri_entry__copy_obj_from_user (entry, timeout, user_timeout, 0))
+  if (! copy_obj_from_user (entry, timeout, user_timeout))
     return ERI_EFAULT;
   /* This complicates the replay, let kernel check.  */
 #if 0
