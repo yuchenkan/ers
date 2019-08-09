@@ -6,17 +6,14 @@
 
 #include <tst/tst-atomic.h>
 #include <tst/tst-syscall.h>
+#include <live/tst/tst-util.h>
 #include <live/tst/tst-syscall.h>
-
-static uint8_t x;
 
 static void
 check (uint64_t v)
 {
   eri_info ("v = %lu\n", v);
-
-  uint8_t i;
-  for (i = 0; i < v % 16; ++i) tst_atomic_inc (&x, 0);
+  tst_check (v);
 }
 
 eri_noreturn void

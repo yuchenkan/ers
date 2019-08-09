@@ -5,6 +5,8 @@
 #include <lib/cpu.h>
 #include <lib/elf.h>
 
+#include <tst/tst-atomic.h>
+
 #define tst_get_tls() \
   ({ void *_tls; asm ("movq\t%%fs:0, %0" : "=r" (_tls)); _tls; })
 
@@ -40,5 +42,12 @@ asm ("pushq\t$0; popfq" : : : "cc", "memory");
        }								\
      !! _r; })
 
+static eri_unused void
+tst_check (uint64_t v)
+{
+  uint8_t x = 0, i;
+  for (i = 0; i < eri_hash (v) % 16; ++i)
+    tst_atomic_inc (&x, 1);
+}
 
 #endif

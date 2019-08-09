@@ -48,8 +48,6 @@ tst_live_start (void *args)
 			   ERI_CLOCK_REALTIME, 0) == ERI_EFAULT);
   tst_assert_syscall (clock_gettime, ERI_CLOCK_REALTIME, &timespec);
   eri_info ("clock realtime: %lu %lu\n", timespec.sec, timespec.nsec);
-  uint32_t i, j = 0;
-  for (i = 0; i < (timeval.usec + timespec.nsec) % 16; ++i)
-    tst_atomic_inc (&j, 0);
+  tst_check (timeval.usec + timespec.nsec);
   tst_assert_sys_exit (0);
 }
