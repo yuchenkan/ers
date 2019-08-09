@@ -22,7 +22,7 @@ struct watch
 {
   int32_t tid;
   int32_t alive;
-  uint8_t stack[WATCH_STACK_SIZE];
+  eri_aligned16 uint8_t stack[WATCH_STACK_SIZE];
 };
 
 struct sig_act
