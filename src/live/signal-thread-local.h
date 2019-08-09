@@ -21,6 +21,12 @@ struct eri_siginfo;
 struct signal_thread_group;
 struct eri_live_thread;
 
+struct eri_live_signal_thread_th_tid
+{
+  int32_t tid;
+  ERI_RBT_NODE_FIELDS (th_tid, struct eri_live_signal_thread_th_tid)
+};
+
 struct eri_live_signal_thread
 {
   int32_t tid;
@@ -48,6 +54,7 @@ struct eri_live_signal_thread
   eri_aligned16 uint8_t sig_stack[SIGNAL_THREAD_SIG_STACK_SIZE];
 
   struct eri_live_thread *th;
+  struct eri_live_signal_thread_th_tid th_tid;
 };
 
 struct eri_live_signal_thread *init_group (
