@@ -50,12 +50,6 @@ ERI_FUNCTION (sig_mask_async)
 RESTART (.lsig_mask_reset_restart, .lsig_mask_restart, %r8, %r11)
   cmpq	$0, SIGNAL_THREAD_SIG_INFO(%r8)
   jz	.lsig_mask_syscall
-  movq	SIGNAL_THREAD_SIG_INFO(%r8), %r11
-  /* XXX: SIGRTMAX <= 64 */
-  movq	ERI_SIGINFO_SIG(%r11), %r11
-  decq	%r11
-  btq	%r11, %rax
-  jnc	.lsig_mask_syscall
 
   RESTART_RETURN (%r8)
 
