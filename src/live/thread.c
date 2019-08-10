@@ -1531,10 +1531,8 @@ DEFINE_SYSCALL (rt_sigtimedwait)
 
   if (! eri_entry__sig_wait_pending (entry, user_timeout ? &timeout : 0))
     {
-      /* XXX: optimize mask all & reset */
-      if (eri_live_signal_thread__sig_mask_all (sig_th))
+      if (eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask))
 	{
-	  eri_live_signal_thread__sig_reset (sig_th, 0);
 	  eri_atomic_store (&th->sig_force_deliver, 0, 1);
 	  rec.res.result = ERI_EAGAIN;
 	  goto record;
