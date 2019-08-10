@@ -37,6 +37,13 @@ void eri_live_thread_recorder__rec_signal (
 void eri_live_thread_recorder__rec_syscall_restart_out (
 		struct eri_live_thread_recorder *th_rec, uint64_t out);
 
+struct eri_live_thread_recorder__syscall_getrandom_record
+{
+  uint64_t res;
+  uint8_t *buf;
+  uint64_t len;
+};
+
 #define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_START	0
 #define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_BUF	1
 #define ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_END	2
@@ -44,13 +51,6 @@ void eri_live_thread_recorder__rec_syscall_restart_out (
 void eri_live_thread_recorder__rec_syscall_geturandom (
 		struct eri_live_thread_recorder *th_rec,
 		uint8_t type, ...);
-
-struct eri_live_thread_recorder__syscall_getrandom_record
-{
-  uint64_t res;
-  uint8_t *buf;
-  uint64_t len;
-};
 
 struct eri_live_thread_recorder__syscall_read_record
 {
