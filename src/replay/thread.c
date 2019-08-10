@@ -718,7 +718,8 @@ copy_to_user (struct thread *th, void *dst, const void *src, uint64_t size)
 }
 
 #define copy_obj_to_user(th, dst, src) \
-  copy_to_user (th, dst, src, sizeof *(dst))
+  ({ typeof (dst) _dst = dst;						\
+    copy_to_user (th, _dst, src, sizeof *_dst); })
 #define copy_obj_to_user_or_fault(th, dst, src) \
   (copy_obj_to_user (th, dst, src) ? 0 : ERI_EFAULT)
 
@@ -740,7 +741,8 @@ copy_from_user (struct thread *th, void *dst, const void *src, uint64_t size)
 		      eri_entry__get_start ((th)->entry))
 
 #define copy_obj_from_user(th, dst, src) \
-  copy_from_user (th, dst, src, sizeof *(dst))
+  ({ typeof (dst) _dst = dst;						\
+    copy_from_user (th, _dst, src, sizeof *_dst); })
 #define copy_obj_from_user_or_fault(th, dst, src) \
   (copy_obj_from_user (th, dst, src) ? 0 : ERI_EFAULT)
 
@@ -787,7 +789,9 @@ out:
 #define read_write_user(th, mem, size) \
   access_user (th, (void *) mem, size, READ | WRITE)
 
-#define read_user_obj(th, obj)	read_user (th, obj, sizeof *(obj))
+#define read_user_obj(th, obj) \
+  ({ typeof (obj) _obj = obj;						\
+     read_user (th, _obj, sizeof *_obj); })
 
 static uint8_t
 read_user_opt (struct thread *th, const void *src, uint64_t size)
