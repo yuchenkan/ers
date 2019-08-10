@@ -2728,11 +2728,8 @@ DEFINE_SYSCALL (mprotect)
 }
 
 DEFINE_SYSCALL (munmap) { syscall_do_munmap (SYSCALL_ARGS); }
-
-SYSCALL_TO_IMPL (mremap)
-
+DEFINE_SYSCALL (mremap) { syscall_do_munmap (SYSCALL_ARGS); }
 DEFINE_SYSCALL (madvise) { syscall_do_res_io (SYSCALL_ARGS); }
-
 DEFINE_SYSCALL (brk) { syscall_do_munmap (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (msync)

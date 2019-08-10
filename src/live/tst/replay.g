@@ -5,4 +5,4 @@ return [ 'basic', 'clone', 'clear-tid', 'raise', 'sig-ignore', 'sig-nest', 'sig-
   'sigaltstack', 'sigpending', 'sigsuspend', 'sigtimedwait', 'signalfd', 'io', 'mmap', 'stat',
   'link', 'getdents', 'chmod', 'uname', 'atomic', 'rwlock', 'futex', 'clock', 'rlimit', 'socket',
   'chdir', 'cred', 'restart-futex', 'getrandom', 'nice', 'umask', 'chown', 'pipe',
-  'restart-pipe', 'select' ].concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));
+  'restart-pipe', 'select', 'mremap' ].concat ([ ...Array (6).keys () ].map (x => `exit-${x}`));

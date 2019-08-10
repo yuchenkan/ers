@@ -2555,7 +2555,36 @@ out:
   syscall_mm_leave (th, res);
 }
 
-SYSCALL_TO_IMPL (mremap)
+DEFINE_SYSCALL (mremap)
+{
+  uint64_t old_address = regs->rdi;
+  uint64_t old_size = regs->rsi;
+  uint64_t new_size = regs->rdx;
+
+  uint64_t res = syscall_mm_enter (th, ERI_SYSCALL_RES_IN_MAGIC);
+  /* XXX: may also indicate something */
+  if (eri_syscall_is_error (res)) goto out;
+
+  int32_t flags = res == old_address
+			? 0 : ERI_MREMAP_MAYMOVE | ERI_MREMAP_FIXED;
+
+  if (eri_syscall_is_error (eri_syscall (mremap, old_address, old_size,
+					 new_size, flags, res)))
+    diverged (th);
+
+  if (eri_enable_analyzer)
+    {
+      struct eri_range old_range = { old_address, old_address + old_size };
+      struct eri_range new_range = { res, new_size };
+      eri_analyzer__update_mm_remap (th->analyzer, old_range, new_range);
+
+      struct eri_access acc = { res, new_size, ERI_ACCESS_WRITE };
+      update_access (th, &acc, 1);
+    }
+
+out:
+  syscall_mm_leave (th, res);
+}
 
 DEFINE_SYSCALL (madvise) { syscall_do_res_io (th); }
 

@@ -51,6 +51,13 @@ check_interval_tree (struct interval_tree *tree)
     }
 }
 
+static uint8_t
+within_interval_tree (struct interval_tree *tree, uint64_t v)
+{
+  struct interval *lte = interval_rbt_get (tree, &v, ERI_RBT_LTE);
+  return lte && lte->end > v;
+}
+
 static void
 update_interval_tree (struct eri_mtpool *pool, struct interval_tree *tree,
 		      uint64_t start, uint64_t end, uint8_t add,
@@ -1529,6 +1536,27 @@ update_mm_prot_diff (uint64_t start, uint64_t end, void *args)
   eri_append_access (a->accesses, start, end - start, a->rip, a->type);
 }
 
+static uint8_t
+mm_accessable (struct eri_analyzer_group *group, uint64_t addr,
+	       uint8_t read)
+{
+  struct interval_tree *acc = read
+			? &group->read_perms : &group->write_perms;
+  return within_interval_tree (acc, addr);
+}
+
+static uint8_t
+mm_readable (struct eri_analyzer_group *group, uint64_t addr)
+{
+  return mm_accessable (group, addr, 1);
+}
+
+static uint8_t
+mm_writable (struct eri_analyzer_group *group, uint64_t addr)
+{
+  return mm_accessable (group, addr, 0);
+}
+
 static void
 update_mm_prot (struct eri_analyzer *al, uint8_t read,
 		struct eri_range *range, uint8_t permitted)
@@ -1564,6 +1592,20 @@ eri_analyzer__update_mm_prot (struct eri_analyzer *al,
   eri_assert_lock (&group->mm_prot_lock);
   update_mm_prot (al, 1, &range, !! (prot & ERI_PROT_READ));
   update_mm_prot (al, 0, &range, !! (prot & ERI_PROT_WRITE));
+  eri_assert_unlock (&group->mm_prot_lock);
+}
+
+void eri_analyzer__update_mm_remap (eri_analyzer_type *al,
+		struct eri_range old_range, struct eri_range new_range)
+{
+  struct eri_analyzer_group *group = al->group;
+  eri_assert_lock (&group->mm_prot_lock);
+  uint8_t read = mm_readable (group, old_range.start);
+  uint8_t write = mm_writable (group, old_range.start);
+  update_mm_prot (al, 1, &old_range, 0);
+  update_mm_prot (al, 0, &old_range, 0);
+  update_mm_prot (al, 1, &new_range, read);
+  update_mm_prot (al, 0, &new_range, write);
   eri_assert_unlock (&group->mm_prot_lock);
 }
 
