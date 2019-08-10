@@ -118,6 +118,7 @@ thread_sig_handler (struct eri_live_signal_thread *sig_th,
       return;
     }
 
+  /* XXX: return here may break the restart of interruptible syscalls.  */
   if (! thread_sig_filter (sig_th->group, info)) return;
 
   *info = *sig_th->sig_info;
