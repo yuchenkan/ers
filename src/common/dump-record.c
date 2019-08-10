@@ -385,7 +385,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_res_in_record rec;
 	    eri_unserialize_syscall_res_in_record (file, &rec);
-	    printf ("  syscall.mmap.result: %ld, ..in: %lu\n",
+	    printf ("  syscall.getcwd.result: %ld, ..in: %lu\n",
 		    rec.result, rec.in);
 	    if (eri_syscall_is_fault_or_ok (rec.result))
 	      {
