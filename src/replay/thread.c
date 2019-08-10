@@ -790,6 +790,16 @@ out:
 #define read_user_obj(th, obj)	read_user (th, obj, sizeof *(obj))
 
 static uint8_t
+read_user_opt (struct thread *th, const void *src, uint64_t size)
+{
+  return src ? read_user (th, src, size) : 1;
+}
+
+#define read_user_obj_opt(th, obj) \
+  ({ typeof (obj) _obj = obj;						\
+     read_user_opt (th, _obj, sizeof *_obj); })
+
+static uint8_t
 read_str_from_user (struct thread *th, const char *str, uint64_t *len)
 {
   uint64_t max = *len;
@@ -1404,7 +1414,7 @@ DEFINE_SYSCALL (prlimit64)
   syscall_leave_if_error (th, 0,
 		eri_syscall_check_prlimit64_resource (resource));
 
-  if (user_new_rlimit && ! read_user_obj (th, user_new_rlimit))
+  if (! read_user_obj_opt (th, user_new_rlimit))
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_prlimit64_record rec;
@@ -1599,7 +1609,7 @@ DEFINE_SYSCALL (rt_sigtimedwait)
   if (size != ERI_SIG_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
 
   if (! read_user_obj (th, user_set)
-      || (user_timeout && ! read_user_obj (th, user_timeout)))
+      || ! read_user_obj_opt (th, user_timeout))
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_rt_sigtimedwait_record rec;
@@ -2481,8 +2491,7 @@ syscall_futex_check_wait (struct thread *th, uint64_t user_addr,
 			  const struct eri_timespec *user_timeout)
 {
   return eri_syscall_futex_check_user_addr (user_addr, page_size (th))
-		? : (user_timeout && ! read_user_obj (th, user_timeout)
-			? ERI_EFAULT : 0);
+		? : (! read_user_obj_opt (th, user_timeout) ? ERI_EFAULT : 0);
 }
 
 static uint64_t
