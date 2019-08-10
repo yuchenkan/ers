@@ -260,6 +260,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_READ, ##__VA_ARGS__)					\
   p (SYSCALL_MMAP, ##__VA_ARGS__)					\
   p (SYSCALL_GETCWD, ##__VA_ARGS__)					\
+  p (SYSCALL_SELECT, ##__VA_ARGS__)					\
   p (SYNC_ASYNC, ##__VA_ARGS__)						\
   p (ATOMIC, ##__VA_ARGS__)
 
@@ -588,5 +589,22 @@ uint8_t eri_try_unserialize_syscall_futex_requeue_record (eri_file_t file,
 			struct eri_syscall_futex_requeue_record *rec);
 void eri_unserialize_syscall_futex_requeue_record (eri_file_t file,
 			struct eri_syscall_futex_requeue_record *rec);
+
+#define ERI_SYSCALL_SELECT_READ		1
+#define ERI_SYSCALL_SELECT_WRITE	2
+#define ERI_SYSCALL_SELECT_EXCEPT	4
+#define ERI_SYSCALL_SELECT_TIMEVAL	8
+#define ERI_SYSCALL_SELECT_TIMESPEC	16
+
+static eri_unused uint8_t
+eri_get_serial_select_flags (uint8_t *read, uint8_t *write, uint8_t *except,
+			     uint8_t psel, void *timeout)
+{
+  return (read ? ERI_SYSCALL_SELECT_READ : 0)
+	 | (write ? ERI_SYSCALL_SELECT_WRITE : 0)
+	 | (except ? ERI_SYSCALL_SELECT_EXCEPT : 0)
+	 | (timeout ? (psel ? ERI_SYSCALL_SELECT_TIMESPEC
+			    : ERI_SYSCALL_SELECT_TIMEVAL) : 0);
+}
 
 #endif

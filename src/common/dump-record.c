@@ -393,6 +393,37 @@ main (int32_t argc, const char **argv)
 		eri_unserialize_skip_uint8_array (file, len);
 	      }
 	  }
+	else if (magic == ERI_SYSCALL_SELECT_MAGIC)
+	  {
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    uint8_t flags = eri_unserialize_uint8 (file);
+	    printf ("  syscall.select.result: %ld, ..in: %lu, ..flags: 0x%x",
+		    rec.result, rec.in, flags);
+	    if (eri_syscall_is_fault_or_ok (rec.result))
+	      {
+		uint32_t size = eri_unserialize_uint32 (file);
+		printf (", ..size: %u\n", size);
+		if (flags & ERI_SYSCALL_SELECT_READ)
+		  eri_unserialize_skip_uint8_array (file, size);
+		if (flags & ERI_SYSCALL_SELECT_WRITE)
+		  eri_unserialize_skip_uint8_array (file, size);
+		if (flags & ERI_SYSCALL_SELECT_EXCEPT)
+		  eri_unserialize_skip_uint8_array (file, size);
+	      }
+	    else printf ("\n");
+
+	    if (flags & ERI_SYSCALL_SELECT_TIMEVAL)
+	      {
+		struct eri_timeval time;
+		eri_unserialize_timeval (file, &time);
+	      }
+	    else if (flags & ERI_SYSCALL_SELECT_TIMESPEC)
+	      {
+		struct eri_timespec time;
+		eri_unserialize_timespec (file, &time);
+	      }
+	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_ATOMIC_MAGIC)

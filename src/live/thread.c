@@ -1971,8 +1971,156 @@ SYSCALL_TO_IMPL (fadvise64)
 SYSCALL_TO_IMPL (truncate)
 SYSCALL_TO_IMPL (ftruncate)
 
-SYSCALL_TO_IMPL (select)
-SYSCALL_TO_IMPL (pselect6)
+static uint8_t
+syscall_get_fds (struct eri_entry *entry,
+		 uint8_t *fds, const uint8_t *user_fds, uint32_t size)
+{
+  return ! fds || copy_from_user (entry, fds, user_fds, size);
+}
+
+static uint8_t
+syscall_set_fds (struct eri_entry *entry,
+		 uint8_t *user_fds, const uint8_t *fds, uint32_t size)
+{
+  return ! user_fds || copy_to_user (entry, user_fds, fds, size);
+}
+
+static eri_noreturn void
+syscall_do_select (SYSCALL_PARAMS)
+{
+  uint8_t psel = (int32_t) regs->rax == __NR_pselect6;
+
+  uint32_t nfds = regs->rdi;
+  uint8_t *user_readfds = (void *) regs->rsi;
+  uint8_t *user_writefds = (void *) regs->rdx;
+  uint8_t *user_exceptfds = (void *) regs->r10;
+  void *user_timeout = (void *) regs->r8;
+  eri_sigset_t *user_sig = psel ? (void *) regs->r9 : 0;
+
+  if (nfds > ERI_FD_SETSIZE)
+    eri_entry__syscall_leave (entry, ERI_EINVAL);
+
+  uint32_t size = eri_syscall_fd_set_bytes (nfds);
+  uint8_t *readfds = size && user_readfds ? __builtin_alloca (size) : 0;
+  uint8_t *writefds = size && user_writefds ? __builtin_alloca (size) : 0;
+  uint8_t *exceptfds = size && user_exceptfds ? __builtin_alloca (size) : 0;
+
+  if (! syscall_get_fds (entry, readfds, user_readfds, size)
+      || ! syscall_get_fds (entry, writefds, user_writefds, size)
+      || ! syscall_get_fds (entry, exceptfds, user_exceptfds, size))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  void *timeout = 0;
+  struct eri_timeval timeval, old_timeval = { 0 };
+  struct eri_timespec timespec, old_timespec = { 0 };
+  if (user_timeout)
+    {
+      if (psel)
+	{
+	  if (! copy_obj_from_user (entry, &timespec, user_timeout))
+	    eri_entry__syscall_leave (entry, ERI_EFAULT);
+	  old_timespec = timespec;
+	  timeout = &timespec;
+	}
+      else
+	{
+	  if (! copy_obj_from_user (entry, &timeval, user_timeout))
+	    eri_entry__syscall_leave (entry, ERI_EFAULT);
+	  old_timeval = timeval;
+	  timeout = &timeval;
+	}
+    }
+
+  const eri_sigset_t *mask = eri_live_signal_thread__get_sig_mask (sig_th);
+  if (user_sig)
+    {
+      eri_sigset_t sig;
+      uint64_t sig_set_size;
+      if (! copy_obj_from_user (entry, &sig, user_sig)
+	  || ! copy_obj_from_user (entry, &sig_set_size, user_sig + 1))
+	eri_entry__syscall_leave (entry, ERI_EFAULT);
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+      if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &sig))
+	syscall_restart (entry);
+    }
+
+  uint64_t res;
+  struct eri_sys_syscall_args args;
+  eri_init_sys_syscall_args_from_registers (&args, regs, (1, readfds),
+		(2, writefds), (3, exceptfds), (4, timeout), (5, 0));
+  if (user_sig)
+    {
+      struct eri_timespec nonblock = { 0, 0 };
+      uint8_t *r = readfds ? __builtin_alloca (size) : 0;
+      uint8_t *w = writefds ? __builtin_alloca (size) : 0;
+      uint8_t *e = exceptfds ? __builtin_alloca (size) : 0;
+      if (r) eri_memcpy (r, readfds, size);
+      if (w) eri_memcpy (w, writefds, size);
+      if (e) eri_memcpy (e, exceptfds, size);
+      res = eri_syscall (pselect6, nfds, r, w, e, &nonblock, 0);
+
+      if (res == 0)
+	res = eri_entry__sys_syscall_interruptible (entry, &args)
+				? args.result : ERI_EINTR;
+      else if (eri_syscall_is_ok (res))
+	{
+	  if (r) eri_memcpy (readfds, r, size);
+	  if (w) eri_memcpy (writefds, w, size);
+	  if (e) eri_memcpy (exceptfds, e, size);
+	}
+    }
+  else if (! eri_entry__sys_syscall_interruptible (entry, &args))
+    syscall_restart (entry);
+  else res = args.result;
+
+  if (user_sig
+      && ! eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask)
+      && res == 0)
+    res = ERI_EINTR;
+
+  eri_lassert (th->log.file, res != ERI_ERESTART);
+  res = syscall_test_interrupt (th, res);
+
+  if (eri_syscall_is_ok (res)
+      && (! syscall_set_fds (entry, user_readfds, readfds, size)
+	  || ! syscall_set_fds (entry, user_writefds, writefds, size)
+	  || ! syscall_set_fds (entry, user_exceptfds, exceptfds, size)))
+    res = ERI_EFAULT;
+
+  if (user_timeout)
+    {
+      if (psel)
+	{
+	  if (old_timespec.sec != timespec.sec
+	      || old_timespec.nsec != timespec.nsec)
+	    copy_obj_to_user (entry, (struct eri_timespec *) user_timeout,
+			      timeout);
+	  else timeout = 0;
+	}
+      else
+	{
+	  if (old_timeval.sec != timeval.sec
+	      || old_timeval.usec != timeval.usec)
+	    copy_obj_to_user (entry, (struct eri_timeval *) user_timeout,
+			      timeout);
+	  else timeout = 0;
+	}
+    }
+
+  struct eri_live_thread_recorder__syscall_select_record rec = {
+    { res, io_in (th) },
+    size, readfds, writefds, exceptfds, psel, timeout
+  };
+
+  syscall_record (th, ERI_SYSCALL_SELECT_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (select) { syscall_do_select (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pselect6) { syscall_do_select (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (poll)
 SYSCALL_TO_IMPL (ppoll)
 

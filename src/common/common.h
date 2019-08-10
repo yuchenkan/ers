@@ -477,4 +477,10 @@ eri_syscall_priority_check_which (int32_t which)
 	 && which != ERI_PRIO_USER ? ERI_EINVAL : 0;
 }
 
+static eri_unused uint32_t
+eri_syscall_fd_set_bytes (uint32_t nfds)
+{
+  return eri_round_up (nfds, sizeof (uint8_t)) / sizeof (uint8_t);
+}
+
 #endif

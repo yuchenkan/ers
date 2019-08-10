@@ -666,6 +666,8 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_SEEK_CUR		1
 #define ERI_SEEK_END		2
 
+#define ERI_FD_SETSIZE		1024
+
 #define ERI_CLONE_VM			0x00000100
 #define ERI_CLONE_FS			0x00000200
 #define ERI_CLONE_FILES			0x00000400

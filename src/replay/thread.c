@@ -723,6 +723,13 @@ copy_to_user (struct thread *th, void *dst, const void *src, uint64_t size)
 #define copy_obj_to_user_or_fault(th, dst, src) \
   (copy_obj_to_user (th, dst, src) ? 0 : ERI_EFAULT)
 
+static uint8_t
+copy_to_user_opt (struct thread *th, void *dst,
+		  const void *src, uint64_t size)
+{
+  return dst ? copy_to_user (th, dst, src, size) : 1;
+}
+
 static eri_unused uint8_t
 copy_from_user (struct thread *th, void *dst, const void *src, uint64_t size)
 {
@@ -1875,8 +1882,103 @@ SYSCALL_TO_IMPL (fadvise64)
 SYSCALL_TO_IMPL (truncate)
 SYSCALL_TO_IMPL (ftruncate)
 
-SYSCALL_TO_IMPL (select)
-SYSCALL_TO_IMPL (pselect6)
+static eri_noreturn void
+syscall_do_select (SYSCALL_PARAMS)
+{
+  uint8_t psel = (int32_t) regs->rax == __NR_pselect6;
+
+  uint32_t nfds = regs->rdi;
+  uint8_t *user_readfds = (void *) regs->rsi;
+  uint8_t *user_writefds = (void *) regs->rdx;
+  uint8_t *user_exceptfds = (void *) regs->r10;
+  void *user_timeout = (void *) regs->r8;
+  eri_sigset_t *user_sig = psel ? (void *) regs->r9 : 0;
+
+  if (nfds > ERI_FD_SETSIZE) syscall_leave (th, 0, ERI_EINVAL);
+
+  uint32_t size = eri_syscall_fd_set_bytes (nfds);
+  if (! read_user_opt (th, user_readfds, size)
+      || ! read_user_opt (th, user_writefds, size)
+      || ! read_user_opt (th, user_exceptfds, size))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  if (! (psel ? read_user_obj_opt (th, (struct eri_timespec *) user_timeout)
+	      : read_user_obj_opt (th, (struct eri_timeval *) user_timeout)))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  if (user_sig)
+    {
+      uint64_t sig_set_size;
+      if (! read_user_obj (th, user_sig)
+	  || ! copy_obj_from_user (th, &sig_set_size, user_sig + 1))
+	syscall_leave (th, 0, ERI_EFAULT);
+
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	syscall_leave (th, 0, ERI_EINVAL);
+    }
+
+  struct eri_syscall_res_in_record rec;
+  if (! check_magic (th, ERI_SYSCALL_SELECT_MAGIC)
+      || ! try_unserialize (syscall_res_in_record, th, &rec)) diverged (th);
+
+  uint8_t flags = eri_get_serial_select_flags (user_readfds, user_writefds,
+					       user_exceptfds, psel, 0);
+
+  uint8_t rec_flags;
+  if (! try_unserialize (uint8, th, &rec_flags)
+      || (rec_flags ^ flags) & ~(psel ? ERI_SYSCALL_SELECT_TIMESPEC
+				      : ERI_SYSCALL_SELECT_TIMEVAL))
+    diverged (th);
+
+  if (eri_syscall_is_fault_or_ok (rec.result))
+    {
+      uint32_t rec_size;
+      if (! try_unserialize (uint32, th, &rec_size) || rec_size != size)
+	diverged (th);
+
+      uint8_t *readfds = user_readfds ? __builtin_alloca (size) : 0;
+      uint8_t *writefds = user_writefds ? __builtin_alloca (size) : 0;
+      uint8_t *exceptfds = user_exceptfds ? __builtin_alloca (size) : 0;
+
+      if ((readfds && ! try_unserialize (uint8_array, th, readfds, size))
+	  || (writefds && ! try_unserialize (uint8_array, th, writefds, size))
+	  || (exceptfds && ! try_unserialize (uint8_array, th, exceptfds, size)))
+	diverged (th);
+
+      if ((copy_to_user_opt (th, user_readfds, readfds, size)
+	   && copy_to_user_opt (th, user_writefds, writefds, size)
+	   && copy_to_user_opt (th, user_exceptfds, exceptfds, size))
+			!= (rec.result != ERI_EFAULT))
+	diverged (th);
+    }
+
+  uint8_t timeout = !! (rec_flags & (psel ? ERI_SYSCALL_SELECT_TIMESPEC
+					  : ERI_SYSCALL_SELECT_TIMEVAL));
+  if (timeout && ! user_timeout) diverged (th);
+
+  struct eri_timeval timeval;
+  struct eri_timespec timespec;
+  if (timeout && ! (psel ? try_unserialize (timespec, th, &timespec)
+			 : try_unserialize (timeval, th, &timeval)))
+    diverged (th);
+
+  if (timeout)
+    {
+      if (psel)
+	copy_obj_to_user (th, (struct eri_timespec *) user_timeout,
+			  &timespec);
+      else
+	copy_obj_to_user (th, (struct eri_timeval *) user_timeout,
+			  &timeval);
+    }
+
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, rec.result);
+}
+
+DEFINE_SYSCALL (select) { syscall_do_select (SYSCALL_ARGS); }
+DEFINE_SYSCALL (pselect6) { syscall_do_select (SYSCALL_ARGS); }
+
 SYSCALL_TO_IMPL (poll)
 SYSCALL_TO_IMPL (ppoll)
 

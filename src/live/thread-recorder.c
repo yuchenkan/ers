@@ -389,6 +389,33 @@ syscall_rec_getcwd (struct eri_live_thread_recorder *th_rec,
     }
 }
 
+static void
+syscall_rec_select (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_select_record *rec)
+{
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+
+  uint8_t flags = eri_get_serial_select_flags (rec->readfds,
+	    rec->writefds, rec->exceptfds, rec->psel, rec->timeout);
+  eri_serialize_uint8 (th_rec->file, flags);
+
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    {
+      eri_serialize_uint32 (th_rec->file, rec->size);
+      if (rec->readfds)
+	eri_serialize_uint8_array (th_rec->file, rec->readfds, rec->size);
+      if (rec->writefds)
+	eri_serialize_uint8_array (th_rec->file, rec->writefds, rec->size);
+      if (rec->exceptfds)
+	eri_serialize_uint8_array (th_rec->file, rec->exceptfds, rec->size);
+    }
+
+  if (rec->timeout && rec->psel)
+    eri_serialize_timespec (th_rec->file, rec->timeout);
+  else if (rec->timeout)
+    eri_serialize_timeval (th_rec->file, rec->timeout);
+}
+
 void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
@@ -458,6 +485,8 @@ eri_live_thread_recorder__rec_syscall (
     syscall_rec_mmap (th_rec, rec);
   else if (magic == ERI_SYSCALL_GETCWD_MAGIC)
     syscall_rec_getcwd (th_rec, rec);
+  else if (magic == ERI_SYSCALL_SELECT_MAGIC)
+    syscall_rec_select (th_rec, rec);
   else eri_assert_unreachable ();
 }
 

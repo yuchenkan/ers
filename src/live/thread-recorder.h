@@ -72,6 +72,17 @@ struct eri_live_thread_recorder__syscall_getcwd_record
   uint64_t len;
 };
 
+struct eri_live_thread_recorder__syscall_select_record
+{
+  struct eri_syscall_res_in_record res;
+  uint32_t size;
+  uint8_t *readfds;
+  uint8_t *writefds;
+  uint8_t *exceptfds;
+  uint8_t psel;
+  void *timeout;
+};
+
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);
