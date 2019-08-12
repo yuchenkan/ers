@@ -1995,7 +1995,7 @@ syscall_do_select (SYSCALL_PARAMS)
   uint8_t *user_writefds = (void *) regs->rdx;
   uint8_t *user_exceptfds = (void *) regs->r10;
   void *user_timeout = (void *) regs->r8;
-  eri_sigset_t *user_sig = psel ? (void *) regs->r9 : 0;
+  const eri_sigset_t *user_sig = psel ? (void *) regs->r9 : 0;
 
   if (nfds > ERI_FD_SETSIZE)
     eri_entry__syscall_leave (entry, ERI_EINVAL);
