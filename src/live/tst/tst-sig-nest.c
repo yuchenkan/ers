@@ -36,9 +36,7 @@ tst_live_start (void)
   pid = tst_assert_syscall (getpid);
   tid = tst_assert_syscall (gettid);
 
-  eri_sigset_t mask;
-  eri_sig_fill_set (&mask);
-  tst_assert_sys_sigprocmask (&mask, 0);
+  tst_assert_sys_sigprocmask_all ();
 
   struct eri_sigaction act = {
     sig_handler, ERI_SA_RESTORER, tst_assert_sys_sigreturn
@@ -52,8 +50,7 @@ tst_live_start (void)
   tst_assert_live_clone (&args);
 
   tst_yield (64);
-  eri_sig_empty_set (&mask);
-  tst_assert_sys_sigprocmask (&mask, 0);
+  tst_assert_sys_sigprocmask_none ();
 
   eri_info ("wait %lx %lx\n", &int_lock, &term_lock);
   tst_assert_lock (&int_lock);

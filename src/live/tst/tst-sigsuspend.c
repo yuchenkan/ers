@@ -32,15 +32,14 @@ tst_live_start (void)
   raise_args.args.delay = tst_rand (&rand, 0, 64);
   raise_args.count = 1;
 
-  eri_sigset_t mask;
-  eri_sig_fill_set (&mask);
-  tst_assert_sys_sigprocmask (&mask, 0);
+  tst_assert_sys_sigprocmask_all ();
 
   struct eri_sigaction act = {
     sig_handler, ERI_SA_RESTORER, tst_assert_sys_sigreturn
   };
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
+  eri_sigset_t mask;
   eri_sig_empty_set (&mask);
 
   tst_assert_live_clone_raise (&raise_args);

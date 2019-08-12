@@ -21,9 +21,7 @@ sig_handler (int32_t sig)
 eri_noreturn void
 tst_live_start (void)
 {
-  eri_sigset_t mask;
-  eri_sig_fill_set (&mask);
-  tst_assert_sys_sigprocmask (&mask, 0);
+  tst_assert_sys_sigprocmask_all ();
 
   tst_assert_sys_raise (ERI_SIGINT);
 
@@ -36,8 +34,7 @@ tst_live_start (void)
   };
   tst_assert_sys_sigaction (ERI_SIGINT, &act, 0);
 
-  eri_sig_empty_set (&mask);
-  tst_assert_sys_sigprocmask (&mask, 0);
+  tst_assert_sys_sigprocmask_none ();
   eri_assert (handled);
 
   tst_assert_sys_exit (0);

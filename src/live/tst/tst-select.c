@@ -43,12 +43,7 @@ run (int32_t max, uint8_t psel)
   handled = 0;
   uint8_t readfds[eri_syscall_fd_set_bytes(max + 1)];
 
-  if (psel)
-    {
-      eri_sigset_t mask;
-      eri_sig_fill_set (&mask);
-      tst_assert_sys_sigprocmask (&mask, 0);
-    }
+  if (psel) tst_assert_sys_sigprocmask_all ();
 
   uint8_t i;
   for (i = 0; i < NPIPE; ++i)
@@ -106,9 +101,7 @@ run (int32_t max, uint8_t psel)
   if (psel)
     {
       if (! handled) eri_info ("not handled\n");
-      eri_sigset_t mask;
-      eri_sig_empty_set (&mask);
-      tst_assert_sys_sigprocmask (&mask, 0);
+      tst_assert_sys_sigprocmask_none ();
     }
 }
 
