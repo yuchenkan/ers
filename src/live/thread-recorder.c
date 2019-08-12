@@ -279,14 +279,12 @@ eri_live_thread_recorder__rec_syscall_geturandom (
     syscall_start_record (th_rec, ERI_SYSCALL_GETRANDOM_URANDOM_MAGIC);
   else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_BUF)
     {
-      uint8_t *buf = va_arg (arg, uint8_t *);
+      uint8_t *buf = va_arg (arg, void *);
       uint64_t len = va_arg (arg, uint64_t);
 
-      if (len)
-	{
-	  eri_serialize_uint64 (th_rec->file, len);
-	  eri_serialize_uint8_array (th_rec->file, buf, len);
-	}
+      eri_assert (len);
+      eri_serialize_uint64 (th_rec->file, len);
+      eri_serialize_uint8_array (th_rec->file, buf, len);
     }
   else if (type == ERI_LIVE_THREAD_RECORDER__REC_SYSCALL_GETURANDOM_END)
     {
@@ -295,7 +293,6 @@ eri_live_thread_recorder__rec_syscall_geturandom (
       eri_serialize_uint64 (th_rec->file, res);
     }
   else eri_assert_unreachable ();
-
   va_end (arg);
 }
 

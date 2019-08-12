@@ -1022,8 +1022,11 @@ DEFINE_SYSCALL (getrandom)
 						th->rec, GETURAND_START);
 
 	      if (eri_syscall_is_ok (r))
-		eri_live_thread_recorder__rec_syscall_geturandom (
+		{
+		  eri_lassert (th->log.file, r);
+		  eri_live_thread_recorder__rec_syscall_geturandom (
 					th->rec, GETURAND_BUF, buf, r);
+		}
 
 	      r = syscall_copy_to_user (entry, r,
 			(uint8_t *) user_buf + res, buf, r, 0);
