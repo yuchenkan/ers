@@ -2046,34 +2046,29 @@ syscall_do_select (SYSCALL_PARAMS)
 	syscall_restart (entry);
     }
 
-  uint64_t res;
-  struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs, (1, readfds),
-		(2, writefds), (3, exceptfds), (4, timeout), (5, 0));
-  if (user_sig)
-    {
-      struct eri_timespec nonblock = { 0, 0 };
-      uint8_t *r = readfds ? __builtin_alloca (size) : 0;
-      uint8_t *w = writefds ? __builtin_alloca (size) : 0;
-      uint8_t *e = exceptfds ? __builtin_alloca (size) : 0;
-      if (r) eri_memcpy (r, readfds, size);
-      if (w) eri_memcpy (w, writefds, size);
-      if (e) eri_memcpy (e, exceptfds, size);
-      res = eri_syscall (pselect6, nfds, r, w, e, &nonblock, 0);
+  struct eri_timeval nonblockv = { 0, 0 };
+  struct eri_timespec nonblocks = { 0, 0 };
+  uint8_t *r = readfds ? __builtin_alloca (size) : 0;
+  uint8_t *w = writefds ? __builtin_alloca (size) : 0;
+  uint8_t *e = exceptfds ? __builtin_alloca (size) : 0;
+  if (r) eri_memcpy (r, readfds, size);
+  if (w) eri_memcpy (w, writefds, size);
+  if (e) eri_memcpy (e, exceptfds, size);
+  uint64_t res = eri_entry__syscall (entry, (1, r), (2, w), (3, e),
+			(4, psel ? (void *) &nonblocks : &nonblockv), (5, 0));
 
-      if (res == 0)
-	res = eri_entry__sys_syscall_interruptible (entry, &args)
-				? args.result : ERI_EINTR;
-      else if (eri_syscall_is_ok (res))
-	{
-	  if (r) eri_memcpy (readfds, r, size);
-	  if (w) eri_memcpy (writefds, w, size);
-	  if (e) eri_memcpy (exceptfds, e, size);
-	}
+  if (res == 0)
+    {
+      if (! eri_entry__syscall_interruptible (entry, &res,(1, readfds),
+		(2, writefds), (3, exceptfds), (4, timeout), (5, 0)))
+	res = ERI_EINTR;
     }
-  else if (! eri_entry__sys_syscall_interruptible (entry, &args))
-    syscall_restart (entry);
-  else res = args.result;
+  else if (eri_syscall_is_ok (res))
+    {
+      if (r) eri_memcpy (readfds, r, size);
+      if (w) eri_memcpy (writefds, w, size);
+      if (e) eri_memcpy (exceptfds, e, size);
+    }
 
   if (user_sig
       && ! eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask)
