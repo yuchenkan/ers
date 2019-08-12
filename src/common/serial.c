@@ -54,6 +54,26 @@ eri_unserialize_uint16 (eri_file_t file)
 }
 
 void
+eri_serialize_int16 (eri_file_t file, int16_t v)
+{
+  eri_assert_fwrite (file, &v, sizeof v, 0);
+}
+
+uint8_t
+eri_try_unserialize_int16 (eri_file_t file, int16_t *v)
+{
+  return ! eri_fread (file, v, sizeof *v, 0);
+}
+
+int16_t
+eri_unserialize_int16 (eri_file_t file)
+{
+  int16_t v;
+  eri_assert (eri_try_unserialize_int16 (file, &v));
+  return v;
+}
+
+void
 eri_serialize_int32 (eri_file_t file, int32_t v)
 {
   eri_assert_fwrite (file, &v, sizeof v, 0);
