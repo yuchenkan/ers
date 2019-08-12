@@ -2040,7 +2040,7 @@ syscall_do_select (SYSCALL_PARAMS)
 	  || ! copy_obj_from_user (entry, &sig_set_size, user_sig + 1))
 	eri_entry__syscall_leave (entry, ERI_EFAULT);
       if (sig_set_size != ERI_SIG_SETSIZE)
-	eri_entry__syscall_leave (entry, ERI_EFAULT);
+	eri_entry__syscall_leave (entry, ERI_EINVAL);
 
       if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &sig))
 	syscall_restart (entry);
