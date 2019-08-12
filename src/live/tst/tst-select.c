@@ -9,22 +9,12 @@
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-util.h>
-#include <live/tst/tst-syscall.h>
+#include <live/tst/tst-select.h>
 
 #define NPIPE	4
-static eri_aligned16 uint8_t stack[NPIPE + 1][1024 * 1024];
-static struct tst_live_clone_args pipe_args[NPIPE];
-static struct tst_live_clone_raise_args raise_args;
+TST_LIVE_SELECT_DEFINE_UTILS (sel, NPIPE)
 
-static int32_t pipe[NPIPE][2];
-
-static void
-write (void *args)
-{
-  uint8_t i = (uint64_t) args;
-  char buf = 0x12;
-  tst_assert_syscall (write, pipe[i][1], &buf, 1);
-}
+static struct sel_data d;
 
 static uint8_t handled;
 
@@ -45,18 +35,15 @@ run (int32_t max, uint8_t psel)
 
   if (psel) tst_assert_sys_sigprocmask_all ();
 
-  uint8_t i;
-  for (i = 0; i < NPIPE; ++i)
-    tst_assert_live_clone (pipe_args + i);
-  tst_assert_live_clone_raise (&raise_args);
+  sel_clone (&d);
 
-  uint8_t done[NPIPE] = { 0 };
-  uint8_t left = NPIPE;
+  uint64_t left = NPIPE;
   while (left)
     {
       eri_memset(readfds, 0, sizeof readfds);
+      uint64_t i;
       for (i = 0; i < NPIPE; ++i)
-	readfds[pipe[i][0] / 8] |= 1 << pipe[i][0] % 8;
+	readfds[d.pipe[i][0] / 8] |= 1 << d.pipe[i][0] % 8;
 
       uint64_t res;
       if (psel)
@@ -77,26 +64,19 @@ run (int32_t max, uint8_t psel)
 	  eri_info ("intr\n");
 	  continue;
 	}
-      int32_t nfds = res;
-      eri_info ("nfds = %u\n", nfds);
-      uint8_t j = 0;
+      eri_info ("nfds = %lu\n", res);
+      uint64_t j = 0;
       for (i = 0; i < NPIPE; ++i)
-	if (readfds[pipe[i][0] / 8] & (1 << pipe[i][0] % 8))
+	if (readfds[d.pipe[i][0] / 8] & (1 << d.pipe[i][0] % 8))
 	  {
 	    ++j;
-	    char buf;
-	    tst_assert_syscall (read, pipe[i][0], &buf, 1);
-	    eri_assert (buf == 0x12);
-	    eri_assert (! done[i]);
-	    done[i] = 1;
+	    sel_read (&d, i);
 	  }
-      eri_assert (nfds == j);
+      eri_assert (res == j);
       left -= j;
     }
 
-  for (i = 0; i < NPIPE; ++i)
-    tst_assert_sys_futex_wait (&pipe_args[i].alive, 1, 0);
-  tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
+  sel_join (&d);
 
   if (psel)
     {
@@ -117,53 +97,23 @@ tst_live_start (void)
   struct eri_timespec timespec = { 0, 0 };
   tst_assert_syscall (pselect6, 0, 0, 0, 0, &timespec, 0);
 
+  sel_init (&rand, &d, sig_handler);
+
   int32_t max = 0;
 
-  struct eri_sigaction act = {
-    sig_handler, ERI_SA_SIGINFO | ERI_SA_RESTORER | ERI_SA_RESTART,
-    tst_assert_sys_sigreturn
-  };
-  tst_assert_sys_sigaction (ERI_SIGRTMIN, &act, 0);
-
-  uint8_t i;
-  for (i = 0; i < NPIPE; ++i)
-    {
-      tst_assert_syscall (pipe2, pipe + i, ERI_O_DIRECT | ERI_O_NONBLOCK);
-      max = eri_max (max, pipe[i][0]);
-      pipe_args[i].top = tst_stack_top (stack[i]);
-      pipe_args[i].delay = tst_rand (&rand, 1024, 2048);
-      pipe_args[i].fn = write;
-      pipe_args[i].args = eri_itop (i);
-    }
-  raise_args.args.top = tst_stack_top (stack[NPIPE]);
-  raise_args.args.delay = tst_rand (&rand, 256, 1024);
-  raise_args.sig = ERI_SIGRTMIN;
-  raise_args.count = 1;
+  uint64_t i;
+  for (i = 0; i < NPIPE; ++i) max = eri_max (d.pipe[i][0], max);
 
   run (max, 0);
   run (max, 1);
 
-  for (i = 0; i < NPIPE; ++i)
-    {
-      tst_assert_syscall (close, pipe[i][0]);
-      tst_assert_syscall (close, pipe[i][1]);
-    }
+  TST_LIVE_SELECT_TIMEOUT (&timeval, usec, &d,
+			   select, 0, 0, 0, 0, &timeval);
 
-  timeval.sec = 1;
-  tst_assert_live_clone_raise (&raise_args);
-  uint64_t res = tst_syscall (select, 0, 0, 0, 0, &timeval);
-  eri_assert (res == 0 || res == ERI_EINTR);
-  eri_info ("usec: %lu\n", timeval.usec);
-  tst_check (timeval.usec);
-  tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
+  TST_LIVE_SELECT_TIMEOUT (&timespec, nsec, &d,
+			   pselect6, 0, 0, 0, 0, &timespec);
 
-  timespec.sec = 1;
-  tst_assert_live_clone_raise (&raise_args);
-  res = tst_syscall (pselect6, 0, 0, 0, 0, &timespec);
-  eri_assert (res == 0 || res == ERI_EINTR);
-  eri_info ("nsec: %lu\n", timespec.nsec);
-  tst_check (timespec.nsec);
-  tst_assert_sys_futex_wait (&raise_args.args.alive, 1, 0);
+  sel_fini (&d);
 
   tst_assert_sys_exit (0);
 }
