@@ -416,6 +416,29 @@ syscall_rec_select (struct eri_live_thread_recorder *th_rec,
     eri_serialize_timeval (th_rec->file, rec->timeout);
 }
 
+static void
+syscall_rec_poll (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_poll_record *rec)
+{
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    {
+      eri_serialize_uint64 (th_rec->file, rec->revents);
+
+      uint64_t i, j = 0;
+      for (i = 0; i < rec->nfds && j < rec->res.result; ++i)
+	if (rec->fds[i].revents)
+	  {
+	    eri_serialize_uint64 (th_rec->file, i);
+	    eri_serialize_int16 (th_rec->file, rec->fds[i].revents);
+	    ++j;
+	  }
+    }
+
+  eri_serialize_uint8 (th_rec->file, !! rec->tmo);
+  if (rec->tmo) eri_serialize_timespec (th_rec->file, rec->tmo);
+}
+
 void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
@@ -487,6 +510,8 @@ eri_live_thread_recorder__rec_syscall (
     syscall_rec_getcwd (th_rec, rec);
   else if (magic == ERI_SYSCALL_SELECT_MAGIC)
     syscall_rec_select (th_rec, rec);
+  else if (magic == ERI_SYSCALL_POLL_MAGIC)
+    syscall_rec_poll (th_rec, rec);
   else eri_assert_unreachable ();
 }
 

@@ -1979,8 +1979,92 @@ syscall_do_select (SYSCALL_PARAMS)
 DEFINE_SYSCALL (select) { syscall_do_select (SYSCALL_ARGS); }
 DEFINE_SYSCALL (pselect6) { syscall_do_select (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (poll)
-SYSCALL_TO_IMPL (ppoll)
+static uint8_t
+syscall_poll_revents (struct thread *th, struct eri_pollfd *user_fds,
+		      uint64_t nfds, uint64_t revents)
+{
+  int16_t z = 0;
+
+  uint64_t i, j = 0, o = 0;
+  for (i = 0; i < revents; ++i)
+    {
+      uint64_t idx;
+      int16_t r;
+      if (! try_unserialize (uint64, th, &idx)
+	  || ! try_unserialize (int16, th, &r)) diverged (th);
+
+      if (idx + 1 <= o || idx >= nfds) diverged (th);
+      o = idx + 1;
+
+      while (j < idx)
+	if (! copy_obj_to_user (th, &user_fds[j++].revents, &z))
+	  return 0;
+
+      if (! copy_obj_to_user (th, &user_fds[j++].revents, &r))
+	return 0;
+    }
+
+  while (j < nfds)
+    if (! copy_obj_to_user (th, &user_fds[j++].revents, &z))
+      return 0;
+
+  return 1;
+}
+
+static eri_noreturn void
+syscall_do_poll (SYSCALL_PARAMS)
+{
+  uint8_t ppol = (int32_t) regs->rax == __NR_ppoll;
+
+  struct eri_pollfd *user_fds = (void *) regs->rdi;
+  uint64_t nfds = regs->rsi;
+  struct eri_timespec *user_tmo = ppol ? (void *) regs->rdx : 0;
+  const eri_sigset_t *user_sig = ppol ? (void *) regs->r10 : 0;
+  uint64_t sig_set_size = user_sig ? regs->r8 : 0;
+
+  if (nfds > 1024 * 1024) syscall_leave (th, 0, ERI_EINVAL);
+
+  if ((nfds && ! read_user (th, user_fds, sizeof *user_fds * nfds))
+      || ! read_user_obj_opt (th, user_tmo))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  if (user_sig)
+    {
+      if (! read_user_obj (th, user_sig))
+	syscall_leave (th, 0, ERI_EFAULT);
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	syscall_leave (th, 0, ERI_EINVAL);
+    }
+
+  struct eri_syscall_res_in_record rec;
+  if (! check_magic (th, ERI_SYSCALL_POLL_MAGIC)
+      || ! try_unserialize (syscall_res_in_record, th, &rec)) diverged (th);
+
+  if (eri_syscall_is_fault_or_ok (rec.result))
+    {
+      uint64_t revents;
+      if (! try_unserialize (uint64, th, &revents)
+	  || syscall_poll_revents (th, user_fds, nfds, revents)
+		!= (rec.result != ERI_EFAULT)) diverged (th);
+    }
+
+  uint8_t res_tmo;
+  if (! try_unserialize (uint8, th, &res_tmo) || (! user_tmo && res_tmo))
+    diverged (th);
+
+  if (res_tmo)
+    {
+      struct eri_timespec tmo;
+      if (! try_unserialize (timespec, th, &tmo)) diverged (th);
+      copy_obj_to_user (th, user_tmo, &tmo);
+    }
+
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, rec.result);
+}
+
+DEFINE_SYSCALL (poll) { syscall_do_poll (SYSCALL_ARGS); }
+DEFINE_SYSCALL (ppoll) { syscall_do_poll (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (epoll_create)
 SYSCALL_TO_IMPL (epoll_create1)

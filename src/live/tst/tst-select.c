@@ -17,7 +17,6 @@ TST_LIVE_SELECT_DEFINE_UTILS (sel, NPIPE)
 static struct sel_data d;
 
 static uint8_t handled;
-
 static void
 sig_handler (int32_t sig, struct eri_siginfo *info,
 	     struct eri_ucontext *ctx)

@@ -424,6 +424,29 @@ main (int32_t argc, const char **argv)
 		eri_unserialize_timespec (file, &time);
 	      }
 	  }
+	else if (magic == ERI_SYSCALL_POLL_MAGIC)
+	  {
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    printf ("  syscall.poll.result: %ld, ..in: %lu",
+		    rec.result, rec.in);
+	    if (eri_syscall_is_fault_or_ok (rec.result))
+	      {
+		uint64_t revents = eri_unserialize_uint64 (file);
+		printf (", ..revents: %lu\n", revents);
+		uint64_t j;
+		for (j = 0; j < revents; ++j)
+		  {
+		    eri_unserialize_uint64 (file);
+		    eri_unserialize_int16 (file);
+		  }
+		if (eri_unserialize_uint8 (file))
+		  {
+		    struct eri_timespec time;
+		    eri_unserialize_timespec (file, &time);
+		  }
+	      }
+	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_ATOMIC_MAGIC)

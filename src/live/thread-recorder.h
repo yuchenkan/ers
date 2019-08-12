@@ -83,6 +83,15 @@ struct eri_live_thread_recorder__syscall_select_record
   void *timeout;
 };
 
+struct eri_live_thread_recorder__syscall_poll_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_pollfd *fds;
+  uint64_t nfds;
+  uint64_t revents;
+  struct eri_timespec *tmo;
+};
+
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

@@ -5,6 +5,7 @@
 
 #include <lib/compiler.h>
 #include <lib/util.h>
+#include <common/debug.h>
 
 #include <tst/tst-rand.h>
 #include <tst/tst-syscall.h>

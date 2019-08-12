@@ -1911,7 +1911,7 @@ syscall_do_dup2 (SYSCALL_PARAMS)
 	  new_fd = rec.res.result;
 	  struct sfd *new_sfd = sfd_rbt_get (group, &new_fd, ERI_RBT_EQ);
 	  if (new_sfd) sfd_remove_free (group, new_sfd);
- 
+
 	  sfd_dup (group, new_fd, sfd);
 	}
       eri_assert_unlock (&group->sfd_lock);
@@ -2116,8 +2116,100 @@ syscall_do_select (SYSCALL_PARAMS)
 DEFINE_SYSCALL (select) { syscall_do_select (SYSCALL_ARGS); }
 DEFINE_SYSCALL (pselect6) { syscall_do_select (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (poll)
-SYSCALL_TO_IMPL (ppoll)
+static eri_noreturn void
+syscall_do_poll (SYSCALL_PARAMS)
+{
+  uint8_t ppol = (int32_t) regs->rax == __NR_ppoll;
+
+  struct eri_pollfd *user_fds = (void *) regs->rdi;
+  uint64_t nfds = regs->rsi;
+  int32_t timeout = regs->rdx;
+  struct eri_timespec *user_tmo = ppol ? (void *) regs->rdx : 0;
+  const eri_sigset_t *user_sig = ppol ? (void *) regs->r10 : 0;
+  uint64_t sig_set_size = user_sig ? regs->r8 : 0;
+
+  /* XXX */
+  if (nfds > 1024 * 1024) eri_entry__syscall_leave (entry, ERI_EINVAL);
+
+  struct eri_pollfd *fds = nfds > 1024
+		? eri_assert_mtmalloc (th->group->pool, sizeof *fds * nfds)
+		: (nfds ? __builtin_alloca (sizeof *fds * nfds) : 0);
+
+  uint64_t res;
+  if (nfds && ! copy_from_user (entry, fds, user_fds, sizeof *fds * nfds))
+    { res = ERI_EFAULT; goto out; }
+
+  struct eri_timespec tmo, old_tmo = { 0 };
+  if (user_tmo && ! copy_obj_from_user (entry, &tmo, user_tmo))
+    { res = ERI_EFAULT; goto out; }
+
+  if (user_tmo) old_tmo = tmo;
+
+  const eri_sigset_t *mask = eri_live_signal_thread__get_sig_mask (sig_th);
+  if (user_sig)
+    {
+      eri_sigset_t sig;
+      if (! copy_obj_from_user (entry, &sig, user_sig))
+	{ res = ERI_EFAULT; goto out; }
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	{ res = ERI_EINVAL; goto out; }
+
+      if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &sig))
+	{
+	  if (nfds > 1024) eri_assert_mtfree (th->group->pool, fds);
+	  syscall_restart (entry);
+	}
+    }
+
+  struct eri_timespec nonblocks = { 0, 0 };
+  res = eri_entry__syscall (entry, (0, fds),
+			    (2, ppol ? &nonblocks : 0), (3, 0));
+  if (res == 0
+      && ! eri_entry__syscall_interruptible (entry, &res, (0, fds),
+		(2, ppol ? (user_tmo ? (uint64_t) &tmo : 0) : timeout),
+		(3, 0)))
+    res = ERI_EINTR;
+
+  if (user_sig
+      && ! eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask)
+      && res == 0)
+    res = ERI_EINTR;
+
+  eri_lassert (th->log.file, res != ERI_ERESTART);
+  res = syscall_test_interrupt (th, res);
+
+  uint64_t revents = res;
+  if (eri_syscall_is_ok (res))
+    {
+      uint64_t i;
+      for (i = 0; i < nfds; ++i)
+	if (! copy_obj_to_user (entry,
+				&user_fds[i].revents, &fds[i].revents))
+	  {
+	    res = ERI_EFAULT;
+	    break;
+	  }
+    }
+
+  struct eri_timespec *res_tmo = 0;
+  if (user_tmo && (old_tmo.sec != tmo.sec || old_tmo.nsec != tmo.nsec))
+    {
+      copy_obj_to_user (entry, user_tmo, &tmo);
+      res_tmo = &tmo;
+    }
+
+  struct eri_live_thread_recorder__syscall_poll_record rec = {
+    { res, io_in (th) }, fds, nfds, revents, res_tmo
+  };
+
+  syscall_record (th, ERI_SYSCALL_POLL_MAGIC, &rec);
+out:
+  if (nfds > 1024) eri_assert_mtfree (th->group->pool, fds);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (poll) { syscall_do_poll (SYSCALL_ARGS); }
+DEFINE_SYSCALL (ppoll) { syscall_do_poll (SYSCALL_ARGS); }
 
 SYSCALL_TO_IMPL (epoll_create)
 SYSCALL_TO_IMPL (epoll_create1)
