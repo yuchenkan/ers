@@ -40,7 +40,7 @@ run (int32_t max, uint8_t psel)
   uint64_t left = NTH * NPIPE;
   while (left)
     {
-      eri_memset(readfds, 0, sizeof readfds);
+      eri_memset (readfds, 0, sizeof readfds);
       uint64_t i, j;
       for (i = 0; i < NTH; ++i)
 	for (j = 0; j < NPIPE; ++j)
