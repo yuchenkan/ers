@@ -1600,7 +1600,8 @@ syscall_copy_addr_from_user (struct eri_entry *entry,
 			const struct eri_sockaddr *user_addr, uint32_t len)
 {
   if (len > sizeof *addr) return ERI_EINVAL;
-  return ! copy_from_user (entry, addr, user_addr, len) ? ERI_EFAULT : 0;
+  return len && ! copy_from_user (entry, addr, user_addr, len)
+						? ERI_EFAULT : 0;
 }
 
 DEFINE_SYSCALL (connect)

@@ -1670,8 +1670,9 @@ static uint64_t
 syscall_read_user_addr (struct thread *th,
 			const struct eri_sockaddr *user_addr, uint32_t len)
 {
-  if (len > sizeof (struct eri_sockaddr_storage)) return ERI_EINVAL;
-  return ! read_user (th, user_addr, len) ? ERI_EFAULT : 0;
+  if (len > sizeof (struct eri_sockaddr_storage))
+    return ERI_EINVAL;
+  return len && ! read_user (th, user_addr, len) ? ERI_EFAULT : 0;
 }
 
 DEFINE_SYSCALL (connect)
