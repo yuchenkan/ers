@@ -108,7 +108,7 @@ eri_noreturn void
 eri_entry__syscall_leave (struct eri_entry *entry, uint64_t res)
 {
   entry->_regs.rcx = entry->_regs.rip;
-  entry->_regs.r11 = entry->_regs.rflags;
+  entry->_regs.r11 = entry->_regs.rflags & ERI_RFLAGS_STATUS_MASK;
 
   if (res == ERI_ERESTART) entry->_regs.rip = entry->_start;
   else entry->_regs.rax = res;

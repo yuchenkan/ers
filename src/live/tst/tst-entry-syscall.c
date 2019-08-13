@@ -31,9 +31,12 @@ expr_step (struct tst_live_entry_mcontext *tctx, void *args)
   eri_debug ("expr = %lx\n", tctx);
   eri_assert (tctx->rip == (uint64_t) expr_leave);
   eri_assert (tctx->rcx == (uint64_t) syscall_done);
+  eri_assert ((tctx->r11 & ERI_RFLAGS_STATUS_MASK)
+		== (ctrl_tctx.r11 & ERI_RFLAGS_STATUS_MASK));
   tst_assert_live_entry_mcontext_eq (&ctrl_tctx, tctx,
 				     ~(TST_LIVE_ENTRY_MCONTEXT_RIP_MASK
-				       | TST_LIVE_ENTRY_MCONTEXT_RCX_MASK));
+				       | TST_LIVE_ENTRY_MCONTEXT_RCX_MASK
+				       | TST_LIVE_ENTRY_MCONTEXT_R11_MASK));
   return 0;
 }
 
