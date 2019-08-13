@@ -11,8 +11,9 @@
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-select.h>
 
-#define NPIPE	4
-TST_LIVE_SELECT_DEFINE_UTILS (sel, NPIPE)
+#define NTH	4
+#define NPIPE	2
+TST_LIVE_SELECT_DEFINE_UTILS (sel, NTH, NPIPE)
 
 static struct sel_data d;
 
@@ -36,13 +37,14 @@ run (int32_t max, uint8_t psel)
 
   sel_clone (&d);
 
-  uint64_t left = NPIPE;
+  uint64_t left = NTH * NPIPE;
   while (left)
     {
       eri_memset(readfds, 0, sizeof readfds);
-      uint64_t i;
-      for (i = 0; i < NPIPE; ++i)
-	readfds[d.pipe[i][0] / 8] |= 1 << d.pipe[i][0] % 8;
+      uint64_t i, j;
+      for (i = 0; i < NTH; ++i)
+	for (j = 0; j < NPIPE; ++j)
+	  readfds[d.pipes[i][j][0] / 8] |= 1 << d.pipes[i][j][0] % 8;
 
       uint64_t res;
       if (psel)
@@ -64,15 +66,16 @@ run (int32_t max, uint8_t psel)
 	  continue;
 	}
       eri_info ("nfds = %lu\n", res);
-      uint64_t j = 0;
-      for (i = 0; i < NPIPE; ++i)
-	if (readfds[d.pipe[i][0] / 8] & (1 << d.pipe[i][0] % 8))
-	  {
-	    ++j;
-	    sel_read (&d, i);
-	  }
-      eri_assert (res == j);
-      left -= j;
+      uint64_t k = 0;
+      for (i = 0; i < NTH; ++i)
+	for (j = 0; j < NPIPE; ++j)
+	  if (readfds[d.pipes[i][j][0] / 8] & (1 << d.pipes[i][j][0] % 8))
+	    {
+	      ++k;
+	      sel_read (&d, i, j);
+	    }
+      eri_assert (res == k);
+      left -= k;
     }
 
   sel_join (&d);
@@ -100,8 +103,11 @@ tst_live_start (void)
 
   int32_t max = 0;
 
-  uint64_t i;
-  for (i = 0; i < NPIPE; ++i) max = eri_max (d.pipe[i][0], max);
+  uint64_t i, j;
+  for (i = 0; i < NTH; ++i)
+    for (j = 0; j < NPIPE; ++j)
+      max = eri_max (d.pipes[i][j][0], max);
+  eri_info ("%lu\n", max);
 
   run (max, 0);
   run (max, 1);

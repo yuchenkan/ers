@@ -9,8 +9,9 @@
 #include <live/tst/tst-util.h>
 #include <live/tst/tst-select.h>
 
-#define NPIPE	32
-TST_LIVE_SELECT_DEFINE_UTILS (pol, NPIPE)
+#define NTH	32
+#define NPIPE	2
+TST_LIVE_SELECT_DEFINE_UTILS (pol, NTH, NPIPE)
 
 static struct pol_data d;
 
@@ -30,17 +31,17 @@ run (uint8_t ppol)
 
   handled = 0;
 
-  struct eri_pollfd fds[NPIPE];
+  struct eri_pollfd fds[NTH * NPIPE];
   uint64_t i;
-  for (i = 0; i < NPIPE; ++i)
+  for (i = 0; i < NTH * NPIPE; ++i)
     {
-      fds[i].fd = d.pipe[i][0];
+      fds[i].fd = d.pipes[i / NPIPE][i % NPIPE][0];
       fds[i].events = ERI_POLLIN;
     }
 
   pol_clone (&d);
 
-  uint64_t left = NPIPE;
+  uint64_t left = NTH * NPIPE;
   while (left)
     {
       uint64_t res;
@@ -48,9 +49,10 @@ run (uint8_t ppol)
 	{
 	  eri_sigset_t mask;
 	  eri_sig_empty_set (&mask);
-	  res = tst_syscall (ppoll, fds, NPIPE, 0, &mask, ERI_SIG_SETSIZE);
+	  res = tst_syscall (ppoll, fds, NTH * NPIPE,
+			     0, &mask, ERI_SIG_SETSIZE);
 	}
-      else res = tst_syscall (poll, fds, NPIPE, -1);
+      else res = tst_syscall (poll, fds, NTH * NPIPE, -1);
       eri_xassert (eri_syscall_is_ok (res) || res == ERI_EINTR, eri_info);
       if (res == ERI_EINTR)
 	{
@@ -60,12 +62,12 @@ run (uint8_t ppol)
 	}
       eri_info ("nfds = %lu\n", res);
       uint64_t j = 0;
-      for (i = 0; i < NPIPE; ++i)
+      for (i = 0; i < NTH * NPIPE; ++i)
 	if (fds[i].revents)
 	  {
 	    eri_xassert (fds[i].revents == ERI_POLLIN, eri_info);
 	    ++j;
-	    pol_read (&d, i);
+	    pol_read (&d, i / NPIPE, i % NPIPE);
 	  }
       eri_xassert (j == res, eri_info);
       left -= j;

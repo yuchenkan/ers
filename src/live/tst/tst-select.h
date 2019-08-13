@@ -11,31 +11,35 @@
 #include <tst/tst-syscall.h>
 #include <live/tst/tst-syscall.h>
 
-#define TST_LIVE_SELECT_DEFINE_UTILS(name, npipe) \
+#define TST_LIVE_SELECT_DEFINE_UTILS(name, nth, npipe) \
 struct ERI_PASTE (name, _data)						\
 {									\
-  eri_aligned16 uint8_t stack[npipe + 1][1024 * 1024];			\
-  struct tst_live_clone_args pipe_args[npipe];				\
+  eri_aligned16 uint8_t stack[nth + 1][1024 * 1024];			\
+  struct tst_live_clone_args pipe_args[nth];				\
   struct tst_live_clone_raise_args raise_args;				\
-  int32_t pipe[npipe][2];						\
-  uint8_t done[npipe];							\
+  int32_t pipes[nth][npipe][2];						\
+  uint8_t done[nth][npipe];						\
 };									\
 									\
 static void								\
 ERI_PASTE (name, _write) (void *args)					\
 {									\
   char buf = 0x12;							\
-  tst_assert_syscall (write, args, &buf, 1);				\
+  int32_t (*pipes)[2] = args;						\
+  uint64_t i;								\
+  for (i = 0; i < npipe; ++i)						\
+    tst_assert_syscall (write, pipes[i][1], &buf, 1);			\
 }									\
 									\
 static void								\
-ERI_PASTE (name, _read) (struct ERI_PASTE (name, _data) *d, uint32_t i)	\
+ERI_PASTE (name, _read) (struct ERI_PASTE (name, _data) *d,		\
+			 uint64_t th, uint64_t  idx)			\
 {									\
   char buf;								\
-  tst_assert_syscall (read, d->pipe[i][0], &buf, 1);			\
+  tst_assert_syscall (read, d->pipes[th][idx][0], &buf, 1);		\
   eri_assert (buf == 0x12);						\
-  eri_assert (! d->done[i]);						\
-  d->done[i] = 1;							\
+  eri_assert (! d->done[th][idx]);					\
+  d->done[th][idx] = 1;							\
 }									\
 									\
 static void								\
@@ -48,17 +52,18 @@ ERI_PASTE (name, _init) (struct tst_rand *rand,				\
   };									\
   tst_assert_sys_sigaction (ERI_SIGRTMIN, &act, 0);			\
 									\
-  uint64_t i;								\
-  for (i = 0; i < npipe; ++i)						\
+  uint64_t i, j;							\
+  for (i = 0; i < nth; ++i)						\
     {									\
-      tst_assert_syscall (pipe2, d->pipe + i,				\
-			  ERI_O_DIRECT | ERI_O_NONBLOCK);		\
+      for (j = 0; j < npipe; ++j)					\
+	tst_assert_syscall (pipe2, d->pipes[i] + j,			\
+			    ERI_O_DIRECT | ERI_O_NONBLOCK);		\
       d->pipe_args[i].top = tst_stack_top (d->stack[i]);		\
       d->pipe_args[i].delay = tst_rand (rand, 1024, 2048);		\
       d->pipe_args[i].fn = ERI_PASTE (name, _write);			\
-      d->pipe_args[i].args = eri_itop (d->pipe[i][1]);			\
+      d->pipe_args[i].args = d->pipes[i];				\
     }									\
-  d->raise_args.args.top = tst_stack_top (d->stack[npipe]);		\
+  d->raise_args.args.top = tst_stack_top (d->stack[nth]);		\
   d->raise_args.args.delay = tst_rand (rand, 256, 1024);		\
   d->raise_args.sig = ERI_SIGRTMIN;					\
   d->raise_args.count = 1;						\
@@ -67,22 +72,23 @@ ERI_PASTE (name, _init) (struct tst_rand *rand,				\
 static void								\
 ERI_PASTE (name, _fini) (struct ERI_PASTE (name, _data) *d)		\
 {									\
-  uint32_t i;								\
-  for (i = 0; i < npipe; ++i)						\
-    {									\
-      tst_assert_syscall (close, d->pipe[i][0]);			\
-      tst_assert_syscall (close, d->pipe[i][1]);			\
-    }									\
+  uint64_t i, j;							\
+  for (i = 0; i < nth; ++i)						\
+    for (j = 0; j < npipe; ++j)						\
+	{								\
+	  tst_assert_syscall (close, d->pipes[i][j][0]);		\
+	  tst_assert_syscall (close, d->pipes[i][j][1]);		\
+	}								\
 }									\
 									\
 static void								\
 ERI_PASTE (name, _clone) (struct ERI_PASTE (name, _data) *d)		\
 {									\
-  uint64_t i;								\
-  for (i = 0; i < npipe; ++i)						\
+  uint64_t i, j;							\
+  for (i = 0; i < nth; ++i)						\
     {									\
       tst_assert_live_clone (d->pipe_args + i);				\
-      d->done[i] = 0;							\
+      for (j = 0; j < npipe; ++j) d->done[i][j] = 0;			\
     }									\
   tst_assert_live_clone_raise (&d->raise_args);				\
 }									\
@@ -90,8 +96,8 @@ ERI_PASTE (name, _clone) (struct ERI_PASTE (name, _data) *d)		\
 static void								\
 ERI_PASTE (name, _join) (struct ERI_PASTE (name, _data) *d)		\
 {									\
-  uint32_t i;								\
-  for (i = 0; i < npipe; ++i)						\
+  uint64_t i;								\
+  for (i = 0; i < nth; ++i)						\
     tst_assert_sys_futex_wait (&d->pipe_args[i].alive, 1, 0);		\
   tst_assert_sys_futex_wait (&d->raise_args.args.alive, 1, 0);		\
 }
