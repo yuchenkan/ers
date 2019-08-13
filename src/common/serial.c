@@ -683,6 +683,58 @@ eri_unserialize_statfs (eri_file_t file, struct eri_statfs *statfs)
 }
 
 void
+eri_serialize_epoll_event (eri_file_t file,
+			   const struct eri_epoll_event *event)
+{
+  eri_serialize_uint32 (file, event->events);
+  eri_serialize_uint64 (file, event->data);
+}
+
+uint8_t
+eri_try_unserialize_epoll_event (eri_file_t file,
+				 struct eri_epoll_event *event)
+{
+  return eri_try_unserialize_uint32 (file, &event->events)
+	 && eri_try_unserialize_uint64 (file, &event->data);
+}
+
+void
+eri_unserialize_epoll_event (eri_file_t file,
+			     struct eri_epoll_event *event)
+{
+  eri_assert (eri_try_unserialize_epoll_event (file, event));
+}
+
+#if 0
+void
+eri_serialize_epoll_event_array (eri_file_t file,
+			const struct eri_epoll_event *events, uint64_t len)
+{
+  uint64_t i;
+  for (i = 0; i < len; ++i)
+    eri_serialize_epoll_event (file, events + i);
+}
+
+uint8_t
+eri_try_unserialize_epoll_event_array (eri_file_t file,
+			struct eri_epoll_event *events, uint64_t len)
+{
+  uint64_t i;
+  for (i = 0; i < len; ++i)
+    if (! eri_try_unserialize_epoll_event (file, events + i))
+      return 0;
+  return 1;
+}
+
+void
+eri_unserialize_epoll_event_array (eri_file_t file,
+			struct eri_epoll_event *events, uint64_t len)
+{
+  eri_assert (eri_try_unserialize_epoll_event_array (file, events, len));
+}
+#endif
+
+void
 eri_serialize_init_record (eri_file_t file, const struct eri_init_record *rec)
 {
   eri_serialize_uint64 (file, rec->ver);

@@ -437,6 +437,29 @@ syscall_rec_poll (struct eri_live_thread_recorder *th_rec,
 }
 
 void
+syscall_rec_epoll_wait (struct eri_live_thread_recorder *th_rec,
+	struct eri_live_thread_recorder__syscall_epoll_wait_record *rec)
+{
+  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.result))
+    {
+      uint64_t len = rec->res.result == ERI_EFAULT
+		? 1 : eri_min (rec->res.result + 1, rec->max_events);
+      uint64_t i;
+      for (i = 0; i < len; ++i)
+	{
+	  struct eri_epoll_event event = { 0 };
+	  uint8_t done = eri_entry__copy_obj_from_user (th_rec->entry,
+					&event, rec->user_events + i, 0);
+	  eri_serialize_uint8 (th_rec->file, done);
+	  eri_serialize_epoll_event (th_rec->file, &event);
+
+	  if (! done) break;
+	}
+    }
+}
+
+void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec)
@@ -509,6 +532,8 @@ eri_live_thread_recorder__rec_syscall (
     syscall_rec_select (th_rec, rec);
   else if (magic == ERI_SYSCALL_POLL_MAGIC)
     syscall_rec_poll (th_rec, rec);
+  else if (magic == ERI_SYSCALL_EPOLL_WAIT_MAGIC)
+    syscall_rec_epoll_wait (th_rec, rec);
   else eri_assert_unreachable ();
 }
 

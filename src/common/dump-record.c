@@ -447,6 +447,21 @@ main (int32_t argc, const char **argv)
 		  }
 	      }
 	  }
+	else if (magic == ERI_SYSCALL_EPOLL_WAIT_MAGIC)
+	  {
+	    struct eri_syscall_res_in_record rec;
+	    eri_unserialize_syscall_res_in_record (file, &rec);
+	    printf ("  syscall.epoll_wait.result: %ld, ..in: %lu\n",
+		    rec.result, rec.in);
+	    if (eri_syscall_is_fault_or_ok (rec.result))
+	      while (1)
+		{
+		  uint8_t done = eri_unserialize_uint8 (file);
+		  struct eri_epoll_event event;
+		  eri_unserialize_epoll_event (file, &event);
+		  if (! done) break;
+		}
+	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));
 	else if (magic == ERI_ATOMIC_MAGIC)

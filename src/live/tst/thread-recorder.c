@@ -14,6 +14,7 @@ BLANK (rec_init);
 BLANK (rec_signal);
 BLANK (rec_syscall_restart_out);
 BLANK (rec_syscall_geturandom);
+BLANK (rec_syscall_epoll_wait);
 BLANK (rec_syscall);
 BLANK (rec_sync_async);
 BLANK (rec_restart_sync_async);

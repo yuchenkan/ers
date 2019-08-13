@@ -2214,11 +2214,68 @@ out:
 DEFINE_SYSCALL (poll) { syscall_do_poll (SYSCALL_ARGS); }
 DEFINE_SYSCALL (ppoll) { syscall_do_poll (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (epoll_create)
-SYSCALL_TO_IMPL (epoll_create1)
-SYSCALL_TO_IMPL (epoll_wait)
-SYSCALL_TO_IMPL (epoll_pwait)
-SYSCALL_TO_IMPL (epoll_ctl)
+DEFINE_SYSCALL (epoll_create) { syscall_do_res_io (SYSCALL_ARGS); }
+DEFINE_SYSCALL (epoll_create1) { syscall_do_res_io (SYSCALL_ARGS); }
+
+static eri_noreturn void
+syscall_do_epoll_wait (SYSCALL_PARAMS)
+{
+  uint8_t pwait = (int32_t) regs->rax == __NR_epoll_pwait;
+
+  struct eri_epoll_event *user_events = (void *) regs->rsi;
+  int32_t max_events = regs->rdx;
+  const eri_sigset_t *user_sig = pwait ? (void *) regs->r8 : 0;
+  uint64_t sig_set_size = user_sig ? regs->r9 : 0;
+
+  if (max_events <= 0
+      || max_events > ERI_INT_MAX / sizeof (struct eri_epoll_event))
+    eri_entry__syscall_leave (entry, ERI_EINVAL);
+
+  const eri_sigset_t *mask = eri_live_signal_thread__get_sig_mask (sig_th);
+  if (user_sig)
+    {
+      eri_sigset_t sig;
+      if (! copy_obj_from_user (entry, &sig, user_sig))
+	eri_entry__syscall_leave (entry, ERI_EFAULT);
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	eri_entry__syscall_leave (entry, ERI_EINVAL);
+
+      if (! eri_live_signal_thread__sig_tmp_mask_async (sig_th, &sig))
+	syscall_restart (entry);
+    }
+
+  uint64_t res = eri_entry__syscall (entry, (3, 0), (4, 0));
+  if (res == 0
+      && ! eri_entry__syscall_interruptible (entry, &res, (4, 0)))
+    res = ERI_EINTR;
+
+  if (user_sig
+      && ! eri_live_signal_thread__sig_tmp_mask_async (sig_th, mask)
+      && res == 0)
+    res = ERI_EINTR;
+
+  struct eri_live_thread_recorder__syscall_epoll_wait_record rec = {
+    { res, io_in (th) }, user_events, max_events
+  };
+  syscall_record (th, ERI_SYSCALL_EPOLL_WAIT_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, res);
+}
+
+DEFINE_SYSCALL (epoll_wait) { syscall_do_epoll_wait (SYSCALL_ARGS); }
+DEFINE_SYSCALL (epoll_pwait) { syscall_do_epoll_wait (SYSCALL_ARGS); }
+
+DEFINE_SYSCALL (epoll_ctl)
+{
+  struct eri_epoll_event *user_event = (void *) regs->r10;
+  struct eri_epoll_event event;
+  if (user_event && ! copy_obj_from_user (entry, &event, user_event))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  rec.res.result = eri_entry__syscall (entry, (3, user_event ? &event : 0));
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
 
 static uint8_t
 syscall_read_sig_fd (struct eri_live_thread *th, struct sfd *sfd,

@@ -652,6 +652,30 @@ eri_syscall_is_fault_or_ok (uint64_t val)
 #define ERI_POLLPRI		0x0002
 #define ERI_POLLOUT		0x0004
 
+#define ERI_EPOLLIN		0x001
+#define ERI_EPOLLPRI		0x002
+#define ERI_EPOLLOUT		0x004
+#define ERI_EPOLLRDNORM		0x040
+#define ERI_EPOLLRDBAND		0x080
+#define ERI_EPOLLWRNORM		0x100
+#define ERI_EPOLLWRBAND		0x200
+#define ERI_EPOLLMSG		0x400
+#define ERI_EPOLLERR		0x008
+#define ERI_EPOLLHUP		0x010
+#define ERI_EPOLLRDHUP		0x2000
+#define ERI_EPOLLEXCLUSIVE	(1u << 28)
+#define ERI_EPOLLWAKEUP		(1u << 29)
+#define ERI_EPOLLONESHOT	(1u << 30)
+#define ERI_EPOLLET		(1u << 31)
+
+/* Valid opcodes ( "op" parameter ) to issue to epoll_ctl().  */
+/* Add a file descriptor to the interface.  */
+#define ERI_EPOLL_CTL_ADD	1
+/* Remove a file descriptor from the interface.  */
+#define ERI_EPOLL_CTL_DEL	2
+/* Change file descriptor epoll_event structure.  */
+#define ERI_EPOLL_CTL_MOD	3
+
 #define ERI_F_DUPFD		0
 #define ERI_F_GETFL		3
 #define ERI_F_SETFL		4
@@ -1062,6 +1086,12 @@ struct eri_pollfd
   int32_t fd;
   int16_t events;
   int16_t revents;
+};
+
+struct eri_packed eri_epoll_event
+{
+  uint32_t events;
+  uint64_t data;
 };
 
 struct eri_iovec

@@ -2066,11 +2066,75 @@ syscall_do_poll (SYSCALL_PARAMS)
 DEFINE_SYSCALL (poll) { syscall_do_poll (SYSCALL_ARGS); }
 DEFINE_SYSCALL (ppoll) { syscall_do_poll (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (epoll_create)
-SYSCALL_TO_IMPL (epoll_create1)
-SYSCALL_TO_IMPL (epoll_wait)
-SYSCALL_TO_IMPL (epoll_pwait)
-SYSCALL_TO_IMPL (epoll_ctl)
+DEFINE_SYSCALL (epoll_create) { syscall_do_res_io (th); }
+DEFINE_SYSCALL (epoll_create1) { syscall_do_res_io (th); }
+
+static eri_noreturn void
+syscall_do_epoll_wait (SYSCALL_PARAMS)
+{
+  uint8_t pwait = (int32_t) regs->rax == __NR_epoll_pwait;
+
+  struct eri_epoll_event *user_events = (void *) regs->rsi;
+  int32_t max_events = regs->rdx;
+  const eri_sigset_t *user_sig = pwait ? (void *) regs->r8 : 0;
+  uint64_t sig_set_size = user_sig ? regs->r9 : 0;
+
+  if (max_events <= 0
+      || max_events > ERI_INT_MAX / sizeof (struct eri_epoll_event))
+    syscall_leave (th, 0, ERI_EINVAL);
+
+  if (user_sig)
+    {
+      if (! read_user_obj_opt (th, user_sig))
+	syscall_leave (th, 0, ERI_EFAULT);
+      if (sig_set_size != ERI_SIG_SETSIZE)
+	syscall_leave (th, 0, ERI_EINVAL);
+    }
+
+  struct eri_syscall_res_in_record rec
+	= syscall_do_fetch_res_in (th, ERI_SYSCALL_EPOLL_WAIT_MAGIC);
+
+  if (eri_syscall_is_ok (rec.result) && rec.result > max_events)
+    diverged (th);
+
+  if (eri_syscall_is_fault_or_ok (rec.result))
+    {
+      uint64_t len = rec.result == ERI_EFAULT
+			? 1 : eri_min (rec.result + 1, max_events);
+      uint8_t done = 1;
+      uint64_t i;
+      for (i = 0; i < len && done; ++i)
+	{
+	  struct eri_epoll_event event;
+	  if (! try_unserialize (uint8, th, &done)
+	      || ! try_unserialize (epoll_event, th, &event)) diverged (th);
+
+	  if (! copy_obj_to_user (th, user_events + i, &event))
+	    {
+	      if (rec.result == max_events) diverged (th);
+	      else if (i < len - 1) diverged (th);
+	    }
+	}
+
+      if (i != len || (rec.result == ERI_EFAULT && done)) diverged (th);
+    }
+
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, rec.result);
+  diverged (th);
+}
+
+DEFINE_SYSCALL (epoll_wait) { syscall_do_epoll_wait (SYSCALL_ARGS); }
+DEFINE_SYSCALL (epoll_pwait) { syscall_do_epoll_wait (SYSCALL_ARGS); }
+
+DEFINE_SYSCALL (epoll_ctl)
+{
+  struct eri_epoll_event *user_event = (void *) regs->r10;
+  if (! read_user_obj_opt (th, user_event))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  syscall_do_res_io (th);
+}
 
 static uint8_t
 syscall_get_read_data (struct thread *th, void *dst,

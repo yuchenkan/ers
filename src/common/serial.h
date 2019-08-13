@@ -139,6 +139,22 @@ uint8_t eri_try_unserialize_statfs (eri_file_t file,
 				    struct eri_statfs *statfs);
 void eri_unserialize_statfs (eri_file_t file, struct eri_statfs *statfs);
 
+void eri_serialize_epoll_event (eri_file_t file,
+				const struct eri_epoll_event *event);
+uint8_t eri_try_unserialize_epoll_event (eri_file_t file,
+					 struct eri_epoll_event *event);
+void eri_unserialize_epoll_event (eri_file_t file,
+				  struct eri_epoll_event *event);
+
+#if 0
+void eri_serialize_epoll_event_array (eri_file_t file,
+			const struct eri_epoll_event *events, uint64_t len);
+uint8_t eri_try_unserialize_epoll_event_array (eri_file_t file,
+			struct eri_epoll_event *events, uint64_t len);
+void eri_unserialize_epoll_event_array (eri_file_t file,
+			struct eri_epoll_event *events, uint64_t len);
+#endif
+
 #define ERI_FOREACH_RECORD_MARK(p, ...) \
   p (INIT, ##__VA_ARGS__)						\
   p (INIT_MAP, ##__VA_ARGS__)						\
@@ -265,6 +281,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_GETCWD, ##__VA_ARGS__)					\
   p (SYSCALL_SELECT, ##__VA_ARGS__)					\
   p (SYSCALL_POLL, ##__VA_ARGS__)					\
+  p (SYSCALL_EPOLL_WAIT, ##__VA_ARGS__)					\
   p (SYNC_ASYNC, ##__VA_ARGS__)						\
   p (ATOMIC, ##__VA_ARGS__)
 

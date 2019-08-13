@@ -92,6 +92,13 @@ struct eri_live_thread_recorder__syscall_poll_record
   struct eri_timespec *tmo;
 };
 
+struct eri_live_thread_recorder__syscall_epoll_wait_record
+{
+  struct eri_syscall_res_in_record res;
+  const struct eri_epoll_event *user_events;
+  int32_t max_events;
+};
+
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);
