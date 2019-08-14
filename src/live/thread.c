@@ -776,6 +776,28 @@ syscall_test_interrupt (struct eri_live_thread *th, uint64_t res)
   return res;
 }
 
+/* Keep the buffer deterministic.  */
+static uint8_t
+syscall_wipe (struct eri_entry *entry, void *buf, uint64_t size)
+{
+  if (size == 0) return 1;
+
+  if (! eri_entry__test_access (entry, buf, 0)) return 0;
+  eri_memset (buf, 0, size);
+  eri_entry__reset_test_access (entry);
+  return 1;
+}
+
+static uint8_t
+syscall_wipe_iovec (struct eri_entry *entry,
+		    struct eri_iovec *iov, uint64_t cnt)
+{
+  uint64_t i;
+  for (i = 0; i < cnt; ++i)
+    if (! syscall_wipe (entry, iov->base, iov->len)) return 0;
+  return 1;
+}
+
 static eri_noreturn void
 syscall_do_no_sys (struct eri_entry *entry)
 {
@@ -2322,6 +2344,7 @@ syscall_do_read (SYSCALL_PARAMS)
 {
   int32_t fd = regs->rdi;
   uint64_t buf = regs->rsi;
+  uint64_t size = regs->rdx;
 
   eri_entry__test_invalidate (entry, &buf);
 
@@ -2334,6 +2357,7 @@ syscall_do_read (SYSCALL_PARAMS)
     syscall_restart (entry);
 
   res = syscall_test_interrupt (th, res);
+  if (res == ERI_EFAULT) syscall_wipe (entry, (void *) buf, size);
 
   syscall_record_read (th, res, (void *) buf, 0);
   eri_entry__syscall_leave (entry, res);
@@ -2358,6 +2382,7 @@ syscall_do_readv (SYSCALL_PARAMS)
     syscall_restart (entry);
 
   res = syscall_test_interrupt (th, res);
+  if (res == ERI_EFAULT) syscall_wipe_iovec (entry, iov, iov_cnt);
 
   syscall_record_read (th, res, iov, 1);
   eri_entry__syscall_free_rw_iov (entry, iov);
@@ -2526,10 +2551,15 @@ SYSCALL_TO_IMPL (lremovexattr)
 static eri_noreturn void
 syscall_do_getdents (SYSCALL_PARAMS)
 {
+  uint64_t dirp = regs->rsi;
+  uint64_t size = regs->rdx;
+  eri_entry__test_invalidate (entry, &dirp);
+
   struct eri_sys_syscall_args args;
-  eri_init_sys_syscall_args_from_registers (&args, regs);
-  eri_entry__test_invalidate (entry, args.a + 1);
+  eri_init_sys_syscall_args_from_registers (&args, regs, (1, dirp));
+
   uint64_t res = eri_sys_syscall (&args);
+  if (res == ERI_EFAULT) syscall_wipe (entry, (void *) dirp, size);
 
   syscall_record_read (th, res, (void *) args.a[1], 0);
   eri_entry__syscall_leave (entry, res);

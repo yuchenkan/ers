@@ -933,6 +933,48 @@ syscall_read_user_path (struct thread *th, const char *user_path)
 	? (len == ERI_PATH_MAX ? ERI_ENAMETOOLONG : 0) : ERI_EFAULT;
 }
 
+static uint8_t
+syscall_wipe (struct thread *th,
+	      void *buf, uint64_t size, uint8_t wipe)
+{
+  if (size == 0) return 1;
+
+  struct eri_entry *entry = th->entry;
+  struct eri_access acc;
+
+  uint64_t done;
+  if (! eri_entry__test_access (entry, buf, &done))
+    {
+      set_write (th, &acc, buf, done + 1);
+      update_access (th, &acc, 1);
+      return 0;
+    }
+
+  if (wipe) eri_memset (buf, 0, size);
+  else
+    {
+      uint64_t i;
+      for (i = 0; i < size; ++i)
+	asm ("" : : "r" (((uint8_t *) buf)[i]) : "memory");
+    }
+
+  eri_entry__reset_test_access (entry);
+
+  set_write (th, &acc, buf, size);
+  update_access (th, &acc, 1);
+  return 1;
+}
+
+static uint8_t
+syscall_wipe_iovec (struct thread *th,
+		    struct eri_iovec *iov, uint64_t cnt, uint8_t wipe)
+{
+  uint64_t i;
+  for (i = 0; i < cnt; ++i)
+    if (! syscall_wipe (th, iov->base, iov->len, wipe)) return 0;
+  return 1;
+}
+
 #define SYSCALL_PARAMS \
   struct thread *th, struct eri_entry *entry, struct eri_registers *regs
 #define SYSCALL_ARGS	th, entry, regs
@@ -2213,42 +2255,21 @@ sum_iovec (struct eri_iovec *iov, int32_t n)
   return sum;
 }
 
-static eri_noreturn void
-syscall_div_in_leave (struct thread *th, uint8_t div,
-		      uint64_t in, uint64_t result)
+static uint8_t
+syscall_read_data (struct thread *th, void *dst, uint8_t readv,
+		uint64_t limit, struct eri_syscall_res_in_record *rec)
 {
-  if (div || ! io_in (th, in)) diverged (th);
-  syscall_leave (th, 1, result);
-}
-
-static eri_noreturn void
-syscall_do_read_data (struct thread *th, void *dst,
-		      uint8_t readv, uint64_t limit)
-{
-  uint8_t div = 0;
-  struct eri_syscall_res_in_record rec;
   if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
-      || ! try_unserialize (syscall_res_in_record, th, &rec))
-    { div = 1; goto out; };
+      || ! try_unserialize (syscall_res_in_record, th, rec))
+    return 0;
 
-  if (rec.result == ERI_EFAULT)
-    {
-      struct eri_access acc;
-      set_write (th, &acc,
-		 readv ? ((struct eri_iovec *) dst)->base : dst, 1);
-      update_access (th, &acc, 1);
-    }
+  if (eri_syscall_is_error (rec->result) || rec->result == 0)
+    return 1;
 
-  if (eri_syscall_is_error (rec.result) || rec.result == 0) goto out;
+  if (rec->result > (readv ? sum_iovec (dst, limit) : limit))
+    return 0;
 
-  if (rec.result > (readv ? sum_iovec (dst, limit) : limit))
-    { div = 1; goto out; }
-
-  if (! syscall_get_read_data (th, dst, rec.result, readv)) div = 1;
-
-out:
-  if (readv) eri_entry__syscall_free_rw_iov (th->entry, dst);
-  syscall_div_in_leave (th, div, rec.in, rec.result);
+  return syscall_get_read_data (th, dst, rec->result, readv);
 }
 
 static eri_noreturn void
@@ -2256,12 +2277,17 @@ syscall_do_read (SYSCALL_PARAMS)
 {
 
   int32_t nr = regs->rax;
+  struct eri_syscall_res_in_record rec;
   if (nr == __NR_read || nr == __NR_pread64
       || nr == __NR_getdents || nr == __NR_getdents64)
     {
       uint64_t buf = regs->rsi;
+      uint64_t size = regs->rdx;
       eri_entry__test_invalidate (entry, &buf);
-      syscall_do_read_data (th, (void *) buf, 0, regs->rdx);
+      if (! syscall_read_data (th, (void *) buf, 0, regs->rdx, &rec))
+	diverged (th);
+
+      if (rec.result == ERI_EFAULT) syscall_wipe (th, (void *) buf, size, 1);
     }
   else
     {
@@ -2270,8 +2296,14 @@ syscall_do_read (SYSCALL_PARAMS)
       syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
-      syscall_do_read_data (th, iov, 1, iov_cnt);
+      if (! syscall_read_data (th, iov, 1, iov_cnt, &rec))
+	diverged (th);
+
+      if (rec.result == ERI_EFAULT) syscall_wipe_iovec (th, iov, iov_cnt, 1);
+      eri_entry__syscall_free_rw_iov (th->entry, iov);
     }
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, rec.result);
 }
 
 DEFINE_SYSCALL (read) { syscall_do_read (SYSCALL_ARGS); }
@@ -2293,26 +2325,25 @@ syscall_do_write (SYSCALL_PARAMS)
   else syscall_leave_if_error (th, 0, call_with_user_access (th, 1,
 		eri_entry__syscall_get_rw_iov, entry, &iov, &iov_cnt));
 
-  uint8_t div = 0;
   struct eri_syscall_res_io_record rec;
   if (! check_magic (th, ERI_SYSCALL_RES_IO_MAGIC)
       || ! try_unserialize (syscall_res_io_record, th, &rec))
-    { div = 1; goto out; }
-  if (! io_out (th, rec.out)) { div = 1; goto out; };
+    goto div;
+  if (! io_out (th, rec.out)) goto div;
 
-  struct eri_access acc;
   if (rec.res.result == ERI_EFAULT)
     {
-      set_write (th, &acc, writev ? (uint64_t) iov->base : buf, 1);
-      update_access (th, &acc, 1);
-      goto out;
+      if (! writev) syscall_wipe (th, (void *) buf, regs->rdx, 0);
+      else syscall_wipe_iovec (th, iov, iov_cnt, 0);
     }
 
-  if (eri_syscall_is_error (rec.res.result) || ! rec.res.result) goto out;
+  if (eri_syscall_is_error (rec.res.result) || rec.res.result == 0)
+    goto out;
 
   if (rec.res.result > (writev ? sum_iovec (iov, iov_cnt) : regs->rdx))
-    { div = 1; goto out; }
+    goto div;
 
+  struct eri_access acc;
   if (! writev)
     {
       set_write (th, &acc, buf, rec.res.result);
@@ -2337,7 +2368,12 @@ out:
     eri_entry__syscall (entry);
 
   if (writev) eri_entry__syscall_free_rw_iov (entry, iov);
-  syscall_div_in_leave (th, div, rec.res.in, rec.res.result);
+  if (! io_in (th, rec.res.in)) diverged (th);
+  syscall_leave (th, 1, rec.res.result);
+
+div:
+  if (writev) eri_entry__syscall_free_rw_iov (entry, iov);
+  diverged (th);
 }
 
 DEFINE_SYSCALL (write) { syscall_do_write (SYSCALL_ARGS); }
