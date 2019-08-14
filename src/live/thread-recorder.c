@@ -300,6 +300,7 @@ static void
 syscall_rec_read (struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__syscall_read_record *rec)
 {
+  eri_serialize_uint64 (th_rec->file, rec->out);
   eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
   uint64_t res = rec->res.result;
   if (eri_syscall_is_error (res) || res == 0) return;

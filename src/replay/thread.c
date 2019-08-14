@@ -2259,7 +2259,9 @@ static uint8_t
 syscall_read_data (struct thread *th, void *dst, uint8_t readv,
 		uint64_t limit, struct eri_syscall_res_in_record *rec)
 {
+  uint64_t out;
   if (! check_magic (th, ERI_SYSCALL_READ_MAGIC)
+      || ! try_unserialize (uint64, th, &out) || ! io_out (th, out)
       || ! try_unserialize (syscall_res_in_record, th, rec))
     return 0;
 

@@ -352,6 +352,7 @@ main (int32_t argc, const char **argv)
 	  }
 	else if (magic == ERI_SYSCALL_READ_MAGIC)
 	  {
+	    uint64_t out = eri_unserialize_uint64 (file);
 	    struct eri_syscall_res_in_record rec;
 	    eri_unserialize_syscall_res_in_record (file, &rec);
 	    uint64_t off = 0;
@@ -364,8 +365,9 @@ main (int32_t argc, const char **argv)
 		    off += size;
 		  }
 	      }
-	    printf ("  syscall.read.result: %ld, ..in: %lu, ..off: %lu\n",
-		    rec.result, rec.in, off);
+	    printf ("  syscall.read.out: %lu, ..result: %ld, ..in: %lu, "
+		    "..off: %lu\n",
+		    out, rec.result, rec.in, off);
 	  }
 	else if (magic == ERI_SYSCALL_MMAP_MAGIC)
 	  {

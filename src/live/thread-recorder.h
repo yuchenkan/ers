@@ -54,6 +54,7 @@ void eri_live_thread_recorder__rec_syscall_geturandom (
 
 struct eri_live_thread_recorder__syscall_read_record
 {
+  uint64_t out;
   struct eri_syscall_res_in_record res;
   uint8_t readv;
    void *dst;

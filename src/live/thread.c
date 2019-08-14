@@ -2330,11 +2330,11 @@ syscall_read_sig_fd (struct eri_live_thread *th, struct sfd *sfd,
 }
 
 static void
-syscall_record_read (struct eri_live_thread *th, uint64_t res,
-		     void *dst, uint8_t readv)
+syscall_record_read (struct eri_live_thread *th, uint64_t out,
+		     uint64_t res, void *dst, uint8_t readv)
 {
   struct eri_live_thread_recorder__syscall_read_record rec = {
-    { res, io_in (th) }, readv, dst
+    out, { res, io_in (th) }, readv, dst
   };
   syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
 }
@@ -2351,15 +2351,17 @@ syscall_do_read (SYSCALL_PARAMS)
   struct eri_live_thread_group *group = th->group;
   uint64_t res;
 
+  uint64_t out = io_out (th);
+
   struct sfd *sfd = sfd_try_lock (group, fd);
   if (sfd ? ! syscall_read_sig_fd (th, sfd, (void *) buf, &res)
 	  : ! eri_entry__syscall_interruptible (entry, &res, (1, buf)))
-    syscall_restart (entry);
+    syscall_restart_out (th, out);
 
   res = syscall_test_interrupt (th, res);
   if (res == ERI_EFAULT) syscall_wipe (entry, (void *) buf, size);
 
-  syscall_record_read (th, res, (void *) buf, 0);
+  syscall_record_read (th, out, res, (void *) buf, 0);
   eri_entry__syscall_leave (entry, res);
 }
 
@@ -2376,15 +2378,17 @@ syscall_do_readv (SYSCALL_PARAMS)
 
   uint64_t res;
 
+  uint64_t out = io_out (th);
+
   struct sfd *sfd = sfd_try_lock (group, fd);
   if (sfd ? ! syscall_read_sig_fd (th, sfd, iov, &res)
 	  : ! eri_entry__syscall_interruptible (entry, &res, (1, iov)))
-    syscall_restart (entry);
+    syscall_restart_out (th, out);
 
   res = syscall_test_interrupt (th, res);
   if (res == ERI_EFAULT) syscall_wipe_iovec (entry, iov, iov_cnt);
 
-  syscall_record_read (th, res, iov, 1);
+  syscall_record_read (th, out, res, iov, 1);
   eri_entry__syscall_free_rw_iov (entry, iov);
   eri_entry__syscall_leave (entry, res);
 }
@@ -2558,10 +2562,12 @@ syscall_do_getdents (SYSCALL_PARAMS)
   struct eri_sys_syscall_args args;
   eri_init_sys_syscall_args_from_registers (&args, regs, (1, dirp));
 
+  uint64_t out = io_out (th);
+
   uint64_t res = eri_sys_syscall (&args);
   if (res == ERI_EFAULT) syscall_wipe (entry, (void *) dirp, size);
 
-  syscall_record_read (th, res, (void *) args.a[1], 0);
+  syscall_record_read (th, out, res, (void *) args.a[1], 0);
   eri_entry__syscall_leave (entry, res);
 }
 
