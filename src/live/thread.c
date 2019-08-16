@@ -1675,8 +1675,78 @@ syscall_do_accept (SYSCALL_PARAMS)
 DEFINE_SYSCALL (accept) { syscall_do_accept (SYSCALL_ARGS); }
 DEFINE_SYSCALL (accept4) { syscall_do_accept (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (sendto)
-SYSCALL_TO_IMPL (recvfrom)
+DEFINE_SYSCALL (sendto)
+{
+  uint64_t buf = regs->rsi;
+  const struct eri_sockaddr *user_dest_addr = (void *) regs->r8;
+  uint32_t addrlen = regs->r9;
+
+  eri_entry__test_invalidate (entry, &buf);
+
+  struct eri_sockaddr_storage dest_addr;
+  if (user_dest_addr)
+    eri_entry__syscall_leave_if_error (entry,
+	  syscall_copy_addr_from_user (entry, &dest_addr,
+				       user_dest_addr, addrlen));
+
+  struct eri_syscall_res_io_record rec = { io_out (th) };
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res, (1, buf),
+				(4, user_dest_addr ? &dest_addr : 0)))
+    syscall_restart_out (th, rec.out);
+
+  rec.res.result = syscall_test_interrupt (th, res);
+
+  syscall_record_res_io (th, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
+DEFINE_SYSCALL (recvfrom)
+{
+  uint64_t buf = regs->rsi;
+  uint64_t size = regs->rdx;
+
+  struct sockaddr *user_src_addr = (void *) regs->r8;
+  uint32_t *user_addrlen = (void *) regs->r9;
+
+  eri_entry__test_invalidate (entry, &buf);
+
+  struct eri_sockaddr_storage src_addr;
+  uint32_t addrlen;
+
+  if (user_src_addr && user_addrlen
+      && ! copy_obj_from_user (entry, &addrlen, user_addrlen))
+   eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  uint64_t out = io_out (th);
+  uint64_t res;
+  if (! eri_entry__syscall_interruptible (entry, &res, (1, buf),
+		(4, user_src_addr && user_addrlen ? &src_addr : 0),
+		(5, user_src_addr && user_addrlen ? &addrlen : 0)))
+    syscall_restart_out (th, out);
+
+  res = syscall_test_interrupt (th, res);
+  if (res == ERI_EFAULT) syscall_wipe (entry, (void *) buf, size);
+
+  uint64_t buf_res = res;
+  if (user_src_addr && user_addrlen)
+    {
+      res = syscall_copy_to_user (entry, res, user_src_addr,
+				  &src_addr, addrlen, 0);
+      res = syscall_copy_obj_to_user (entry, res, user_addrlen,
+				      &addrlen);
+    }
+
+  struct eri_live_thread_recorder__syscall_recvfrom_record rec = {
+    { out, { res, io_in (th) } }, buf_res, (void *) buf,
+    user_src_addr && user_addrlen ? &src_addr : 0,
+    user_src_addr && user_addrlen ? addrlen : 0
+  };
+  syscall_record (th, ERI_SYSCALL_RECVFROM_MAGIC, &rec);
+
+  eri_entry__syscall_leave (entry, res);
+}
+
 SYSCALL_TO_IMPL (sendmsg)
 SYSCALL_TO_IMPL (sendmmsg)
 SYSCALL_TO_IMPL (recvmsg)

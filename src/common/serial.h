@@ -283,6 +283,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_SELECT, ##__VA_ARGS__)					\
   p (SYSCALL_POLL, ##__VA_ARGS__)					\
   p (SYSCALL_EPOLL_WAIT, ##__VA_ARGS__)					\
+  p (SYSCALL_RECVFROM, ##__VA_ARGS__)					\
   p (SYNC_ASYNC, ##__VA_ARGS__)						\
   p (ATOMIC, ##__VA_ARGS__)
 

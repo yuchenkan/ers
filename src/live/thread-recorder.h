@@ -104,6 +104,15 @@ struct eri_live_thread_recorder__syscall_epoll_wait_record
   int32_t max_events;
 };
 
+struct eri_live_thread_recorder__syscall_recvfrom_record
+{
+  struct eri_syscall_res_io_record res;
+  uint64_t buf_res;
+  uint8_t *buf;
+  struct eri_sockaddr_storage *src_addr;
+  uint32_t addrlen;
+};
+
 void eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec);

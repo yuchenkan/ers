@@ -5,6 +5,18 @@
 #include <common/debug.h>
 #include <common/serial.h>
 
+static uint64_t
+skip_buf (eri_file_t file)
+{
+  uint64_t off = 0, size;
+  while ((size = eri_unserialize_uint64 (file)))
+  {
+    eri_unserialize_skip_uint8_array (file, size);
+    off += size;
+  }
+  return off;
+}
+
 int32_t
 main (int32_t argc, const char **argv)
 {
@@ -358,14 +370,7 @@ main (int32_t argc, const char **argv)
 	    eri_unserialize_syscall_res_in_record (file, &rec);
 	    uint64_t off = 0;
 	    if (eri_syscall_is_ok (rec.result) && rec.result)
-	      {
-		uint64_t size;
-		while ((size = eri_unserialize_uint64 (file)))
-		  {
-		    eri_unserialize_skip_uint8_array (file, size);
-		    off += size;
-		  }
-	      }
+	      off = skip_buf (file);
 	    printf ("  syscall.read.out: %lu, ..result: %ld, ..in: %lu, "
 		    "..off: %lu\n",
 		    out, rec.result, rec.in, off);
@@ -464,6 +469,25 @@ main (int32_t argc, const char **argv)
 		  eri_unserialize_epoll_event (file, &event);
 		  if (! done) break;
 		}
+	  }
+	else if (magic == ERI_SYSCALL_RECVFROM_MAGIC)
+	  {
+	    struct eri_syscall_res_io_record rec;
+	    eri_unserialize_syscall_res_io_record (file, &rec);
+	    uint64_t off = 0;
+	    if (eri_syscall_is_fault_or_ok (rec.res.result))
+	      {
+		uint64_t buf_res = eri_unserialize_uint64 (file);
+		if (eri_syscall_is_ok (buf_res))
+		  {
+		    off = skip_buf (file);
+		    uint64_t addrlen = eri_unserialize_uint32 (file);
+		    eri_unserialize_skip_uint8_array (file, addrlen);
+		  }
+	      }
+	    printf ("  syscall.recvfrom.out: %lu, ..result: %ld, "
+		    "..in: %lu, ..off; %lu\n",
+		    rec.out, rec.res.result, rec.res.in, off);
 	  }
 	else if (magic == ERI_SYNC_ASYNC_MAGIC)
 	  printf ("  sync_async.steps: %lu\n", eri_unserialize_uint64 (file));

@@ -303,7 +303,8 @@ eri_live_thread_recorder__rec_syscall_geturandom (
      uint64_t *_buf_size = buf_size;					\
      *_buf_size = eri_min (total,					\
 	eri_max (_group->file_buf_size, _group->page_size) * 2);	\
-     *_buf_size <= 1024 ? __builtin_alloca (*_buf_size)			\
+     *_buf_size <= 1024							\
+		? (*_buf_size ? __builtin_alloca (*_buf_size) : 0)	\
 		: eri_assert_mtmalloc (_group->pool, *_buf_size); })
 
 #define free_read_buf(group, buf, buf_size) \
@@ -313,15 +314,10 @@ eri_live_thread_recorder__rec_syscall_geturandom (
 	 eri_assert_mtfree (_group->pool, _buf); } while (0)
 
 static void
-syscall_rec_read (struct eri_live_thread_recorder *th_rec,
-		struct eri_live_thread_recorder__syscall_read_record *rec)
+syscall_ser_buf (struct eri_live_thread_recorder *th_rec, uint8_t *dst,
+		 uint64_t total)
 {
-  eri_serialize_syscall_res_io_record (th_rec->file, &rec->res);
-  uint64_t res = rec->res.res.result;
-  if (eri_syscall_is_error (res) || res == 0) return;
-
   struct eri_entry *entry = th_rec->entry;
-  uint64_t total = res;
   struct eri_live_thread_recorder_group *group = th_rec->group;
 
   uint64_t buf_size;
@@ -331,7 +327,7 @@ syscall_rec_read (struct eri_live_thread_recorder *th_rec,
   while (off < total)
     {
       uint64_t size = eri_min (buf_size, total - off);
-      uint8_t *user = rec->buf + off;
+      uint8_t *user = dst + off;
       if (! eri_entry__copy_from_user (entry, buf, user, size, 0))
 	goto out;
 
@@ -343,6 +339,17 @@ syscall_rec_read (struct eri_live_thread_recorder *th_rec,
 out:
   free_read_buf (group, buf, buf_size);
   eri_serialize_uint64 (th_rec->file, 0);
+}
+
+static void
+syscall_rec_read (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_read_record *rec)
+{
+  eri_serialize_syscall_res_io_record (th_rec->file, &rec->res);
+  uint64_t res = rec->res.res.result;
+  if (eri_syscall_is_error (res) || res == 0) return;
+
+  syscall_ser_buf (th_rec, rec->buf, res);
 }
 
 static void
@@ -496,6 +503,25 @@ syscall_rec_epoll_wait (struct eri_live_thread_recorder *th_rec,
 }
 
 void
+syscall_rec_recvfrom (struct eri_live_thread_recorder *th_rec,
+	struct eri_live_thread_recorder__syscall_recvfrom_record *rec)
+{
+  eri_serialize_syscall_res_io_record (th_rec->file, &rec->res);
+  if (eri_syscall_is_fault_or_ok (rec->res.res.result))
+    {
+      eri_serialize_uint64 (th_rec->file, rec->buf_res);
+      if (eri_syscall_is_ok (rec->buf_res) && rec->buf_res)
+	{
+	  syscall_ser_buf (th_rec, rec->buf, rec->buf_res);
+	  eri_serialize_uint32 (th_rec->file, rec->addrlen);
+	  if (rec->addrlen)
+	    eri_serialize_uint8_array (th_rec->file, (void *) rec->src_addr,
+				       rec->addrlen);
+	}
+    }
+}
+
+void
 eri_live_thread_recorder__rec_syscall (
 		struct eri_live_thread_recorder *th_rec,
 		uint16_t magic, void *rec)
@@ -572,6 +598,8 @@ eri_live_thread_recorder__rec_syscall (
     syscall_rec_poll (th_rec, rec);
   else if (magic == ERI_SYSCALL_EPOLL_WAIT_MAGIC)
     syscall_rec_epoll_wait (th_rec, rec);
+  else if (magic == ERI_SYSCALL_RECVFROM_MAGIC)
+    syscall_rec_recvfrom (th_rec, rec);
   else eri_assert_unreachable ();
 }
 

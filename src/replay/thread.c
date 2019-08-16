@@ -975,6 +975,106 @@ syscall_wipe_iovec (struct thread *th,
   return 1;
 }
 
+static uint8_t
+syscall_get_read_data (struct thread *th, uint8_t *dst, uint64_t total)
+{
+  uint8_t buf[1024];
+  uint64_t off = 0, size;
+
+  while (1)
+    {
+      if (! try_unserialize (uint64, th, &size)) return 0;
+      if (! size) break;
+
+      if (off + size > total) return 0;
+
+      uint64_t ser_off = 0;
+      while (ser_off < size)
+	{
+	  uint64_t ser_size = eri_min (sizeof buf, size - ser_off);
+	  if (! try_unserialize (uint8_array, th, buf, ser_size)) return 0;
+
+	  uint8_t *user = dst + off + ser_off;
+	  if (! copy_to_user (th, user, buf, ser_size)) return 0;
+
+	  ser_off += ser_size;
+	}
+      off += size;
+    }
+
+  return off == total;
+}
+
+static uint8_t
+syscall_get_readv_data (struct thread *th,
+			struct eri_iovec *iov, uint64_t total)
+{
+  uint8_t buf[1024];
+  uint64_t off = 0, iov_off = 0, size;
+  while (iov->len == 0) ++iov;
+  while (1)
+    {
+      if (! try_unserialize (uint64, th, &size)) return 0;
+      if (! size) break;
+
+      if (off + size > total) return 0;
+
+      uint64_t ser_off = 0;
+      while (ser_off < size)
+	{
+	  uint64_t ser_size = eri_min (sizeof buf, size - ser_off);
+	  if (! try_unserialize (uint8_array, th, buf, ser_size)) return 0;
+
+	  uint64_t o = 0;
+	  while (o < ser_size)
+	    {
+	      uint8_t *user = (uint8_t *) iov->base + iov_off;
+	      uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
+	      if (! copy_to_user (th, user, buf + o, s)) return 0;
+
+	      o += s;
+	      if ((iov_off += s) == iov->len)
+		{
+		  iov_off = 0;
+		  do ++iov; while (iov->len == 0);
+		}
+	    }
+
+	  ser_off += ser_size;
+	}
+      off += size;
+    }
+
+  return off == total;
+}
+
+static uint8_t
+syscall_common_read (struct thread *th,
+		     uint64_t buf, uint64_t size, uint64_t res)
+{
+  if (res == ERI_EFAULT) syscall_wipe (th, (void *) buf, size, 1);
+
+  return eri_syscall_is_error (res) || ! res
+      || (res <= size && syscall_get_read_data (th, (void *) buf, res));
+}
+
+static uint8_t
+syscall_common_write (struct thread *th,
+		      uint64_t buf, uint64_t size, uint64_t res)
+{
+  if (res == ERI_EFAULT) syscall_wipe (th, (void *) buf, size, 0);
+
+  if (eri_syscall_is_ok (res) && res)
+    {
+      if (res > size) return 0;
+
+      struct eri_access acc;
+      set_write (th, &acc, buf, res);
+      update_access (th, &acc, 1);
+    }
+  return 1;
+}
+
 #define SYSCALL_PARAMS \
   struct thread *th, struct eri_entry *entry, struct eri_registers *regs
 #define SYSCALL_ARGS	th, entry, regs
@@ -1774,8 +1874,69 @@ syscall_do_accept (SYSCALL_PARAMS)
 DEFINE_SYSCALL (accept) { syscall_do_accept (SYSCALL_ARGS); }
 DEFINE_SYSCALL (accept4) { syscall_do_accept (SYSCALL_ARGS); }
 
-SYSCALL_TO_IMPL (sendto)
-SYSCALL_TO_IMPL (recvfrom)
+DEFINE_SYSCALL (sendto)
+{
+  uint64_t buf = regs->rsi;
+  uint64_t size = regs->rdx;
+  const struct eri_sockaddr *user_dest_addr = (void *) regs->r8;
+  uint32_t addrlen = regs->r9;
+
+  eri_entry__test_invalidate (entry, &buf);
+
+  if (user_dest_addr)
+      syscall_leave_if_error (th, 0,
+		syscall_read_user_addr (th, user_dest_addr, addrlen));
+
+  struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
+  uint64_t res = rec.result;
+
+  if (! syscall_common_write (th, buf, size, res)
+      || ! io_in (th, rec.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
+DEFINE_SYSCALL (recvfrom)
+{
+  uint64_t buf = regs->rsi;
+  uint64_t size = regs->rdx;
+
+  struct sockaddr *user_src_addr = (void *) regs->r8;
+  uint32_t *user_addrlen = (void *) regs->r9;
+
+  eri_entry__test_invalidate (entry, &buf);
+
+  if (user_src_addr && user_addrlen
+      && ! read_user_obj (th, user_addrlen))
+    syscall_leave (th, 0, ERI_EFAULT);
+
+  struct eri_syscall_res_in_record rec
+	= syscall_do_fetch_res_io (th, ERI_SYSCALL_RECVFROM_MAGIC);
+  uint64_t res = rec.result;
+  if (eri_syscall_is_fault_or_ok (res))
+    {
+      uint64_t buf_res;
+      if (! try_unserialize (uint64, th, &buf_res)
+	  || ! syscall_common_read (th, buf, size, buf_res)) diverged (th);
+
+      uint32_t addrlen;
+      if (! try_unserialize (uint32, th, &addrlen)
+	  || addrlen > sizeof (struct eri_sockaddr_storage)
+	  || !! addrlen != (user_src_addr && user_addrlen)) diverged (th);
+
+      if (addrlen)
+	{
+	  struct eri_sockaddr_storage src_addr;
+	  if (! try_unserialize (uint8_array, th, (void *) &src_addr, addrlen)
+	      || ((copy_to_user (th, user_src_addr, &src_addr, addrlen)
+		   && copy_obj_to_user (th, user_addrlen, &addrlen))
+			!= (res != ERI_EFAULT))) diverged (th);
+	}
+    }
+  if (! io_in (th, rec.in)) diverged (th);
+  syscall_leave (th, 1, res);
+}
+
 SYSCALL_TO_IMPL (sendmsg)
 SYSCALL_TO_IMPL (sendmmsg)
 SYSCALL_TO_IMPL (recvmsg)
@@ -2185,79 +2346,6 @@ DEFINE_SYSCALL (epoll_ctl)
   syscall_do_res_io (th);
 }
 
-static uint8_t
-syscall_get_read_data (struct thread *th, uint64_t total, uint8_t *dst)
-{
-  uint8_t buf[1024];
-  uint64_t off = 0, size;
-
-  while (1)
-    {
-      if (! try_unserialize (uint64, th, &size)) return 0;
-      if (! size) break;
-
-      if (off + size > total) return 0;
-
-      uint64_t ser_off = 0;
-      while (ser_off < size)
-	{
-	  uint64_t ser_size = eri_min (sizeof buf, size - ser_off);
-	  if (! try_unserialize (uint8_array, th, buf, ser_size)) return 0;
-
-	  uint8_t *user = dst + off + ser_off;
-	  if (! copy_to_user (th, user, buf, ser_size)) return 0;
-
-	  ser_off += ser_size;
-	}
-      off += size;
-    }
-
-  return off == total;
-}
-
-static uint8_t
-syscall_get_readv_data (struct thread *th, uint64_t total,
-			struct eri_iovec *iov)
-{
-  uint8_t buf[1024];
-  uint64_t off = 0, iov_off = 0, size;
-  while (iov->len == 0) ++iov;
-  while (1)
-    {
-      if (! try_unserialize (uint64, th, &size)) return 0;
-      if (! size) break;
-
-      if (off + size > total) return 0;
-
-      uint64_t ser_off = 0;
-      while (ser_off < size)
-	{
-	  uint64_t ser_size = eri_min (sizeof buf, size - ser_off);
-	  if (! try_unserialize (uint8_array, th, buf, ser_size)) return 0;
-
-	  uint64_t o = 0;
-	  while (o < ser_size)
-	    {
-	      uint8_t *user = (uint8_t *) iov->base + iov_off;
-	      uint64_t s = eri_min (iov->len - iov_off, ser_size - o);
-	      if (! copy_to_user (th, user, buf + o, s)) return 0;
-
-	      o += s;
-	      if ((iov_off += s) == iov->len)
-		{
-		  iov_off = 0;
-		  do ++iov; while (iov->len == 0);
-		}
-	    }
-
-	  ser_off += ser_size;
-	}
-      off += size;
-    }
-
-  return off == total;
-}
-
 static eri_noreturn void
 syscall_do_read (SYSCALL_PARAMS)
 {
@@ -2268,13 +2356,9 @@ syscall_do_read (SYSCALL_PARAMS)
   struct eri_syscall_res_in_record rec
 		= syscall_do_fetch_res_io (th, ERI_SYSCALL_READ_MAGIC);
 
-  if (eri_syscall_is_ok (rec.result) && rec.result
-      && (rec.result > size
-	  || ! syscall_get_read_data (th, rec.result, (void *) buf)))
-    diverged (th);
+  if (! syscall_common_read (th, buf, size, rec.result)
+      || ! io_in (th, rec.in)) diverged (th);
 
-  if (rec.result == ERI_EFAULT) syscall_wipe (th, (void *) buf, size, 1);
-  if (! io_in (th, rec.in)) diverged (th);
   syscall_leave (th, 1, rec.result);
 }
 
@@ -2298,15 +2382,16 @@ syscall_do_readv (SYSCALL_PARAMS)
   struct eri_syscall_res_in_record rec
 		= syscall_do_fetch_res_io (th, ERI_SYSCALL_READV_MAGIC);
 
+  if (rec.result == ERI_EFAULT) syscall_wipe_iovec (th, iov, iov_cnt, 1);
+
   if (eri_syscall_is_ok (rec.result) && rec.result
       && (rec.result > sum_iovec (iov, iov_cnt)
-	  || ! syscall_get_readv_data (th, rec.result, iov)))
+	  || ! syscall_get_readv_data (th, iov, rec.result)))
     {
       eri_entry__syscall_free_rw_iov (th->entry, iov);
       diverged (th);
     }
 
-  if (rec.result == ERI_EFAULT) syscall_wipe_iovec (th, iov, iov_cnt, 1);
   eri_entry__syscall_free_rw_iov (th->entry, iov);
   if (! io_in (th, rec.in)) diverged (th);
   syscall_leave (th, 1, rec.result);
@@ -2328,16 +2413,7 @@ syscall_do_write (SYSCALL_PARAMS)
   struct eri_syscall_res_in_record rec = syscall_fetch_res_io (th);
   uint64_t res = rec.result;
 
-  if (res == ERI_EFAULT) syscall_wipe (th, (void *) buf, size, 0);
-
-  if (eri_syscall_is_ok (res) && res)
-    {
-      if (res > size) diverged (th);
-
-      struct eri_access acc;
-      set_write (th, &acc, buf, res);
-      update_access (th, &acc, 1);
-    }
+  if (! syscall_common_write (th, buf, size, res)) diverged (th);
 
   if (eri_syscall_is_ok (res) && (regs->rdi == 1 || regs->rdi == 2))
     eri_entry__syscall (entry);
