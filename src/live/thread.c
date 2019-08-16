@@ -2329,16 +2329,6 @@ syscall_read_sig_fd (struct eri_live_thread *th, struct sfd *sfd,
   return done;
 }
 
-static void
-syscall_record_read (struct eri_live_thread *th, uint64_t out,
-		     uint64_t res, void *dst, uint8_t readv)
-{
-  struct eri_live_thread_recorder__syscall_read_record rec = {
-    out, { res, io_in (th) }, readv, dst
-  };
-  syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
-}
-
 static eri_noreturn void
 syscall_do_read (SYSCALL_PARAMS)
 {
@@ -2361,7 +2351,11 @@ syscall_do_read (SYSCALL_PARAMS)
   res = syscall_test_interrupt (th, res);
   if (res == ERI_EFAULT) syscall_wipe (entry, (void *) buf, size);
 
-  syscall_record_read (th, out, res, (void *) buf, 0);
+  struct eri_live_thread_recorder__syscall_read_record rec = {
+    { out, { res, io_in (th) } }, (void *) buf
+  };
+  syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
+
   eri_entry__syscall_leave (entry, res);
 }
 
@@ -2388,7 +2382,11 @@ syscall_do_readv (SYSCALL_PARAMS)
   res = syscall_test_interrupt (th, res);
   if (res == ERI_EFAULT) syscall_wipe_iovec (entry, iov, iov_cnt);
 
-  syscall_record_read (th, out, res, iov, 1);
+  struct eri_live_thread_recorder__syscall_readv_record rec = {
+    { out, { res, io_in (th) }, }, iov
+  };
+  syscall_record (th, ERI_SYSCALL_READV_MAGIC, &rec);
+
   eri_entry__syscall_free_rw_iov (entry, iov);
   eri_entry__syscall_leave (entry, res);
 }
@@ -2567,7 +2565,11 @@ syscall_do_getdents (SYSCALL_PARAMS)
   uint64_t res = eri_sys_syscall (&args);
   if (res == ERI_EFAULT) syscall_wipe (entry, (void *) dirp, size);
 
-  syscall_record_read (th, out, res, (void *) args.a[1], 0);
+  struct eri_live_thread_recorder__syscall_read_record rec = {
+    { out, { res, io_in (th) } }, (void *) dirp
+  };
+  syscall_record (th, ERI_SYSCALL_READ_MAGIC, &rec);
+
   eri_entry__syscall_leave (entry, res);
 }
 

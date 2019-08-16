@@ -350,7 +350,8 @@ main (int32_t argc, const char **argv)
 	    if (len) printf (", ..len: %ld\n", len);
 	    else printf ("\n");
 	  }
-	else if (magic == ERI_SYSCALL_READ_MAGIC)
+	else if (magic == ERI_SYSCALL_READ_MAGIC
+		 || magic == ERI_SYSCALL_READV_MAGIC)
 	  {
 	    uint64_t out = eri_unserialize_uint64 (file);
 	    struct eri_syscall_res_in_record rec;

@@ -1,3 +1,5 @@
+/* vim: set ft=cpp: */
+
 #include <stdarg.h>
 
 #include <lib/malloc.h>
@@ -296,55 +298,88 @@ eri_live_thread_recorder__rec_syscall_geturandom (
   va_end (arg);
 }
 
+#define malloc_read_buf(total, group, buf_size) \
+  ({ struct eri_live_thread_recorder_group *_group = group;		\
+     uint64_t *_buf_size = buf_size;					\
+     *_buf_size = eri_min (total,					\
+	eri_max (_group->file_buf_size, _group->page_size) * 2);	\
+     *_buf_size <= 1024 ? __builtin_alloca (*_buf_size)			\
+		: eri_assert_mtmalloc (_group->pool, *_buf_size); })
+
+#define free_read_buf(group, buf, buf_size) \
+  do { struct eri_live_thread_recorder_group *_group = group;		\
+       void *_buf = buf;						\
+       if ((buf_size) > 1024)						\
+	 eri_assert_mtfree (_group->pool, _buf); } while (0)
+
 static void
 syscall_rec_read (struct eri_live_thread_recorder *th_rec,
 		struct eri_live_thread_recorder__syscall_read_record *rec)
 {
-  eri_serialize_uint64 (th_rec->file, rec->out);
-  eri_serialize_syscall_res_in_record (th_rec->file, &rec->res);
-  uint64_t res = rec->res.result;
+  eri_serialize_syscall_res_io_record (th_rec->file, &rec->res);
+  uint64_t res = rec->res.res.result;
   if (eri_syscall_is_error (res) || res == 0) return;
 
-  uint8_t readv = rec->readv;
-  void *dst = rec->dst;
-
   struct eri_entry *entry = th_rec->entry;
-
   uint64_t total = res;
   struct eri_live_thread_recorder_group *group = th_rec->group;
 
-  uint64_t buf_size = eri_min (total,
-		eri_max (group->file_buf_size, group->page_size) * 2);
-  uint8_t *buf = buf_size <= 1024 ? __builtin_alloca (buf_size)
-		: eri_assert_mtmalloc (group->pool, buf_size);
-  uint64_t off = 0, iov_off = 0;
-  struct eri_iovec *iov = dst;
-  if (readv) while (iov->len == 0) ++iov;
+  uint64_t buf_size;
+  uint8_t *buf = malloc_read_buf (total, group, &buf_size);
+
+  uint64_t off = 0;
   while (off < total)
     {
       uint64_t size = eri_min (buf_size, total - off);
-      if (! readv)
-	{
-	  uint8_t *user = (uint8_t *) dst + off;
-	  if (! eri_entry__copy_from_user (entry, buf, user, size, 0))
-	    goto out;
-	}
-      else
-	{
-	  uint64_t o = 0;
-	  while (o < size)
-	    {
-	      uint8_t *user = (uint8_t *) iov->base + iov_off;
-	      uint64_t s = eri_min (iov->len - iov_off, size - o);
-	      if (! eri_entry__copy_from_user (entry, buf + o, user, s, 0))
-		goto out;
+      uint8_t *user = rec->buf + off;
+      if (! eri_entry__copy_from_user (entry, buf, user, size, 0))
+	goto out;
 
-	      o += s;
-	      if ((iov_off += s) == iov->len)
-		{
-		  iov_off = 0;
-		  do ++iov; while (iov->len == 0);
-		}
+      eri_serialize_uint64 (th_rec->file, size);
+      eri_serialize_uint8_array (th_rec->file, buf, size);
+      off += size;
+    }
+
+out:
+  free_read_buf (group, buf, buf_size);
+  eri_serialize_uint64 (th_rec->file, 0);
+}
+
+static void
+syscall_rec_readv (struct eri_live_thread_recorder *th_rec,
+		struct eri_live_thread_recorder__syscall_readv_record *rec)
+{
+  eri_serialize_syscall_res_io_record (th_rec->file, &rec->res);
+  uint64_t res = rec->res.res.result;
+  if (eri_syscall_is_error (res) || res == 0) return;
+
+  struct eri_entry *entry = th_rec->entry;
+  uint64_t total = res;
+  struct eri_live_thread_recorder_group *group = th_rec->group;
+
+  uint64_t buf_size;
+  uint8_t *buf = malloc_read_buf (total, group, &buf_size);
+
+  struct eri_iovec *iov = rec->iov;
+  while (iov->len == 0) ++iov;
+
+  uint64_t off = 0, iov_off = 0;
+  while (off < total)
+    {
+      uint64_t size = eri_min (buf_size, total - off);
+      uint64_t o = 0;
+      while (o < size)
+	{
+	  uint8_t *user = (uint8_t *) iov->base + iov_off;
+	  uint64_t s = eri_min (iov->len - iov_off, size - o);
+	  if (! eri_entry__copy_from_user (entry, buf + o, user, s, 0))
+	    goto out;
+
+	  o += s;
+	  if ((iov_off += s) == iov->len)
+	    {
+	      iov_off = 0;
+	      do ++iov; while (iov->len == 0);
 	    }
 	}
 
@@ -354,7 +389,7 @@ syscall_rec_read (struct eri_live_thread_recorder *th_rec,
     }
 
 out:
-  if (buf_size > 1024) eri_assert_mtfree (group->pool, buf);
+  free_read_buf (group, buf, buf_size);
   eri_serialize_uint64 (th_rec->file, 0);
 }
 
@@ -525,6 +560,8 @@ eri_live_thread_recorder__rec_syscall (
     syscall_rec_getrandom (th_rec, rec);
   else if (magic == ERI_SYSCALL_READ_MAGIC)
     syscall_rec_read (th_rec, rec);
+  else if (magic == ERI_SYSCALL_READV_MAGIC)
+    syscall_rec_readv (th_rec, rec);
   else if (magic == ERI_SYSCALL_MMAP_MAGIC)
     syscall_rec_mmap (th_rec, rec);
   else if (magic == ERI_SYSCALL_GETCWD_MAGIC)
