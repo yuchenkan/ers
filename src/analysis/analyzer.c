@@ -735,7 +735,7 @@ race_get_conflicts (struct race_confirm_context *ctx, uint8_t type, uint8_t ref_
 	  {
 	    eri_log_info (ctx->log,
 		"conflict detected: rip %lx, %s mem: %lx size: %lu u%lu, "
-		"rip %lx, %s, mem: %lx size :%lu u%lu\n",
+		"rip %lx, %s, mem: %lx size: %lu u%lu\n",
 		i->rip, eri_access_type_str (type), i->addr, i->size, id,
 		j->rip, eri_access_type_str (ref_type), j->addr, j->size, ref_id);
 	    eri_atomic_store (&ctx->group->error, 1, 0); // TODO

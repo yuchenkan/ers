@@ -4063,7 +4063,7 @@ sig_collect_accesses (struct eri_buf *buf, uint64_t rip_off,
 	{
 	  uint64_t addr = a->var ? addrs[v++] : a->addr;
 	  if (! a->cond || conds[c++])
-	    eri_append_access (buf, addrs[i],
+	    eri_append_access (buf, addr,
 			a->rip_off <= rip_off
 				? a->size : info->fault.addr + 1 - addr,
 			a->guest_rip, a->type);
