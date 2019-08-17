@@ -1872,6 +1872,9 @@ syscall_do_accept (SYSCALL_PARAMS)
   struct eri_sockaddr *user_addr = (void *) regs->rsi;
   uint32_t *user_addrlen = (void *) regs->rdx;
 
+  if (user_addr && ! read_user_obj (th, user_addrlen))
+    syscall_leave (th, 0, ERI_EFAULT);
+
   struct eri_syscall_accept_record rec;
 
   if (! check_magic (th, ERI_SYSCALL_ACCEPT_MAGIC)
@@ -1922,8 +1925,7 @@ DEFINE_SYSCALL (recvfrom)
 
   eri_entry__test_invalidate (entry, &buf);
 
-  if (user_src_addr && user_addrlen
-      && ! read_user_obj (th, user_addrlen))
+  if (user_src_addr && ! read_user_obj (th, user_addrlen))
     syscall_leave (th, 0, ERI_EFAULT);
 
   struct eri_syscall_res_in_record rec
@@ -1938,7 +1940,7 @@ DEFINE_SYSCALL (recvfrom)
       uint32_t addrlen;
       if (! try_unserialize (uint32, th, &addrlen)
 	  || addrlen > sizeof (struct eri_sockaddr_storage)
-	  || !! addrlen != (user_src_addr && user_addrlen)) diverged (th);
+	  || !! addrlen != !! user_src_addr) diverged (th);
 
       if (addrlen)
 	{

@@ -1667,7 +1667,12 @@ syscall_do_accept (SYSCALL_PARAMS)
   struct sockaddr *user_addr = (void *) regs->rsi;
   uint32_t *user_addrlen = (void *) regs->rdx;
 
-  struct eri_syscall_accept_record rec = { io_out (th) };
+  struct eri_syscall_accept_record rec = { 0 };
+  if (user_addr
+      && ! copy_obj_from_user (entry, &rec.addrlen, user_addrlen))
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
+
+  rec.out = io_out (th);
 
   uint64_t res;
   if (! eri_entry__syscall_interruptible (entry, &res,
@@ -1728,22 +1733,22 @@ DEFINE_SYSCALL (recvfrom)
   struct eri_sockaddr_storage src_addr;
   uint32_t addrlen;
 
-  if (user_src_addr && user_addrlen
+  if (user_src_addr
       && ! copy_obj_from_user (entry, &addrlen, user_addrlen))
     eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   uint64_t out = io_out (th);
   uint64_t res;
   if (! eri_entry__syscall_interruptible (entry, &res, (1, buf),
-		(4, user_src_addr && user_addrlen ? &src_addr : 0),
-		(5, user_src_addr && user_addrlen ? &addrlen : 0)))
+				(4, user_src_addr ? &src_addr : 0),
+				(5, user_src_addr ? &addrlen : 0)))
     syscall_restart_out (th, out);
 
   res = syscall_test_interrupt (th, res);
   if (res == ERI_EFAULT) syscall_wipe (entry, (void *) buf, size);
 
   uint64_t buf_res = res;
-  if (user_src_addr && user_addrlen)
+  if (user_src_addr)
     {
       res = syscall_copy_to_user (entry, res, user_src_addr,
 				  &src_addr, addrlen, 0);
@@ -1753,8 +1758,7 @@ DEFINE_SYSCALL (recvfrom)
 
   struct eri_live_thread_recorder__syscall_recvfrom_record rec = {
     { out, { res, io_in (th) } }, buf_res, (void *) buf,
-    user_src_addr && user_addrlen ? &src_addr : 0,
-    user_src_addr && user_addrlen ? addrlen : 0
+    user_src_addr ? &src_addr : 0, user_src_addr ? addrlen : 0
   };
   syscall_record (th, ERI_SYSCALL_RECVFROM_MAGIC, &rec);
 

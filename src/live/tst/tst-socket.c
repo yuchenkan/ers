@@ -50,6 +50,8 @@ tst_live_start (void)
 
   tst_assert_live_clone (&args);
 
+  eri_assert (tst_syscall (accept, fd, &get_addr, 0) == ERI_EFAULT);
+
   int32_t clt = tst_assert_syscall (accept, fd, 0, 0);
 
   tst_assert_syscall (shutdown, clt, 0);
