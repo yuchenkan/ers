@@ -5,6 +5,7 @@
 #include <common/debug.h>
 
 #include <tst/tst-syscall.h>
+#include <live/tst/tst-util.h>
 
 static uint8_t s;
 static uint8_t *m;
@@ -22,9 +23,7 @@ sig_handler (int32_t sig)
       m = (void *) tst_assert_syscall (mmap, m, 8192, ERI_PROT_READ,
 			ERI_MAP_PRIVATE | ERI_MAP_FIXED, fd, 0);
       tst_assert_syscall (close, fd);
-      uint8_t i, c = *(uint8_t *) m / 4;
-      eri_info ("%u\n", c);
-      for (i = 0; i < c; ++i) tst_assert_syscall (sched_yield);
+      tst_check (*(uint64_t *) m);
       tst_assert_sys_exit (0);
     }
   else eri_assert (0);
