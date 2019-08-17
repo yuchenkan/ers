@@ -1730,7 +1730,7 @@ DEFINE_SYSCALL (recvfrom)
 
   if (user_src_addr && user_addrlen
       && ! copy_obj_from_user (entry, &addrlen, user_addrlen))
-   eri_entry__syscall_leave (entry, ERI_EFAULT);
+    eri_entry__syscall_leave (entry, ERI_EFAULT);
 
   uint64_t out = io_out (th);
   uint64_t res;
