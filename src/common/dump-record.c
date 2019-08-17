@@ -274,7 +274,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_accept_record rec;
 	    eri_unserialize_syscall_accept_record (file, &rec);
-	    printf ("  syscall.accept.out: %ld, ..result: %ld, ..in: %ld\n",
+	    printf ("  syscall.accept.out: %lu, ..result: %ld, ..in: %lu\n",
 		    rec.out, rec.res.result, rec.res.in);
 	    if (rec.addrlen)
 	      printf ("  syscall.accept.addr.family: %hu\n",
@@ -284,7 +284,7 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_getsockname_record rec;
 	    eri_unserialize_syscall_getsockname_record (file, &rec);
-	    printf ("  syscall.getsockname.result: %ld, ..in: %ld\n",
+	    printf ("  syscall.getsockname.result: %ld, ..in: %lu\n",
 		    rec.res.result, rec.res.in);
 	    if (rec.addrlen)
 	      printf ("  syscall.getsockname.addr.family: %hu\n",
@@ -294,21 +294,21 @@ main (int32_t argc, const char **argv)
 	  {
 	    struct eri_syscall_ustat_record rec;
 	    eri_unserialize_syscall_ustat_record (file, &rec);
-	    printf ("  syscall.ustat.result: %ld, ..in: %ld\n",
+	    printf ("  syscall.ustat.result: %ld, ..in: %lu\n",
 		    rec.res.result, rec.res.in);
 	  }
 	else if (magic == ERI_SYSCALL_STATFS_MAGIC)
 	  {
 	    struct eri_syscall_statfs_record rec;
 	    eri_unserialize_syscall_statfs_record (file, &rec);
-	    printf ("  syscall.statfs.result: %ld, ..in: %ld\n",
+	    printf ("  syscall.statfs.result: %ld, ..in: %lu\n",
 		    rec.res.result, rec.res.in);
 	  }
 	else if (magic == ERI_SYSCALL_PIPE_MAGIC)
 	  {
 	    struct eri_syscall_pipe_record rec;
 	    eri_unserialize_syscall_pipe_record (file, &rec);
-	    printf ("  syscall.pipe.out: %ld, ..result: %ld, ..in: %ld",
+	    printf ("  syscall.pipe.out: %lu, ..result: %ld, ..in: %lu",
 		    rec.out, rec.res.result, rec.res.in);
 	    if (eri_syscall_is_ok (rec.res.result))
 	      printf (", ..pipe: %d %d\n", rec.pipe[0], rec.pipe[1]);
