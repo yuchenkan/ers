@@ -446,9 +446,6 @@ uint64_t
 eri_entry__syscall_get_rw_iov (struct eri_entry *entry,
 	struct eri_iovec **iov, int32_t *iov_cnt, struct eri_access *acc)
 {
-  int32_t dummy;
-  if (! iov_cnt) iov_cnt = &dummy;
-
   const struct eri_iovec *user_iov = (void *) entry->_regs.rsi;
   *iov_cnt = entry->_regs.rdx;
 
