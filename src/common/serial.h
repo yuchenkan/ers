@@ -139,6 +139,13 @@ uint8_t eri_try_unserialize_statfs (eri_file_t file,
 				    struct eri_statfs *statfs);
 void eri_unserialize_statfs (eri_file_t file, struct eri_statfs *statfs);
 
+void eri_serialize_sysinfo (eri_file_t file,
+			    const struct eri_sysinfo *info);
+uint8_t eri_try_unserialize_sysinfo (eri_file_t file,
+				     struct eri_sysinfo *info);
+void eri_unserialize_sysinfo (eri_file_t file,
+			      struct eri_sysinfo *info);
+
 void eri_serialize_epoll_event (eri_file_t file,
 				const struct eri_epoll_event *event);
 uint8_t eri_try_unserialize_epoll_event (eri_file_t file,
@@ -272,6 +279,7 @@ void eri_unserialize_async_signal_record (eri_file_t file,
   p (SYSCALL_USTAT, ##__VA_ARGS__)					\
   p (SYSCALL_STATFS, ##__VA_ARGS__)					\
   p (SYSCALL_PIPE, ##__VA_ARGS__)					\
+  p (SYSCALL_SYSINFO, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX, ##__VA_ARGS__)					\
   p (SYSCALL_FUTEX_REQUEUE, ##__VA_ARGS__)				\
   p (SYSCALL_GETRANDOM_RANDOM, ##__VA_ARGS__)				\
@@ -585,6 +593,19 @@ uint8_t eri_try_unserialize_syscall_pipe_record (eri_file_t file,
 			struct eri_syscall_pipe_record *rec);
 void eri_unserialize_syscall_pipe_record (eri_file_t file,
 			struct eri_syscall_pipe_record *rec);
+
+struct eri_syscall_sysinfo_record
+{
+  struct eri_syscall_res_in_record res;
+  struct eri_sysinfo info;
+};
+
+void eri_serialize_syscall_sysinfo_record (eri_file_t file,
+			const struct eri_syscall_sysinfo_record *rec);
+uint8_t eri_try_unserialize_syscall_sysinfo_record (eri_file_t file,
+			struct eri_syscall_sysinfo_record *rec);
+void eri_unserialize_syscall_sysinfo_record (eri_file_t file,
+			struct eri_syscall_sysinfo_record *rec);
 
 struct eri_syscall_futex_record
 {

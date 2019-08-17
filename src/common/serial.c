@@ -683,6 +683,50 @@ eri_unserialize_statfs (eri_file_t file, struct eri_statfs *statfs)
 }
 
 void
+eri_serialize_sysinfo (eri_file_t file, const struct eri_sysinfo *info)
+{
+  eri_serialize_int64 (file, info->uptime);
+  eri_serialize_uint64 (file, info->loads[0]);
+  eri_serialize_uint64 (file, info->loads[1]);
+  eri_serialize_uint64 (file, info->loads[2]);
+  eri_serialize_uint64 (file, info->totalram);
+  eri_serialize_uint64 (file, info->freeram);
+  eri_serialize_uint64 (file, info->sharedram);
+  eri_serialize_uint64 (file, info->bufferram);
+  eri_serialize_uint64 (file, info->totalswap);
+  eri_serialize_uint64 (file, info->freeswap);
+  eri_serialize_uint16 (file, info->procs);
+  eri_serialize_uint64 (file, info->totalhigh);
+  eri_serialize_uint64 (file, info->freehigh);
+  eri_serialize_uint32 (file, info->mem_unit);
+}
+
+uint8_t
+eri_try_unserialize_sysinfo (eri_file_t file, struct eri_sysinfo *info)
+{
+  return eri_try_unserialize_int64 (file, &info->uptime)
+	 && eri_try_unserialize_uint64 (file, info->loads)
+	 && eri_try_unserialize_uint64 (file, info->loads + 1)
+	 && eri_try_unserialize_uint64 (file, info->loads + 2)
+	 && eri_try_unserialize_uint64 (file, &info->totalram)
+	 && eri_try_unserialize_uint64 (file, &info->freeram)
+	 && eri_try_unserialize_uint64 (file, &info->sharedram)
+	 && eri_try_unserialize_uint64 (file, &info->bufferram)
+	 && eri_try_unserialize_uint64 (file, &info->totalswap)
+	 && eri_try_unserialize_uint64 (file, &info->freeswap)
+	 && eri_try_unserialize_uint16 (file, &info->procs)
+	 && eri_try_unserialize_uint64 (file, &info->totalhigh)
+	 && eri_try_unserialize_uint64 (file, &info->freehigh)
+	 && eri_try_unserialize_uint32 (file, &info->mem_unit);
+}
+
+void
+eri_unserialize_sysinfo (eri_file_t file, struct eri_sysinfo *info)
+{
+  eri_assert (eri_try_unserialize_sysinfo (file, info));
+}
+
+void
 eri_serialize_epoll_event (eri_file_t file,
 			   const struct eri_epoll_event *event)
 {
@@ -1343,6 +1387,29 @@ eri_unserialize_syscall_pipe_record (eri_file_t file,
 			struct eri_syscall_pipe_record *rec)
 {
   eri_assert (eri_try_unserialize_syscall_pipe_record (file, rec));
+}
+
+void
+eri_serialize_syscall_sysinfo_record (eri_file_t file,
+			const struct eri_syscall_sysinfo_record *rec)
+{
+  eri_serialize_syscall_res_in_record (file, &rec->res);
+  eri_serialize_sysinfo (file, &rec->info);
+}
+
+uint8_t
+eri_try_unserialize_syscall_sysinfo_record (eri_file_t file,
+			struct eri_syscall_sysinfo_record *rec)
+{
+  return eri_try_unserialize_syscall_res_in_record (file, &rec->res)
+	 && eri_try_unserialize_sysinfo (file, &rec->info);
+}
+
+void
+eri_unserialize_syscall_sysinfo_record (eri_file_t file,
+			struct eri_syscall_sysinfo_record *rec)
+{
+  eri_assert (eri_try_unserialize_syscall_sysinfo_record (file, rec));
 }
 
 void

@@ -314,6 +314,15 @@ main (int32_t argc, const char **argv)
 	      printf (", ..pipe: %d %d\n", rec.pipe[0], rec.pipe[1]);
 	    else printf ("\n");
 	  }
+	else if (magic == ERI_SYSCALL_SYSINFO_MAGIC)
+	  {
+	    struct eri_syscall_sysinfo_record rec;
+	    eri_unserialize_syscall_sysinfo_record (file, &rec);
+	    printf ("  syscall.sysinfo.result: %ld, ..in: %lu, "
+		    "..info.uptime: %ld, ...loads: %lu %lu %lu\n",
+		    rec.res.result, rec.res.in, rec.info.uptime,
+		    rec.info.loads[0], rec.info.loads[1], rec.info.loads[2]);
+	  }
 	else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
 	  {
 	    struct eri_syscall_futex_record rec;

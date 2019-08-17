@@ -1163,6 +1163,44 @@ struct eri_rusage
   int64_t nivcsw;
 };
 
+struct eri_sysinfo
+{
+  int64_t uptime;
+  uint64_t loads[3];
+  uint64_t totalram;
+  uint64_t freeram;
+  uint64_t sharedram;
+  uint64_t bufferram;
+  uint64_t totalswap;
+  uint64_t freeswap;
+  uint16_t procs;
+  uint64_t totalhigh;
+  uint64_t freehigh;
+  uint32_t mem_unit;
+  uint8_t padding[20 - 2 * sizeof (int64_t) - sizeof (int32_t)];
+};
+
+static eri_unused void
+eri_syscall_zcpy_sysinfo (struct eri_sysinfo *dst,
+			  const struct eri_sysinfo *src)
+{
+  eri_memset (dst, 0, sizeof *dst);
+  dst->uptime = src->uptime;
+  dst->loads[0] = src->loads[0];
+  dst->loads[1] = src->loads[1];
+  dst->loads[2] = src->loads[2];
+  dst->totalram = src->totalram;
+  dst->freeram = src->freeram;
+  dst->sharedram = src->sharedram;
+  dst->bufferram = src->bufferram;
+  dst->totalswap = src->totalswap;
+  dst->freeswap = src->freeswap;
+  dst->procs = src->procs;
+  dst->totalhigh = src->totalhigh;
+  dst->freehigh = src->freehigh;
+  dst->mem_unit = src->mem_unit;
+}
+
 struct eri_sockaddr
 {
   uint16_t family;

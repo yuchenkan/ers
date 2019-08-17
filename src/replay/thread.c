@@ -1318,7 +1318,23 @@ DEFINE_SYSCALL (uname)
   syscall_leave (th, 1, res);
 }
 
-SYSCALL_TO_IMPL (sysinfo)
+DEFINE_SYSCALL (sysinfo)
+{
+  struct eri_sysinfo *user_info = (void *) regs->rdi;
+
+  struct eri_syscall_sysinfo_record rec;
+  eri_memset (&rec.info, 0, sizeof rec.info);
+  if (! check_magic (th, ERI_SYSCALL_SYSINFO_MAGIC)
+      || ! try_unserialize (syscall_sysinfo_record, th, &rec)) diverged (th);
+
+  uint64_t res = rec.res.result;
+
+  if (! syscall_copy_obj_to_user (th, res, user_info, &rec.info)
+      || ! io_in (th, rec.res.in)) diverged (th);
+
+  syscall_leave (th, 1, res);
+}
+
 SYSCALL_TO_IMPL (getcpu)
 
 DEFINE_SYSCALL (getrandom)

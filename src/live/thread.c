@@ -986,7 +986,21 @@ DEFINE_SYSCALL (uname)
   eri_entry__syscall_leave (entry, rec.res.result);
 }
 
-SYSCALL_TO_IMPL (sysinfo)
+DEFINE_SYSCALL (sysinfo)
+{
+  struct eri_sysinfo *user_info = (void *) regs->rdi;
+
+  struct eri_sysinfo info;
+  uint64_t res = eri_entry__syscall (entry, (0, &info));
+  struct eri_syscall_sysinfo_record rec;
+  eri_syscall_zcpy_sysinfo (&rec.info, &info);
+  rec.res.result = syscall_copy_obj_to_user (entry, res,
+					     user_info, &rec.info);
+  rec.res.in = io_in (th);
+  syscall_record (th, ERI_SYSCALL_SYSINFO_MAGIC, &rec);
+  eri_entry__syscall_leave (entry, rec.res.result);
+}
+
 SYSCALL_TO_IMPL (getcpu)
 
 #define GETURAND_START \

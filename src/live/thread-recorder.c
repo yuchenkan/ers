@@ -578,6 +578,8 @@ eri_live_thread_recorder__rec_syscall (
     eri_serialize_syscall_statfs_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_PIPE_MAGIC)
     eri_serialize_syscall_pipe_record (th_rec->file, rec);
+  else if (magic == ERI_SYSCALL_SYSINFO_MAGIC)
+    eri_serialize_syscall_sysinfo_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_MAGIC)
     eri_serialize_syscall_futex_record (th_rec->file, rec);
   else if (magic == ERI_SYSCALL_FUTEX_REQUEUE_MAGIC)
