@@ -16,7 +16,7 @@ Although explicit marking user code is not desired, using builtin atomic operati
 
 # Quickstart
 
-Use following code to create the development environment.
+Use the following code to create the development environment.
 
 ```shell
 mkdir src data
@@ -31,7 +31,9 @@ wget https://nchc.dl.sourceforge.net/project/plantuml/plantuml.jar -P data
 docker run --privileged -v $(realpath ./data):/work -it ers-dev bash
 ```
 
-Java, rsvg and graphviz are used for generating graphs in the doc. The nodejs and GCC needs to be new enough. The version installed by the above code is node 8.12.0 and gcc 8.3.1. After entering the environment, clone, build and run test.
+Java, rsvg and graphviz are used for generating graphs in the doc. The nodejs and GCC needs to be new enough. The version installed by the above code is node 8.12.0 and gcc 8.3.1.
+
+After entering the environment, clone, build and run test.
 
 ```shell
 cd /work
