@@ -246,7 +246,7 @@ index 354d2e6ec7..8f5b11397c 100644
         /* Clear the frame pointer.  The ABI suggests this be done, to mark
 ```
 
-This is actually more complicated because the `_start` may called by `_dl_start_user`, in which case it's not the first instruction of the process and the `ERS_INIT` shall not be called more than once.
+This is actually more complicated because the `_start` may be called by `_dl_start_user`, in which case it's not the first instruction of the process and the `ERS_INIT` is already called in `_dl_start_user` and shall not be called more than once.
 
 System call:
 
