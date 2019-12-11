@@ -302,3 +302,35 @@ index 92561e1da0..a03468f266 100644
         testl   %eax, %eax
         jnz     1b
 ```
+
+For the first parameter of the macros, 0 means % symbol is not escaped. When used in the asm extension, you need to use 1. Here is an example.
+
+```c
+#define ers_satomic_xchg(size, reg, mem) \
+  ers_str (ERS_ATOMIC_XCHG (1, size, reg, mem))
+
+#define _ers_exchange(ptr, val) \
+  ({                                                                    \
+    typeof (*(ptr)) __ers_ret = (typeof (__ers_ret)) (val);             \
+    switch (sizeof __ers_ret)                                           \
+      {                                                                 \
+      case 1:                                                           \
+        asm volatile (ers_satomic_xchg (b, %b1, %0)                     \
+              : "+m" (*(ptr)), "+r" (__ers_ret) : : "memory");          \
+        break;                                                          \
+      case 2:                                                           \
+        asm volatile (ers_satomic_xchg (w, %w1, %0)                     \
+              : "+m" (*(ptr)), "+r" (__ers_ret) : : "memory");          \
+        break;                                                          \
+      case 4:                                                           \
+        asm volatile (ers_satomic_xchg (l, %1, %0)                      \
+              : "+m" (*(ptr)), "+r" (__ers_ret) : : "memory");          \
+        break;                                                          \
+      default:                                                          \
+        asm volatile (ers_satomic_xchg (q, %q1, %0)                     \
+              : "+m" (*(ptr)), "+r" (__ers_ret) : : "memory");          \
+        break;                                                          \
+      }                                                                 \
+    __ers_ret;                                                          \
+  })
+```
