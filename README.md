@@ -78,6 +78,8 @@ These are the commands used to record, replay and analyze respectively. They are
 
 You may also find out how the live and tst-init-clone-data is built in the output. You may also read the goal files to know how these commands are constructed.
 
+At the end of this artical, you can find part of the patch for the gLibc to get a sense of how this is used.
+
 # Technical details
 
 Before diving into the details, there are serveral design decisions I need to make clear. These decisions make the implementation of recording very complicated, and from my current view, it can be simiplified by loosening the assumptions.
@@ -88,8 +90,7 @@ Second, I want to make the macros used to replace the instructions behave exactl
 
 Despite these complications, the general idea is simple. In the mutli-threaded system, the number of possible process memory state explodes due to the interleaving of instructions from different threads. Instead of catching the every exact memory state, we can only catch the order of memory accesses that really matters. In a race free environment, this means the order of accessing the shared memory.
 
-For instance, consider the following two routines r1 and r2 running on
-two different threads.
+For instance, consider the following two routines `r1` and `r2` running on two different threads.
 
 ```c
 lock_t lock;
@@ -111,9 +112,9 @@ void r2 ()
 }
 ```
 
-The developers may only be interested in which thread acquires the lock first between r1 and r2, not the possible interleaving between foo1 and foo2. In other word, it normally means foo1 and foo2 should be race-free and should only access their own private memory space. Therefore, for this example we may only need to record who get the lock first.
+The developers may only be interested in which thread acquires the lock first between `r1` and `r2`, not the possible interleaving between `foo1` and `foo2`. In other word, it normally means `foo1` and `foo2` should be race-free and should only access their own private memory space. Therefore, for this example we may only need to record who get the lock first.
 
-Meanwhile, we also need to prove there is no race condition between foo1 and foo2, and this introduces the post-run analysis. In the analysis, we can record all memory accesses from foo1 and foo2, and conservatively prove there is no race condition by showing there is no conflict memory access.
+Meanwhile, we also need to prove there is no race condition between `foo1` and `foo2`, and this introduces the post-run analysis. In the analysis, we can record all memory accesses from `foo1` and `foo2`, and conservatively prove there is no race condition by showing there is no conflict memory access.
 
 More specifically, let's consider a simple implementation of spin lock.
 
@@ -132,7 +133,7 @@ void release ()
 }
 ```
 
-Here, the racy accesses are two atomic calls, which in turn calls, for example, cmpxchg and mov respectively. The memory accesses when the lock hold are protected and shall not be racy. Therefore we only need to record the order of accessing the lock, as shown below.
+Here, the racy accesses are two atomic calls, which in turn calls, for example, `cmpxchg` and `mov` respectively. The memory accesses when the lock hold are protected and shall not be racy. Therefore we only need to record the order of accessing the lock, as shown below.
 
 ```c
 void record_atomic (ptr)
@@ -174,9 +175,9 @@ void thread ()
 }
 ```
 
-The final log will be like: t1 t1 t2 t1 t2...
+The final log will be like: `t1 t1 t2 t1 t2...`
 
-Here is another example with respect to the signals, a very simple and common usage of SIGINT to exit the process.
+Here is another example with respect to the signals, a very simple and common usage of `SIGINT` to exit the process.
 
 ```c
 int exit = 0;
@@ -195,7 +196,7 @@ void loop ()
 }
 ```
 
-The key here is it does not matter when the signal is raised inside foo, it only matters how many times foo is executed. Therefore we only need to record this number, as below.
+The key here is it does not matter when the signal is raised inside `foo`, it only matters how many times `foo` is executed. Therefore we only need to record this number, as below.
 
 ```c
 void wrap (handle)
@@ -216,6 +217,88 @@ int atomic_load (ptr)
 }
 ```
 
-The final log will be like: ATOMIC ATOMIC ATOMIC SIGNAL.
+The final log will be like: `ATOMIC ATOMIC ATOMIC SIGNAL`.
 
 The signal handlers may also access the cpu context. This means it may also be synchronized by the value of registers. Therefore, the solution is to provide a universal wrap for any instructions to set barriers for signals. The implementation is also very tricky to handle jump or repeatable instructions.
+
+# Example
+
+Here is an example of how to modify the gLibc to use the lib. It only shows part of the patch.
+
+Init:
+```diff
+diff --git a/sysdeps/x86_64/start.S b/sysdeps/x86_64/start.S
+index 354d2e6ec7..8f5b11397c 100644
+--- a/sysdeps/x86_64/start.S
++++ b/sysdeps/x86_64/start.S
+@@ -55,7 +55,16 @@
+
+ #include <sysdep.h>
+
++#include <ers/ers.h>
++
+ ENTRY (_start)
+
++       ERS_INIT
++
+        /* Clearing frame pointer is insufficient, use CFI.  */
+        cfi_undefined (rip)
+        /* Clear the frame pointer.  The ABI suggests this be done, to mark
+```
+
+This is actually more complicated because the `_start` may called by `_dl_start_user`, in which case it's not the first instruction of the process and the `ERS_INIT` shall not be called more than once.
+
+System call:
+
+```diff
+diff --git a/sysdeps/unix/sysv/linux/x86_64/clone.S b/sysdeps/unix/sysv/linux/x86_64/clone.S
+index 34bebe0c00..05ed26f416 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/clone.S
++++ b/sysdeps/unix/sysv/linux/x86_64/clone.S
+@@ -23,6 +23,8 @@
+ #include <bits/errno.h>
+ #include <asm-syntax.h>
+
++#include <ers/ers.h>
++
+ /* The userland implementation is:
+    int clone (int (*fn)(void *arg), void *child_stack, int flags, void *arg),
+    the kernel entry is:
+@@ -73,7 +75,7 @@ ENTRY (__clone)
+        /* End FDE now, because in the child the unwind info will be
+           wrong.  */
+        cfi_endproc;
+-       syscall
++       ERS_SYSCALL (0)
+```
+
+Atomic instruction:
+
+```diff
+diff --git a/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S b/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
+index 92561e1da0..a03468f266 100644
+--- a/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
++++ b/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S
+@@ -23,6 +23,8 @@
+
+ #include <stap-probe.h>
+
++#include <ers/ers.h>
++
+        .text
+
+ #ifdef __ASSUME_PRIVATE_FUTEX
+@@ -90,10 +92,10 @@ __lll_lock_wait_private:
+
+ 1:     LIBC_PROBE (lll_lock_wait_private, 1, %rdi)
+        movl    $SYS_futex, %eax
+-       syscall
++       ERS_SYSCALL (0)
+
+ 2:     movl    %edx, %eax
+-       xchgl   %eax, (%rdi)    /* NB:   lock is implied */
++       ERS_ATOMIC_XCHG (0, l, %eax, (%rdi))    /* NB:   lock is implied */
+
+        testl   %eax, %eax
+        jnz     1b
+```
