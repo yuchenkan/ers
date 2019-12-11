@@ -4,7 +4,7 @@ This is a deterministic record/replay framework for multi-threaded programs base
 
 # Background
 
-The idea has been in my head for a quite long time. As a server-side programer and having experience in managing a full stack team, I see lots of inefficiencies in debugging and testing largely due to the nondeterminstic nature. I started to work on a demo of this project because I need to build a multi-paxos demo for a distributed storage system, which is crtical and needs to be bug-free. The multi-paxos demo can also be found in my GitHub.
+The idea has been in my head for a quite long time. As a server-side programer and having experience in managing a full stack team, I see lots of inefficiencies in debugging and testing largely due to the nondeterminstic nature. I started to work on a demo of this project because I need to build a multi-paxos demo for a distributed storage system, which is critical and needs to be bug-free. The multi-paxos demo can also be found in my GitHub.
 
 I hope to build a deterministic framework for the whole distributed system, and the very first step is to build an enviroment for the multi-threaded program. Essentially, the principle is same in both systems and the most difficult challenges also have to be handled in the multi-threaded environment. These challenges include sharing memory between different contexts and dealing with signals.
 
@@ -80,4 +80,142 @@ You may also find out how the live and tst-init-clone-data is built in the outpu
 
 # Technical details
 
-TODO
+Before diving into the details, there are serveral design decisions I need to make clear. These decisions make the implementation of recording very complicated, and from my current view, it can be simiplified by loosening the assumptions.
+
+First, I want to make it pure user space. Because with the existing kernel, we don't have support to monitor the atomic operations, we can't solve the problem solely based on the debug interface provided by the kernel, like PTRACE. Also to make the recording more efficient, PTRACE is completely not used in the implementation. Also because there is no direct support for atomic operations, I need to re-implement part of system calls having atomic operations in user space, such as futex, and exit with tid_address set. Further more, because I don't use the PTRACE, I need to be very careful to distinguish the synchronized and asynchronized signals. I have to prevent the synchronized signal accidently kill the process because it's being blocked. To achieve this, for each user thread, I create another signal thread to receive all the asynchronized signals and make the user thread always open to any signals.  
+
+Second, I want to make the macros used to replace the instructions behave exactly like the original instructions with the only exception of length. This becomes extremely tricky when dealing with signals because the signals should not happen in the middle of the macros. Also due to that I need to make the user thread not blocking any signals, I need to implement the signal pending machanism in the user space.
+
+Despite these complications, the general idea is simple. In the mutli-threaded system, the number of possible process memory state explodes due to the interleaving of instructions from different threads. Instead of catching the every exact memory state, we can only catch the order of memory accesses that really matters. In a race free environment, this means the order of accessing the shared memory.
+
+For instance, consider the following two routines r1 and r2 running on
+two different threads.
+
+```c
+lock_t lock;
+
+void r1 ()
+{
+  foo1 ();
+  acquire (&lock);
+  bar1 ();
+  release (&lock);
+}
+
+void r2 ()
+{
+  foo2 ();
+  acquire (&lock);
+  bar2 ();
+  release (&lock);
+}
+```
+
+The developers may only be interested in which thread acquires the lock first between r1 and r2, not the possible interleaving between foo1 and foo2. In other word, it normally means foo1 and foo2 should be race-free and should only access their own private memory space. Therefore, for this example we may only need to record who get the lock first.
+
+Meanwhile, we also need to prove there is no race condition between foo1 and foo2, and this introduces the post-run analysis. In the analysis, we can record all memory accesses from foo1 and foo2, and conservatively prove there is no race condition by showing there is no conflict memory access.
+
+More specifically, let's consider a simple implementation of spin lock.
+
+```c
+int lock = 0;
+
+void acquire ()
+{
+  while (atomic_compare_and_exchange (&lock, 0, 1))
+    continue;
+}
+
+void release ()
+{
+  atomic_store (&lock, 0);
+}
+```
+
+Here, the racy accesses are two atomic calls, which in turn calls, for example, cmpxchg and mov respectively. The memory accesses when the lock hold are protected and shall not be racy. Therefore we only need to record the order of accessing the lock, as shown below.
+
+```c
+void record_atomic (ptr)
+{
+  append (get_atomic_log (ptr), gettid ());
+}
+
+lock_t atomic_lock;
+
+int atomic_compare_and_exchange (ptr, expected, desired)
+{
+  lock (&atomic_lock);
+  record_atomic (ptr);
+  int res = __atomic_compare_and_exchange (ptr, expected, desired);
+  unlock (&atomic_lock);
+  return res;
+}
+
+void atomic_store (ptr, val);
+{
+  lock (&atomic_lock);
+  record_atomic (ptr);
+  __atomic_store (ptr, val);
+  unlock (&atomic_lock);
+}
+```
+
+For two threads executing the following code.
+
+```c
+void thread ()
+{
+  while (1)
+    {
+	    acquire ();
+	    foo ();
+	    release ();
+    }
+}
+```
+
+The final log will be like: t1 t1 t2 t1 t2...
+
+Here is another example with respect to the signals, a very simple and common usage of SIGINT to exit the process.
+
+```c
+int exit = 0;
+
+void handle ()
+{
+  exit = 1;
+}
+
+void loop ()
+{
+  signal (SIGINT, handle);
+
+  while (! atomic_load (&exit))
+    foo ();
+}
+```
+
+The key here is it does not matter when the signal is raised inside foo, it only matters how many times foo is executed. Therefore we only need to record this number, as below.
+
+```c
+void wrap (handle)
+{
+  append (get_thread_log (), SIGNAL);
+  handle ();
+}
+
+void signal (sig, handle)
+{
+  __signal (sig, wrap, handle);
+}
+
+int atomic_load (ptr)
+{
+  append (get_thread_log (), ATOMIC);
+  return __atomic_load (ptr);
+}
+```
+
+The final log will be like: ATOMIC ATOMIC ATOMIC SIGNAL.
+
+The signal handlers may also access the cpu context. This means it may also be synchronized by the value of registers. Therefore, the solution is to provide a universal wrap for any instructions to set barriers for signals. The implementation is also very tricky to handle jump or repeatable instructions.
