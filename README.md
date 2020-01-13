@@ -168,9 +168,9 @@ void thread ()
 {
   while (1)
     {
-	    acquire ();
-	    foo ();
-	    release ();
+        acquire ();
+        foo ();
+        release ();
     }
 }
 ```
